@@ -1372,8 +1372,8 @@ class ShogunCliTest {
         assertEquals(
             listOf(
                 "$base  main  main  changes=0",
-                "$merged  feature/TASK-1  origin=shogunai  changes=0  merged",
-                "$dirty  worktree-spike  origin=claude-code  locked  changes=2",
+                "$merged  feature/TASK-1  origin=shogunai  changes=0  base-ahead=0 base-behind=3 of main  merged",
+                "$dirty  worktree-spike  origin=claude-code  locked  changes=2  base-ahead=2 base-behind=0 of main",
             ),
             out.lines().filter { it.isNotEmpty() },
         )
@@ -1430,7 +1430,7 @@ class ShogunCliTest {
         val exitCode = cli(repositoryExecutor(), herdrWorktreesRoot = worktreesRoot).run(listOf("status"))
 
         assertEquals(0, exitCode, err.toString())
-        assertTrue(out.lines().contains("$merged  feature/TASK-1  origin=herdr  changes=0  merged"), out.toString())
+        assertTrue(out.lines().contains("$merged  feature/TASK-1  origin=herdr  changes=0  base-ahead=0 base-behind=3 of main  merged"), out.toString())
     }
 
     private fun claudeProcessExecutor() = repositoryExecutor { command, _ ->
@@ -1451,7 +1451,7 @@ class ShogunCliTest {
 
         assertEquals(0, exitCode, err.toString())
         assertTrue(
-            out.lines().contains("$merged  feature/TASK-1  origin=shogunai  agents=claude(blocked)  changes=0  merged"),
+            out.lines().contains("$merged  feature/TASK-1  origin=shogunai  agents=claude(blocked)  changes=0  base-ahead=0 base-behind=3 of main  merged"),
             out.toString(),
         )
     }
@@ -1478,7 +1478,7 @@ class ShogunCliTest {
 
         assertEquals(0, exitCode, err.toString())
         assertTrue(
-            out.lines().contains("$merged  feature/TASK-1  origin=shogunai  agents=claude(blocked, main-repo-task-1, main-repo-task-1-2)  changes=0  merged"),
+            out.lines().contains("$merged  feature/TASK-1  origin=shogunai  agents=claude(blocked, main-repo-task-1, main-repo-task-1-2)  changes=0  base-ahead=0 base-behind=3 of main  merged"),
             out.toString(),
         )
     }
@@ -1489,7 +1489,7 @@ class ShogunCliTest {
 
         assertEquals(0, exitCode, err.toString())
         assertTrue(
-            out.lines().contains("$merged  feature/TASK-1  origin=shogunai  agents=claude(main-repo-task-1, main-repo-task-1-2)  changes=0  merged"),
+            out.lines().contains("$merged  feature/TASK-1  origin=shogunai  agents=claude(main-repo-task-1, main-repo-task-1-2)  changes=0  base-ahead=0 base-behind=3 of main  merged"),
             out.toString(),
         )
     }
@@ -1527,7 +1527,7 @@ class ShogunCliTest {
 
         assertEquals(0, exitCode, err.toString())
         assertTrue(
-            out.lines().contains("$merged  feature/TASK-1  origin=shogunai  agents=claude(blocked)  changes=0  merged"),
+            out.lines().contains("$merged  feature/TASK-1  origin=shogunai  agents=claude(blocked)  changes=0  base-ahead=0 base-behind=3 of main  merged"),
             out.toString(),
         )
     }
@@ -1539,7 +1539,7 @@ class ShogunCliTest {
         val exitCode = cli(repositoryExecutor(), orca = orca).run(listOf("status"))
 
         assertEquals(0, exitCode, err.toString())
-        assertTrue(out.lines().contains("$merged  feature/TASK-1  origin=orca  agents=claude(blocked)  changes=0  merged"), out.toString())
+        assertTrue(out.lines().contains("$merged  feature/TASK-1  origin=orca  agents=claude(blocked)  changes=0  base-ahead=0 base-behind=3 of main  merged"), out.toString())
     }
 
     @Test
@@ -1593,7 +1593,7 @@ class ShogunCliTest {
         val exitCode = cli(executor).run(listOf("status"))
 
         assertEquals(0, exitCode, err.toString())
-        assertTrue(out.lines().contains("$merged  feature/TASK-1  origin=shogunai  changes=0  not-started"), out.toString())
+        assertTrue(out.lines().contains("$merged  feature/TASK-1  origin=shogunai  changes=0  base-ahead=0 base-behind=3 of main  not-started"), out.toString())
     }
 
     @Test
@@ -1627,7 +1627,7 @@ class ShogunCliTest {
                   "path": "$base", "branch": "main", "head": "1111111111111111111111111111111111111111",
                   "main": true, "locked": false, "folderMissing": false, "origin": null, "base": null, "agents": [],
                   "status": {
-                    "uncommittedChanges": 0, "upstream": null, "mainBranch": null,
+                    "uncommittedChanges": 0, "upstream": null, "mainBranch": null, "base": null,
                     "merged": false, "lastCommitAt": null, "createdAt": null
                   },
                   "desktop": null
@@ -1637,6 +1637,7 @@ class ShogunCliTest {
                   "main": false, "locked": false, "folderMissing": false, "origin": "shogunai", "base": null, "agents": [],
                   "status": {
                     "uncommittedChanges": 0, "upstream": null, "mainBranch": {"ahead": 0, "behind": 3},
+                    "base": {"branch": "main", "ahead": 0, "behind": 3},
                     "merged": true, "lastCommitAt": null, "createdAt": null
                   },
                   "desktop": null
@@ -1646,6 +1647,7 @@ class ShogunCliTest {
                   "main": false, "locked": true, "folderMissing": false, "origin": "claude-code", "base": null, "agents": [],
                   "status": {
                     "uncommittedChanges": 2, "upstream": null, "mainBranch": {"ahead": 2, "behind": 0},
+                    "base": {"branch": "main", "ahead": 2, "behind": 0},
                     "merged": false, "lastCommitAt": null, "createdAt": null
                   },
                   "desktop": null
@@ -1668,6 +1670,47 @@ class ShogunCliTest {
             }
         }
 
+    private fun mergedIntoEpic() = repositoryExecutor { command, directory ->
+        when {
+            command.take(3) == listOf("git", "config", "--get-regexp") ->
+                Executor.ok(command, "branch.feature/TASK-1.gh-merge-base epic/redesign\n")
+            command.take(2) == listOf("git", "rev-parse") && command.last() == "refs/remotes/origin/epic/redesign" -> Executor.ok(command)
+            "rev-list" in command && directory == merged && command.last() == "origin/epic/redesign...HEAD" -> Executor.ok(command, "1\t0")
+            "rev-list" in command && directory == merged && command.last() == "main...HEAD" -> Executor.ok(command, "0\t4")
+            else -> null
+        }
+    }
+
+    @Test
+    fun `status compares a worktree with its recorded base and reads it merged there`() {
+        val exitCode = cli(mergedIntoEpic()).run(listOf("status"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertTrue(
+            out.lines().contains("$merged  feature/TASK-1  origin=shogunai  base=epic/redesign  changes=0  base-ahead=0 base-behind=1 of epic/redesign  merged"),
+            out.toString(),
+        )
+    }
+
+    @Test
+    fun `status json reports the divergence from the recorded base next to the main branch`() {
+        val exitCode = cli(mergedIntoEpic()).run(listOf("status", "--json"))
+
+        assertEquals(0, exitCode, err.toString())
+        val status = Json.parseToJsonElement(out.toString()).jsonObject.getValue("worktrees").jsonArray[1].jsonObject.getValue("status").jsonObject
+        assertEquals(Json.parseToJsonElement("""{"branch": "epic/redesign", "ahead": 0, "behind": 1}"""), status.getValue("base"))
+        assertEquals(Json.parseToJsonElement("""{"ahead": 4, "behind": 0}"""), status.getValue("mainBranch"))
+        assertEquals(JsonPrimitive(true), status.getValue("merged"))
+    }
+
+    @Test
+    fun `clean offers a worktree merged into its recorded base`() {
+        val exitCode = cli(mergedIntoEpic()).run(listOf("clean"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertTrue(out.lines().contains("would remove $merged"), out.toString())
+    }
+
     @Test
     fun `status shows the recorded base of each worktree`() {
         val exitCode = cli(recordedBases()).run(listOf("status"))
@@ -1676,8 +1719,8 @@ class ShogunCliTest {
         assertEquals(
             listOf(
                 "$base  main  main  changes=0",
-                "$merged  feature/TASK-1  origin=shogunai  base=develop  changes=0  merged",
-                "$dirty  worktree-spike  origin=claude-code  locked  changes=2",
+                "$merged  feature/TASK-1  origin=shogunai  base=develop  changes=0  base-ahead=0 base-behind=3 of main  merged",
+                "$dirty  worktree-spike  origin=claude-code  locked  changes=2  base-ahead=2 base-behind=0 of main",
             ),
             out.lines().filter { it.isNotEmpty() },
         )
@@ -3167,7 +3210,7 @@ class ShogunCliTest {
         val exitCode = cli(executor).run(listOf("remove", "TASK-1", "--delete-branch"))
 
         assertEquals(0, exitCode, err.toString())
-        assertEquals("removed $merged\nkept branch feature/TASK-1 (not merged into the main branch)\n", out.toString())
+        assertEquals("removed $merged\nkept branch feature/TASK-1 (not merged into its base or the main branch)\n", out.toString())
         assertFalse(executor.ran("git", "branch", "-D", "--", "feature/TASK-1"))
     }
 
@@ -3195,7 +3238,7 @@ class ShogunCliTest {
         assertEquals(0, exitCode, err.toString())
         val json = jsonOut()
         assertEquals(JsonNull, json.getValue("branchDeleted"))
-        assertEquals("not merged into the main branch", (json.getValue("branchKeptReason") as JsonPrimitive).content)
+        assertEquals("not merged into its base or the main branch", (json.getValue("branchKeptReason") as JsonPrimitive).content)
     }
 
     @Test

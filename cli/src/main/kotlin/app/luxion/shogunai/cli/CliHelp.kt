@@ -47,7 +47,7 @@ internal object CliHelp {
   remove <task id | path | branch> [--force] [--delete-branch | --force-delete-branch] [--json]
                               Remove one worktree and stop its emulator, simulator and idle Gradle daemons;
                               refused while it has changes or an agent running unless --force;
-                              --delete-branch also deletes its branch when it is merged into the main branch,
+                              --delete-branch also deletes its branch when it is merged into its base or the main branch,
                               --force-delete-branch deletes it even if it is not merged;
                               --json prints one JSON object instead of text
 """.trimIndent(),
@@ -64,7 +64,12 @@ internal object CliHelp {
   open <task id | path | branch> --orca [--agent <name>] [--json]
                               Open the worktree in Orca under its repository, in a focused terminal with its
                               environment and the project's agent, or focus the terminal of its live agent;
-                              starts Orca when it isn't running; not available in a multirepo folder yet
+                              starts Orca when it isn't running
+  open <task id | branch> --orca [--json]
+                              In a multirepo folder: open every worktree of the group in Orca, each under
+                              its repository with its environment and its project's agent
+  open --orca [--json]        In a multirepo folder: open the multirepo's agent in Orca's workspace for the
+                              folder; a folder that isn't a Git repository must be added in Orca's app first
 """.trimIndent(),
         "repair" to """
   repair [--json]             Re-link the worktrees after the repository or the worktrees folder moved

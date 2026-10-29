@@ -181,13 +181,13 @@ object SpanishStrings : Strings {
     override val groupAgentWorkingHint = "agente en marcha"
     override val groupAgentWorkingCriterion = "Un agente de IA está trabajando en el worktree, o se ejecuta sin estado conocido."
     override val groupNeedsYouHint = "agente esperando, sin commit o sin subir"
-    override val groupNeedsYouCriterion = "Un agente está bloqueado o ha terminado, o ningún agente trabaja y hay cambios sin commit o commits sin subir a su upstream (o a la rama principal si no tiene)."
+    override val groupNeedsYouCriterion = "Un agente está bloqueado o ha terminado, o ningún agente trabaja y hay cambios sin commit o commits sin subir a su upstream (o a su base si no tiene)."
     override val groupNewHint = "aún sin commits"
     override val groupNewCriterion = "Sin commits propios, sin cambios sin commit y sin agente en marcha."
     override val groupStoppedHint = "subido, en espera"
     override val groupStoppedCriterion = "Con commits propios, todos subidos, sin cambios pendientes, sin fusionar y sin agente trabajando."
-    override val groupMergedHint = "ya en la rama principal"
-    override val groupMergedCriterion = "Sin commits propios por delante de la rama principal. Se puede limpiar."
+    override val groupMergedHint = "ya en su base"
+    override val groupMergedCriterion = "Sin commits propios por delante de su base o de la rama principal. Se puede limpiar."
     override fun groupInactiveHint(days: Int) = "sin actividad en $days+ días"
     override fun groupInactiveCriterion(days: Int) =
         "Limpio, sin agente en marcha y sin actividad en " + (if (days == 1) "el último día." else "los últimos $days días.")
@@ -349,15 +349,15 @@ object SpanishStrings : Strings {
     override fun worktreesCleanedUp(count: Int) = if (count == 1) "1 worktree limpiado" else "$count worktrees limpiados"
     override fun cleanupFailed(path: String, detail: String) = "No se pudo eliminar \"$path\": $detail"
     override fun worktreeRemovedBranchKept(branch: String) =
-        "Worktree eliminado. Rama \"$branch\" conservada: no está mergeada en la rama principal"
+        "Worktree eliminado. Rama \"$branch\" conservada: no está mergeada en su base ni en la rama principal"
     override fun worktreeRemovedBranchKeptFailed(branch: String, reason: String) =
         "Worktree eliminado. Rama \"$branch\" conservada: $reason"
     override val deleteBranchAnyway = "Borrar la rama igualmente"
     override val deleteBranchAnywayTitle = "¿Borrar la rama?"
     override fun deleteBranchAnywayMessage(branch: String) =
-        "¿Borrar la rama \"$branch\" aunque no esté mergeada en la rama principal? Sus commits podrían perderse."
+        "¿Borrar la rama \"$branch\" aunque no esté mergeada en su base ni en la rama principal? Sus commits podrían perderse."
     override fun branchDeleted(branch: String) = "Rama \"$branch\" borrada"
-    override fun branchKept(branch: String) = "Rama \"$branch\" conservada: no está mergeada en la rama principal"
+    override fun branchKept(branch: String) = "Rama \"$branch\" conservada: no está mergeada en su base ni en la rama principal"
     override val herdrWorkspaceWillClose = "Está abierto en Herdr: se cerrará su espacio de trabajo y el agente que se ejecuta en él."
     override fun keptForRunningAgent(name: String, agents: List<String>) = "$name · se conserva, ${agents.joinToString()} está en ejecución"
     override val herdrCleanupNotice = "A los worktrees abiertos en Herdr se les cerrará el espacio de trabajo y el agente que se ejecuta en él."
@@ -824,6 +824,7 @@ object SpanishStrings : Strings {
     override val newChangeRepositories = "Repositorios"
     override val createChange = "Crear cambio"
     override val openAllInHerdr = "Abrir todo en Herdr"
+    override val openAllInOrca = "Abrir todo en Orca"
     override val addRepositoryToGroup = "Añadir repositorio"
     override val cleanUpGroup = "Limpiar grupo"
     override val cleanUpGroupTitle = "Limpiar grupo"
@@ -831,6 +832,15 @@ object SpanishStrings : Strings {
     override val multirepoAgentOpened = "Agente del multirepo abierto en Herdr"
     override val multirepoAgentFocused = "Agente del multirepo enfocado en Herdr"
     override val multirepoAgentStarted = "Agente del multirepo iniciado en su workspace abierto de Herdr"
+    override val openMultirepoAgentInOrca = "Abrir agente del multirepo en Orca"
+    override val openMultirepoAgentMenu = "Abrir agente del multirepo"
+    override val multirepoAgentStartedInOrca = "Agente del multirepo iniciado en una terminal nueva de Orca"
+    override val multirepoAgentFocusedInOrca = "El agente del multirepo ya estaba en marcha en Orca; se ha cambiado a él"
+    override val openNewChangeIn = "Después, abrirlo en"
+    override val dontOpen = "No abrir"
+    override val runnerOpened = "abierto"
+    override val runnerAgentStarted = "agente iniciado"
+    override val runnerAgentFocused = "agente en marcha enfocado"
     override val groupRepositoryCreated = "creado"
     override val groupRepositoryExisting = "ya existía"
     override val addMultirepo = "Añadir multirepo"
@@ -887,6 +897,12 @@ object SpanishStrings : Strings {
     override fun groupRepositoryFailed(reason: String) = "falló: $reason"
     override fun repositoryAddedToGroup(alias: String, title: String) = "$alias añadido a $title"
     override fun changeCreated(title: String, aliases: List<String>) = "$title creado en ${aliases.joinToString()}"
+    override fun groupOpenedInOrca(title: String, started: List<String>, focused: List<String>) =
+        listOfNotNull(
+            started.takeIf { it.isNotEmpty() }?.let { "agente iniciado en ${it.joinToString()}" },
+            focused.takeIf { it.isNotEmpty() }?.let { "agente en marcha enfocado en ${it.joinToString()}" },
+        ).joinToString("; ", prefix = "$title abierto en Orca: ")
+    override fun runnerOpenFailed(reason: String) = "no se abrió: $reason"
     override val multirepoNeedsReview = "Necesita revisión"
     override val multirepoNeedsReviewExplanation =
         "Este multirepo no está aprobado en este equipo: su declaración es nueva aquí o ha cambiado fuera de ShogunAi, por ejemplo con un pull. ShogunAi crea ramas y worktrees en los repositorios que lista y ejecuta sus comandos post-creación aprobados, así que revísalos antes de confiar en él."

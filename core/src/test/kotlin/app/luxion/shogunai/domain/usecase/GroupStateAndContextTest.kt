@@ -38,10 +38,35 @@ class GroupStateAndContextTest {
 
     private fun readGroups(agents: Map<String, List<RunningAgent>> = emptyMap()) = ReadGroupsUseCase(
         DetectGroupsUseCase(world.git),
-        resolveBase = { ResolveMainBranchUseCase(it.config, world.git)().getOrNull() },
-        readStatus = { member, base -> ReadWorktreeStatusUseCase(world.git, FakeFileManager())(member.worktree, base) },
+        resolveBases = { RepositoryBases(ResolveMainBranchUseCase(it.config, world.git)().getOrNull(), ResolveRecordedBasesUseCase(it.config, world.git)()) },
+        readStatus = { member, mainBranch, base -> ReadWorktreeStatusUseCase(world.git, FakeFileManager())(member.worktree, mainBranch, base) },
         detectAgents = { Result.success(agents) },
     )
+
+    @Test
+    fun `a group branched from an epic reads each repository against its own base`() = runTest {
+        val appEpicTask = "${world.worktreesRoot}/app/TASK-3"
+        val apiEpicTask = "${world.worktreesRoot}/api/TASK-3"
+        with(world.git) {
+            world.app.worktree(appEpicTask, "feature/TASK-3")
+            world.api.worktree(apiEpicTask, "feature/TASK-3")
+        }
+        world.app.remoteBranches += "epic/redesign"
+        world.app.recordedBases["feature/TASK-3"] = "epic/redesign"
+        world.app.mergedOnlyInto[appEpicTask] = "origin/epic/redesign"
+        world.api.mergedOnlyInto[apiEpicTask] = "origin/develop"
+
+        val group = readGroups()(world.members()).groups.single { it.group.branch == "feature/TASK-3" }
+        val app = group.worktrees.single { it.member.alias == "app" }
+        val api = group.worktrees.single { it.member.alias == "api" }
+
+        assertEquals("epic/redesign", app.base?.name)
+        assertEquals("epic/redesign", app.status?.getOrThrow()?.baseName)
+        assertTrue(app.isCleanAndMerged)
+        assertEquals("develop", api.base?.name)
+        assertTrue(api.isCleanAndMerged)
+        assertTrue(selectGroupCleanup(listOf(group)).candidates.isNotEmpty())
+    }
 
     @Test
     fun `status reads each worktree against its own base and lists the ungrouped ones`() = runTest {

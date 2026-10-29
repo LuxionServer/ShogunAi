@@ -26,22 +26,27 @@ class ResolveMainBranchUseCase(
     }
 
     private suspend fun resolve(name: String): MainBranch? =
-        resolveRemote(name) ?: resolveLocal(name)
-
-    private suspend fun resolveRemote(name: String): MainBranch? =
-        MainBranch(name, "$REMOTE/$name").takeIf { refExists("refs/remotes/$REMOTE/$name") }
+        resolveBranchRef(executor, config.baseRepositoryPath, name)
 
     private suspend fun resolveLocal(name: String): MainBranch? =
-        MainBranch(name, name).takeIf { refExists("refs/heads/$name") }
-
-    private suspend fun refExists(ref: String): Boolean =
-        git("rev-parse", "--verify", "--quiet", ref).isSuccess
+        localBranchRef(executor, config.baseRepositoryPath, name)
 
     private suspend fun git(vararg args: String) =
         executor.executeWithin(listOf("git", *args), CommandTimeouts.GIT_READ, workingDirectory = config.baseRepositoryPath)
 
     private companion object {
-        const val REMOTE = "origin"
         val FALLBACK_BRANCHES = listOf("main", "master")
     }
 }
+
+internal suspend fun resolveBranchRef(executor: ShellCommandExecutor, directory: String, name: String): MainBranch? =
+    MainBranch(name, "$REMOTE/$name").takeIf { refExists(executor, directory, "refs/remotes/$REMOTE/$name") }
+        ?: localBranchRef(executor, directory, name)
+
+private suspend fun localBranchRef(executor: ShellCommandExecutor, directory: String, name: String): MainBranch? =
+    MainBranch(name, name).takeIf { refExists(executor, directory, "refs/heads/$name") }
+
+private suspend fun refExists(executor: ShellCommandExecutor, directory: String, ref: String): Boolean =
+    executor.executeWithin(listOf("git", "rev-parse", "--verify", "--quiet", ref), CommandTimeouts.GIT_READ, workingDirectory = directory).isSuccess
+
+private const val REMOTE = "origin"

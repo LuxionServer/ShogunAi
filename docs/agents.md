@@ -133,7 +133,7 @@ ShogunAi runs the project's own command rather than Orca's agent launcher, whose
 
 **Removal.** Removing a worktree from ShogunAi (the remove action, "Clean up", `shogun remove`, `shogun clean --yes` or Claude Code's removal) also closes its Orca terminals, and the agents in them, once the worktree is removed; a folder locked by those shells gets its terminals closed and the removal retried once. The dialogs and `shogun clean`'s dry run say beforehand which worktrees have Orca terminals. If Orca isn't installed or running, nothing changes and Orca isn't started; if closing fails, the removal still counts and a warning shows Orca's message.
 
-Groups of a multirepo can't be opened in Orca yet: use `--herdr` there.
+**Multirepos.** In a multirepo folder, `shogun open <id> --orca` and the group header's "Open all in Orca" open every worktree of the group under its own Orca repository, and `shogun open --orca` and "Open multirepo agent in Orca" run the multirepo agent in Orca's workspace for the multirepo folder. A folder that isn't a Git repository needs a one-time setup in Orca's app first; see [Multirepos and groups](guide/multirepo.md#groups). While Orca reports an agent in that workspace, the multirepo view shows its state as for a worktree's agent.
 
 ## ShogunAi's workflow rules
 

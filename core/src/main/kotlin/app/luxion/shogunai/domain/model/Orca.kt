@@ -14,7 +14,22 @@ data class OrcaWorktree(
     val path: String,
     val createdByOrca: Boolean,
     val agents: List<OrcaAgent> = emptyList(),
-)
+    val folderId: String? = null,
+) {
+    val workspace: OrcaWorkspace get() = folderId?.let(OrcaWorkspace::Folder) ?: OrcaWorkspace.Worktree(path)
+}
+
+sealed interface OrcaWorkspace {
+    val selector: String
+
+    data class Worktree(val path: String) : OrcaWorkspace {
+        override val selector: String get() = "path:$path"
+    }
+
+    data class Folder(val id: String) : OrcaWorkspace {
+        override val selector: String get() = "id:folder:$id"
+    }
+}
 
 data class OrcaTerminal(val handle: String, val worktreePath: String, val title: String? = null)
 

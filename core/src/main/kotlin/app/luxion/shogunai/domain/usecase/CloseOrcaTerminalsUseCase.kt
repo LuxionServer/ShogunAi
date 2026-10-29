@@ -1,6 +1,7 @@
 package app.luxion.shogunai.domain.usecase
 
 import app.luxion.shogunai.domain.io.OrcaClient
+import app.luxion.shogunai.domain.model.OrcaWorkspace
 import app.luxion.shogunai.domain.model.WorktreeError
 import kotlin.coroutines.cancellation.CancellationException
 
@@ -18,7 +19,7 @@ class CloseOrcaTerminalsUseCase(private val orca: OrcaClient) {
         if (!running) return emptySet()
         return paths.filter { path ->
             try {
-                orca.terminals(path).isNotEmpty()
+                orca.terminals(OrcaWorkspace.Worktree(path)).isNotEmpty()
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
@@ -31,7 +32,7 @@ class CloseOrcaTerminalsUseCase(private val orca: OrcaClient) {
         removedPaths.filter { it in withTerminals }.mapNotNull { path -> closeOne(path)?.let { CleanupFailure(path, it) } }
 
     suspend fun closeOne(path: String): WorktreeError? = try {
-        orca.closeTerminals(path)
+        orca.closeTerminals(OrcaWorkspace.Worktree(path))
         null
     } catch (error: CancellationException) {
         throw error

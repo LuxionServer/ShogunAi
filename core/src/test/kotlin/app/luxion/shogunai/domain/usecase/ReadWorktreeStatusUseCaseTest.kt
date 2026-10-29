@@ -199,6 +199,94 @@ class ReadWorktreeStatusUseCaseTest {
         assertEquals(0, executor.executedCommands.count { it == reflogCommand })
     }
 
+    private val epic = MainBranch("epic/redesign", "origin/epic/redesign")
+    private val epicCommand = listOf("git", "rev-list", "--left-right", "--count", "origin/epic/redesign...HEAD")
+
+    @Test
+    fun `reads the divergence from the base besides the main branch`() = runTest {
+        val executor = executor(mapOf(epicCommand to { command -> success(command, stdout = "1\t3\n") }))
+
+        val status = ReadWorktreeStatusUseCase(executor, FakeFileManager())(worktree, mainBranch, epic).getOrThrow()
+
+        assertEquals(Divergence(ahead = 3, behind = 1), status.base)
+        assertEquals("epic/redesign", status.baseName)
+        assertEquals(Divergence(ahead = 4, behind = 1), status.mainBranch)
+        assertFalse(status.isMerged)
+    }
+
+    @Test
+    fun `without a recorded base the base is the main branch, read once`() = runTest {
+        val executor = executor()
+
+        val status = ReadWorktreeStatusUseCase(executor, FakeFileManager())(worktree, mainBranch).getOrThrow()
+
+        assertEquals(status.mainBranch, status.base)
+        assertEquals("develop", status.baseName)
+        assertEquals(1, executor.executedCommands.count { it == mainBranchCommand })
+    }
+
+    @Test
+    fun `a branch merged into its base is merged although the main branch lacks it`() = runTest {
+        val executor = executor(
+            mapOf(
+                epicCommand to { command -> success(command, stdout = "2\t0\n") },
+                mainBranchCommand to { command -> success(command, stdout = "0\t7\n") },
+                reflogCommand to { command -> success(command, stdout = "abc123\ndef456\n") },
+            ),
+        )
+
+        val status = ReadWorktreeStatusUseCase(executor, FakeFileManager())(worktree, mainBranch, epic).getOrThrow()
+
+        assertTrue(status.isMerged)
+        assertTrue(status.isMergedIntoBase)
+        assertFalse(status.isMergedIntoMainBranch)
+    }
+
+    @Test
+    fun `a branch merged into the main branch is merged whatever its base says`() = runTest {
+        val executor = executor(
+            mapOf(
+                epicCommand to { command -> success(command, stdout = "0\t2\n") },
+                mainBranchCommand to { command -> success(command, stdout = "3\t0\n") },
+            ),
+        )
+
+        val status = ReadWorktreeStatusUseCase(executor, FakeFileManager())(worktree, mainBranch, epic).getOrThrow()
+
+        assertTrue(status.isMerged)
+        assertFalse(status.isMergedIntoBase)
+        assertTrue(status.isMergedIntoMainBranch)
+    }
+
+    @Test
+    fun `a branch without commits stays not started when its base moves`() = runTest {
+        val executor = executor(
+            mapOf(
+                epicCommand to { command -> success(command, stdout = "2\t0\n") },
+                mainBranchCommand to { command -> success(command, stdout = "0\t5\n") },
+                upstreamCommand to { command -> failure(command, exitCode = 128, stderr = "fatal: no upstream configured") },
+                headCommand to { command -> success(command, stdout = "abc123\n") },
+                reflogCommand to { command -> success(command, stdout = "abc123\n") },
+            ),
+        )
+
+        val status = ReadWorktreeStatusUseCase(executor, FakeFileManager())(worktree, mainBranch, epic).getOrThrow()
+
+        assertTrue(status.isNotStarted)
+        assertFalse(status.isMerged)
+        assertFalse(status.hasOwnCommits)
+    }
+
+    @Test
+    fun `a worktree on its base has no base comparison`() = runTest {
+        val epicWorktree = Worktree(path = "/home/dev/projects/redesign", branch = "epic/redesign")
+
+        val status = ReadWorktreeStatusUseCase(executor(), FakeFileManager())(epicWorktree, mainBranch, epic).getOrThrow()
+
+        assertNull(status.base)
+        assertNull(status.baseName)
+    }
+
     @Test
     fun `a linked worktree is created when its administrative folder was written`() = runTest {
         val files = FakeFileManager()

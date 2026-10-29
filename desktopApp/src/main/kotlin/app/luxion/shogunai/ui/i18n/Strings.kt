@@ -673,6 +673,7 @@ interface Strings {
     val newChangeRepositories: String
     val createChange: String
     val openAllInHerdr: String
+    val openAllInOrca: String
     val addRepositoryToGroup: String
     val cleanUpGroup: String
     val cleanUpGroupTitle: String
@@ -680,6 +681,15 @@ interface Strings {
     val multirepoAgentOpened: String
     val multirepoAgentFocused: String
     val multirepoAgentStarted: String
+    val openMultirepoAgentInOrca: String
+    val openMultirepoAgentMenu: String
+    val multirepoAgentStartedInOrca: String
+    val multirepoAgentFocusedInOrca: String
+    val openNewChangeIn: String
+    val dontOpen: String
+    val runnerOpened: String
+    val runnerAgentStarted: String
+    val runnerAgentFocused: String
     val groupRepositoryCreated: String
     val groupRepositoryExisting: String
     val addMultirepo: String
@@ -741,6 +751,8 @@ interface Strings {
     fun groupRepositoryFailed(reason: String): String
     fun repositoryAddedToGroup(alias: String, title: String): String
     fun changeCreated(title: String, aliases: List<String>): String
+    fun groupOpenedInOrca(title: String, started: List<String>, focused: List<String>): String
+    fun runnerOpenFailed(reason: String): String
     fun multirepoInsideRepository(repository: String): String
     fun useWorktreesFolder(folder: String): String
     fun notARepository(path: String): String

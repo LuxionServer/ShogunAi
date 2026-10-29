@@ -123,6 +123,8 @@ import app.luxion.shogunai.domain.usecase.CreateWorktreeFromBranchUseCase
 import app.luxion.shogunai.domain.usecase.CreateWorktreeUseCase
 import app.luxion.shogunai.domain.usecase.ResolveBaseBranchUseCase
 import app.luxion.shogunai.domain.usecase.ReadBaseBranchesUseCase
+import app.luxion.shogunai.domain.usecase.RepositoryBases
+import app.luxion.shogunai.domain.usecase.ResolveRecordedBasesUseCase
 import app.luxion.shogunai.domain.usecase.SetBaseBranchUseCase
 import app.luxion.shogunai.domain.usecase.DeleteMergedBranchUseCase
 import app.luxion.shogunai.domain.usecase.DetectRunningAgentsUseCase
@@ -181,6 +183,7 @@ import app.luxion.shogunai.domain.usecase.StartHeadlessAppUseCase
 import app.luxion.shogunai.domain.usecase.StopHeadlessAppUseCase
 import app.luxion.shogunai.domain.usecase.StopWorktreeSimulatorUseCase
 import app.luxion.shogunai.domain.usecase.TrimGradleDaemonsUseCase
+import app.luxion.shogunai.domain.usecase.WorktreeGroup
 import app.luxion.shogunai.domain.usecase.WriteEnvironmentFileUseCase
 import app.luxion.shogunai.domain.usecase.classifyOrigin
 import app.luxion.shogunai.domain.usecase.formatEnvironment
@@ -223,7 +226,9 @@ import app.luxion.shogunai.domain.usecase.MultirepoContext
 import app.luxion.shogunai.domain.usecase.MultirepoSharedEnvironment
 import app.luxion.shogunai.domain.usecase.MultirepoMember
 import app.luxion.shogunai.domain.usecase.OpenGroupInHerdrUseCase
+import app.luxion.shogunai.domain.usecase.OpenGroupInOrcaUseCase
 import app.luxion.shogunai.domain.usecase.OpenMultirepoAgentInHerdrUseCase
+import app.luxion.shogunai.domain.usecase.OpenMultirepoAgentInOrcaUseCase
 import app.luxion.shogunai.domain.usecase.ReadGroupsUseCase
 import app.luxion.shogunai.domain.usecase.ResolveMultirepoUseCase
 import app.luxion.shogunai.domain.usecase.UnknownMultirepoAlias
@@ -597,8 +602,10 @@ class ShogunCli(
 
     private val readGroups = ReadGroupsUseCase(
         DetectGroupsUseCase(executor),
-        resolveBase = { member -> ResolveMainBranchUseCase(member.config, executor)().getOrNull() },
-        readStatus = { member, base -> ReadWorktreeStatusUseCase(executor, fileManager)(member.worktree, base) },
+        resolveBases = { member ->
+            RepositoryBases(ResolveMainBranchUseCase(member.config, executor)().getOrNull(), ResolveRecordedBasesUseCase(member.config, executor)())
+        },
+        readStatus = { member, mainBranch, base -> ReadWorktreeStatusUseCase(executor, fileManager)(member.worktree, mainBranch, base) },
         detectAgents = { searches -> DetectRunningAgentsUseCase(executor, herdr, sessionStore, claudeSessions = claudeSessions, orca = orcaReader)(searches) },
     )
 
@@ -900,7 +907,7 @@ class ShogunCli(
                 status == null -> add(state.status?.exceptionOrNull()?.let { "status-unavailable (${failureReason(it)})" } ?: "status-unavailable")
                 else -> {
                     add("changes=${status.uncommittedChanges}")
-                    status.mainBranch?.let { add("ahead=${it.ahead} behind=${it.behind}" + (state.base?.let { base -> " of ${base.name}" } ?: "")) }
+                    status.base?.let { add("ahead=${it.ahead} behind=${it.behind}" + (status.baseName?.let { base -> " of $base" } ?: "")) }
                     if (status.isMerged) add("merged")
                     if (status.isNotStarted) add("not-started")
                 }
@@ -913,6 +920,11 @@ class ShogunCli(
         val multirepo = context.multirepo
         val target = command.target
         if (target == null) {
+            if (command.orca) {
+                val opening = OpenMultirepoAgentInOrcaUseCase(orca, claudeSessionNaming(herdrAgentStartTimeout))(multirepo).getOrThrow()
+                if (command.json) printJson(multirepoAgentOpenJson(multirepo, opening)) else out.line(orcaOpeningLine(multirepo.folder, opening))
+                return EXIT_OK
+            }
             val opening = OpenMultirepoAgentInHerdrUseCase(herdr, herdrLauncher())(multirepo).getOrThrow()
             if (command.json) printJson(multirepoAgentOpenJson(multirepo, opening)) else out.line(herdrOpeningLine(multirepo.folder, opening))
             return EXIT_OK
@@ -933,6 +945,7 @@ class ShogunCli(
                 return EXIT_FAILURE
             }
         }
+        if (command.orca) return openGroupInOrca(group, command.json)
         val openings = OpenGroupInHerdrUseCase(herdr, resolveEnvironment, herdrLauncher())(group)
         if (command.json) {
             printJson(groupOpenJson(group.branch, openings))
@@ -941,6 +954,20 @@ class ShogunCli(
                 opening.result
                     .onSuccess { out.line(herdrOpeningLine(opening.path, it)) }
                     .onFailure { err.line("shogun: couldn't open ${opening.alias} (${opening.path}) in Herdr: ${failureReason(it)}") }
+            }
+        }
+        return if (openings.all { it.result.isSuccess }) EXIT_OK else EXIT_FAILURE
+    }
+
+    private suspend fun openGroupInOrca(group: WorktreeGroup, json: Boolean): Int {
+        val openings = OpenGroupInOrcaUseCase(orca, resolveEnvironment, claudeSessionNaming(herdrAgentStartTimeout))(group).getOrThrow()
+        if (json) {
+            printJson(groupOrcaOpenJson(group.branch, openings))
+        } else {
+            openings.forEach { opening ->
+                opening.result
+                    .onSuccess { out.line(orcaOpeningLine(opening.path, it)) }
+                    .onFailure { err.line("shogun: couldn't open ${opening.alias} (${opening.path}) in Orca: ${failureReason(it)}") }
             }
         }
         return if (openings.all { it.result.isSuccess }) EXIT_OK else EXIT_FAILURE
@@ -1206,8 +1233,9 @@ class ShogunCli(
         val agents = DetectRunningAgentsUseCase(executor, herdr, sessionStore, claudeSessions = claudeSessions, orca = orcaReader)(config, worktrees.filterNot { it.isPrunable }).getOrNull().orEmpty()
         val desktop = readDesktopTurn().getOrElse { DesktopTurnState(holder = null, waiting = emptyList()) }
         val bases = ReadBaseBranchesUseCase(config, executor)().getOrElse { emptyMap() }
+        val resolvedBases = ResolveRecordedBasesUseCase(config, executor)()
         val entries = worktrees.map { worktree ->
-            val read = if (worktree.isPrunable) null else readStatus(worktree, mainBranch)
+            val read = if (worktree.isPrunable) null else readStatus(worktree, mainBranch, worktree.branch?.let(resolvedBases::get) ?: mainBranch)
             WorktreeEntry(
                 worktree,
                 read?.getOrNull(),
@@ -1324,10 +1352,6 @@ class ShogunCli(
 
     private suspend fun open(command: CliCommand.Open): Int {
         multirepoContext()?.takeIf { it.atFolder }?.let { context ->
-            if (command.orca) {
-                err.line("shogun: groups and the multirepo agent can't be opened in Orca yet; use --herdr in a multirepo folder")
-                return EXIT_USAGE
-            }
             return openInMultirepo(context, command)
         }
         val target = command.target ?: run {
@@ -1403,9 +1427,10 @@ class ShogunCli(
         val worktrees = ListWorktreesUseCase(config, executor)().getOrThrow()
         val mainBranch = ResolveMainBranchUseCase(config, executor)().getOrNull()
         val readStatus = ReadWorktreeStatusUseCase(executor, fileManager)
+        val bases = ResolveRecordedBasesUseCase(config, executor)()
         val statusReads = worktrees
             .filterNot { it.isMain || it.isPrunable || it.isLocked }
-            .associateWith { worktree -> readStatus(worktree, mainBranch) }
+            .associateWith { worktree -> readStatus(worktree, mainBranch, worktree.branch?.let(bases::get) ?: mainBranch) }
         val statuses = statusReads.mapNotNull { (worktree, read) -> read.getOrNull()?.let { worktree.path to it } }.toMap()
         val agents = DetectRunningAgentsUseCase(executor, herdr, sessionStore, orca = orcaReader)(config, worktrees.filterNot { it.isMain || it.isPrunable })
             .onFailure { err.line("shogun: couldn't check for running agents, so none were taken into account: ${it.message}") }
@@ -2913,6 +2938,7 @@ class ShogunCli(
                 else -> {
                     add("changes=${status.uncommittedChanges}")
                     status.upstream?.let { add("ahead=${it.ahead} behind=${it.behind}") }
+                    status.base?.let { add("base-ahead=${it.ahead} base-behind=${it.behind}" + (status.baseName?.let { base -> " of $base" } ?: "")) }
                     if (status.isMerged) add("merged")
                     if (status.isNotStarted) add("not-started")
                 }

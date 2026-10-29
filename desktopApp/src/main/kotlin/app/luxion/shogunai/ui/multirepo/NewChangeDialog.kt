@@ -16,6 +16,7 @@ import androidx.compose.ui.focus.focusRequester
 import app.luxion.shogunai.domain.io.ApprovalDecision
 import app.luxion.shogunai.domain.model.BranchType
 import app.luxion.shogunai.domain.model.HerdrOutcome
+import app.luxion.shogunai.domain.model.OrcaOutcome
 import app.luxion.shogunai.domain.usecase.GroupRepositoryOutcome
 import app.luxion.shogunai.domain.usecase.GroupRepositoryResult
 import app.luxion.shogunai.ui.components.DialogSize
@@ -110,6 +111,14 @@ fun NewChangeDialog(
                         modifier = Modifier.padding(start = Spacing.sm),
                     )
                 }
+                change.openings?.get(alias)?.let { opening ->
+                    Text(
+                        opening.label(strings),
+                        style = ShogunTheme.typography.dataSmall,
+                        color = if (opening.isFailure) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(start = Spacing.sm),
+                    )
+                }
             }
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -120,6 +129,16 @@ fun NewChangeDialog(
                 modifier = Modifier.handPointer(!busy && !done),
             )
             Text(strings.fetchFirstLabel)
+        }
+        if (change.runners.isNotEmpty()) {
+            FieldLabel(strings.openNewChangeIn)
+            SegmentedSelector(
+                options = change.runners,
+                selected = change.runner,
+                onSelect = { change.runner = it },
+                label = { it.label(strings) },
+                enabled = !busy && !done,
+            )
         }
         if (approvalRequest != null) RepositoryApprovalStep(approvalRequest, approval)
         change.error?.let { ErrorNotice(error = it, onDismiss = null) }
@@ -140,5 +159,37 @@ fun Strings.multirepoNoticeMessage(notice: MultirepoNotice): String = when (noti
         HerdrOutcome.STARTED_AGENT -> multirepoAgentStarted
         HerdrOutcome.FOCUSED -> multirepoAgentFocused
     }
+    is MultirepoNotice.AgentOpenedInOrca -> when (notice.outcome) {
+        OrcaOutcome.STARTED_AGENT -> multirepoAgentStartedInOrca
+        OrcaOutcome.FOCUSED -> multirepoAgentFocusedInOrca
+    }
+    is MultirepoNotice.GroupOpenedInOrca -> groupOpenedInOrca(
+        notice.title,
+        notice.outcomes.filter { it.second == OrcaOutcome.STARTED_AGENT }.map { it.first },
+        notice.outcomes.filter { it.second == OrcaOutcome.FOCUSED }.map { it.first },
+    )
     is MultirepoNotice.Failed -> describe(notice.error).summary
+}
+
+private fun Result<RunnerOutcome>.label(strings: Strings): String = fold(
+    onSuccess = { outcome ->
+        when (outcome) {
+            is RunnerOutcome.Herdr -> when (outcome.outcome) {
+                HerdrOutcome.OPENED -> strings.runnerOpened
+                HerdrOutcome.STARTED_AGENT -> strings.runnerAgentStarted
+                HerdrOutcome.FOCUSED -> strings.runnerAgentFocused
+            }
+            is RunnerOutcome.Orca -> when (outcome.outcome) {
+                OrcaOutcome.STARTED_AGENT -> strings.runnerAgentStarted
+                OrcaOutcome.FOCUSED -> strings.runnerAgentFocused
+            }
+        }
+    },
+    onFailure = { strings.runnerOpenFailed(strings.describe(it).summary) },
+)
+
+private fun ChangeRunner.label(strings: Strings): String = when (this) {
+    ChangeRunner.NONE -> strings.dontOpen
+    ChangeRunner.HERDR -> "Herdr"
+    ChangeRunner.ORCA -> "Orca"
 }

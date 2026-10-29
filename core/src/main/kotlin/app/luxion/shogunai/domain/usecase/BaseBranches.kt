@@ -1,6 +1,8 @@
 package app.luxion.shogunai.domain.usecase
 
+import app.luxion.shogunai.domain.executor.CommandTimeouts
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
+import app.luxion.shogunai.domain.model.MainBranch
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.WorktreeError
 
@@ -31,6 +33,29 @@ class ReadBaseBranchesUseCase(
             else -> throw WorktreeError.GitCommandFailed(result.command, result.exitCode, result.stderr)
         }
     }
+}
+
+class ResolveRecordedBasesUseCase(
+    private val config: ProjectConfig,
+    private val executor: ShellCommandExecutor,
+) {
+    suspend operator fun invoke(): Map<String, MainBranch> {
+        val recorded = ReadBaseBranchesUseCase(config, executor)().getOrElse { return emptyMap() }
+        val resolved = recorded.values.distinct()
+            .mapNotNull { base -> resolveBranchRef(executor, config.baseRepositoryPath, base)?.let { base to it } }
+            .toMap()
+        return recorded.mapNotNull { (branch, base) -> resolved[base]?.let { branch to it } }.toMap()
+    }
+}
+
+internal suspend fun recordedBaseRef(executor: ShellCommandExecutor, config: ProjectConfig, branch: String): MainBranch? {
+    val result = executor.executeWithin(
+        listOf("git", "config", "--get", baseBranchKey(branch)),
+        CommandTimeouts.GIT_READ,
+        workingDirectory = config.baseRepositoryPath,
+    )
+    val base = result.stdout.trim().takeIf { result.isSuccess && it.isNotEmpty() } ?: return null
+    return resolveBranchRef(executor, config.baseRepositoryPath, base)
 }
 
 class SetBaseBranchUseCase(

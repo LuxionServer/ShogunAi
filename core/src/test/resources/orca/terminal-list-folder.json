@@ -1,0 +1,57 @@
+{
+  "id": "075dee23-317b-4825-8307-a082182a34ab",
+  "ok": true,
+  "result": {
+    "terminals": [
+      {
+        "handle": "term_34d22a3f-c516-4008-92c8-3c01d8be4382",
+        "ptyId": "folder:2f00a2db-d2c3-42f0-8f9a-6271686535cc@@906d728c",
+        "incarnationId": "35dc1895-dd0d-4c1e-9066-5862f4677b94",
+        "orphaned": false,
+        "worktreeId": "folder:2f00a2db-d2c3-42f0-8f9a-6271686535cc",
+        "worktreePath": "",
+        "branch": "",
+        "tabId": "c201f0eb-acd9-4406-91c7-46b884be4d5b",
+        "leafId": "e0efa2ea-5f66-4669-a8f2-e4f683cfa5ce",
+        "title": "Terminal 1",
+        "connected": true,
+        "writable": true,
+        "lastOutputAt": 1793236202004,
+        "preview": "",
+        "executionHostId": "local"
+      },
+      {
+        "handle": "term_f0d9d85e-d490-4984-9e25-64ce0aba0ebb",
+        "ptyId": "folder:2f00a2db-d2c3-42f0-8f9a-6271686535cc@@4311b371",
+        "incarnationId": "ce946d3a-e6f8-4a79-80bb-afd36520c462",
+        "orphaned": false,
+        "worktreeId": "folder:2f00a2db-d2c3-42f0-8f9a-6271686535cc",
+        "worktreePath": "",
+        "branch": "",
+        "tabId": "3c5f1221-9850-4bef-aa0b-cc43e44b54a2",
+        "leafId": "f777918e-69d3-40a3-b92a-793986186a21",
+        "title": "product",
+        "connected": true,
+        "writable": true,
+        "lastOutputAt": 1793236218442,
+        "preview": "",
+        "executionHostId": "local",
+        "agentIdentity": "claude"
+      }
+    ],
+    "hostScope": {
+      "hostIds": [
+        "local"
+      ],
+      "omittedHostIds": []
+    },
+    "topologyRevisions": {
+      "folder:2f00a2db-d2c3-42f0-8f9a-6271686535cc": 1
+    },
+    "totalCount": 2,
+    "truncated": false
+  },
+  "_meta": {
+    "runtimeId": "cd0c9d23-612d-45dd-8e2c-da966aa71c9d"
+  }
+}

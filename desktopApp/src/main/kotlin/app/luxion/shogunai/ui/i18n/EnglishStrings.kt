@@ -181,13 +181,13 @@ object EnglishStrings : Strings {
     override val groupAgentWorkingHint = "agent running"
     override val groupAgentWorkingCriterion = "An AI agent is working in the worktree, or runs without a known state."
     override val groupNeedsYouHint = "agent waiting, uncommitted or unpushed"
-    override val groupNeedsYouCriterion = "An agent is blocked or done, or no agent is working and there are uncommitted changes or commits not pushed to its upstream (or to the main branch when it has none)."
+    override val groupNeedsYouCriterion = "An agent is blocked or done, or no agent is working and there are uncommitted changes or commits not pushed to its upstream (or to its base when it has none)."
     override val groupNewHint = "no commits yet"
     override val groupNewCriterion = "No commits of its own, no uncommitted changes and no agent running."
     override val groupStoppedHint = "pushed, waiting"
     override val groupStoppedCriterion = "Commits of its own, all pushed, nothing uncommitted, not merged and no agent working."
-    override val groupMergedHint = "in main branch"
-    override val groupMergedCriterion = "No commits of its own ahead of the main branch. Can be cleaned up."
+    override val groupMergedHint = "in its base"
+    override val groupMergedCriterion = "No commits of its own ahead of its base or the main branch. Can be cleaned up."
     override fun groupInactiveHint(days: Int) = "no activity for $days+ days"
     override fun groupInactiveCriterion(days: Int) =
         "Clean, no agent running and no activity in the last " + (if (days == 1) "day." else "$days days.")
@@ -349,15 +349,15 @@ object EnglishStrings : Strings {
     override fun worktreesCleanedUp(count: Int) = if (count == 1) "1 worktree cleaned up" else "$count worktrees cleaned up"
     override fun cleanupFailed(path: String, detail: String) = "Couldn't remove \"$path\": $detail"
     override fun worktreeRemovedBranchKept(branch: String) =
-        "Worktree removed. Branch \"$branch\" kept: it isn't merged into the main branch"
+        "Worktree removed. Branch \"$branch\" kept: it isn't merged into its base or the main branch"
     override fun worktreeRemovedBranchKeptFailed(branch: String, reason: String) =
         "Worktree removed. Branch \"$branch\" kept: $reason"
     override val deleteBranchAnyway = "Delete branch anyway"
     override val deleteBranchAnywayTitle = "Delete the branch?"
     override fun deleteBranchAnywayMessage(branch: String) =
-        "Delete the branch \"$branch\" even though it isn't merged into the main branch? Its commits may be lost."
+        "Delete the branch \"$branch\" even though it isn't merged into its base or the main branch? Its commits may be lost."
     override fun branchDeleted(branch: String) = "Branch \"$branch\" deleted"
-    override fun branchKept(branch: String) = "Branch \"$branch\" kept: it isn't merged into the main branch"
+    override fun branchKept(branch: String) = "Branch \"$branch\" kept: it isn't merged into its base or the main branch"
     override val herdrWorkspaceWillClose = "It's open in Herdr: its workspace, and the agent running there, will be closed."
     override fun keptForRunningAgent(name: String, agents: List<String>) = "$name · kept, ${agents.joinToString()} is running"
     override val herdrCleanupNotice = "The worktrees open in Herdr will have their workspace, and the agent running there, closed."
@@ -824,6 +824,7 @@ object EnglishStrings : Strings {
     override val newChangeRepositories = "Repositories"
     override val createChange = "Create change"
     override val openAllInHerdr = "Open all in Herdr"
+    override val openAllInOrca = "Open all in Orca"
     override val addRepositoryToGroup = "Add repository"
     override val cleanUpGroup = "Clean up group"
     override val cleanUpGroupTitle = "Clean up group"
@@ -831,6 +832,15 @@ object EnglishStrings : Strings {
     override val multirepoAgentOpened = "Multirepo agent opened in Herdr"
     override val multirepoAgentFocused = "Multirepo agent focused in Herdr"
     override val multirepoAgentStarted = "Multirepo agent started in its open Herdr workspace"
+    override val openMultirepoAgentInOrca = "Open multirepo agent in Orca"
+    override val openMultirepoAgentMenu = "Open multirepo agent"
+    override val multirepoAgentStartedInOrca = "Multirepo agent started in a new Orca terminal"
+    override val multirepoAgentFocusedInOrca = "The multirepo agent was already running in Orca; switched to it"
+    override val openNewChangeIn = "Then open it in"
+    override val dontOpen = "Don't open"
+    override val runnerOpened = "opened"
+    override val runnerAgentStarted = "agent started"
+    override val runnerAgentFocused = "running agent focused"
     override val groupRepositoryCreated = "created"
     override val groupRepositoryExisting = "already there"
     override val addMultirepo = "Add multirepo"
@@ -887,6 +897,12 @@ object EnglishStrings : Strings {
     override fun groupRepositoryFailed(reason: String) = "failed: $reason"
     override fun repositoryAddedToGroup(alias: String, title: String) = "$alias added to $title"
     override fun changeCreated(title: String, aliases: List<String>) = "$title created in ${aliases.joinToString()}"
+    override fun groupOpenedInOrca(title: String, started: List<String>, focused: List<String>) =
+        listOfNotNull(
+            started.takeIf { it.isNotEmpty() }?.let { "agent started in ${it.joinToString()}" },
+            focused.takeIf { it.isNotEmpty() }?.let { "running agent focused in ${it.joinToString()}" },
+        ).joinToString("; ", prefix = "$title opened in Orca: ")
+    override fun runnerOpenFailed(reason: String) = "not opened: $reason"
     override val multirepoNeedsReview = "Needs review"
     override val multirepoNeedsReviewExplanation =
         "This multirepo isn't approved on this machine: its declaration is new here or changed outside ShogunAi, for example with a pull. ShogunAi creates branches and worktrees in the repositories it lists and runs their approved post-creation commands, so check them before trusting it."

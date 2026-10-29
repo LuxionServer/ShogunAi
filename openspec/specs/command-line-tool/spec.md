@@ -75,7 +75,7 @@ Every command SHALL work on the Git repository that contains the current directo
 - **THEN** nothing is copied and the command exits with code 1 explaining why
 
 ### Requirement: Show worktree status from the command line
-`shogun status` SHALL print one line per worktree of the repository with its path, branch (or detached), origin (ShogunAi, Claude Code, Herdr or other), uncommitted changes, divergence from its upstream and whether it's merged into the main branch, the same information the desktop app shows. `shogun status --json` SHALL print the same information, plus each worktree's HEAD, its divergence from the main branch and its last commit time, as a single JSON document on standard output, whose fields later versions only add to and never rename, remove or change the type of.
+`shogun status` SHALL print one line per worktree of the repository with its path, branch (or detached), origin (ShogunAi, Claude Code, Herdr or other), uncommitted changes, divergence from its upstream and from its base, and whether it's merged into its base or the main branch, the same information the desktop app shows. `shogun status --json` SHALL print the same information, plus each worktree's HEAD, its divergence from the main branch and its last commit time, as a single JSON document on standard output, whose fields later versions only add to and never rename, remove or change the type of.
 
 #### Scenario: Several worktrees
 - **WHEN** the repository has the main worktree, a merged worktree and one with uncommitted changes
@@ -104,6 +104,10 @@ Every command SHALL work on the Git repository that contains the current directo
 #### Scenario: Unknown option
 - **WHEN** the user runs `shogun status --yaml`
 - **THEN** it prints that the option is unknown for `status` and exits with code 2
+
+#### Scenario: Worktree merged into its recorded base
+- **WHEN** a worktree's branch is merged into its recorded base `epic/redesign`, which isn't in the main branch yet
+- **THEN** its line says it's merged, and its JSON has `status.merged: true`
 
 ### Requirement: Clean up worktrees from the command line
 `shogun clean` SHALL select the same worktrees as the desktop app's cleanup (clean and merged, or with a missing folder; never the main or a locked one) and only list them. With `--yes` it SHALL remove them, and with `--delete-branches` also delete their local branches when merged, reporting what was removed, kept and failed.
@@ -182,7 +186,7 @@ The `shogun` command SHALL be available from each release: on macOS and Linux th
 - **THEN** the error is printed on standard error, nothing is printed on standard output and the command exits with code 1
 
 ### Requirement: Remove worktrees for Claude Code's WorktreeRemove hook
-`shogun hook worktree-remove` SHALL read the hook's JSON from standard input and remove the linked worktree at its `worktree_path` field even if it has changes, as Claude Code's own fallback does, then delete the worktree's branch only if it is merged into the project's main branch, keeping it otherwise.
+`shogun hook worktree-remove` SHALL read the hook's JSON from standard input and remove the linked worktree at its `worktree_path` field even if it has changes, as Claude Code's own fallback does, then delete the worktree's branch only if it is merged into its base or the project's main branch, keeping it otherwise.
 
 #### Scenario: Merged branch
 - **WHEN** the hook runs for a worktree whose branch is merged into the project's main branch
@@ -199,6 +203,10 @@ The `shogun` command SHALL be available from each release: on macOS and Linux th
 #### Scenario: Not a worktree of the repository
 - **WHEN** `worktree_path` is the main worktree or not a linked worktree
 - **THEN** nothing is removed and the command exits with code 1
+
+#### Scenario: Branch merged into its recorded base
+- **WHEN** the hook runs for a worktree whose branch is merged into its recorded base `epic/redesign` but not into the main branch
+- **THEN** the worktree and its branch are removed
 
 ### Requirement: List Gradle daemons from the command line
 `shogun gradle` SHALL print one line per Gradle or Kotlin daemon with its process id, kind, Gradle version, memory, state and, inside a Git repository, its worktree, followed by the total memory. It SHALL work outside a Git repository. Inside a repository that declares the Gradle provider it SHALL also print the build cache notice when it applies.
@@ -579,7 +587,7 @@ Commands SHALL work in submodules and in repositories whose Git folder is separa
 - **THEN** the command prints the fetch error on standard error, creates nothing and exits with code 1
 
 ### Requirement: Remove a worktree from the command line
-`shogun remove <target>` SHALL remove the linked worktree identified by a task id, a path or a branch name. It SHALL refuse a worktree with uncommitted or untracked changes, or with a running agent, unless `--force` is given; it SHALL never remove the main worktree. With `--delete-branch` it SHALL delete the branch only when merged into the main branch, and keep it otherwise, saying why; with `--force-delete-branch` it SHALL delete the branch even if unmerged. A kept branch SHALL NOT make the command fail. With `--json`, `branchDeleted` SHALL name the deleted branch or be `null`, and `branchKeptReason` SHALL say why a requested deletion didn't happen or be `null`. It SHALL stop the resources the repository's providers keep for that worktree, as cleanup does.
+`shogun remove <target>` SHALL remove the linked worktree identified by a task id, a path or a branch name. It SHALL refuse a worktree with uncommitted or untracked changes, or with a running agent, unless `--force` is given; it SHALL never remove the main worktree. With `--delete-branch` it SHALL delete the branch only when merged into its base or the main branch, and keep it otherwise, saying why; with `--force-delete-branch` it SHALL delete the branch even if unmerged. A kept branch SHALL NOT make the command fail. With `--json`, `branchDeleted` SHALL name the deleted branch or be `null`, and `branchKeptReason` SHALL say why a requested deletion didn't happen or be `null`. It SHALL stop the resources the repository's providers keep for that worktree, as cleanup does.
 
 #### Scenario: Remove by task id
 - **WHEN** the user runs `shogun remove TASK-123` and the worktree is clean
@@ -612,6 +620,10 @@ Commands SHALL work in submodules and in repositories whose Git folder is separa
 #### Scenario: Main worktree
 - **WHEN** the target is the main worktree
 - **THEN** nothing is removed and the command exits with code 1
+
+#### Scenario: Delete a branch merged into its recorded base
+- **WHEN** the user runs `shogun remove TASK-123 --delete-branch` and the branch is merged into its recorded base `epic/redesign` but not into the main branch
+- **THEN** the worktree and its branch are removed
 
 ### Requirement: Repair worktrees from the command line
 `shogun repair` SHALL run the same repair the desktop app runs after a repository or its worktrees folder moves, and report the worktrees it re-linked.

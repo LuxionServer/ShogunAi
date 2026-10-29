@@ -69,7 +69,7 @@ A `Worktree` returned by creation also carries `skippedPostCreateCommands` and `
 
 - `MainBranch` — the branch worktrees are compared against: its `name` (`develop`) and the `ref` used in Git commands (`origin/develop`, or `develop` when there's no remote-tracking branch).
 - `Divergence` — commits `ahead` and `behind` with respect to another branch.
-- `WorktreeStatus` — the state of one worktree: `uncommittedChanges`, `upstream` and `mainBranch` divergences (`null` when they don't apply), `lastCommitAt`, `createdAt` (when the worktree was created, read from the modification time of the `commondir` file in Git's administrative folder for it, found through the worktree's `.git` file; `null` for the main worktree or when it can't be read) and `neverCommitted`. `hasOwnCommits` is true when the main branch comparison has `ahead > 0` (or, without a main branch, when the branch isn't "not started"). `isNotStarted` is `neverCommitted`: the branch never had commits of its own (see `ReadWorktreeStatusUseCase`). `isMerged` is derived: the branch isn't "not started", has nothing the main branch lacks (`ahead == 0`) and the main branch has moved past it (`behind > 0`), so neither a freshly created branch nor one whose main branch moved on since it was created is reported as merged.
+- `WorktreeStatus` — the state of one worktree: `uncommittedChanges`, `upstream` and `mainBranch` divergences (`null` when they don't apply), `lastCommitAt`, `createdAt` (when the worktree was created, read from the modification time of the `commondir` file in Git's administrative folder for it, found through the worktree's `.git` file; `null` for the main worktree or when it can't be read) and `neverCommitted`. `base` is the divergence from the worktree's base (its recorded base branch, or the main branch when none resolves) and `baseName` that branch's name; both are `null` when there's no base or the worktree is on it. `hasOwnCommits` is true when the base comparison has `ahead > 0` (or, without a base, when the branch isn't "not started"). `isNotStarted` is `neverCommitted`: the branch never had commits of its own (see `ReadWorktreeStatusUseCase`). `isMergedIntoBase` and `isMergedIntoMainBranch` are derived from each comparison: the branch isn't "not started", has nothing that branch lacks (`ahead == 0`) and that branch has moved past it (`behind > 0`), so neither a freshly created branch nor one whose base moved on since it was created is reported as merged. `isMerged` is either of them.
 
 ### `RepositoryProvisioning`
 
@@ -155,7 +155,7 @@ The desktop is one machine-wide resource that agents take turns to drive with co
 
 ### Orca
 
-`Orca.kt` holds what the [Orca port](#orcaclient) reports: `OrcaStatus` (whether Orca's runtime is reachable and its version), `OrcaRepo` (a registered repository: id, path and its external-worktree visibility), `OrcaWorktree` (a worktree's path, whether Orca created it and its `OrcaAgent`s, each an agent name and its `AgentState`: Orca's `working`, `waiting` and `done` become `WORKING`, `BLOCKED` and `DONE`) and `OrcaTerminal` (a terminal's handle, worktree and title), plus `OrcaOpening`, the outcome of opening a worktree in Orca: its `OrcaOutcome` (`STARTED_AGENT`, `FOCUSED`), the terminal handle, the agent and the confirmed session name. `ORCA_START_SECONDS` (30) is how long an open waits for Orca to start and `ORCA_MINIMUM_VERSION` (1.4.243) the oldest Orca ShogunAi accepts.
+`Orca.kt` holds what the [Orca port](#orcaclient) reports: `OrcaStatus` (whether Orca's runtime is reachable and its version), `OrcaRepo` (a registered repository: id, path and its external-worktree visibility), `OrcaWorktree` (a workspace's path, whether Orca created it, its `OrcaAgent`s, each an agent name and its `AgentState`: Orca's `working`, `waiting` and `done` become `WORKING`, `BLOCKED` and `DONE`, and, for a folder workspace, its `folderId`) and `OrcaTerminal` (a terminal's handle, worktree path, empty for a folder workspace, and title), `OrcaWorkspace`, the target of the terminal operations: `Worktree(path)`, selected as `path:<path>`, or `Folder(id)`, a folder workspace that only Orca's app can create and that no path selects, as `id:folder:<id>` (`OrcaWorktree.workspace` gives a row's target), plus `OrcaOpening`, the outcome of opening a worktree in Orca: its `OrcaOutcome` (`STARTED_AGENT`, `FOCUSED`), the terminal handle, the agent and the confirmed session name. `ORCA_START_SECONDS` (30) is how long an open waits for Orca to start and `ORCA_MINIMUM_VERSION` (1.4.243) the oldest Orca ShogunAi accepts.
 
 ### Gradle daemons
 
@@ -246,7 +246,7 @@ User preferences: `LIGHT` / `DARK` / `SYSTEM` and `ENGLISH` / `SPANISH`. They're
 - `BranchAlreadyCheckedOut` — the branch is already checked out in another worktree or in the base repository.
 - `HerdrNotInstalled` — the `herdr` command wasn't found.
 - `HerdrCommandFailed` — a `herdr` command failed; keeps the command and Herdr's message (e.g. no Herdr server running).
-- `OrcaNotInstalled`, `OrcaNotStarted` (Orca didn't accept commands 30 seconds after `orca open`), `OrcaCommandFailed` (keeps the command and Orca's `error.message`, or names the minimum version for an older Orca) and `OrcaAgentNotStarted` (terminal handle and command) — opening a worktree in Orca failed.
+- `OrcaNotInstalled`, `OrcaNotStarted` (Orca didn't accept commands 30 seconds after `orca open`), `OrcaCommandFailed` (keeps the command and Orca's `error.message`, or names the minimum version for an older Orca) and `OrcaAgentNotStarted` (terminal handle and command) — opening a worktree in Orca failed. `OrcaMultirepoFolderNotOpen` (the folder) — Orca has no workspace for a multirepo folder that isn't a Git repository; its message gives the two ways to add it in Orca's app.
 - `TerminalLaunchFailed`, `TerminalAutomationRefused` (macOS refused to let ShogunAi control Terminal or iTerm2) and `TerminalUnsupported` (not available on this system, or tmux older than 3.0) — opening a worktree in a terminal failed.
 - `EditorLaunchFailed` and `FolderOpenFailed` — opening a worktree in an IDE or in the file manager failed; keep the tool's message.
 - `WorktreeTargetNotFound`, `AmbiguousWorktreeTarget` and `CannotRemoveMainWorktree` — `shogun remove` was given a task id, path or branch that matches no worktree, several worktrees, or the main one.
@@ -444,15 +444,15 @@ interface OrcaClient {
     suspend fun showExternalWorktrees(repoId: String)
     suspend fun worktrees(repoId: String): List<OrcaWorktree>
     suspend fun agentsByWorktree(): List<OrcaWorktree>
-    suspend fun terminals(worktreePath: String): List<OrcaTerminal>
+    suspend fun terminals(workspace: OrcaWorkspace): List<OrcaTerminal>
     suspend fun terminalAgent(handle: String): String?
-    suspend fun createTerminal(worktreePath: String, title: String, command: String, focus: Boolean): OrcaTerminal
+    suspend fun createTerminal(workspace: OrcaWorkspace, title: String, command: String, focus: Boolean): OrcaTerminal
     suspend fun switchTo(handle: String)
-    suspend fun closeTerminals(worktreePath: String)
+    suspend fun closeTerminals(workspace: OrcaWorkspace)
 }
 ```
 
-The [Orca](https://onorca.dev) operations ShogunAi uses, in Orca's own vocabulary (a repository with worktrees and terminals, not Herdr's workspaces and panes): whether Orca is installed and its runtime reachable, starting the desktop app or bringing its window to the front, registering a repository and showing its non-Orca worktrees, listing a repository's visible worktrees, every worktree's agents in one call, a worktree's terminals and the agent Orca identifies in one, creating a focused terminal that runs a command, switching to a terminal and closing every terminal of a worktree. There's no generic runner port yet: it's extracted when the runner becomes a choice. Errors are the `Orca*` cases of `WorktreeError`.
+The [Orca](https://onorca.dev) operations ShogunAi uses, in Orca's own vocabulary (a repository with worktrees and terminals, not Herdr's workspaces and panes): whether Orca is installed and its runtime reachable, starting the desktop app or bringing its window to the front, registering a repository and showing its non-Orca worktrees, listing a repository's visible worktrees, every workspace's agents in one call (folder workspaces included), a workspace's terminals and the agent Orca identifies in one, creating a focused terminal that runs a command, switching to a terminal and closing every terminal of a workspace. The terminal operations take an `OrcaWorkspace`, so the same calls serve a worktree and a multirepo's folder workspace. There's no generic runner port yet: it's extracted when the runner becomes a choice. Errors are the `Orca*` cases of `WorktreeError`.
 
 ### `OrcaWorkspaceStore`
 
@@ -611,7 +611,7 @@ Runs `git worktree list --porcelain` (a stable format meant to be parsed, unlike
 
 ### `ResolveMainBranchUseCase`
 
-Resolves the `MainBranch` once per list load, from the base repository and without network access: `config.mainBranch` if set, otherwise the `origin` remote's default branch (`git symbolic-ref refs/remotes/origin/HEAD`), falling back to a local `main` and then `master`. A named branch is compared through `origin/<name>` when that ref exists (`git rev-parse --verify`), because merges usually reach the remote first, and through the local branch otherwise. Returns `null` when nothing can be resolved.
+Resolves the `MainBranch` once per list load, from the base repository and without network access: `config.mainBranch` if set, otherwise the `origin` remote's default branch (`git symbolic-ref refs/remotes/origin/HEAD`), falling back to a local `main` and then `master`. A named branch is compared through `origin/<name>` when that ref exists (`git rev-parse --verify`), because merges usually reach the remote first, and through the local branch otherwise (`resolveBranchRef`, shared with the recorded bases). Returns `null` when nothing can be resolved.
 
 ### `ReadWorktreeStatusUseCase`
 
@@ -620,8 +620,9 @@ Reads a `WorktreeStatus`, running each command in the worktree's own folder:
 - `git --no-optional-locks status --porcelain` — uncommitted changes. Optional locks are disabled so `git status` never rewrites the index; otherwise reading statuses would change the metadata that auto refresh watches. It's the only required command: if it fails (e.g. the folder is gone), the whole status fails.
 - `git rev-list --left-right --count @{upstream}...HEAD` — upstream divergence, skipped on a detached HEAD and `null` if there's no upstream.
 - `git rev-list --left-right --count <main ref>...HEAD` — main branch divergence, skipped when there's no main branch or the worktree is on it.
+- `git rev-list --left-right --count <base ref>...HEAD` — base divergence, for the `base` the caller passes (the main branch by default); the main branch divergence is reused when the base is the main branch, and it's skipped when the worktree is on its base.
 - `git log -1 --format=%ct` — last commit date, `null` if there are no commits.
-- `git reflog show --format=%H refs/heads/<branch>` — only when the branch would otherwise read as merged and has no upstream: a reflog with a single entry (its creation) that is still the branch's tip means the branch never had commits of its own, so it reads as "not started" (`neverCommitted`) instead of merged.
+- `git reflog show --format=%H refs/heads/<branch>` — only when the branch would otherwise read as merged into its base or the main branch and has no upstream: a reflog with a single entry (its creation) that is still the branch's tip means the branch never had commits of its own, so it reads as "not started" (`neverCommitted`) instead of merged.
 
 Every command runs with the Git read timeout.
 
@@ -629,9 +630,9 @@ Squash and rebase merges aren't detected as merged, and remote-tracking branches
 
 ### `CleanUpWorktreesUseCase`
 
-`selectCleanup(worktrees, statuses, runningAgents)` picks the worktrees to clean up: not main, not locked, and either prunable or merged into the main branch with no uncommitted changes. Worktrees without a loaded status are never picked, and a qualifying worktree where an agent is running is moved to `keptForRunningAgent` with its agents, so neither the desktop app nor `shogun clean` removes it. `selectCleanupCandidates` returns only the candidates.
+`selectCleanup(worktrees, statuses, runningAgents)` picks the worktrees to clean up: not main, not locked, and either prunable or merged (into its base or the main branch) with no uncommitted changes. Worktrees without a loaded status are never picked, and a qualifying worktree where an agent is running is moved to `keptForRunningAgent` with its agents, so neither the desktop app nor `shogun clean` removes it. `selectCleanupCandidates` returns only the candidates.
 
-`CleanUpWorktreesUseCase` takes those candidates, the `MainBranch` and whether to delete branches, and returns a `CleanupReport` (`removed`, `keptBranches`, `failures`, `herdrFailures`, `orcaFailures`). Each existing worktree is removed with `git worktree remove` (never `--force`), and missing ones with a single `git worktree prune`. A failing step is recorded and the rest continue. Then the branches of every removed worktree, pruned ones included, are deleted only if `git merge-base --is-ancestor <branch> <main ref>` still succeeds, and then with `git branch -D`: `-d` checks against the base repository's `HEAD`, which in a git-flow repository may not contain a branch merged into `develop`.
+`CleanUpWorktreesUseCase` takes those candidates, the `MainBranch` and whether to delete branches, and returns a `CleanupReport` (`removed`, `keptBranches`, `failures`, `herdrFailures`, `orcaFailures`). Each existing worktree is removed with `git worktree remove` (never `--force`), and missing ones with a single `git worktree prune`. A failing step is recorded and the rest continue. Then the branches of every removed worktree, pruned ones included, are deleted only if `git merge-base --is-ancestor` still succeeds against their recorded base (read with `git config --get` before deleting, since `git branch -D` removes the record) or against the main branch, and then with `git branch -D`: `-d` checks against the base repository's `HEAD`, which in a git-flow repository may not contain a branch merged into `develop`.
 
 ### Worktree overview
 
@@ -698,7 +699,9 @@ The session naming (`freeName`, `named`, `awaitSession`, `focusedSessionName`) l
 
 ### `OpenWorktreeInOrcaUseCase`
 
-Opens a worktree in Orca with its environment and an agent. When `status()` says Orca isn't running it calls `start()` and fails with `OrcaNotStarted` if Orca still isn't running. It finds the base repository among `repos()` by canonical path, or adds it, and calls `showExternalWorktrees` for that repository only when `worktrees(repoId)` doesn't list the worktree (checking the listing rather than the setting covers `inherit`, whose effective value the CLI doesn't expose). It then looks for a live agent: the first of `terminals(path)` whose `terminalAgent` is set gets `switchTo` and the result is `FOCUSED`, with the live Claude session's name. Otherwise it resolves the environment, names the agent command as Herdr does, wraps it in `EnvironmentCommand.posix` (`env 'NAME=value' … <command>`) or, on Windows, `EnvironmentCommand.powershell` (the assignments `OpenWorktreeInTerminalUseCase` uses), creates a focused terminal titled with the session or agent name, and polls `terminalAgent` every 500 ms for up to 10 seconds, failing with `OrcaAgentNotStarted` (the terminal is left open). After focusing or starting the agent it calls `bringToFront()`, ignoring a failure, since neither `terminal switch` nor `terminal create --focus` raises Orca's window. The confirmed session name, awaited as with Herdr, goes into `OrcaOpening.sessionName`. The desktop app's "Open in Orca" and `shogun open <target> --orca` call it.
+Opens a worktree in Orca with its environment and an agent. When `status()` says Orca isn't running it calls `start()` and fails with `OrcaNotStarted` if Orca still isn't running. It finds the base repository among `repos()` by canonical path, or adds it, and calls `showExternalWorktrees` for that repository only when `worktrees(repoId)` doesn't list the worktree (checking the listing rather than the setting covers `inherit`, whose effective value the CLI doesn't expose). It then looks for a live agent: the first of `terminals(path)` whose `terminalAgent` is set gets `switchTo` and the result is `FOCUSED`, with the live Claude session's name. Otherwise it resolves the environment, names the agent command as Herdr does, wraps it in `EnvironmentCommand.posix` (`env 'NAME=value' … <command>`) or, on Windows, `EnvironmentCommand.powershell` (the assignments `OpenWorktreeInTerminalUseCase` uses), creates a focused terminal titled with the session or agent name, and polls `terminalAgent` every 500 ms for up to 10 seconds, failing with `OrcaAgentNotStarted` (the terminal is left open). After focusing or starting the agent it calls `bringToFront()`, ignoring a failure, since neither `terminal switch` nor `terminal create --focus` raises Orca's window. The confirmed session name, awaited as with Herdr, goes into `OrcaOpening.sessionName`. The desktop app's "Open in Orca" and `shogun open <target> --orca` call it. Starting Orca, registering a repository, focusing a live agent and starting one live in `OrcaAgentLauncher`, shared with the multirepo use cases below.
+
+`OpenGroupInOrcaUseCase` fails once with `OrcaNotInstalled` when Orca isn't installed, and otherwise runs `OpenWorktreeInOrcaUseCase` for each worktree of a group, one after another, with its project's agent and `groupMemberSessionName`, returning a `GroupOrcaOpening` (alias, path and result) per worktree. `OpenMultirepoAgentInOrcaUseCase` starts Orca if needed, takes the `agentsByWorktree()` rows whose canonical path is the multirepo folder (a folder workspace, a folder added with "Open as Folder" or a Git main worktree), preferring one with agents and then Orca's order, and focuses its live agent or starts the multirepo agent there with `multirepoSessionName` and no extra variables. With no such row, a folder that is a Git repository is registered and its main worktree used; any other folder fails with `OrcaMultirepoFolderNotOpen` without touching Orca.
 
 ### Base branches
 
@@ -706,6 +709,7 @@ The branch a new branch starts from is recorded in the repository's Git config a
 
 - `ResolveBaseBranchUseCase` turns a ref into that branch name with `git rev-parse --verify --quiet --symbolic-full-name <ref>`, run where the start point is resolved: `refs/heads/<b>` and `refs/remotes/<remote>/<b>` give `<b>`, and a tag, a commit, a detached `HEAD`, a remote's `HEAD` or an unknown ref give `null`, so nothing is recorded. The CLI calls it with the same ref as `ResolveStartPointUseCase`, the desktop app with its "Start from" ref or `HEAD`, and `CreateGroupUseCase` passes `MainBranch.name` directly. `CreateWorktreeFromBranchUseCase` records nothing.
 - `ReadBaseBranchesUseCase` reads every record with one `git config --get-regexp`, returning a map from branch to base (exit code 1 without output is an empty map).
+- `ResolveRecordedBasesUseCase` returns, per branch, the `MainBranch` of its recorded base: one `ReadBaseBranchesUseCase` read plus one `resolveBranchRef` per distinct base. Unresolvable bases are left out and a failed read gives an empty map, so callers fall back to the main branch (`recordedBases[branch] ?: mainBranch`). `shogun status`, `shogun clean`, the desktop app's list and each repository of a multirepo group (`RepositoryBases`) use it to pass each worktree's base to `ReadWorktreeStatusUseCase`.
 - `SetBaseBranchUseCase` validates a branch with `ResolveBaseBranchUseCase` in the base repository (`NotABranch` otherwise) and writes the same key.
 
 ### `ResolveStartPointUseCase`
@@ -718,7 +722,7 @@ Finds the base repository (main worktree) that contains a directory, for front e
 
 ### `DeleteMergedBranchUseCase`
 
-Deletes a local branch only when it is contained in the project's main branch, resolved with `ResolveMainBranchUseCase` (`git merge-base --is-ancestor <branch> <main ref>`, then `git branch -D -- <branch>`, the same rule cleanup uses), and returns whether it was deleted instead of failing. A branch merged only into its own upstream is kept, and a name starting with `-` is `InvalidRef`. Used by the CLI's Claude Code `WorktreeRemove` and Herdr hooks, where a kept branch is expected rather than an error.
+Deletes a local branch only when it is contained in its recorded base or in the project's main branch, resolved with `ResolveMainBranchUseCase` (`git merge-base --is-ancestor <branch> <ref>` against each, then `git branch -D -- <branch>`, the same rule cleanup uses), and returns whether it was deleted instead of failing. A branch merged only into its own upstream is kept, and a name starting with `-` is `InvalidRef`. Used by the CLI's Claude Code `WorktreeRemove` and Herdr hooks, where a kept branch is expected rather than an error.
 
 ### `ProvisionWorktreeUseCase`
 
