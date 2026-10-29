@@ -4,9 +4,9 @@ import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.isEnabled
 import androidx.compose.ui.test.isFocused
 import androidx.compose.ui.test.onAllNodesWithText
-import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.v2.runComposeUiTest
@@ -46,15 +46,18 @@ class CreateWorktreeE2eTest {
         val strings = setShell(appContainer)
 
         awaitText(strings.newWorktree)
-        onAllNodesWithText(strings.newWorktree).onFirst().performClick()
-        awaitText(strings.taskIdLabel)
+        clickUntil(strings.newWorktree, "the new worktree dialog") {
+            onAllNodesWithText(strings.taskIdLabel).fetchSemanticsNodes().isNotEmpty()
+        }
         awaitCondition("the task id in its focused field") {
             val typed = onAllNodes(hasSetTextAction() and hasText("TASK-123")).fetchSemanticsNodes().isNotEmpty()
             val focusedField = onAllNodes(hasSetTextAction() and isFocused()).fetchSemanticsNodes().isNotEmpty()
             if (!typed && focusedField) onNode(hasSetTextAction() and isFocused()).performTextReplacement("TASK-123")
             typed
         }
-        onNode(hasClickAction() and hasText(strings.createWorktree)).performClick()
+        val createButton = hasClickAction() and hasText(strings.createWorktree) and isEnabled()
+        awaitCondition("the create button to be enabled") { onAllNodes(createButton).fetchSemanticsNodes().isNotEmpty() }
+        onNode(createButton).performClick()
 
         val worktree = worktreesRoot.resolve("TASK-123")
         awaitCondition("the local files copied into the worktree") {
