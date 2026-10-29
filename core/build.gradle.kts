@@ -55,7 +55,7 @@ kover {
                 minBound(100, CoverageUnit.LINE)
             }
             rule("core branches") {
-                minBound(78, CoverageUnit.BRANCH)
+                minBound(79, CoverageUnit.BRANCH)
             }
         }
     }
