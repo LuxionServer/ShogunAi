@@ -107,7 +107,7 @@ class ActionSurfacesTest {
         )
 
         assertEquals(ActionId.NewChange, view.primary?.id)
-        val overflow = viewOverflow(view)
+        val overflow = viewOverflow(view, strings)
         assertEquals(listOf(ActionId.OpenMultirepoAgent(OpenTarget.HERDR), ActionId.CleanUp), overflow.filterIsInstance<ActionEntry.Run>().map { it.spec.id })
         assertEquals(ActionEntry.Divider, overflow[1])
         assertEquals(Availability.Disabled("Nothing to clean up"), view.find(ActionId.CleanUp)?.availability)
@@ -127,19 +127,44 @@ class ActionSurfacesTest {
     }
 
     @Test
-    fun `with orca installed the overflow offers the multirepo agent in herdr then orca before clean up`() {
+    fun `with orca installed the overflow offers the default runner's agent and the other in a with submenu`() {
         val view = viewCatalog(
             ViewActionContext(isMultirepo = true, isProjectView = false, createBlocked = null, cleanUpBlocked = null, orcaInstalled = true),
             strings,
         )
 
-        val overflow = viewOverflow(view)
-        assertEquals(
-            listOf(ActionId.OpenMultirepoAgent(OpenTarget.HERDR), ActionId.OpenMultirepoAgent(OpenTarget.ORCA), ActionId.CleanUp),
-            overflow.filterIsInstance<ActionEntry.Run>().map { it.spec.id },
-        )
+        val overflow = viewOverflow(view, strings)
+        assertEquals(ActionId.OpenMultirepoAgent(OpenTarget.HERDR), assertIs<ActionEntry.Run>(overflow[0]).spec.id)
+        val others = assertIs<ActionEntry.Nested>(overflow[1])
+        assertEquals("Open multirepo agent with…", others.label)
+        assertEquals(listOf("Orca"), others.entries.map { (it as ActionEntry.Run).label })
+        assertEquals(ActionId.OpenMultirepoAgent(OpenTarget.ORCA), (others.entries.single() as ActionEntry.Run).spec.id)
         assertEquals(ActionEntry.Divider, overflow[2])
-        assertEquals("Open multirepo agent in Orca", view.find(ActionId.OpenMultirepoAgent(OpenTarget.ORCA))?.label)
+        assertEquals(ActionId.CleanUp, assertIs<ActionEntry.Run>(overflow[3]).spec.id)
+    }
+
+    @Test
+    fun `with orca as the default runner the overflow offers orca's agent and herdr in the submenu`() {
+        val view = viewCatalog(
+            ViewActionContext(isMultirepo = true, isProjectView = false, createBlocked = null, cleanUpBlocked = null, orcaInstalled = true, defaultRunner = RunnerId.ORCA),
+            strings,
+        )
+
+        val overflow = viewOverflow(view, strings)
+        assertEquals("Open multirepo agent in Orca", assertIs<ActionEntry.Run>(overflow[0]).label)
+        assertEquals(listOf("Herdr"), assertIs<ActionEntry.Nested>(overflow[1]).entries.map { (it as ActionEntry.Run).label })
+    }
+
+    @Test
+    fun `without orca the overflow has no with submenu`() {
+        val view = viewCatalog(
+            ViewActionContext(isMultirepo = true, isProjectView = false, createBlocked = null, cleanUpBlocked = null, orcaInstalled = false, defaultRunner = RunnerId.ORCA),
+            strings,
+        )
+
+        val overflow = viewOverflow(view, strings)
+        assertTrue(overflow.none { it is ActionEntry.Nested })
+        assertEquals(ActionId.OpenMultirepoAgent(OpenTarget.HERDR), assertIs<ActionEntry.Run>(overflow[0]).spec.id)
     }
 
     @Test
@@ -158,20 +183,70 @@ class ActionSurfacesTest {
     }
 
     @Test
-    fun `a group offers open all in herdr then orca, and hides orca when it isn't installed`() {
-        val withOrca = groupCatalog(GroupActionContext(orcaInstalled = true, isOpeningInOrca = false), strings)
-        val withoutOrca = groupCatalog(GroupActionContext(orcaInstalled = false, isOpeningInOrca = false), strings)
+    fun `a group's primary is open all in the default runner and the other runner goes to open all with`() {
+        val herdr = groupCatalog(GroupActionContext(orcaInstalled = true, isOpeningInOrca = false), strings)
+        val orca = groupCatalog(GroupActionContext(orcaInstalled = true, isOpeningInOrca = false, defaultRunner = RunnerId.ORCA), strings)
 
-        assertEquals(listOf("Open all in Herdr", "Open all in Orca"), withOrca.filter { it.isVisible }.map { it.label })
-        assertEquals(listOf(ActionId.OpenAll(OpenTarget.HERDR)), withoutOrca.filter { it.isVisible }.map { it.id })
+        assertEquals("Open all in Herdr", herdr.primary?.label)
+        val others = assertIs<ActionEntry.Nested>(herdr.overflowEntries(strings).first())
+        assertEquals("Open all with…", others.label)
+        assertEquals(listOf("Orca"), others.entries.map { (it as ActionEntry.Run).label })
+        assertEquals("Open all in Orca", orca.primary?.label)
+        assertEquals(listOf("Herdr"), assertIs<ActionEntry.Nested>(orca.overflowEntries(strings).first()).entries.map { (it as ActionEntry.Run).label })
+    }
+
+    @Test
+    fun `without orca a group has no open all with submenu`() {
+        val group = groupCatalog(GroupActionContext(orcaInstalled = false, isOpeningInOrca = false, defaultRunner = RunnerId.ORCA), strings)
+
+        assertEquals(ActionId.OpenAll(OpenTarget.HERDR), group.primary?.id)
+        assertTrue(group.overflowEntries(strings).none { it is ActionEntry.Nested && it.label == strings.openAllWith })
+    }
+
+    @Test
+    fun `a group's overflow adds repositories, then clean up group last after a separator, disabled with its reason`() {
+        val group = groupCatalog(
+            GroupActionContext(orcaInstalled = true, isOpeningInOrca = false, addableAliases = listOf("docs"), cleanUpBlocked = "api isn't merged"),
+            strings,
+        )
+
+        val entries = group.overflowEntries(strings)
+        val add = assertIs<ActionEntry.Nested>(entries[1])
+        assertEquals("Add repository", add.label)
+        assertEquals(listOf(ActionId.AddRepository("docs")), add.entries.map { (it as ActionEntry.Run).spec.id })
+        assertEquals(ActionEntry.Divider, entries[2])
+        val cleanUp = assertIs<ActionEntry.Run>(entries.last())
+        assertEquals(ActionId.CleanUpGroup, cleanUp.spec.id)
+        assertTrue(cleanUp.spec.isDestructive)
+        assertEquals("api isn't merged", cleanUp.spec.disabledReason)
+    }
+
+    @Test
+    fun `a group without other runners or repositories only offers clean up group`() {
+        val group = groupCatalog(GroupActionContext(orcaInstalled = false, isOpeningInOrca = false), strings)
+
+        assertEquals(listOf(ActionId.CleanUpGroup), group.overflowEntries(strings).runs().map { it.spec.id })
+        assertTrue(group.find(ActionId.CleanUpGroup)!!.isAvailable)
     }
 
     @Test
     fun `open all in orca is disabled while the group opens in orca`() {
         val group = groupCatalog(GroupActionContext(orcaInstalled = true, isOpeningInOrca = true), strings)
 
-        assertEquals(Availability.Disabled(strings.openingReason), group.single { it.id == ActionId.OpenAll(OpenTarget.ORCA) }.availability)
-        assertTrue(group.single { it.id == ActionId.OpenAll(OpenTarget.HERDR) }.isAvailable)
+        assertEquals(Availability.Disabled(strings.openingReason), group.find(ActionId.OpenAll(OpenTarget.ORCA))?.availability)
+        assertTrue(group.find(ActionId.OpenAll(OpenTarget.HERDR))!!.isAvailable)
+        assertTrue(group.isBusy)
+    }
+
+    @Test
+    fun `a project group's clean up is a destructive menu entry, disabled with its reason`() {
+        val blocked = assertIs<ActionEntry.Run>(projectGroupOverflow("Nothing to clean up", strings).single())
+        val available = assertIs<ActionEntry.Run>(projectGroupOverflow(null, strings).single())
+
+        assertEquals(ActionId.CleanUp, blocked.spec.id)
+        assertTrue(blocked.spec.isDestructive)
+        assertEquals("Nothing to clean up", blocked.spec.disabledReason)
+        assertTrue(available.spec.isAvailable)
     }
 
     @Test
@@ -180,6 +255,8 @@ class ActionSurfacesTest {
         assertEquals("multirepo.open-all.herdr", ActionId.OpenAll(OpenTarget.HERDR).key)
         assertEquals("multirepo.open-agent.orca", ActionId.OpenMultirepoAgent(OpenTarget.ORCA).key)
         assertEquals("multirepo.open-all.orca", ActionId.OpenAll(OpenTarget.ORCA).key)
+        assertEquals("multirepo.add-repository(docs)", ActionId.AddRepository("docs").key)
+        assertEquals("multirepo.clean-up-group", ActionId.CleanUpGroup.key)
     }
 
     @Test

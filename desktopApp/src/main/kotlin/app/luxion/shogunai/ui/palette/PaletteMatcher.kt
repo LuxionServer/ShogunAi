@@ -71,7 +71,7 @@ fun rankPaletteItems(items: List<PaletteItem>, query: String, recentIds: List<St
 
 private fun PaletteKind.tieOrder(): Int = when (this) {
     PaletteKind.PROJECT -> 0
-    PaletteKind.VIEW -> 1
+    PaletteKind.VIEW, PaletteKind.SETTING -> 1
     PaletteKind.ACTION -> 2
     PaletteKind.WORKTREE -> 3
 }
@@ -85,7 +85,7 @@ private fun bestScore(item: PaletteItem, query: String): Int? {
 private fun recentOrViews(items: List<PaletteItem>, recentIds: List<String>): List<PaletteItem> {
     val byId = items.associateBy { it.id }
     val recent = recentIds.mapNotNull(byId::get)
-    return recent.ifEmpty { items.filter { it.kind == PaletteKind.VIEW } }
+    return recent.ifEmpty { items.filter { it.kind == PaletteKind.VIEW || it.kind == PaletteKind.SETTING } }
 }
 
 fun matchedIndices(query: String, text: String): Set<Int> {

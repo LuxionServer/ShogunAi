@@ -440,8 +440,9 @@ interface Strings {
     fun headlessStopFailed(path: String, detail: String): String
     fun releasedFor(worktree: String, time: String): String
     val notAcquired: String
-    fun poolUsage(inUse: Int, limit: Int?, profile: String): String
+    fun poolUsage(inUse: Int, limit: Int?): String
     val overLimit: String
+    val overLimitChip: String
     val changeInPreferences: String
     fun releasedNotice(kind: ResourceKind, released: String, forWorktree: String): String
     fun trimmedNotice(count: Int, limit: Int?): String
@@ -458,7 +459,6 @@ interface Strings {
     val machineColumnState: String
     val automaticAvd: String
     val simulatorNotCreated: String
-    fun simulatorNotCreatedFor(device: String): String
     val noMachineEmulators: String
     val unownedEmulatorsTitle: String
     val noMachineSimulators: String
@@ -477,6 +477,12 @@ interface Strings {
     fun daysAgo(count: Long): String
     fun monthsAgo(count: Long): String
     fun yearsAgo(count: Long): String
+    val compactNow: String
+    fun compactMinutes(count: Long): String
+    fun compactHours(count: Long): String
+    fun compactDays(count: Long): String
+    fun compactMonths(count: Long): String
+    fun compactYears(count: Long): String
     val menuCopyDiagnosticReport: String
     val secondaryWindowError: String
     val menuCheckForUpdates: String
@@ -650,6 +656,7 @@ interface Strings {
     val paletteNoResults: String
     val paletteCopyLaunchCommandHint: String
     val paletteKindView: String
+    val paletteKindSetting: String
     val paletteKindProject: String
     val paletteKindWorktree: String
     val paletteKindAction: String
@@ -675,6 +682,8 @@ interface Strings {
     val openAllInHerdr: String
     val openAllInOrca: String
     val addRepositoryToGroup: String
+    val openAllWith: String
+    val openMultirepoAgentWith: String
     val cleanUpGroup: String
     val cleanUpGroupTitle: String
     val openMultirepoAgent: String

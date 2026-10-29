@@ -36,12 +36,14 @@ private fun viewItems(
     strings: Strings,
     shortcutLabel: (String, Boolean) -> String,
 ): List<PaletteItem> {
-    val preferences = viewItem(
+    val preferences = PaletteItem(
         id = "view:preferences",
+        kind = PaletteKind.SETTING,
         title = strings.paletteViewPreferences,
+        keys = listOf(strings.paletteViewPreferences),
+        context = strings.paletteKindSetting,
         shortcut = shortcutLabel(",", false),
-        action = PaletteAction.Run(PaletteCommand.OPEN_PREFERENCES),
-        strings = strings,
+        primary = PaletteAction.Run(PaletteCommand.OPEN_PREFERENCES),
     )
     if (projects.isEmpty()) return listOf(preferences)
     return listOf(

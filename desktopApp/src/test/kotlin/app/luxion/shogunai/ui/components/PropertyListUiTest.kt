@@ -6,7 +6,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
@@ -37,6 +39,37 @@ class PropertyListUiTest {
 
         assertEquals(listOf("-TASK-123"), copied)
         onNodeWithContentDescription("Copied").assertIsDisplayed()
+    }
+
+    @Test
+    fun `a truncated key and value show their full text in a tooltip`() = runComposeUiTest {
+        val key = "COMPOSE_PROJECT_NAME_OF_THE_WORKTREE"
+        val value = "main-repo-cli-task-123-with-a-long-suffix"
+        setContent {
+            MaterialTheme {
+                Column(Modifier.width(240.dp)) { PropertyList(listOf(Property(key, value))) }
+            }
+        }
+
+        onNodeWithText(value).performMouseInput { moveTo(center) }
+        mainClock.advanceTimeBy(1000)
+        onAllNodesWithText(value).assertCountEquals(2)
+        onNodeWithText(key).performMouseInput { moveTo(center) }
+        mainClock.advanceTimeBy(1000)
+        onAllNodesWithText(key).assertCountEquals(2)
+    }
+
+    @Test
+    fun `a property that fits shows no tooltip`() = runComposeUiTest {
+        setContent {
+            MaterialTheme {
+                Column(Modifier.width(320.dp)) { PropertyList(listOf(Property("PORT", "4123"))) }
+            }
+        }
+
+        onNodeWithText("4123").performMouseInput { moveTo(center) }
+        mainClock.advanceTimeBy(1000)
+        onAllNodesWithText("4123").assertCountEquals(1)
     }
 
     @Test

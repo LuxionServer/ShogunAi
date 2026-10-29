@@ -6,11 +6,15 @@ Gives the user one keyboard entry point to every view, project, worktree and fre
 ## Requirements
 
 ### Requirement: Open the command palette
-Cmd/Ctrl+K and View > Command palette SHALL open the command palette over the main window with its search field focused, from any view. Escape, or clicking outside it, SHALL close it without running anything.
+Cmd/Ctrl+K and View > Command palette SHALL open the command palette over the main window with its search field focused, from any view. Escape, or clicking outside it, SHALL close it without running anything, on every platform, including macOS, where the window only receives Escape's key release.
 
 #### Scenario: Open and close
 - **WHEN** the user presses Cmd/Ctrl+K in any view and then Escape
 - **THEN** the palette opens with the search field focused, then closes, and the view is unchanged
+
+#### Scenario: Escape released only
+- **WHEN** the palette is open and only Escape's key release reaches the app
+- **THEN** the palette closes, and the view's selection and text filter are unchanged
 
 ### Requirement: What the palette searches
 The palette SHALL search the views (Active, All worktrees, each visible machine resource, Preferences), every saved project, the worktrees of every saved project, the actions "Add project", "New worktree in <project>", "Settings of <project>", "Clean up", "Reload" and "Toggle sidebar", and, when a worktree is selected, its available non-destructive actions from the action catalog, with one item per other agent for agent-aware actions when its project has several agents.
@@ -50,11 +54,15 @@ With an empty query, the palette SHALL list the items run most recently from it,
 - **THEN** "Settings of api" is the first result before typing
 
 ### Requirement: Results show their context
-Each result SHALL show its kind (view, project, worktree or action), its context when it has one (for a worktree, its project and state indicator), and the keyboard shortcut of the action when it has one.
+Each result SHALL show its kind (view, setting, project, worktree or action), its context when it has one (for a worktree, its project and state indicator), and the keyboard shortcut of the action when it has one. Each kind SHALL have its own icon.
 
 #### Scenario: Worktree result
 - **WHEN** a worktree result is listed
 - **THEN** it shows the branch, its project's name and its state indicator, marked as a worktree
+
+#### Scenario: Preferences result
+- **WHEN** the user types `pref`
+- **THEN** "Preferences" is listed marked as a setting, with the settings icon and its shortcut, not as a view
 
 ### Requirement: Run results from the keyboard
 The up and down arrows SHALL move through the results, Enter SHALL run the highlighted result's main action and close the palette, and Cmd/Ctrl+Enter on a worktree SHALL copy its launch command. The main actions are opening a view, opening a project's worktree view, selecting a worktree in "All worktrees", and running an action.

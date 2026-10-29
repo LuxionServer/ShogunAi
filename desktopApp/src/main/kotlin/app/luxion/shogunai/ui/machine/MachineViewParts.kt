@@ -60,8 +60,11 @@ fun PoolUsageSection(machine: MachineResources, resource: MachineResource) {
     val usage = machine.poolOf(resource)
     if (usage != null) {
         Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm), verticalAlignment = Alignment.CenterVertically) {
-            MachineDataText(strings.poolUsage(usage.inUse, usage.effectiveLimit, strings.profileName(machine.profile)))
-            if (usage.isOverLimit) StatusChip(Status.WARNING, strings.overLimit)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                MachineDataText(strings.poolUsage(usage.inUse, usage.effectiveLimit))
+                MachineStateText(" · " + strings.profileName(machine.profile))
+            }
+            if (usage.isOverLimit) StatusChip(Status.WARNING, strings.overLimitChip)
             LocalErrorFixActions.current?.let { actions ->
                 NeutralTextButton(onClick = actions.openPreferences) {
                     Text(strings.changeInPreferences)
@@ -100,6 +103,15 @@ fun MachineDataText(text: String, modifier: Modifier = Modifier, color: androidx
         overflow = TextOverflow.Ellipsis,
         modifier = modifier,
     )
+}
+
+@Composable
+fun DeviceLabelText(label: DeviceLabel) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        label.note?.let { MachineStateText(it) }
+        if (label.note != null && label.data != null) MachineStateText(" · ")
+        label.data?.let { MachineDataText(it) }
+    }
 }
 
 @Composable

@@ -88,6 +88,7 @@ Los multirepos y los grupos por rama están hechos en el CLI y en la app de escr
 - Comprobar el recorrido guiado en Windows y Linux con una app instalada real: la creación del ejemplo con el Git del sistema, y el comando del agente del recorrido, cuyo prompt se entrecomilla para la shell que ejecuta cada terminal.
 - Una página de changelog en la web de documentación construida con las notas de `.github/release-notes/`, que la app ya muestra en su aviso de actualización.
 - Quitar Cmd/Ctrl+E, que se mantiene una versión como alias de Cmd/Ctrl+O desde que el atajo pasó al runner por defecto.
+- Escribir en la fuente de la interfaz los textos de estado que quedan en las vistas de Máquina: la vista de Compose aún escribe el título de los restos y un worktree eliminado como dueño en la fuente de datos.
 
 ## Más adelante
 

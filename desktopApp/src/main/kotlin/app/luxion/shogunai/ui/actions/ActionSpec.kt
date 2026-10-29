@@ -68,6 +68,14 @@ sealed interface ActionId {
     data class OpenAll(val target: OpenTarget) : ActionId {
         override val key get() = "multirepo.open-all.${target.name.lowercase()}"
     }
+
+    data class AddRepository(val alias: String) : ActionId {
+        override val key get() = "multirepo.add-repository($alias)"
+    }
+
+    data object CleanUpGroup : ActionId {
+        override val key = "multirepo.clean-up-group"
+    }
 }
 
 sealed interface Availability {

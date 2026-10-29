@@ -1,7 +1,9 @@
 package app.luxion.shogunai.ui.worktree
 
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
@@ -23,6 +25,7 @@ import app.luxion.shogunai.domain.model.Multirepo
 import app.luxion.shogunai.domain.model.OrcaOutcome
 import app.luxion.shogunai.domain.model.MultirepoDeclaration
 import app.luxion.shogunai.domain.model.SharedVariablesDeclaration
+import app.luxion.shogunai.ui.actions.ActionId
 import app.luxion.shogunai.ui.actions.GroupActionContext
 import app.luxion.shogunai.ui.actions.groupCatalog
 import app.luxion.shogunai.ui.i18n.EnglishStrings
@@ -36,6 +39,7 @@ import java.time.Duration
 import java.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 @OptIn(ExperimentalTestApi::class)
 class MultirepoViewUiTest {
@@ -103,22 +107,30 @@ class MultirepoViewUiTest {
         members = emptyList(),
     )
 
+    private fun context(
+        orcaInstalled: Boolean = false,
+        isOpeningInOrca: Boolean = false,
+        addableAliases: List<String> = emptyList(),
+        cleanUpBlocked: String? = null,
+    ) = groupCatalog(
+        GroupActionContext(
+            orcaInstalled = orcaInstalled,
+            isOpeningInOrca = isOpeningInOrca,
+            addableAliases = addableAliases,
+            cleanUpBlocked = cleanUpBlocked,
+        ),
+        EnglishStrings,
+    )
+
     @Test
     fun `a group header shows the title, the branch and the combined state`() = runComposeUiTest {
-        var cleaned = 0
         setContent {
             MaterialTheme {
                 ChangeGroupHeaderView(
                     group = group(StateBadgeKind.NEEDS_YOU),
-                    cleanUpBlocker = "api isn't merged",
-                    canCleanUp = false,
-                    addableAliases = listOf("docs"),
-                    isAdding = false,
+                    catalog = context(addableAliases = listOf("docs"), cleanUpBlocked = "api isn't merged"),
                     onToggle = {},
-                    openActions = groupCatalog(GroupActionContext(orcaInstalled = false, isOpeningInOrca = false), EnglishStrings),
-                    onOpenAction = {},
-                    onAddRepository = {},
-                    onCleanUp = { cleaned++ },
+                    onAction = {},
                 )
             }
         }
@@ -126,9 +138,8 @@ class MultirepoViewUiTest {
         onNodeWithText("TASK-1").assertIsDisplayed()
         onNode(hasText("feature/TASK-1", substring = true)).assertIsDisplayed()
         onNodeWithText("Needs you").assertIsDisplayed()
-        onNodeWithText("Clean up group").assertIsNotEnabled()
         onNodeWithText("Open all in Herdr").assertIsEnabled()
-        assertEquals(0, cleaned)
+        onNodeWithText("Clean up group").assertDoesNotExist()
     }
 
     @Test
@@ -136,19 +147,7 @@ class MultirepoViewUiTest {
         val agent = agentIndicator(listOf(RunningAgent("claude", AgentState.BLOCKED)), null, now, EnglishStrings)
         setContent {
             MaterialTheme {
-                ChangeGroupHeaderView(
-                    group = group(StateBadgeKind.NEEDS_YOU),
-                    cleanUpBlocker = null,
-                    canCleanUp = true,
-                    addableAliases = emptyList(),
-                    isAdding = false,
-                    onToggle = {},
-                    openActions = groupCatalog(GroupActionContext(orcaInstalled = false, isOpeningInOrca = false), EnglishStrings),
-                    onOpenAction = {},
-                    onAddRepository = {},
-                    onCleanUp = {},
-                    agent = agent,
-                )
+                ChangeGroupHeaderView(group = group(StateBadgeKind.NEEDS_YOU), catalog = context(), onToggle = {}, onAction = {}, agent = agent)
             }
         }
 
@@ -156,53 +155,67 @@ class MultirepoViewUiTest {
     }
 
     @Test
-    fun `a group header shows open all in orca from the catalog, disabled while it opens`() = runComposeUiTest {
+    fun `a group header has one runner button and offers the other runner in its menu, disabled while it opens`() = runComposeUiTest {
         setContent {
             MaterialTheme {
                 ChangeGroupHeaderView(
                     group = group(StateBadgeKind.STOPPED),
-                    cleanUpBlocker = null,
-                    canCleanUp = false,
-                    addableAliases = emptyList(),
-                    isAdding = false,
+                    catalog = context(orcaInstalled = true, isOpeningInOrca = true),
                     onToggle = {},
-                    openActions = groupCatalog(GroupActionContext(orcaInstalled = true, isOpeningInOrca = true), EnglishStrings),
-                    onOpenAction = {},
-                    onAddRepository = {},
-                    onCleanUp = {},
+                    onAction = {},
                 )
             }
         }
 
         onNodeWithText("Open all in Herdr").assertIsEnabled()
-        onNodeWithText("Open all in Orca").assertIsNotEnabled()
+        onNodeWithText("Open all in Orca").assertDoesNotExist()
+        onNodeWithContentDescription(EnglishStrings.moreActions).performClick()
+        onNodeWithText("Open all with…").performClick()
+        onNodeWithText("Orca").assertIsNotEnabled()
     }
 
     @Test
-    fun `add repository offers the repositories not yet in the group`() = runComposeUiTest {
-        val picked = mutableListOf<String>()
+    fun `clean up group is the last entry of the group's menu, disabled with its reason`() = runComposeUiTest {
+        val ran = mutableListOf<ActionId>()
+        setContent {
+            MaterialTheme {
+                ChangeGroupHeaderView(
+                    group = group(StateBadgeKind.STOPPED),
+                    catalog = context(cleanUpBlocked = "api isn't merged"),
+                    onToggle = {},
+                    onAction = { ran += it.id },
+                )
+            }
+        }
+
+        onNodeWithContentDescription(EnglishStrings.moreActions).performClick()
+        onNode(hasText("Clean up group") and SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "api isn't merged")).assertExists()
+        onNodeWithText("Clean up group").performClick()
+        assertTrue(ran.isEmpty())
+    }
+
+    @Test
+    fun `add repository and clean up group in the menu reach the board's actions`() = runComposeUiTest {
+        val ran = mutableListOf<ActionId>()
         setContent {
             MaterialTheme {
                 ChangeGroupHeaderView(
                     group = group(StateBadgeKind.MERGED),
-                    cleanUpBlocker = null,
-                    canCleanUp = true,
-                    addableAliases = listOf("docs"),
-                    isAdding = false,
+                    catalog = context(addableAliases = listOf("docs")),
                     onToggle = {},
-                    openActions = groupCatalog(GroupActionContext(orcaInstalled = false, isOpeningInOrca = false), EnglishStrings),
-                    onOpenAction = {},
-                    onAddRepository = { picked += it },
-                    onCleanUp = {},
+                    onAction = { ran += it.id },
                 )
             }
         }
 
         onNodeWithText("Merged").assertIsDisplayed()
-        onNodeWithText("Clean up group").assertIsEnabled()
+        onNodeWithContentDescription(EnglishStrings.moreActions).performClick()
         onNodeWithText("Add repository").performClick()
         onNodeWithText("docs").performClick()
-        assertEquals(listOf("docs"), picked)
+        waitForIdle()
+        onNodeWithContentDescription(EnglishStrings.moreActions).performClick()
+        onNodeWithText("Clean up group").performClick()
+        assertEquals(listOf<ActionId>(ActionId.AddRepository("docs"), ActionId.CleanUpGroup), ran)
     }
 
     @Test

@@ -578,6 +578,9 @@ class WorktreeBoard(
 
     val isOrcaInstalled: Boolean get() = multirepoActions.orcaInstalled
 
+    val defaultRunner: RunnerId
+        get() = entries.values.firstOrNull()?.holder?.tools?.defaultRunner ?: RunnerId.HERDR
+
     fun openAllInOrca(group: ChangeGroup) {
         if (group.branch in openingGroupsInOrca) return
         openingGroupsInOrca = openingGroupsInOrca + group.branch

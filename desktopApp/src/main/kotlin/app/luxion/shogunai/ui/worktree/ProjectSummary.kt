@@ -8,7 +8,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import app.luxion.shogunai.ui.components.DangerTextButton
 import app.luxion.shogunai.ui.components.SectionTitle
 import app.luxion.shogunai.ui.components.SkeletonRows
 import app.luxion.shogunai.ui.components.Spacing
@@ -20,8 +19,6 @@ fun ProjectSummary(
     worktreeCount: Int,
     totalSize: Long,
     cleanupCandidateCount: Int,
-    canCleanUp: Boolean,
-    onCleanUp: () -> Unit,
     modifier: Modifier = Modifier,
     isLoading: Boolean = false,
 ) {
@@ -48,11 +45,6 @@ fun ProjectSummary(
                 style = ShogunTheme.typography.dataSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-        }
-        if (canCleanUp) {
-            DangerTextButton(onClick = onCleanUp) {
-                Text(strings.cleanUp)
-            }
         }
     }
 }

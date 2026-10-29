@@ -95,7 +95,7 @@ private fun WorktreeSimulatorRow(entry: MachineSimulator, machine: MachineResour
     val current = entry.simulator?.state ?: SimulatorState.SHUTDOWN
     val state = if (isBusy && current != SimulatorState.BOOTED) SimulatorState.BOOTING else current
     MachineRow(
-        machineCell(MachineMainColumn) { MachineDataText(simulatorDeviceLabel(entry, machine.project(entry.projectId), strings)) },
+        machineCell(MachineMainColumn) { DeviceLabelText(simulatorDeviceLabel(entry, machine.project(entry.projectId), strings)) },
         machineCell(MachineOwnerColumn) {
             OwnerCell(ProjectOwner.Owned(entry.projectId, entry.worktreePath), machine::projectName, onOpenWorktree)
         },

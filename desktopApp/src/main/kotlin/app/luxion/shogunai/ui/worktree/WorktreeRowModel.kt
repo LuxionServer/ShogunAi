@@ -67,7 +67,9 @@ sealed interface WorktreeDesktopTurn {
 
 data class ExecutionCell(val agent: AgentIndicatorModel?, val device: DeviceLine?)
 
-data class NameCell(val branch: String, val folder: String?, val origin: String?, val project: String?, val groupTag: String? = null)
+data class NameCell(val branch: String, val folder: String?, val origin: String?, val project: String?, val groupTag: String? = null) {
+    val branchTooltip: String get() = listOfNotNull(branch, origin).joinToString("\n")
+}
 
 enum class GitCellState { LOADING, UNAVAILABLE, READY }
 
@@ -80,7 +82,7 @@ data class GitCell(
     val unavailableTooltip: String?,
 )
 
-data class TimeCell(val activity: String?, val marks: List<String>)
+data class TimeCell(val activity: String?, val marks: List<String>, val compactActivity: String? = activity)
 
 fun StateBadgeKind.label(strings: Strings): String = when (this) {
     StateBadgeKind.NEEDS_YOU -> strings.groupNeedsYou
@@ -145,13 +147,16 @@ fun worktreeRowModel(
         ),
         name = nameCell(worktree, origin, projectName, strings).copy(groupTag = groupTag),
         git = gitCell(status, loaded, mainBranchName, strings),
-        time = TimeCell(
-            activity = activityDate(worktree, loaded)?.let { activityLabel(it, now, strings) },
-            marks = listOfNotNull(
-                strings.mainWorktree.takeIf { worktree.isMain },
-                strings.locked.takeIf { worktree.isLocked },
-            ),
-        ),
+        time = activityDate(worktree, loaded).let { date ->
+            TimeCell(
+                activity = date?.let { activityLabel(it, now, strings) },
+                marks = listOfNotNull(
+                    strings.mainWorktree.takeIf { worktree.isMain },
+                    strings.locked.takeIf { worktree.isLocked },
+                ),
+                compactActivity = date?.let { compactRelativeTime(it.at, now, strings) },
+            )
+        },
         isFolderMissing = worktree.isPrunable,
         alias = alias,
     )
