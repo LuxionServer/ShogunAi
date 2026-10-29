@@ -181,6 +181,7 @@ import app.luxion.shogunai.domain.usecase.StartHeadlessAppUseCase
 import app.luxion.shogunai.domain.usecase.StopHeadlessAppUseCase
 import app.luxion.shogunai.domain.usecase.StopWorktreeSimulatorUseCase
 import app.luxion.shogunai.domain.usecase.TrimGradleDaemonsUseCase
+import app.luxion.shogunai.domain.usecase.WorktreeGroup
 import app.luxion.shogunai.domain.usecase.WriteEnvironmentFileUseCase
 import app.luxion.shogunai.domain.usecase.classifyOrigin
 import app.luxion.shogunai.domain.usecase.formatEnvironment
@@ -223,7 +224,9 @@ import app.luxion.shogunai.domain.usecase.MultirepoContext
 import app.luxion.shogunai.domain.usecase.MultirepoSharedEnvironment
 import app.luxion.shogunai.domain.usecase.MultirepoMember
 import app.luxion.shogunai.domain.usecase.OpenGroupInHerdrUseCase
+import app.luxion.shogunai.domain.usecase.OpenGroupInOrcaUseCase
 import app.luxion.shogunai.domain.usecase.OpenMultirepoAgentInHerdrUseCase
+import app.luxion.shogunai.domain.usecase.OpenMultirepoAgentInOrcaUseCase
 import app.luxion.shogunai.domain.usecase.ReadGroupsUseCase
 import app.luxion.shogunai.domain.usecase.ResolveMultirepoUseCase
 import app.luxion.shogunai.domain.usecase.UnknownMultirepoAlias
@@ -913,6 +916,11 @@ class ShogunCli(
         val multirepo = context.multirepo
         val target = command.target
         if (target == null) {
+            if (command.orca) {
+                val opening = OpenMultirepoAgentInOrcaUseCase(orca, claudeSessionNaming(herdrAgentStartTimeout))(multirepo).getOrThrow()
+                if (command.json) printJson(multirepoAgentOpenJson(multirepo, opening)) else out.line(orcaOpeningLine(multirepo.folder, opening))
+                return EXIT_OK
+            }
             val opening = OpenMultirepoAgentInHerdrUseCase(herdr, herdrLauncher())(multirepo).getOrThrow()
             if (command.json) printJson(multirepoAgentOpenJson(multirepo, opening)) else out.line(herdrOpeningLine(multirepo.folder, opening))
             return EXIT_OK
@@ -933,6 +941,7 @@ class ShogunCli(
                 return EXIT_FAILURE
             }
         }
+        if (command.orca) return openGroupInOrca(group, command.json)
         val openings = OpenGroupInHerdrUseCase(herdr, resolveEnvironment, herdrLauncher())(group)
         if (command.json) {
             printJson(groupOpenJson(group.branch, openings))
@@ -941,6 +950,20 @@ class ShogunCli(
                 opening.result
                     .onSuccess { out.line(herdrOpeningLine(opening.path, it)) }
                     .onFailure { err.line("shogun: couldn't open ${opening.alias} (${opening.path}) in Herdr: ${failureReason(it)}") }
+            }
+        }
+        return if (openings.all { it.result.isSuccess }) EXIT_OK else EXIT_FAILURE
+    }
+
+    private suspend fun openGroupInOrca(group: WorktreeGroup, json: Boolean): Int {
+        val openings = OpenGroupInOrcaUseCase(orca, resolveEnvironment, claudeSessionNaming(herdrAgentStartTimeout))(group).getOrThrow()
+        if (json) {
+            printJson(groupOrcaOpenJson(group.branch, openings))
+        } else {
+            openings.forEach { opening ->
+                opening.result
+                    .onSuccess { out.line(orcaOpeningLine(opening.path, it)) }
+                    .onFailure { err.line("shogun: couldn't open ${opening.alias} (${opening.path}) in Orca: ${failureReason(it)}") }
             }
         }
         return if (openings.all { it.result.isSuccess }) EXIT_OK else EXIT_FAILURE
@@ -1324,10 +1347,6 @@ class ShogunCli(
 
     private suspend fun open(command: CliCommand.Open): Int {
         multirepoContext()?.takeIf { it.atFolder }?.let { context ->
-            if (command.orca) {
-                err.line("shogun: groups and the multirepo agent can't be opened in Orca yet; use --herdr in a multirepo folder")
-                return EXIT_USAGE
-            }
             return openInMultirepo(context, command)
         }
         val target = command.target ?: run {

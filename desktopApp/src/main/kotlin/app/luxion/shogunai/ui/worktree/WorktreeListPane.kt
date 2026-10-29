@@ -557,6 +557,8 @@ private fun ChangeGroupHeader(group: ChangeGroup, board: WorktreeBoard) {
         isAdding = board.addingToGroup.any { it.startsWith("${group.branch}:") },
         onToggle = { board.toggleChangeCollapsed(group.branch) },
         onOpenAll = { board.openAllInHerdr(group) },
+        onOpenAllInOrca = { board.openAllInOrca(group) }.takeIf { board.isOrcaInstalled },
+        isOpeningInOrca = group.branch in board.openingGroupsInOrca,
         onAddRepository = { board.addRepositoryToGroup(group, it) },
         onCleanUp = { board.openGroupCleanup(group) },
     )
@@ -573,6 +575,8 @@ internal fun ChangeGroupHeaderView(
     onOpenAll: () -> Unit,
     onAddRepository: (String) -> Unit,
     onCleanUp: () -> Unit,
+    onOpenAllInOrca: (() -> Unit)? = null,
+    isOpeningInOrca: Boolean = false,
 ) {
     val strings = LocalStrings.current
     val colors = MaterialTheme.colorScheme
@@ -602,9 +606,14 @@ internal fun ChangeGroupHeaderView(
             )
         }
         StatusChip(group.state.status ?: Status.INFO, group.state.label(strings))
-        if (isAdding) InlineProgress()
+        if (isAdding || isOpeningInOrca) InlineProgress()
         NeutralTextButton(onClick = onOpenAll) {
             Text(strings.openAllInHerdr, style = MaterialTheme.typography.bodySmall)
+        }
+        onOpenAllInOrca?.let { openAllInOrca ->
+            NeutralTextButton(onClick = openAllInOrca, enabled = !isOpeningInOrca) {
+                Text(strings.openAllInOrca, style = MaterialTheme.typography.bodySmall)
+            }
         }
         if (addableAliases.isNotEmpty()) AddRepositoryMenu(addableAliases, onAddRepository)
         val cleanUp: @Composable () -> Unit = {

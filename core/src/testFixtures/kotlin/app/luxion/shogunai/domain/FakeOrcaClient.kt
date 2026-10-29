@@ -5,6 +5,7 @@ import app.luxion.shogunai.domain.model.ClaudeSession
 import app.luxion.shogunai.domain.model.OrcaRepo
 import app.luxion.shogunai.domain.model.OrcaStatus
 import app.luxion.shogunai.domain.model.OrcaTerminal
+import app.luxion.shogunai.domain.model.OrcaWorkspace
 import app.luxion.shogunai.domain.model.OrcaWorktree
 import app.luxion.shogunai.domain.model.WorktreeError
 
@@ -25,6 +26,7 @@ class FakeOrcaClient(
     private val psFailure: Throwable? = null,
     private val terminalsFailure: Throwable? = null,
     private val closeFailures: Map<String, Throwable> = emptyMap(),
+    private val folderPaths: Map<String, String> = emptyMap(),
 ) : OrcaClient {
 
     data class Created(val worktreePath: String, val title: String, val command: String, val focus: Boolean)
@@ -105,8 +107,9 @@ class FakeOrcaClient(
         return psRows
     }
 
-    override suspend fun terminals(worktreePath: String): List<OrcaTerminal> {
+    override suspend fun terminals(workspace: OrcaWorkspace): List<OrcaTerminal> {
         requireReady()
+        val worktreePath = keyOf(workspace)
         terminalLookups += worktreePath
         terminalsFailure?.let { throw it }
         return terminalsByPath[worktreePath].orEmpty().toList()
@@ -125,8 +128,9 @@ class FakeOrcaClient(
         return agentsByHandle[handle]
     }
 
-    override suspend fun createTerminal(worktreePath: String, title: String, command: String, focus: Boolean): OrcaTerminal {
+    override suspend fun createTerminal(workspace: OrcaWorkspace, title: String, command: String, focus: Boolean): OrcaTerminal {
         requireReady()
+        val worktreePath = keyOf(workspace)
         created += Created(worktreePath, title, command, focus)
         val terminal = OrcaTerminal("term_${created.size}", worktreePath, title)
         terminalsByPath.getOrPut(worktreePath) { mutableListOf() } += terminal
@@ -142,11 +146,17 @@ class FakeOrcaClient(
         switched += handle
     }
 
-    override suspend fun closeTerminals(worktreePath: String) {
+    override suspend fun closeTerminals(workspace: OrcaWorkspace) {
         requireReady()
+        val worktreePath = keyOf(workspace)
         closeFailures[worktreePath]?.let { throw it }
         closedWorktrees += worktreePath
         terminalsByPath -= worktreePath
+    }
+
+    private fun keyOf(workspace: OrcaWorkspace): String = when (workspace) {
+        is OrcaWorkspace.Worktree -> workspace.path
+        is OrcaWorkspace.Folder -> folderPaths[workspace.id] ?: "folder:${workspace.id}"
     }
 
     private fun requireInstalled() {

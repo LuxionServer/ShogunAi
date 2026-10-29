@@ -22,6 +22,7 @@ class CliHerdrClient(
     private val userHome: String = System.getProperty("user.home"),
     private val osName: String = System.getProperty("os.name").orEmpty(),
     private val isFile: (String) -> Boolean = { File(it).isFile },
+    private val findOnPath: (String) -> String? = { name -> ExecutableLocator().find(name) },
 ) : HerdrClient {
 
     override suspend fun openWorktree(repository: String, path: String, label: String): HerdrWorktreeOpening {
@@ -128,12 +129,16 @@ class CliHerdrClient(
         else -> null
     }
 
+    fun isInstalled(): Boolean = isFile(executable()) || findOnPath(binaryName()) != null
+
     fun executable(): String {
-        val name = if (osName.startsWith("Windows", ignoreCase = true)) "herdr.exe" else "herdr"
+        val name = binaryName()
         val candidates = USER_BIN_FOLDERS.map { "${userHome.trimEnd('/', '\\')}/$it/$name" } +
             SYSTEM_BIN_FOLDERS.map { "$it/$name" }
         return candidates.firstOrNull(isFile) ?: name
     }
+
+    private fun binaryName(): String = if (osName.startsWith("Windows", ignoreCase = true)) "herdr.exe" else "herdr"
 
     private fun command(arguments: List<String>): List<String> = listOf(executable()) + arguments
 

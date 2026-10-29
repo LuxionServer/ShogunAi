@@ -368,6 +368,10 @@ private fun spanishWorktreeTexts(error: WorktreeError): ErrorTexts = when (error
         "El agente no arrancó en Orca en $AGENT_START_SECONDS segundos.",
         "Su terminal sigue abierta en Orca: revísala y lanza allí el agente, o vuelve a abrirlo en Orca.",
     )
+    is WorktreeError.OrcaMultirepoFolderNotOpen -> ErrorTexts(
+        "Orca no tiene ningún espacio de trabajo para ${error.folder}.",
+        "Solo la app de Orca puede añadir una carpeta que no es un repositorio Git. En Orca, añade la carpeta como proyecto e importa sus repositorios como grupo, y luego añade un espacio de trabajo de carpeta a ese grupo; o añádela y elige \"Abrir como carpeta\". Después vuelve a intentarlo.",
+    )
     is WorktreeError.TerminalLaunchFailed -> ErrorTexts(
         "${error.terminal.displayName} no pudo abrir el worktree.",
         "Revisa los detalles técnicos.",

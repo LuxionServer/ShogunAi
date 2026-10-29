@@ -165,6 +165,9 @@ import app.luxion.shogunai.infrastructure.ProcessMavenDaemonSource
 import app.luxion.shogunai.domain.usecase.CloseHerdrWorkspacesUseCase
 import app.luxion.shogunai.domain.usecase.ClaudeSessionNaming
 import app.luxion.shogunai.domain.usecase.CloseOrcaTerminalsUseCase
+import app.luxion.shogunai.domain.usecase.OpenGroupInHerdrUseCase
+import app.luxion.shogunai.domain.usecase.OpenGroupInOrcaUseCase
+import app.luxion.shogunai.domain.usecase.OpenMultirepoAgentInOrcaUseCase
 import app.luxion.shogunai.domain.usecase.OpenWorktreeInOrcaUseCase
 import app.luxion.shogunai.domain.usecase.OrcaOrigins
 import app.luxion.shogunai.domain.usecase.OrcaWorktreeReader
@@ -623,6 +626,11 @@ class AppContainer {
         },
         openAgent = { multirepo -> OpenMultirepoAgentInHerdrUseCase(herdrClient, herdrLauncher)(multirepo) },
         trust = { multirepo -> configureMultirepo.trust(multirepo) },
+        openGroupInHerdr = { group -> OpenGroupInHerdrUseCase(herdrClient, resolveEnvironment, herdrLauncher)(group) },
+        openGroupInOrca = { group -> OpenGroupInOrcaUseCase(orcaClient, resolveEnvironment, ClaudeSessionNaming(claudeSessions))(group) },
+        openAgentInOrca = { multirepo -> OpenMultirepoAgentInOrcaUseCase(orcaClient, ClaudeSessionNaming(claudeSessions))(multirepo) },
+        herdrInstalled = herdrClient.isInstalled(),
+        orcaInstalled = orcaClient.isInstalled(),
     )
 
     fun forgetMissingMultirepos() {

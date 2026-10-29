@@ -1216,6 +1216,10 @@ class ProjectWorktrees(
             )
     }
 
+    fun showOpenResult(path: String, result: Result<*>) {
+        result.onSuccess { clearActionError(path) }.onFailure { recordActionError(path, it) }
+    }
+
     private fun clearActionError(path: String) {
         actionErrors = actionErrors - path
         actionRetries = actionRetries - path

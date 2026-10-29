@@ -277,6 +277,26 @@ class DetectRunningAgentsUseCaseTest {
         DetectRunningAgentsUseCase(executor(failLsof = failLsof), orca = orcaReader(orca, clock), canonical = { it })
 
     @Test
+    fun `an agent in Orca's folder workspace of the multirepo folder is the multirepo agent, waiting shown as blocked`() = runTest {
+        val folder = "/home/dev/projects/product"
+        val orca = FakeOrcaClient(psRows = listOf(orcaRow(folder, "claude" to AgentState.BLOCKED).copy(folderId = "f1")))
+
+        val agents = detectWithOrca(orca, failLsof = true)(listOf(AgentSearch.multirepoFolder(folder, "claude"))).getOrThrow()
+
+        assertEquals(listOf(RunningAgent("claude", AgentState.BLOCKED, stateSource = AgentStateSource.ORCA)), agents[folder])
+    }
+
+    @Test
+    fun `an Orca agent in a member repository's folder isn't the multirepo agent`() = runTest {
+        val folder = "/home/dev/projects/product"
+        val orca = FakeOrcaClient(psRows = listOf(orcaRow("$folder/product-app", "claude" to AgentState.WORKING)))
+
+        val agents = detectWithOrca(orca)(listOf(AgentSearch.multirepoFolder(folder, "claude"))).getOrThrow()
+
+        assertEquals(null, agents[folder])
+    }
+
+    @Test
     fun `a waiting agent Orca reports makes the worktree's Claude blocked`() = runTest {
         val orca = FakeOrcaClient(psRows = listOf(orcaRow(nested.path, "claude" to AgentState.BLOCKED)))
 

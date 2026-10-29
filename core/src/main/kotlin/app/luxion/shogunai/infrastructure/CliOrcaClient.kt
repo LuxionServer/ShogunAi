@@ -11,6 +11,7 @@ import app.luxion.shogunai.domain.model.OrcaAgent
 import app.luxion.shogunai.domain.model.OrcaRepo
 import app.luxion.shogunai.domain.model.OrcaStatus
 import app.luxion.shogunai.domain.model.OrcaTerminal
+import app.luxion.shogunai.domain.model.OrcaWorkspace
 import app.luxion.shogunai.domain.model.OrcaWorktree
 import app.luxion.shogunai.domain.model.WorktreeError
 import kotlinx.serialization.json.Json
@@ -90,10 +91,10 @@ class CliOrcaClient(
         }
     }
 
-    override suspend fun terminals(worktreePath: String): List<OrcaTerminal> {
-        val arguments = listOf("terminal", "list", "--worktree", "path:$worktreePath")
+    override suspend fun terminals(workspace: OrcaWorkspace): List<OrcaTerminal> {
+        val arguments = listOf("terminal", "list", "--worktree", workspace.selector)
         val terminals = run(arguments).field("terminals") as? JsonArray ?: throw unexpectedResponse(arguments)
-        return terminals.filterIsInstance<JsonObject>().mapNotNull { terminal(it, worktreePath) }
+        return terminals.filterIsInstance<JsonObject>().mapNotNull { terminal(it, workspace) }
     }
 
     override suspend fun terminalAgent(handle: String): String? {
@@ -102,19 +103,22 @@ class CliOrcaClient(
         return terminal.string("agentIdentity")
     }
 
-    override suspend fun createTerminal(worktreePath: String, title: String, command: String, focus: Boolean): OrcaTerminal {
-        val arguments = listOf("terminal", "create", "--worktree", "path:$worktreePath", "--title", title, "--command", command) +
+    override suspend fun createTerminal(workspace: OrcaWorkspace, title: String, command: String, focus: Boolean): OrcaTerminal {
+        val arguments = listOf("terminal", "create", "--worktree", workspace.selector, "--title", title, "--command", command) +
             listOfNotNull("--focus".takeIf { focus })
         val terminal = run(arguments).field("terminal") as? JsonObject
-        return terminal?.let { terminal(it, worktreePath) } ?: throw unexpectedResponse(arguments)
+        return terminal?.let { terminal(it, workspace) } ?: throw unexpectedResponse(arguments)
     }
 
     override suspend fun switchTo(handle: String) {
         run(listOf("terminal", "switch", "--terminal", handle))
     }
 
-    override suspend fun closeTerminals(worktreePath: String) {
-        run(listOf("terminal", "close", "--worktree", "path:$worktreePath", "--all"))
+    override suspend fun closeTerminals(workspace: OrcaWorkspace) {
+        when (workspace) {
+            is OrcaWorkspace.Worktree -> run(listOf("terminal", "close", "--worktree", workspace.selector, "--all"))
+            is OrcaWorkspace.Folder -> terminals(workspace).forEach { run(listOf("terminal", "close", "--terminal", it.handle)) }
+        }
     }
 
     private fun repo(repo: JsonObject): OrcaRepo? {
@@ -126,7 +130,12 @@ class CliOrcaClient(
     private fun worktree(worktree: JsonObject): OrcaWorktree? {
         val path = worktree.string("path") ?: return null
         val provenance = worktree["creatorProvenance"]
-        return OrcaWorktree(path, createdByOrca = provenance != null && provenance !is JsonNull)
+        return OrcaWorktree(path, createdByOrca = provenance != null && provenance !is JsonNull, folderId = folderId(worktree))
+    }
+
+    private fun folderId(worktree: JsonObject): String? {
+        if (worktree.string("workspaceKind") != FOLDER_WORKSPACE) return null
+        return worktree.string("worktreeId")?.takeIf { it.startsWith(FOLDER_PREFIX) }?.removePrefix(FOLDER_PREFIX)?.takeIf { it.isNotEmpty() }
     }
 
     private fun agent(agent: JsonObject): OrcaAgent? {
@@ -134,9 +143,10 @@ class CliOrcaClient(
         return OrcaAgent(name, agentState(agent.string("state")))
     }
 
-    private fun terminal(terminal: JsonObject, worktreePath: String): OrcaTerminal? {
+    private fun terminal(terminal: JsonObject, workspace: OrcaWorkspace): OrcaTerminal? {
         val handle = terminal.string("handle") ?: return null
-        return OrcaTerminal(handle, terminal.string("worktreePath") ?: worktreePath, terminal.string("title"))
+        val fallback = (workspace as? OrcaWorkspace.Worktree)?.path.orEmpty()
+        return OrcaTerminal(handle, terminal.string("worktreePath")?.takeIf { it.isNotEmpty() } ?: fallback, terminal.string("title"))
     }
 
     private fun agentState(state: String?): AgentState? = when (state) {
@@ -207,6 +217,8 @@ class CliOrcaClient(
 
     companion object {
         private const val ROW_LIMIT = "1000"
+        private const val FOLDER_WORKSPACE = "folder-workspace"
+        private const val FOLDER_PREFIX = "folder:"
         private const val MAC_APP_BINARY = "/Applications/Orca.app/Contents/Resources/bin/orca"
         private val USER_BIN_FOLDERS = listOf(".local/bin")
         private val SYSTEM_BIN_FOLDERS = listOf("/opt/homebrew/bin", "/usr/local/bin")

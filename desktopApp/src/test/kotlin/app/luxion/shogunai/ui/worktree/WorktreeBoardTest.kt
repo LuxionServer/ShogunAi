@@ -61,12 +61,14 @@ import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import app.luxion.shogunai.HerdrUseCases
+import app.luxion.shogunai.OrcaUseCases
 import app.luxion.shogunai.domain.model.AgentState
 import app.luxion.shogunai.domain.model.HerdrOpening
 import app.luxion.shogunai.domain.model.HerdrOutcome
 import app.luxion.shogunai.domain.model.RecentWorktree
 import app.luxion.shogunai.domain.usecase.Activity
 import app.luxion.shogunai.ui.i18n.EnglishStrings
+import app.luxion.shogunai.ui.i18n.describe
 import app.luxion.shogunai.ui.tray.trayWorktreeLabel
 import java.time.Instant
 import kotlin.test.AfterTest
@@ -75,6 +77,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
+import kotlin.test.assertNotEquals
 import kotlin.test.assertNotSame
 import kotlin.test.assertNull
 import kotlin.test.assertSame
@@ -83,12 +86,21 @@ import kotlin.time.Duration.Companion.seconds
 import app.luxion.shogunai.domain.model.BranchType
 import app.luxion.shogunai.domain.model.Multirepo
 import app.luxion.shogunai.domain.model.MultirepoDeclaration
+import app.luxion.shogunai.domain.model.OrcaOpening
+import app.luxion.shogunai.domain.model.OrcaOutcome
 import app.luxion.shogunai.domain.usecase.GroupCreation
+import app.luxion.shogunai.domain.usecase.GroupOpening
+import app.luxion.shogunai.domain.usecase.GroupOrcaOpening
 import app.luxion.shogunai.domain.usecase.GroupRepositoryOutcome
 import app.luxion.shogunai.domain.usecase.GroupRepositoryResult
+import app.luxion.shogunai.domain.usecase.MultirepoMember
+import app.luxion.shogunai.domain.usecase.WorktreeGroup as BranchGroup
+import app.luxion.shogunai.ui.multirepo.ChangeRunner
 import app.luxion.shogunai.ui.multirepo.MultirepoActions
 import app.luxion.shogunai.ui.multirepo.MultirepoNotice
+import app.luxion.shogunai.ui.multirepo.RunnerOutcome
 import app.luxion.shogunai.ui.multirepo.multirepoMemberships
+import app.luxion.shogunai.ui.multirepo.multirepoNoticeMessage
 
 class WorktreeBoardTest {
 
@@ -227,6 +239,7 @@ class WorktreeBoardTest {
             },
             simulator = SimulatorUseCases.NONE,
             herdr = HerdrUseCases.NONE.copy(open = { target, _ -> openedInHerdr += target.path; Result.success(HerdrOpening(HerdrOutcome.OPENED, "w1:p1", "Claude")) }),
+            orca = OrcaUseCases.NONE.copy(withTerminals = { paths -> paths.filter { it in orcaTerminalPaths }.toSet() }),
             gradle = GradleUseCases(
                 provider = { GradleProvider().takeIf { id in gradleDeclaredFor } },
                 listDaemons = ListGradleDaemonsUseCase(gradleDaemons, FakeFileManager(existing = listOf(base) + worktrees.map { it.first })),
@@ -243,6 +256,7 @@ class WorktreeBoardTest {
     }
 
     private var repositories = listOf(api, mainRepo)
+    private var orcaTerminalPaths = emptySet<String>()
 
     private fun board(
         projects: List<Project> = repositories.map { it.project },
@@ -1554,6 +1568,272 @@ class WorktreeBoardTest {
         board.openMultirepoAgent()
         advanceUntilIdle()
         assertEquals(MultirepoNotice.Failed(failure), board.multirepoNotice)
+    }
+
+    private fun orcaActions(
+        openGroupInOrca: suspend (BranchGroup) -> Result<List<GroupOrcaOpening>> = { Result.failure(UnsupportedOperationException()) },
+        openAgentInOrca: suspend (Multirepo) -> Result<OrcaOpening> = { Result.failure(UnsupportedOperationException()) },
+        openGroupInHerdr: suspend (BranchGroup) -> List<GroupOpening> = { emptyList() },
+        createGroup: suspend (List<MultirepoMember>, String) -> Result<GroupCreation> = { members, taskId ->
+            Result.success(GroupCreation("feature/$taskId", members.map { GroupRepositoryResult(it.alias, GroupRepositoryOutcome.CREATED, "/home/dev/projects/${it.alias}-$taskId") }))
+        },
+        herdrInstalled: Boolean = true,
+        orcaInstalled: Boolean = true,
+    ) = MultirepoActions(
+        createGroup = { members, taskId, _, _, _ -> createGroup(members, taskId) },
+        openAgent = { Result.failure(UnsupportedOperationException()) },
+        openGroupInHerdr = openGroupInHerdr,
+        openGroupInOrca = openGroupInOrca,
+        openAgentInOrca = openAgentInOrca,
+        herdrInstalled = herdrInstalled,
+        orcaInstalled = orcaInstalled,
+    )
+
+    private fun orcaOpened(group: BranchGroup, outcome: (String) -> Result<OrcaOpening>) =
+        Result.success(group.worktrees.map { GroupOrcaOpening(it.alias, it.worktree.path, outcome(it.alias)) })
+
+    @Test
+    fun `open all in Orca opens the group's worktrees and says per repository whether the agent started or was focused`() = runTest(dispatcher) {
+        val groups = mutableListOf<BranchGroup>()
+        val board = productBoard(
+            orcaActions(openGroupInOrca = { group ->
+                groups += group
+                orcaOpened(group) { alias ->
+                    Result.success(OrcaOpening(if (alias == "app") OrcaOutcome.STARTED_AGENT else OrcaOutcome.FOCUSED, "term_$alias", "claude"))
+                }
+            }),
+        )
+
+        assertTrue(board.isOrcaInstalled)
+        board.openAllInOrca(board.changeView.groups.single { it.title == "TASK-1" })
+        advanceUntilIdle()
+
+        assertEquals("feature/TASK-1", groups.single().branch)
+        assertEquals(setOf("/home/dev/projects/app-TASK-1", "/home/dev/projects/api-TASK-1"), groups.single().worktrees.map { it.worktree.path }.toSet())
+        val notice = board.multirepoNotice as MultirepoNotice.GroupOpenedInOrca
+        assertEquals("TASK-1", notice.title)
+        assertEquals(setOf("app" to OrcaOutcome.STARTED_AGENT, "api" to OrcaOutcome.FOCUSED), notice.outcomes.toSet())
+        assertTrue(board.openingGroupsInOrca.isEmpty())
+        EnglishStrings.multirepoNoticeMessage(notice).let { assertTrue(it.contains("agent started in app") && it.contains("running agent focused in api"), it) }
+    }
+
+    @Test
+    fun `open all in Orca with a failure still opens the others and shows the failure on its worktree`() = runTest(dispatcher) {
+        val failure = WorktreeError.OrcaAgentNotStarted("term_api", "claude -n api-task-1")
+        val board = productBoard(
+            orcaActions(openGroupInOrca = { group ->
+                orcaOpened(group) { alias -> if (alias == "api") Result.failure(failure) else Result.success(OrcaOpening(OrcaOutcome.STARTED_AGENT, "term_app", "claude")) }
+            }),
+        )
+
+        board.openAllInOrca(board.changeView.groups.single { it.title == "TASK-1" })
+        advanceUntilIdle()
+
+        assertEquals(MultirepoNotice.GroupOpenedInOrca("TASK-1", listOf("app" to OrcaOutcome.STARTED_AGENT)), board.multirepoNotice)
+        assertEquals(failure, board.holder("api")!!.actionErrors["/home/dev/projects/api-TASK-1"])
+        assertNull(board.holder("app")!!.actionErrors["/home/dev/projects/app-TASK-1"])
+        val details = EnglishStrings.describe(failure).details?.output.orEmpty()
+        assertTrue(details.contains("term_api") && details.contains("claude -n api-task-1"), details)
+    }
+
+    @Test
+    fun `the Orca actions are only offered when Orca is installed`() = runTest(dispatcher) {
+        assertFalse(productBoard().isOrcaInstalled)
+    }
+
+    @Test
+    fun `opening the multirepo agent in Orca reports a started agent, a focused one and its errors`() = runTest(dispatcher) {
+        val opened = mutableListOf<String>()
+        var result: Result<OrcaOpening> = Result.success(OrcaOpening(OrcaOutcome.STARTED_AGENT, "term_1", "Claude"))
+        val board = productBoard(orcaActions(openAgentInOrca = { multirepo -> opened += multirepo.folder; result }))
+
+        board.openMultirepoAgentInOrca()
+        advanceUntilIdle()
+        assertEquals(listOf(product.folder), opened)
+        assertEquals(MultirepoNotice.AgentOpenedInOrca(OrcaOutcome.STARTED_AGENT), board.multirepoNotice)
+
+        result = Result.success(OrcaOpening(OrcaOutcome.FOCUSED, "term_1", "claude"))
+        board.openMultirepoAgentInOrca()
+        advanceUntilIdle()
+        assertEquals(MultirepoNotice.AgentOpenedInOrca(OrcaOutcome.FOCUSED), board.multirepoNotice)
+        assertNotEquals(
+            EnglishStrings.multirepoNoticeMessage(MultirepoNotice.AgentOpenedInOrca(OrcaOutcome.STARTED_AGENT)),
+            EnglishStrings.multirepoNoticeMessage(MultirepoNotice.AgentOpenedInOrca(OrcaOutcome.FOCUSED)),
+        )
+
+        val notOpen = WorktreeError.OrcaMultirepoFolderNotOpen(product.folder)
+        result = Result.failure(notOpen)
+        board.openMultirepoAgentInOrca()
+        advanceUntilIdle()
+        assertEquals(MultirepoNotice.Failed(notOpen), board.multirepoNotice)
+        assertTrue(EnglishStrings.describe(notOpen).nextStep.contains("Open as Folder"))
+
+        val notStarted = WorktreeError.OrcaAgentNotStarted("term_2", "claude -n product")
+        result = Result.failure(notStarted)
+        board.openMultirepoAgentInOrca()
+        advanceUntilIdle()
+        assertEquals(MultirepoNotice.Failed(notStarted), board.multirepoNotice)
+        assertTrue(EnglishStrings.describe(notStarted).details?.output.orEmpty().contains("term_2"))
+        assertFalse(board.isOpeningMultirepoAgent)
+    }
+
+    @Test
+    fun `cleaning up a group open in Orca marks its worktrees with Orca terminals`() = runTest(dispatcher) {
+        orcaTerminalPaths = setOf("/home/dev/projects/app-TASK-1")
+        val board = productBoard()
+        val group = board.changeView.groups.single { it.title == "TASK-1" }
+
+        board.openGroupCleanup(group)
+        advanceUntilIdle()
+
+        assertEquals(setOf("/home/dev/projects/app-TASK-1"), board.holder("app")!!.orcaTerminalPaths)
+        assertEquals(emptySet(), board.holder("api")!!.orcaTerminalPaths)
+    }
+
+    @Test
+    fun `cleaning up a group with Orca not running marks nothing`() = runTest(dispatcher) {
+        val board = productBoard()
+
+        board.openGroupCleanup(board.changeView.groups.single { it.title == "TASK-1" })
+        advanceUntilIdle()
+
+        assertEquals(emptySet(), board.holder("app")!!.orcaTerminalPaths)
+        assertEquals(listOf("api", "app"), board.cleanupProjects.map { it.project.id })
+    }
+
+    @Test
+    fun `the new change selector offers each installed runner and defaults to not opening`() = runTest(dispatcher) {
+        val both = productBoard(orcaActions())
+        both.openNewChange()
+        assertEquals(listOf(ChangeRunner.NONE, ChangeRunner.HERDR, ChangeRunner.ORCA), both.newChange!!.runners)
+        assertEquals(ChangeRunner.NONE, both.newChange!!.runner)
+
+        val herdrOnly = productBoard(orcaActions(orcaInstalled = false))
+        herdrOnly.openNewChange()
+        assertEquals(listOf(ChangeRunner.NONE, ChangeRunner.HERDR), herdrOnly.newChange!!.runners)
+
+        val neither = productBoard(orcaActions(herdrInstalled = false, orcaInstalled = false))
+        neither.openNewChange()
+        assertEquals(emptyList(), neither.newChange!!.runners)
+    }
+
+    @Test
+    fun `a new change left on not opening creates the group and opens nothing`() = runTest(dispatcher) {
+        var opened = 0
+        val board = productBoard(orcaActions(openGroupInOrca = { opened++; Result.success(emptyList()) }, openGroupInHerdr = { opened++; emptyList() }))
+
+        board.openNewChange()
+        board.newChange!!.updateTaskId("TASK-20")
+        board.confirmNewChange()
+        advanceUntilIdle()
+
+        assertEquals(0, opened)
+        assertNull(board.newChange)
+        assertEquals(MultirepoNotice.ChangeCreated("TASK-20", listOf("api", "app")), board.multirepoNotice)
+    }
+
+    @Test
+    fun `a new change opened in Orca reports each repository's creation and then its opening`() = runTest(dispatcher) {
+        val groups = mutableListOf<BranchGroup>()
+        val board = productBoard(
+            orcaActions(openGroupInOrca = { group ->
+                groups += group
+                orcaOpened(group) { Result.success(OrcaOpening(OrcaOutcome.STARTED_AGENT, "term_$it", "Claude")) }
+            }),
+        )
+
+        board.openNewChange()
+        val change = board.newChange!!
+        change.updateTaskId("TASK-20")
+        change.runner = ChangeRunner.ORCA
+        board.confirmNewChange()
+        advanceUntilIdle()
+
+        assertEquals("feature/TASK-20", groups.single().branch)
+        assertEquals(listOf("/home/dev/projects/api-TASK-20", "/home/dev/projects/app-TASK-20"), groups.single().worktrees.map { it.worktree.path })
+        assertEquals(change, board.newChange)
+        assertEquals(setOf("api", "app"), change.results!!.map { it.alias }.toSet())
+        assertEquals(
+            mapOf("api" to RunnerOutcome.Orca(OrcaOutcome.STARTED_AGENT), "app" to RunnerOutcome.Orca(OrcaOutcome.STARTED_AGENT)),
+            change.openings!!.mapValues { it.value.getOrThrow() },
+        )
+    }
+
+    @Test
+    fun `a new change opened in Herdr opens the created worktrees as open all does`() = runTest(dispatcher) {
+        val groups = mutableListOf<BranchGroup>()
+        val board = productBoard(
+            orcaActions(openGroupInHerdr = { group ->
+                groups += group
+                group.worktrees.map { GroupOpening(it.alias, it.worktree.path, Result.success(HerdrOpening(HerdrOutcome.OPENED, "w1:p1", "Claude"))) }
+            }),
+        )
+
+        board.openNewChange()
+        board.newChange!!.updateTaskId("TASK-20")
+        board.newChange!!.runner = ChangeRunner.HERDR
+        board.confirmNewChange()
+        advanceUntilIdle()
+
+        assertEquals(listOf("api", "app"), groups.single().worktrees.map { it.alias })
+        assertEquals(RunnerOutcome.Herdr(HerdrOutcome.OPENED), board.newChange!!.openings!!["app"]!!.getOrThrow())
+    }
+
+    @Test
+    fun `a new change whose opening fails stays created and shows the opening error`() = runTest(dispatcher) {
+        val failure = WorktreeError.OrcaAgentNotStarted("term_api", "claude")
+        val board = productBoard(
+            orcaActions(openGroupInOrca = { group ->
+                orcaOpened(group) { alias -> if (alias == "api") Result.failure(failure) else Result.success(OrcaOpening(OrcaOutcome.STARTED_AGENT, "term_app", "Claude")) }
+            }),
+        )
+
+        board.openNewChange()
+        board.newChange!!.updateTaskId("TASK-20")
+        board.newChange!!.runner = ChangeRunner.ORCA
+        board.confirmNewChange()
+        advanceUntilIdle()
+
+        val change = board.newChange!!
+        assertTrue(change.results!!.all { it.outcome == GroupRepositoryOutcome.CREATED })
+        assertEquals(failure, change.openings!!["api"]!!.exceptionOrNull())
+        assertTrue(change.openings!!["app"]!!.isSuccess)
+        assertFalse(change.canConfirm)
+    }
+
+    @Test
+    fun `a new change opens only the worktrees that exist when a repository fails`() = runTest(dispatcher) {
+        val groups = mutableListOf<BranchGroup>()
+        val board = productBoard(
+            orcaActions(
+                createGroup = { _, taskId ->
+                    Result.success(
+                        GroupCreation(
+                            "feature/$taskId",
+                            listOf(
+                                GroupRepositoryResult("api", GroupRepositoryOutcome.FAILED, "/home/dev/projects/api-$taskId", error = IllegalStateException("post-create failed")),
+                                GroupRepositoryResult("app", GroupRepositoryOutcome.CREATED, "/home/dev/projects/app-$taskId"),
+                                GroupRepositoryResult("docs", GroupRepositoryOutcome.FAILED, error = IllegalStateException("couldn't create")),
+                            ),
+                        ),
+                    )
+                },
+                openGroupInOrca = { group ->
+                    groups += group
+                    orcaOpened(group) { Result.success(OrcaOpening(OrcaOutcome.STARTED_AGENT, "term_$it", "Claude")) }
+                },
+            ),
+        )
+
+        board.openNewChange()
+        board.newChange!!.updateTaskId("TASK-20")
+        board.newChange!!.toggle("docs")
+        board.newChange!!.runner = ChangeRunner.ORCA
+        board.confirmNewChange()
+        advanceUntilIdle()
+
+        assertEquals(listOf("api", "app"), groups.single().worktrees.map { it.alias })
+        assertEquals(setOf("api", "app"), board.newChange!!.openings!!.keys)
     }
 
     @Test

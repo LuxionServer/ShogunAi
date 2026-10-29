@@ -64,7 +64,12 @@ internal object CliHelp {
   open <task id | path | branch> --orca [--agent <name>] [--json]
                               Open the worktree in Orca under its repository, in a focused terminal with its
                               environment and the project's agent, or focus the terminal of its live agent;
-                              starts Orca when it isn't running; not available in a multirepo folder yet
+                              starts Orca when it isn't running
+  open <task id | branch> --orca [--json]
+                              In a multirepo folder: open every worktree of the group in Orca, each under
+                              its repository with its environment and its project's agent
+  open --orca [--json]        In a multirepo folder: open the multirepo's agent in Orca's workspace for the
+                              folder; a folder that isn't a Git repository must be added in Orca's app first
 """.trimIndent(),
         "repair" to """
   repair [--json]             Re-link the worktrees after the repository or the worktrees folder moved

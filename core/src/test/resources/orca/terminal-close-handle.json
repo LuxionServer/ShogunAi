@@ -1,0 +1,14 @@
+{
+  "id": "2670c568-c915-4f05-af0d-6c60469aa6c5",
+  "ok": true,
+  "result": {
+    "close": {
+      "handle": "term_34d22a3f-c516-4008-92c8-3c01d8be4382",
+      "tabId": "c201f0eb-acd9-4406-91c7-46b884be4d5b",
+      "ptyKilled": true
+    }
+  },
+  "_meta": {
+    "runtimeId": "cd0c9d23-612d-45dd-8e2c-da966aa71c9d"
+  }
+}
