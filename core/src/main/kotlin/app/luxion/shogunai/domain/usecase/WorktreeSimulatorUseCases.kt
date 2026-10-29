@@ -89,6 +89,12 @@ class ReadSimulatorStatesUseCase(
                 devices[udid]?.let { path to WorktreeSimulator(udid, it.name, it.state) }
             }.toMap()
         }
+
+    suspend fun runningUdid(config: ProjectConfig, worktreePath: String): String? =
+        invoke(config, listOf(Worktree(worktreePath, branch = null))).getOrNull()
+            ?.get(worktreePath)
+            ?.takeIf { it.state != SimulatorState.SHUTDOWN }
+            ?.udid
 }
 
 class DeleteSimulatorsUseCase(

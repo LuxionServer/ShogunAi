@@ -4,15 +4,19 @@ import app.luxion.shogunai.domain.executor.CommandExecutionException
 import app.luxion.shogunai.domain.executor.CommandResult
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.io.OrcaClient
+import app.luxion.shogunai.domain.model.AgentActivity
 import app.luxion.shogunai.domain.model.AgentState
+import app.luxion.shogunai.domain.model.AgentTool
 import app.luxion.shogunai.domain.model.ORCA_MINIMUM_VERSION
 import app.luxion.shogunai.domain.model.ORCA_START_SECONDS
 import app.luxion.shogunai.domain.model.OrcaAgent
+import app.luxion.shogunai.domain.model.OrcaPort
 import app.luxion.shogunai.domain.model.OrcaRepo
 import app.luxion.shogunai.domain.model.OrcaStatus
 import app.luxion.shogunai.domain.model.OrcaTerminal
 import app.luxion.shogunai.domain.model.OrcaWorkspace
 import app.luxion.shogunai.domain.model.OrcaWorktree
+import app.luxion.shogunai.domain.model.OrcaWorktreeUpdate
 import app.luxion.shogunai.domain.model.WorktreeError
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -21,6 +25,7 @@ import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.intOrNull
 import java.io.File
 import kotlin.time.Duration.Companion.seconds
 
@@ -91,6 +96,24 @@ class CliOrcaClient(
         }
     }
 
+    override suspend fun updateWorktree(path: String, update: OrcaWorktreeUpdate) {
+        if (update.isEmpty) return
+        val arguments = buildList {
+            addAll(listOf("worktree", "set", "--worktree", OrcaWorkspace.Worktree(path).selector))
+            update.comment?.let { addAll(listOf("--comment", it)) }
+            update.workspaceStatus?.let { addAll(listOf("--workspace-status", it)) }
+            update.pullRequest?.let { addAll(listOf("--pr", it.toString())) }
+            update.issue?.let { addAll(listOf("--issue", it.toString())) }
+        }
+        run(arguments)
+    }
+
+    override suspend fun ports(): List<OrcaPort> {
+        val arguments = listOf("ports", "--all")
+        val ports = run(arguments).field("ports") as? JsonArray ?: throw unexpectedResponse(arguments)
+        return ports.filterIsInstance<JsonObject>().mapNotNull(::port)
+    }
+
     override suspend fun terminals(workspace: OrcaWorkspace): List<OrcaTerminal> {
         val arguments = listOf("terminal", "list", "--worktree", workspace.selector)
         val terminals = run(arguments).field("terminals") as? JsonArray ?: throw unexpectedResponse(arguments)
@@ -121,8 +144,8 @@ class CliOrcaClient(
         }
     }
 
-    override suspend fun attachEmulator(workspace: OrcaWorkspace, serial: String) {
-        run(listOf("emulator", "attach", serial, "--worktree", workspace.selector, "--focus"))
+    override suspend fun attachEmulator(workspace: OrcaWorkspace, device: String) {
+        run(listOf("emulator", "attach", device, "--worktree", workspace.selector, "--focus"))
     }
 
     private fun repo(repo: JsonObject): OrcaRepo? {
@@ -134,7 +157,21 @@ class CliOrcaClient(
     private fun worktree(worktree: JsonObject): OrcaWorktree? {
         val path = worktree.string("path") ?: return null
         val provenance = worktree["creatorProvenance"]
-        return OrcaWorktree(path, createdByOrca = provenance != null && provenance !is JsonNull, folderId = folderId(worktree))
+        return OrcaWorktree(
+            path,
+            createdByOrca = provenance != null && provenance !is JsonNull,
+            folderId = folderId(worktree),
+            comment = worktree.string("comment"),
+            workspaceStatus = worktree.string("workspaceStatus"),
+            linkedPullRequest = linkedNumber(worktree["linkedPR"]),
+            linkedIssue = linkedNumber(worktree["linkedIssue"]),
+        )
+    }
+
+    private fun linkedNumber(link: JsonElement?): Int? = when (link) {
+        is JsonPrimitive -> link.intOrNull
+        is JsonObject -> (link["number"] as? JsonPrimitive)?.intOrNull
+        else -> null
     }
 
     private fun folderId(worktree: JsonObject): String? {
@@ -144,7 +181,21 @@ class CliOrcaClient(
 
     private fun agent(agent: JsonObject): OrcaAgent? {
         val name = agent.string("agentType") ?: return null
-        return OrcaAgent(name, agentState(agent.string("state")))
+        val state = agentState(agent.string("state"))
+        return OrcaAgent(name, state, activity(agent, state))
+    }
+
+    private fun activity(agent: JsonObject, state: AgentState?): AgentActivity? {
+        val waitingOn = agent.text("toolName")?.takeIf { state == AgentState.BLOCKED }?.let { AgentTool(it, agent.text("toolInput")) }
+        val activity = AgentActivity(waitingOn, agent.text("prompt"), agent.text("lastAssistantMessage"))
+        return activity.takeUnless { it == AgentActivity() }
+    }
+
+    private fun port(port: JsonObject): OrcaPort? {
+        if (port.string("kind") != WORKSPACE_PORT) return null
+        val number = (port["port"] as? JsonPrimitive)?.intOrNull ?: return null
+        val path = (port["owner"] as? JsonObject)?.text("path") ?: return null
+        return OrcaPort(number, path, port.text("processName"), port.text("advertisedUrl"))
     }
 
     private fun terminal(terminal: JsonObject, workspace: OrcaWorkspace): OrcaTerminal? {
@@ -219,7 +270,10 @@ class CliOrcaClient(
     private fun JsonObject.string(name: String): String? =
         (this[name] as? JsonPrimitive)?.takeIf { it.isString }?.content
 
+    private fun JsonObject.text(name: String): String? = string(name)?.takeIf { it.isNotBlank() }
+
     companion object {
+        private const val WORKSPACE_PORT = "workspace"
         private const val ROW_LIMIT = "1000"
         private const val FOLDER_WORKSPACE = "folder-workspace"
         private const val FOLDER_PREFIX = "folder:"

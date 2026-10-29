@@ -195,14 +195,17 @@ class DetectRunningAgentsUseCase(
             val known = agents[path].orEmpty()
             val knownNames = known.map { it.name }.toSet()
             known.map { agent -> orcaByName[agent.name]?.let { withOrcaState(agent, it) } ?: agent } +
-                orcaByName.filterKeys { it !in knownNames }.values.map { RunningAgent(it.agent, it.state, stateSource = it.state?.let { AgentStateSource.ORCA }) }
+                orcaByName.filterKeys { it !in knownNames }.values.map {
+                    RunningAgent(it.agent, it.state, stateSource = it.state?.let { AgentStateSource.ORCA }, activity = it.activity)
+                }
         }
     }
 
     private fun withOrcaState(agent: RunningAgent, orcaAgent: OrcaAgent): RunningAgent {
-        val state = orcaAgent.state ?: return agent
-        if (agent.stateSource == AgentStateSource.HERDR && urgency(agent.state) >= urgency(state)) return agent
-        return agent.copy(state = state, stateSource = AgentStateSource.ORCA)
+        val detailed = agent.copy(activity = orcaAgent.activity)
+        val state = orcaAgent.state ?: return detailed
+        if (agent.stateSource == AgentStateSource.HERDR && urgency(agent.state) >= urgency(state)) return detailed
+        return detailed.copy(state = state, stateSource = AgentStateSource.ORCA)
     }
 
     private fun attributedWorktree(cwd: String, worktrees: List<Worktree>, exact: Set<String>): Worktree? {

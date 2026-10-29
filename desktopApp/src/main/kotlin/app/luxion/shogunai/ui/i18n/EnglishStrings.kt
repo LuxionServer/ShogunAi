@@ -258,6 +258,11 @@ object EnglishStrings : Strings {
         AgentPhase.RUNNING -> "running"
         AgentPhase.IDLE -> "idle"
     }
+    override fun agentWaitingOn(tool: String, input: String?) = "Waiting on $tool" + (input?.let { ": $it" } ?: "")
+    override fun agentPrompt(prompt: String) = "Prompt: $prompt"
+    override fun agentLastMessage(message: String) = "Last message: $message"
+    override fun portListening(label: String) = "$label (listening)"
+    override val orcaPortsTitle = "Listening, seen by Orca"
     override fun agentStateSource(source: AgentStateSource?) = when (source) {
         AgentStateSource.HERDR -> "State from Herdr"
         AgentStateSource.ORCA -> "State from Orca"

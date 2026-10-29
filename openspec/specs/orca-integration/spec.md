@@ -92,11 +92,15 @@ After starting the agent command in a new Orca terminal, ShogunAi SHALL wait up 
 - **THEN** nothing is started and nothing is waited for
 
 ### Requirement: Open a worktree in Orca from the command line
-`shogun open <target> --orca` SHALL open the worktree in Orca exactly as the desktop app's "Open in Orca" does. It SHALL report on standard error, with exit code 1, that Orca isn't installed, that it didn't start, that its command failed, or that the agent didn't start. `--json` SHALL report whether the agent was started in a new terminal or a live one was focused.
+`shogun open <target> --orca`, or `shogun open <target>` without a runner flag when Orca is the runner in use, SHALL open the worktree in Orca exactly as the desktop app's "Open in Orca" does. It SHALL report on standard error, with exit code 1, that Orca isn't installed, that it didn't start, that its command failed, or that the agent didn't start. `--json` SHALL report whether the agent was started in a new terminal or a live one was focused.
 
 #### Scenario: Worktree with an environment
 - **WHEN** the user runs `shogun open TASK-123 --orca` and the repository declares `env`
 - **THEN** the terminal's shell has every variable `shogun env` prints for that worktree, and the agent command runs with them
+
+#### Scenario: Orca in use without a flag
+- **WHEN** Orca is the runner in use and the user runs `shogun open TASK-123`
+- **THEN** the worktree opens in Orca as with `shogun open TASK-123 --orca`
 
 #### Scenario: Orca not installed
 - **WHEN** the `orca` command can't be found
@@ -210,6 +214,132 @@ Reading agents from Orca SHALL run at most once per check for all projects. It S
 - **WHEN** Orca isn't running during several consecutive checks
 - **THEN** ShogunAi asks Orca at most once every 30 seconds, never starts it, and shows agents without Orca states meanwhile
 
+### Requirement: Keep Orca's board status in step with the worktree's state
+For each non-main worktree Orca lists, ShogunAi SHALL set Orca's board status from the worktree's state: `todo` when it's new, `in-progress` when an agent is working or it needs you, `in-review` when it's stopped or inactive, and `completed` when it's merged. A folder missing, the main worktree or a state not read yet SHALL leave the status untouched.
+
+#### Scenario: A new worktree goes to "todo"
+- **WHEN** Orca lists a worktree with no commits of its own, no uncommitted changes and no agent running, and its status is `in-progress`
+- **THEN** ShogunAi sets its board status in Orca to `todo`
+
+#### Scenario: A merged worktree goes to "completed"
+- **WHEN** a worktree Orca lists is merged into its base
+- **THEN** ShogunAi sets its board status in Orca to `completed`
+
+#### Scenario: A pushed worktree goes to "in-review"
+- **WHEN** a worktree Orca lists has commits of its own, all pushed, nothing uncommitted, isn't merged and has no agent working
+- **THEN** ShogunAi sets its board status in Orca to `in-review`
+
+#### Scenario: The main worktree is left alone
+- **WHEN** Orca lists the repository's main worktree
+- **THEN** ShogunAi doesn't change its board status, comment or links
+
+### Requirement: Respect a status moved by hand in Orca
+ShogunAi SHALL write a worktree's board status only when the status that matches its state differs from the one ShogunAi last wrote for that worktree, remembered across restarts of the app and the command line. A status moved by hand in Orca SHALL stay until the worktree's state maps to a different status.
+
+#### Scenario: A card moved by hand stays
+- **WHEN** ShogunAi set a worktree to `in-review`, someone moved it to `todo` in Orca and the worktree's state hasn't changed
+- **THEN** the next sync leaves the status at `todo`
+
+#### Scenario: A state change moves the card again
+- **WHEN** that worktree is then merged into its base
+- **THEN** the next sync sets its status to `completed`
+
+### Requirement: Show ShogunAi's summary as the worktree's comment in Orca
+For each non-main worktree Orca lists, ShogunAi SHALL set Orca's comment to a one-line summary of the worktree's state starting with `ShogunAi: `, such as `ShogunAi: needs you · 3 uncommitted changes · 2 commits not pushed`. It SHALL write it only when Orca's comment is empty or starts with `ShogunAi: `, and only when it differs.
+
+#### Scenario: An empty comment gets the summary
+- **WHEN** Orca lists a worktree with an empty comment, 3 uncommitted changes and 2 commits not pushed to its upstream
+- **THEN** ShogunAi sets its comment to a summary that starts with `ShogunAi: needs you` and mentions the 3 uncommitted changes and the 2 commits not pushed
+
+#### Scenario: A comment written in Orca is kept
+- **WHEN** a worktree's comment in Orca is "waiting for design review"
+- **THEN** ShogunAi doesn't change the comment
+
+#### Scenario: An unchanged summary isn't rewritten
+- **WHEN** a worktree's comment in Orca already equals ShogunAi's summary
+- **THEN** ShogunAi doesn't send a comment for it
+
+### Requirement: Link the worktree's pull request in Orca
+When the GitHub CLI (`gh`) is installed and signed in, and a worktree Orca lists has a branch pushed to an upstream and no pull request linked in Orca, ShogunAi SHALL link the most recent pull request whose head is that branch, open, merged or closed. A pull request already linked in Orca SHALL NOT be replaced or cleared.
+
+#### Scenario: A pushed branch with a pull request is linked
+- **WHEN** a worktree's branch `feature/login` is pushed, Orca has no pull request linked to it and `gh` finds pull request 42 for that branch
+- **THEN** ShogunAi links pull request 42 to the worktree in Orca
+
+#### Scenario: An existing link is kept
+- **WHEN** Orca already links pull request 7 to the worktree
+- **THEN** ShogunAi doesn't look the branch up and doesn't change the link
+
+#### Scenario: No GitHub CLI
+- **WHEN** `gh` isn't installed, isn't signed in or the repository isn't on GitHub
+- **THEN** ShogunAi links nothing and still syncs the status and the comment
+
+### Requirement: Link the worktree's issue in Orca
+When the last segment of a worktree's branch starts with an issue number (`123-login`, `123`, `issue-123` or `gh-123`), Orca has no issue linked to it and `gh` finds that issue in the repository, ShogunAi SHALL link the issue in Orca. An issue already linked SHALL NOT be replaced or cleared.
+
+#### Scenario: A branch named after an issue
+- **WHEN** a worktree's branch is `feature/123-login`, Orca has no issue linked and issue 123 exists
+- **THEN** ShogunAi links issue 123 to the worktree in Orca
+
+#### Scenario: A task id that isn't an issue number
+- **WHEN** a worktree's branch is `feature/TASK-123`
+- **THEN** ShogunAi doesn't link any issue
+
+### Requirement: Keep GitHub lookups rare
+The desktop app SHALL look up a worktree's pull request or issue with `gh` at most once every 10 minutes per worktree, and each lookup SHALL have a time limit of 10 seconds per lookup, and SHALL NOT look up a link Orca already has. A failed lookup SHALL be treated as no link.
+
+#### Scenario: Repeated checks
+- **WHEN** the desktop app checks its projects every few seconds and a pushed worktree has no pull request
+- **THEN** `gh` is asked about that worktree's branch at most once every 10 minutes
+
+### Requirement: When ShogunAi syncs a worktree to Orca
+ShogunAi SHALL sync the worktrees Orca lists on the desktop app's periodic check while Orca is running, the worktree it opens with "Open in Orca" or `shogun open --orca`, and the worktree `shogun hook orca setup` provisions. Syncing SHALL NOT start Orca, change a repository's visibility in Orca or act on a worktree Orca doesn't list.
+
+#### Scenario: Orca not running
+- **WHEN** Orca is installed but its desktop app isn't running during the desktop app's periodic check
+- **THEN** ShogunAi doesn't start Orca and doesn't sync anything
+
+#### Scenario: Opening from the command line
+- **WHEN** `shogun open TASK-123 --orca` opens a worktree in Orca
+- **THEN** the worktree's status, comment and links are synced before the command ends
+
+#### Scenario: A worktree created from Orca
+- **WHEN** Orca runs `shogun hook orca setup` for a worktree it has just created
+- **THEN** after provisioning, ShogunAi syncs that worktree's status and comment in Orca
+
+### Requirement: A failed sync never fails the action
+A sync that fails, because Orca's command fails, answers late or doesn't list the worktree, SHALL NOT fail or delay the action that triggered it beyond the sync's own time limit, and SHALL NOT be reported as an error of that action. The command line SHALL print a one-line warning on standard error; the desktop app SHALL ignore it and retry on its next check.
+
+#### Scenario: Orca rejects the update
+- **WHEN** `shogun open TASK-123 --orca` opens the worktree but `orca worktree set` fails
+- **THEN** the command still exits with success and prints a warning naming the worktree on standard error
+
+### Requirement: Read the ports Orca sees each worktree listen on
+When Orca is running, the system SHALL read the listening ports Orca ties to a workspace, matched to ShogunAi's worktrees by path, each with its port number, the process listening and the address a dev server printed in an Orca terminal when Orca saw one. A port Orca reports more than once for the same worktree SHALL count once. Listeners Orca doesn't tie to a workspace SHALL be ignored.
+
+#### Scenario: Dev server in a worktree
+- **WHEN** a Python server listens on 127.0.0.1:8765 from a worktree's folder and printed `http://127.0.0.1:8765` in an Orca terminal
+- **THEN** the worktree's observed ports are 8765, by `Python`, at `http://127.0.0.1:8765`
+
+#### Scenario: Port on IPv4 and IPv6
+- **WHEN** Orca reports port 5580 twice for the same worktree
+- **THEN** the worktree's observed ports list 5580 once
+
+#### Scenario: Worktree shown but not created by Orca
+- **WHEN** a worktree created by ShogunAi is visible in Orca and a process in its folder listens on port 10004
+- **THEN** the worktree's observed ports include 10004
+
+### Requirement: Reading Orca's ports doesn't slow the list
+Reading the ports from Orca SHALL run at most once per check for all worktrees. It SHALL run nothing when Orca isn't installed and SHALL NOT start Orca. After a failed read it SHALL wait at least 30 seconds before trying again, and a failed or slow read SHALL NOT delay showing the rest of the worktrees' state.
+
+#### Scenario: Orca not running
+- **WHEN** Orca is installed but its app isn't running
+- **THEN** no worktree has observed ports, Orca isn't started, and nothing reports an error
+
+#### Scenario: Failed read
+- **WHEN** reading the ports from Orca fails
+- **THEN** no worktree has observed ports, and Orca isn't asked for them again for at least 30 seconds
+
 ### Requirement: Find a live Claude that Orca doesn't report
 When none of a workspace's Orca terminals reports an agent, opening it in Orca SHALL look in Claude Code's session registry for a live session in the workspace's folder whose process runs in one of those terminals. It SHALL focus that terminal and report `focused` with the session's name, and SHALL NOT start another agent. It SHALL prefer the session with the expected name, then the most recently started one.
 
@@ -230,7 +360,7 @@ When none of a workspace's Orca terminals reports an agent, opening it in Orca S
 - **THEN** that terminal is focused and no other agent is started
 
 ### Requirement: Show a started emulator in Orca's emulator view
-When ShogunAi starts a worktree's emulator, from the command line or the desktop app, and that worktree is open in a running Orca, ShogunAi SHALL show the emulator in the worktree's emulator view in Orca, with that emulator selected. It SHALL do so whether the start launched the emulator or found it already running.
+When ShogunAi starts a worktree's emulator, from the command line or the desktop app, and that worktree is open in a running Orca, ShogunAi SHALL show the emulator in the worktree's emulator view in Orca, with that emulator selected, unless the worktree's iOS simulator is running too. It SHALL do so whether the start launched the emulator or found it already running.
 
 #### Scenario: Worktree open in Orca
 - **WHEN** the user runs `shogun emulator start` in a worktree that Orca lists, and its emulator `emulator-5556` boots
@@ -264,7 +394,7 @@ Showing an emulator in Orca SHALL be best effort: ShogunAi SHALL NOT start Orca 
 - **THEN** the start still succeeds and the emulator keeps running
 
 ### Requirement: Report whether the emulator was shown in Orca
-`shogun emulator start` SHALL say on standard error, after the start, when the emulator was shown in Orca and when showing it failed, with Orca's message, and say nothing about Orca otherwise. Its standard output SHALL stay unchanged. With `--json`, the start SHALL report `orcaView` as `shown`, `not-open` or `failed`.
+`shogun emulator start` SHALL say on standard error, after the start, when the emulator was shown in Orca, when showing it was skipped because the worktree's simulator is running too, and when showing it failed, with Orca's message, and say nothing about Orca otherwise. Its standard output SHALL stay unchanged. With `--json`, the start SHALL report `orcaView` as `shown`, `not-open`, `skipped` or `failed`.
 
 #### Scenario: Shown
 - **WHEN** the start shows `emulator-5556` in Orca
@@ -279,19 +409,23 @@ Showing an emulator in Orca SHALL be best effort: ShogunAi SHALL NOT start Orca 
 - **THEN** the JSON has `"orcaView": "not-open"`
 
 ### Requirement: Show the running emulator when opening a worktree in Orca
-Opening a worktree in Orca, from the command line, the desktop app or a group, SHALL show the worktree's emulator in its emulator view when the repository declares the emulator provider and the emulator is running, before the agent's terminal is started or focused, so the agent's terminal stays in front. It SHALL NOT start a stopped emulator. Failing to show it SHALL NOT fail the open.
+Opening a worktree in Orca, from the command line, the desktop app or a group, SHALL show the worktree's running emulator or booted simulator in its emulator view, when its repository declares that device's provider, before the agent's terminal is started or focused. When both run it SHALL show neither. It SHALL NOT start a stopped device, and failing to show one SHALL NOT fail the open.
 
 #### Scenario: Emulator running
 - **WHEN** the user opens in Orca a worktree whose emulator `emulator-5556` is running
 - **THEN** Orca's emulator view of the worktree shows `emulator-5556`, and the agent's terminal is the one in front
 
+#### Scenario: Simulator booted
+- **WHEN** the user opens in Orca a worktree whose simulator is booted
+- **THEN** Orca's emulator view of the worktree shows that simulator, and the agent's terminal is the one in front
+
 #### Scenario: Emulator stopped
-- **WHEN** the worktree's emulator isn't running or was never acquired
-- **THEN** the worktree opens as before and no emulator is started or shown
+- **WHEN** the worktree's emulator and simulator aren't running or were never acquired
+- **THEN** the worktree opens as before and no device is started or shown
 
 #### Scenario: Reported by the command line
 - **WHEN** `shogun open TASK-123 --orca --json` shows `emulator-5556`
-- **THEN** the JSON has `"emulator": "emulator-5556"`, and it is `null` when no emulator was shown
+- **THEN** the JSON has `"emulator": "emulator-5556"`, `"simulator": null` and `"devicesSkipped": false`; `emulator` or `simulator` is `null` when that device wasn't shown
 
 ### Requirement: Stopping the emulator needs nothing from Orca
 Stopping or releasing a worktree's emulator SHALL NOT run any Orca command. Orca's stream of that emulator ends when the emulator exits, and starting the emulator again SHALL show it live in the same view.
@@ -302,4 +436,72 @@ Stopping or releasing a worktree's emulator SHALL NOT run any Orca command. Orca
 
 #### Scenario: Start again
 - **WHEN** the user starts that emulator again while the worktree is open in Orca
+- **THEN** Orca's emulator view shows it live again
+
+### Requirement: Show a started simulator in Orca's emulator view
+When ShogunAi starts a worktree's iOS simulator, from the command line or the desktop app, and that worktree is open in a running Orca, ShogunAi SHALL show the simulator in the worktree's emulator view in Orca, with that simulator selected. It SHALL do so whether the start booted the simulator or found it already booted. It SHALL be best effort, as for the emulator: it never starts Orca, and a failure never fails the start nor changes the simulator.
+
+#### Scenario: Worktree open in Orca
+- **WHEN** the user runs `shogun simulator start` in a worktree that Orca lists, and its simulator boots
+- **THEN** the worktree's emulator view in Orca shows that simulator with live video
+
+#### Scenario: Already booted
+- **WHEN** the worktree's simulator is already booted and the user starts it again
+- **THEN** Orca's emulator view shows it again, without a second view
+
+#### Scenario: Started from the desktop app
+- **WHEN** the user starts a worktree's simulator from its detail or from the machine view's iOS simulators, and Orca lists that worktree
+- **THEN** the simulator is shown in that worktree's emulator view in Orca
+
+#### Scenario: Orca closed
+- **WHEN** the user starts a worktree's simulator while Orca is installed but not running
+- **THEN** the simulator boots, Orca isn't started and no Orca command is run besides its status
+
+#### Scenario: Orca rejects it
+- **WHEN** Orca's command to show the simulator fails
+- **THEN** the start still succeeds and the simulator stays booted
+
+### Requirement: Report whether the simulator was shown in Orca
+`shogun simulator start` SHALL say on standard error, after the start, when the simulator was shown in Orca, when showing it was skipped because the worktree's emulator is running too, and when showing it failed, with Orca's message, and say nothing about Orca otherwise. Its standard output SHALL stay unchanged. With `--json`, the start SHALL report `orcaView` as `shown`, `not-open`, `skipped` or `failed`.
+
+#### Scenario: Shown
+- **WHEN** the start shows the simulator in Orca
+- **THEN** standard error says its UDID is shown in Orca's emulator view, and standard output is the same as without Orca
+
+#### Scenario: Failed
+- **WHEN** Orca's command to show the simulator fails with a message
+- **THEN** standard error says the simulator couldn't be shown in Orca, with that message, and the command exits with code 0
+
+#### Scenario: JSON
+- **WHEN** the user runs `shogun simulator start --json` and the worktree isn't open in Orca
+- **THEN** the JSON has `"orcaView": "not-open"`
+
+### Requirement: Show neither device when both run
+Orca's emulator view shows one device per worktree and shuts down the iOS simulator it was showing when another device is shown in that worktree. So, when a worktree's emulator and its simulator are both running, ShogunAi SHALL NOT show either of them in Orca: not after starting one of them, and not when opening the worktree in Orca. The start and the open SHALL still succeed, and the command line SHALL say why nothing was shown.
+
+#### Scenario: Emulator started while the simulator runs
+- **WHEN** the user runs `shogun emulator start` in a worktree that Orca lists and whose simulator is booted
+- **THEN** the emulator starts, nothing is shown in Orca, the simulator stays booted, standard error says the emulator wasn't shown because the worktree's simulator is running too, and `--json` reports `"orcaView": "skipped"`
+
+#### Scenario: Simulator started while the emulator runs
+- **WHEN** the user runs `shogun simulator start` in a worktree that Orca lists and whose emulator is running
+- **THEN** the simulator boots, nothing is shown in Orca, standard error says the simulator wasn't shown because the worktree's emulator is running too, and `--json` reports `"orcaView": "skipped"`
+
+#### Scenario: Opened with both running
+- **WHEN** the user opens in Orca a worktree whose emulator and simulator are both running
+- **THEN** the worktree opens, no device is shown in its emulator view, the command line says why, and `shogun open TASK-123 --orca --json` has `"emulator": null`, `"simulator": null` and `"devicesSkipped": true`
+
+#### Scenario: Only one device running
+- **WHEN** a worktree whose repository declares both providers has only its simulator booted
+- **THEN** the simulator is shown in Orca as if the repository declared only the simulator provider
+
+### Requirement: Stopping the simulator needs nothing from Orca
+Stopping or releasing a worktree's simulator SHALL NOT run any Orca command. Orca's stream of that simulator ends when the simulator shuts down, and starting the simulator again SHALL show it live in the same view.
+
+#### Scenario: Stop while shown
+- **WHEN** the user stops a worktree simulator that Orca shows
+- **THEN** the simulator shuts down and no Orca command runs
+
+#### Scenario: Start again
+- **WHEN** the user starts that simulator again while the worktree is open in Orca
 - **THEN** Orca's emulator view shows it live again

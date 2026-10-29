@@ -16,7 +16,7 @@ enum class WorkflowCondition(val label: String) {
     ALWAYS("always"),
     MAIN_CHECKOUT("in the main checkout"),
     WORKTREE("in a worktree"),
-    HERDR("when Herdr is available"),
+    RUNNER("when the runner in use is available"),
     EMULATOR_PROVIDER("when the repository declares the emulator provider"),
     SIMULATOR_PROVIDER("when the repository declares the ios-simulator provider"),
     COMPOSE_PROVIDER("when the repository declares the docker-compose provider"),
@@ -34,11 +34,12 @@ data class WorkflowRule(
 
 data class WorkflowContext(
     val inMainCheckout: Boolean,
-    val herdrAvailable: Boolean,
+    val runnerAvailable: Boolean,
     val emulatorProvider: Boolean,
     val simulatorProvider: Boolean,
     val composeProvider: Boolean = false,
     val desktopAppProvider: Boolean = false,
+    val runner: RunnerId = RunnerId.HERDR,
     val flutterProvider: Boolean = false,
     val flutterUsesFvm: Boolean = false,
 ) {
@@ -46,7 +47,7 @@ data class WorkflowContext(
         WorkflowCondition.ALWAYS -> true
         WorkflowCondition.MAIN_CHECKOUT -> inMainCheckout
         WorkflowCondition.WORKTREE -> !inMainCheckout
-        WorkflowCondition.HERDR -> herdrAvailable
+        WorkflowCondition.RUNNER -> runnerAvailable
         WorkflowCondition.EMULATOR_PROVIDER -> emulatorProvider
         WorkflowCondition.SIMULATOR_PROVIDER -> simulatorProvider
         WorkflowCondition.COMPOSE_PROVIDER -> composeProvider
@@ -64,6 +65,9 @@ object WorkflowRules {
 
     const val GUIDE_POINTER = "More detail: run 'shogun guide'."
 
+    private const val OPEN_SESSION_RULE = "parallel.open"
+
+    private fun openSessionText(runner: RunnerId): String = "Open another session with `shogun open <id> --${runner.flag}`."
     private const val FLUTTER_RULE_ID = "resources.flutter"
 
     val all: List<WorkflowRule> = listOf(
@@ -108,10 +112,10 @@ object WorkflowRules {
                 "before saying which worktrees exist.",
         ),
         WorkflowRule(
-            "parallel.open",
+            OPEN_SESSION_RULE,
             WorkflowTopic.PARALLEL,
-            "Open another session with `shogun open <id> --herdr`.",
-            WorkflowCondition.HERDR,
+            openSessionText(RunnerId.HERDR),
+            WorkflowCondition.RUNNER,
             inSessionStart = true,
         ),
         WorkflowRule(
@@ -123,7 +127,7 @@ object WorkflowRules {
             "parallel.messages",
             WorkflowTopic.PARALLEL,
             "Talk to an open session with messages, never by typing into its terminal.",
-            WorkflowCondition.HERDR,
+            WorkflowCondition.RUNNER,
             inSessionStart = true,
         ),
         WorkflowRule(
@@ -205,8 +209,11 @@ object WorkflowRules {
         ),
     )
 
+    fun forRunner(runner: RunnerId): List<WorkflowRule> =
+        all.map { rule -> if (rule.id == OPEN_SESSION_RULE) rule.copy(text = openSessionText(runner)) else rule }
+
     fun rulesFor(context: WorkflowContext, topic: WorkflowTopic? = null): WorkflowSelection {
-        val (applicable, inapplicable) = all
+        val (applicable, inapplicable) = forRunner(context.runner)
             .filter { topic == null || it.topic == topic }
             .partition { context.holds(it.condition) }
         return WorkflowSelection(applicable.map { it.adaptedTo(context) }, inapplicable)

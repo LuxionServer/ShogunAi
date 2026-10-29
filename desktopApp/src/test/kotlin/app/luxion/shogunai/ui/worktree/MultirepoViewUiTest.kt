@@ -22,19 +22,19 @@ import app.luxion.shogunai.domain.usecase.GroupRepositoryOutcome
 import app.luxion.shogunai.domain.usecase.GroupRepositoryResult
 import app.luxion.shogunai.domain.model.AgentLaunchConfig
 import app.luxion.shogunai.domain.model.Multirepo
-import app.luxion.shogunai.domain.model.OrcaOutcome
+import app.luxion.shogunai.domain.model.RunnerId
+import app.luxion.shogunai.domain.model.RunnerOpening
+import app.luxion.shogunai.domain.model.RunnerOutcome
 import app.luxion.shogunai.domain.model.MultirepoDeclaration
 import app.luxion.shogunai.domain.model.SharedVariablesDeclaration
 import app.luxion.shogunai.ui.actions.ActionId
 import app.luxion.shogunai.ui.actions.GroupActionContext
 import app.luxion.shogunai.ui.actions.groupCatalog
 import app.luxion.shogunai.ui.i18n.EnglishStrings
-import app.luxion.shogunai.ui.multirepo.ChangeRunner
 import app.luxion.shogunai.ui.multirepo.MultirepoMembership
 import app.luxion.shogunai.ui.multirepo.MultirepoReviewPane
 import app.luxion.shogunai.ui.multirepo.NewChange
 import app.luxion.shogunai.ui.multirepo.NewChangeDialog
-import app.luxion.shogunai.ui.multirepo.RunnerOutcome
 import java.time.Duration
 import java.time.Instant
 import kotlin.test.Test
@@ -246,15 +246,15 @@ class MultirepoViewUiTest {
             Multirepo("/home/dev/projects/product", MultirepoDeclaration(mapOf("app" to "app", "api" to "api"), "../w", listOf("app", "api")), approved = true),
             mapOf("app" to "app", "api" to "api"),
         )
-        val change = NewChange(membership, herdrInstalled = true, orcaInstalled = true).apply {
+        val change = NewChange(membership, installedRunners = RunnerId.entries.toSet()).apply {
             updateTaskId("TASK-20")
-            runner = ChangeRunner.ORCA
+            runner = RunnerId.ORCA
             results = listOf(
                 GroupRepositoryResult("app", GroupRepositoryOutcome.CREATED),
                 GroupRepositoryResult("api", GroupRepositoryOutcome.CREATED),
             )
             openings = mapOf(
-                "app" to Result.success(RunnerOutcome.Orca(OrcaOutcome.STARTED_AGENT)),
+                "app" to Result.success(RunnerOpening(RunnerId.ORCA, RunnerOutcome.STARTED_AGENT, "term_1", "Claude")),
                 "api" to Result.failure(IllegalStateException("boom")),
             )
         }

@@ -14,6 +14,7 @@ import app.luxion.shogunai.domain.model.HerdrOutcome
 import app.luxion.shogunai.domain.model.HerdrPane
 import app.luxion.shogunai.domain.model.HerdrWorkspace
 import app.luxion.shogunai.domain.model.Multirepo
+import app.luxion.shogunai.domain.model.RunnerId
 import app.luxion.shogunai.domain.model.RunningAgent
 import app.luxion.shogunai.domain.model.WorktreeError
 import kotlinx.coroutines.test.runTest
@@ -136,6 +137,13 @@ class GroupStateAndContextTest {
 
         assertTrue(lines[0].startsWith("ShogunAi multirepo Product Suite at ${world.folder},"))
         assertTrue(GroupContext(FakeFileManager()).multirepoLines(world.multirepo)[0].startsWith("ShogunAi multirepo product at"))
+    }
+
+    @Test
+    fun `the multirepo context names the runner in use`() {
+        assertTrue("`shogun open <id> --herdr`" in GroupContext(FakeFileManager()).multirepoLines(world.multirepo).last())
+        val withOrca = GroupContext(FakeFileManager()).multirepoLines(world.multirepo, RunnerId.ORCA).last()
+        assertTrue("`shogun open <id> --orca`" in withOrca, withOrca)
     }
 
     @Test

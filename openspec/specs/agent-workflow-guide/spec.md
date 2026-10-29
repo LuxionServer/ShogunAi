@@ -6,7 +6,7 @@ Gives agents ShogunAi's workflow rules, versioned with the binary and adapted to
 ## Requirements
 
 ### Requirement: A catalog of workflow rules by topic
-ShogunAi SHALL keep one catalog of workflow rules, grouped into the topics `worktrees`, `parallel`, `resources` and `cleanup`. Every rule SHALL have a fixed text and a condition: always, the session being in the main checkout, the session being in a worktree, Herdr being available, or the repository declaring a provider. The catalog SHALL NOT contain personal or team preferences such as code style, commits, pull request format or reviewers, tickets or delegation; a rule MAY point to facts ShogunAi records, such as a worktree's base branch.
+ShogunAi SHALL keep one catalog of workflow rules, grouped into the topics `worktrees`, `parallel`, `resources` and `cleanup`. Every rule SHALL have a fixed text, except that the rules naming a runner name the runner in use, and a condition: always, the session being in the main checkout, the session being in a worktree, the runner in use being available, or the repository declaring a provider. The catalog SHALL NOT contain personal or team preferences such as code style, commits, pull request format or reviewers, tickets or delegation; a rule MAY point to facts ShogunAi records, such as a worktree's base branch.
 
 #### Scenario: Topics
 - **WHEN** the user runs `shogun guide --plain`
@@ -16,8 +16,12 @@ ShogunAi SHALL keep one catalog of workflow rules, grouped into the topics `work
 - **WHEN** the catalog's rules are listed
 - **THEN** none of them is about commit messages, pull request format, code style or tickets
 
+#### Scenario: Plain guide with Orca in use
+- **WHEN** the runner in use is Orca and the user runs `shogun guide --plain`
+- **THEN** the parallel rules say `shogun open <id> --orca` and none says `--herdr`
+
 ### Requirement: Print the rules that apply
-`shogun guide [<topic>]` SHALL print the rules of the topic, or of every topic when none is given, whose condition holds in the current directory: whether it is the main checkout or a worktree, whether Herdr is available, and which providers the repository declares. A rule whose condition doesn't hold SHALL be printed after the applicable ones, marked with the condition it needs, so an agent can still learn it. An unknown topic SHALL fail with a usage error that lists the topics.
+`shogun guide [<topic>]` SHALL print the rules of the topic, or of every topic when none is given, whose condition holds in the current directory: whether it is the main checkout or a worktree, whether the runner in use is available, and which providers the repository declares. Herdr is available when it answers; Orca is available when it's installed, since opening in it starts it. A rule whose condition doesn't hold SHALL be printed after the applicable ones, marked with the condition it needs, so an agent can still learn it. An unknown topic SHALL fail with a usage error that lists the topics.
 
 #### Scenario: In a worktree
 - **WHEN** the user runs `shogun guide worktrees` in a linked worktree
@@ -30,6 +34,10 @@ ShogunAi SHALL keep one catalog of workflow rules, grouped into the topics `work
 #### Scenario: Provider not declared
 - **WHEN** the repository doesn't declare the emulator provider and the user runs `shogun guide resources`
 - **THEN** the emulator rules are printed after the others, marked as applying when the repository declares the emulator provider
+
+#### Scenario: Orca in use and installed
+- **WHEN** the runner in use is Orca, Orca is installed but not running, and the user runs `shogun guide parallel`
+- **THEN** the rule to open another session with `shogun open <id> --orca` is printed among the applicable ones
 
 #### Scenario: Unknown topic
 - **WHEN** the user runs `shogun guide parties`
@@ -61,11 +69,15 @@ The `worktrees` topic SHALL tell agents that every change goes in its own worktr
 - **THEN** the output says to open a pull request against the branch `shogun base` prints, passing it with `--base`, and what to do when `shogun base` has none recorded
 
 ### Requirement: Rules for parallel sessions
-The `parallel` topic SHALL tell agents to open another session with `shogun open <id> --herdr` when Herdr is available, or in the path `shogun new` prints otherwise, and to talk to an open session with messages, never by typing into its terminal.
+The `parallel` topic SHALL tell agents to open another session with `shogun open <id> --<runner>`, naming the runner in use (`--herdr` or `--orca`), when that runner is available, or in the path `shogun new` prints otherwise, and to talk to an open session with messages, never by typing into its terminal. The context injected at session start SHALL name the same runner.
 
 #### Scenario: Talking to another session
-- **WHEN** Herdr is available and the user runs `shogun guide parallel`
+- **WHEN** Herdr is the runner in use and available, and the user runs `shogun guide parallel`
 - **THEN** the output says to open the session with `shogun open <id> --herdr` and to talk to it with messages, not by typing into its terminal
+
+#### Scenario: Session start with Orca in use
+- **WHEN** the runner in use is Orca, Orca is installed, and a Claude Code session starts in a worktree
+- **THEN** the context says to open another session with `shogun open <id> --orca`
 
 ### Requirement: Rules for shared resources and cleanup
 The `resources` and `cleanup` topics SHALL tell agents that each worktree uses its own emulator and simulator and stops them when done, that a worktree's Compose services are started and built with `shogun compose up` and `shogun compose build` and taken down with `shogun compose down <worktree>`, that `shogun gradle stop` and `shogun xcode clean` are run showing what they free and asking first, and that `shogun clean --yes` is run only after asking.

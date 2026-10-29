@@ -17,6 +17,7 @@ import app.luxion.shogunai.domain.io.GradleDaemonSource
 import app.luxion.shogunai.domain.io.AppWindowService
 import app.luxion.shogunai.domain.io.HeadlessAppLauncher
 import app.luxion.shogunai.domain.io.HerdrClient
+import app.luxion.shogunai.domain.io.GitHubClient
 import app.luxion.shogunai.domain.io.OrcaClient
 import app.luxion.shogunai.domain.io.OrcaWorkspaceStore
 import app.luxion.shogunai.domain.io.HerdrConfigSource
@@ -59,12 +60,13 @@ import app.luxion.shogunai.domain.model.DerivedDataFolder
 import app.luxion.shogunai.domain.model.DerivedDataOwner
 import app.luxion.shogunai.domain.model.EmulatorState
 import app.luxion.shogunai.domain.model.AGENT_START_SECONDS
-import app.luxion.shogunai.domain.model.HerdrOpening
 import app.luxion.shogunai.domain.model.OrcaComputerUse
 import app.luxion.shogunai.domain.model.OrcaEmulatorView
-import app.luxion.shogunai.domain.model.OrcaOpening
-import app.luxion.shogunai.domain.model.OrcaOutcome
-import app.luxion.shogunai.domain.model.HerdrOutcome
+import app.luxion.shogunai.domain.model.RunnerId
+import app.luxion.shogunai.domain.model.RunnerOpening
+import app.luxion.shogunai.domain.model.RunnerOutcome
+import app.luxion.shogunai.domain.model.flag
+import app.luxion.shogunai.domain.model.runnerInUse
 import app.luxion.shogunai.domain.model.MainBranch
 import app.luxion.shogunai.domain.model.Multirepo
 import app.luxion.shogunai.domain.model.GradleDaemon
@@ -143,7 +145,7 @@ import app.luxion.shogunai.domain.usecase.ListWorktreesUseCase
 import app.luxion.shogunai.domain.usecase.MachineProviderContributions
 import app.luxion.shogunai.domain.usecase.HerdrAgentLauncher
 import app.luxion.shogunai.domain.usecase.isLiveClaudeProcess
-import app.luxion.shogunai.domain.usecase.OpenWorktreeInHerdrUseCase
+import app.luxion.shogunai.domain.usecase.HerdrAgentRunner
 import app.luxion.shogunai.domain.usecase.effectiveGradleJvmArgs
 import app.luxion.shogunai.domain.usecase.PrepareCocoaPodsUseCase
 import app.luxion.shogunai.domain.usecase.ResolveFlutterPackagesUseCase
@@ -168,8 +170,11 @@ import app.luxion.shogunai.domain.usecase.herdrDetail
 import app.luxion.shogunai.domain.usecase.ClaudeSessionNaming
 import app.luxion.shogunai.domain.usecase.CloseOrcaTerminalsUseCase
 import app.luxion.shogunai.domain.usecase.orcaDetail
-import app.luxion.shogunai.domain.usecase.OpenWorktreeInOrcaUseCase
+import app.luxion.shogunai.domain.usecase.OrcaAgentRunner
+import app.luxion.shogunai.domain.usecase.OrcaSyncItem
 import app.luxion.shogunai.domain.usecase.OrcaWorktreeReader
+import app.luxion.shogunai.domain.usecase.OrcaWorktreeSync
+import app.luxion.shogunai.domain.usecase.worktreeActivity
 import app.luxion.shogunai.domain.usecase.ResolveMainBranchUseCase
 import app.luxion.shogunai.domain.usecase.ResolveRepositoryUseCase
 import app.luxion.shogunai.domain.usecase.ResolveResourceLimitsUseCase
@@ -208,6 +213,7 @@ import app.luxion.shogunai.domain.model.MavenDaemonStopReport
 import app.luxion.shogunai.domain.model.suggestProviders
 import app.luxion.shogunai.domain.model.SuggestionReport
 import app.luxion.shogunai.infrastructure.CliHerdrClient
+import app.luxion.shogunai.infrastructure.CliGitHubClient
 import app.luxion.shogunai.infrastructure.CliOrcaClient
 import app.luxion.shogunai.infrastructure.JsonOrcaWorkspaceStore
 import app.luxion.shogunai.infrastructure.FileClaudeSessionRegistry
@@ -231,10 +237,10 @@ import app.luxion.shogunai.domain.usecase.GroupWorktreeState
 import app.luxion.shogunai.domain.usecase.MultirepoContext
 import app.luxion.shogunai.domain.usecase.MultirepoSharedEnvironment
 import app.luxion.shogunai.domain.usecase.MultirepoMember
-import app.luxion.shogunai.domain.usecase.OpenGroupInHerdrUseCase
-import app.luxion.shogunai.domain.usecase.OpenGroupInOrcaUseCase
-import app.luxion.shogunai.domain.usecase.OpenMultirepoAgentInHerdrUseCase
-import app.luxion.shogunai.domain.usecase.OpenMultirepoAgentInOrcaUseCase
+import app.luxion.shogunai.domain.io.AgentRunner
+import app.luxion.shogunai.domain.io.ToolPreferenceRepository
+import app.luxion.shogunai.infrastructure.JsonToolPreferenceRepository
+import app.luxion.shogunai.infrastructure.JsonSettingsFile
 import app.luxion.shogunai.domain.usecase.ReadGroupsUseCase
 import app.luxion.shogunai.domain.usecase.ResolveMultirepoUseCase
 import app.luxion.shogunai.domain.usecase.UnknownMultirepoAlias
@@ -309,8 +315,10 @@ class ShogunCli(
     private val environmentVariable: (String) -> String? = System::getenv,
     private val userHome: String = System.getProperty("user.home"),
     private val herdr: HerdrClient = CliHerdrClient(executor, userHome = userHome),
+    private val toolPreferences: ToolPreferenceRepository = JsonToolPreferenceRepository(JsonSettingsFile(Path.of(userHome, ".shogunai", "settings.json"))),
     private val herdrAgentStartTimeout: kotlin.time.Duration = AGENT_START_SECONDS.seconds,
     private val orca: OrcaClient = CliOrcaClient(executor, userHome = userHome),
+    private val gitHub: GitHubClient = CliGitHubClient(executor),
     private val orcaWorkspaces: OrcaWorkspaceStore = JsonOrcaWorkspaceStore(Path.of(userHome, ".shogunai", "orca.json")),
     private val trust: RepositoryTrust = RepositoryTrust.NONE,
     private val readAnswer: () -> String? = { null },
@@ -931,14 +939,10 @@ class ShogunCli(
     private suspend fun openInMultirepo(context: MultirepoContext, command: CliCommand.Open): Int {
         val multirepo = context.multirepo
         val target = command.target
+        val runner = runnerFor(command)
         if (target == null) {
-            if (command.orca) {
-                val opening = OpenMultirepoAgentInOrcaUseCase(orca, claudeSessionNaming(herdrAgentStartTimeout))(multirepo).getOrThrow()
-                if (command.json) printJson(multirepoAgentOpenJson(multirepo, opening)) else out.line(orcaOpeningLine(multirepo.folder, opening))
-                return EXIT_OK
-            }
-            val opening = OpenMultirepoAgentInHerdrUseCase(herdr, herdrLauncher())(multirepo).getOrThrow()
-            if (command.json) printJson(multirepoAgentOpenJson(multirepo, opening)) else out.line(herdrOpeningLine(multirepo.folder, opening))
+            val opening = runner.openMultirepoAgent(multirepo).getOrThrow()
+            if (command.json) printJson(multirepoAgentOpenJson(multirepo, opening)) else out.line(openingLine(multirepo.folder, opening))
             return EXIT_OK
         }
         if (command.agent != null) {
@@ -957,34 +961,15 @@ class ShogunCli(
                 return EXIT_FAILURE
             }
         }
-        if (command.orca) return openGroupInOrca(group, command.json)
-        val openings = OpenGroupInHerdrUseCase(herdr, resolveEnvironment, herdrLauncher())(group)
+        val openings = runner.openGroup(group).getOrThrow()
+        openings.forEach { opening -> opening.result.onSuccess { reportSkippedDevices(opening.path, it) } }
         if (command.json) {
-            printJson(groupOpenJson(group.branch, openings))
+            printJson(groupOpenJson(group.branch, runner.id, openings))
         } else {
             openings.forEach { opening ->
                 opening.result
-                    .onSuccess { out.line(herdrOpeningLine(opening.path, it)) }
-                    .onFailure { err.line("shogun: couldn't open ${opening.alias} (${opening.path}) in Herdr: ${failureReason(it)}") }
-            }
-        }
-        return if (openings.all { it.result.isSuccess }) EXIT_OK else EXIT_FAILURE
-    }
-
-    private suspend fun openGroupInOrca(group: WorktreeGroup, json: Boolean): Int {
-        val openings = OpenGroupInOrcaUseCase(
-            orca,
-            resolveEnvironment,
-            claudeSessionNaming(herdrAgentStartTimeout),
-            runningEmulator = readEmulatorStates::runningSerial,
-        )(group).getOrThrow()
-        if (json) {
-            printJson(groupOrcaOpenJson(group.branch, openings))
-        } else {
-            openings.forEach { opening ->
-                opening.result
-                    .onSuccess { out.line(orcaOpeningLine(opening.path, it)) }
-                    .onFailure { err.line("shogun: couldn't open ${opening.alias} (${opening.path}) in Orca: ${failureReason(it)}") }
+                    .onSuccess { out.line(openingLine(opening.path, it)) }
+                    .onFailure { err.line("shogun: couldn't open ${opening.alias} (${opening.path}) in ${runner.id.displayName}: ${failureReason(it)}") }
             }
         }
         return if (openings.all { it.result.isSuccess }) EXIT_OK else EXIT_FAILURE
@@ -1249,6 +1234,7 @@ class ShogunCli(
         val readStatus = ReadWorktreeStatusUseCase(executor, fileManager)
         val herdrWorktreesRoot = herdrConfig.worktreesRoot()
         val agents = DetectRunningAgentsUseCase(executor, herdr, sessionStore, claudeSessions = claudeSessions, orca = orcaReader)(config, worktrees.filterNot { it.isPrunable }).getOrNull().orEmpty()
+        val listeningPorts = orcaReader.ports(worktrees)
         val desktop = readDesktopTurn().getOrElse { DesktopTurnState(holder = null, waiting = emptyList()) }
         val bases = ReadBaseBranchesUseCase(config, executor)().getOrElse { emptyMap() }
         val resolvedBases = ResolveRecordedBasesUseCase(config, executor)()
@@ -1262,6 +1248,7 @@ class ShogunCli(
                 agents[worktree.path].orEmpty(),
                 desktop,
                 worktree.branch?.let(bases::get),
+                listeningPorts?.get(worktree.path),
             )
         }
         if (command.json) {
@@ -1387,44 +1374,57 @@ class ShogunCli(
                 return EXIT_USAGE
             }
         }
-        if (command.orca) {
-            val opening = OpenWorktreeInOrcaUseCase(
-                config,
-                orca,
-                resolveEnvironment,
-                claudeSessionNaming(herdrAgentStartTimeout),
-                runningEmulator = { path -> readEmulatorStates.runningSerial(config, path) },
-            )(worktree, agent).getOrThrow()
-            if (command.json) printJson(openJson(worktree.path, worktree.branch, opening)) else out.line(orcaOpeningLine(worktree.path, opening))
-            return EXIT_OK
-        }
-        val opening = OpenWorktreeInHerdrUseCase(config, herdr, resolveEnvironment, herdrLauncher())(worktree, agent).getOrThrow()
-        if (command.json) printJson(openJson(worktree.path, worktree.branch, opening)) else out.line(herdrOpeningLine(worktree.path, opening))
+        val opening = runnerFor(command).openWorktree(config, worktree, agent).getOrThrow()
+        reportSkippedDevices(worktree.path, opening)
+        if (opening.runner == RunnerId.ORCA) syncWithOrca(worktree, config)
+        if (command.json) printJson(openJson(worktree.path, worktree.branch, opening)) else out.line(openingLine(worktree.path, opening))
         return EXIT_OK
     }
+
+    private fun agentRunner(id: RunnerId): AgentRunner = when (id) {
+        RunnerId.HERDR -> HerdrAgentRunner(herdr, resolveEnvironment, herdrLauncher())
+        RunnerId.ORCA -> OrcaAgentRunner(
+            orca,
+            resolveEnvironment,
+            claudeSessionNaming(herdrAgentStartTimeout),
+            runningEmulator = readEmulatorStates::runningSerial,
+            runningSimulator = readSimulatorStates::runningUdid,
+        )
+    }
+
+    private fun runnerFor(command: CliCommand.Open): AgentRunner = agentRunner(command.runner ?: runnerInUse())
+
+    private fun runnerInUse(): RunnerId =
+        runnerInUse(runCatching { toolPreferences.loadRunner() }.getOrNull()) { agentRunner(it).isInstalled() }
 
     private fun claudeSessionNaming(timeout: kotlin.time.Duration) =
         ClaudeSessionNaming(claudeSessions, isClaudeProcessAlive, timeout, processEnvironment = SystemProcessEnvironmentReader(executor))
 
-    private fun orcaOpeningLine(path: String, opening: OrcaOpening): String {
-        val line = when (opening.outcome) {
-            OrcaOutcome.STARTED_AGENT -> "opened $path in Orca with ${opening.agent} (terminal ${opening.terminalHandle})"
-            OrcaOutcome.FOCUSED -> "focused $path's running agent in Orca (terminal ${opening.terminalHandle})"
-        }
-        val named = opening.sessionName?.let { "$line as session $it" } ?: line
-        return opening.emulator?.let { "$named, with $it in its emulator view" } ?: named
-    }
-
     private fun herdrLauncher() =
         HerdrAgentLauncher(herdr, herdrAgentStartTimeout, registry = claudeSessions, isClaudeProcessAlive = isClaudeProcessAlive)
 
-    private fun herdrOpeningLine(path: String, opening: HerdrOpening): String {
-        val line = when (opening.outcome) {
-            HerdrOutcome.OPENED -> "opened $path in Herdr with ${opening.agent} (pane ${opening.paneId})"
-            HerdrOutcome.STARTED_AGENT -> "started ${opening.agent} in $path's open Herdr workspace (pane ${opening.paneId})"
-            HerdrOutcome.FOCUSED -> "focused $path in Herdr (already open, pane ${opening.paneId})"
+    private fun openingLine(path: String, opening: RunnerOpening): String {
+        val agent = opening.agent
+        val handle = opening.handle
+        val line = when (opening.runner) {
+            RunnerId.HERDR -> when (opening.outcome) {
+                RunnerOutcome.OPENED -> "opened $path in Herdr with $agent (pane $handle)"
+                RunnerOutcome.STARTED_AGENT -> "started $agent in $path's open Herdr workspace (pane $handle)"
+                RunnerOutcome.FOCUSED -> "focused $path in Herdr (already open, pane $handle)"
+            }
+            RunnerId.ORCA -> when (opening.outcome) {
+                RunnerOutcome.OPENED, RunnerOutcome.STARTED_AGENT -> "opened $path in Orca with $agent (terminal $handle)"
+                RunnerOutcome.FOCUSED -> "focused $path's running agent in Orca (terminal $handle)"
+            }
         }
-        return opening.sessionName?.let { "$line as session $it" } ?: line
+        val named = opening.sessionName?.let { "$line as session $it" } ?: line
+        return (opening.emulator ?: opening.simulator)?.let { "$named, with $it in its emulator view" } ?: named
+    }
+
+    private fun reportSkippedDevices(path: String, opening: RunnerOpening) {
+        if (opening.devicesSkipped) {
+            err.line("shogun: didn't show $path's devices in Orca: its emulator and simulator are both running, and Orca shows one device per worktree")
+        }
     }
 
     private suspend fun repair(command: CliCommand.Repair): Int {
@@ -1663,6 +1663,7 @@ class ShogunCli(
     private suspend fun simulator(command: CliCommand.Simulator): Int {
         val (config, worktree) = configAndWorktreeContaining(absolute(command.path ?: workingDirectory))
         var acquisition: ResourceAcquisition? = null
+        var orcaView: OrcaEmulatorView? = null
         val simulator = when (command.action) {
             SimulatorAction.START -> {
                 val started = startSimulator(
@@ -1672,6 +1673,9 @@ class ShogunCli(
                     command.wait?.let(::deviceWait),
                 ).getOrThrow()
                 acquisition = started.acquisition
+                orcaView = showEmulatorInOrca(worktree.path, started.device.udid) {
+                    readEmulatorStates.runningSerial(config, worktree.path) != null
+                }
                 started.device
             }
             SimulatorAction.STOP -> stopSimulator(config, worktree.path).getOrThrow()
@@ -1685,9 +1689,10 @@ class ShogunCli(
         }
         acquisition?.releases?.forEach { err.line("released the simulator of ${releasedName(it)} to make room") }
         reportWaited(acquisition)
+        if (simulator != null) reportOrcaView("simulator", simulator.udid, orcaView)
         val released = if (simulator == null) readReleaseRecord(worktree.path, ResourceKind.IOS_SIMULATOR) else null
         if (command.json) {
-            printJson(simulatorJson(worktree.path, simulator, acquisition, released))
+            printJson(simulatorJson(worktree.path, simulator, acquisition, released, orcaView))
             return EXIT_OK
         }
         if (simulator == null) {
@@ -1765,7 +1770,9 @@ class ShogunCli(
                     command.wait?.let(::deviceWait),
                 ).getOrThrow()
                 acquisition = started.acquisition
-                orcaView = showEmulatorInOrca(worktree.path, started.device.serial)
+                orcaView = showEmulatorInOrca(worktree.path, started.device.serial) {
+                    readSimulatorStates.runningUdid(config, worktree.path) != null
+                }
                 started.device
             }
             EmulatorAction.STOP -> stopEmulator(config, worktree.path).getOrThrow()
@@ -1778,7 +1785,7 @@ class ShogunCli(
         }
         acquisition?.releases?.forEach { err.line("released the emulator of ${releasedName(it)} to make room") }
         reportWaited(acquisition)
-        if (emulator != null) reportOrcaView(emulator.serial, orcaView)
+        if (emulator != null) reportOrcaView("emulator", emulator.serial, orcaView)
         val released = if (emulator == null) readReleaseRecord(worktree.path, ResourceKind.EMULATOR) else null
         if (command.json) {
             printJson(emulatorJson(worktree.path, emulator, acquisition, released, orcaView))
@@ -1793,12 +1800,18 @@ class ShogunCli(
         return EXIT_OK
     }
 
-    private fun reportOrcaView(serial: String, view: OrcaEmulatorView?) {
+    private fun reportOrcaView(kind: String, device: String, view: OrcaEmulatorView?) {
         when (view) {
-            OrcaEmulatorView.Shown -> err.line("shown $serial in Orca's emulator view")
-            is OrcaEmulatorView.Failed -> err.line("shogun: couldn't show the emulator in Orca: ${view.message}")
+            OrcaEmulatorView.Shown -> err.line("shown $device in Orca's emulator view")
+            OrcaEmulatorView.Skipped -> err.line("shogun: didn't show the $kind in Orca: ${otherDeviceRunning(kind)}")
+            is OrcaEmulatorView.Failed -> err.line("shogun: couldn't show the $kind in Orca: ${view.message}")
             OrcaEmulatorView.NotOpen, null -> Unit
         }
+    }
+
+    private fun otherDeviceRunning(kind: String): String {
+        val other = if (kind == "emulator") "simulator" else "emulator"
+        return "the worktree's $other is running too, and Orca shows one device per worktree"
     }
 
     private fun deviceWait(timeout: Duration): DeviceWait {
@@ -1930,7 +1943,7 @@ class ShogunCli(
         val directory = input.string("cwd") ?: workingDirectory
         val multirepo = runCatching { resolveMultirepo(directory).getOrThrow() }.getOrNull()
         if (multirepo?.atFolder == true) {
-            GroupContext(fileManager).multirepoLines(multirepo.multirepo).forEach { out.line(it) }
+            GroupContext(fileManager).multirepoLines(multirepo.multirepo, runnerInUse()).forEach { out.line(it) }
             if (multirepo.repositoryPath == null) return EXIT_OK
         }
         if (ResolveRepositoryUseCase(executor)(directory).isFailure) return EXIT_OK
@@ -1966,24 +1979,29 @@ class ShogunCli(
     private fun isRegisteredProject(repository: String): Boolean =
         projectRepository.list().any { sameDirectory(it.config.baseRepositoryPath, repository) }
 
-    private suspend fun unregisteredWorkflowContext(worktree: Worktree): WorkflowContext =
-        WorkflowContext(
+    private suspend fun unregisteredWorkflowContext(worktree: Worktree): WorkflowContext {
+        val runner = runnerInUse()
+        return WorkflowContext(
             inMainCheckout = worktree.isMain,
-            herdrAvailable = herdrAvailable(),
+            runnerAvailable = runnerAvailable(runner),
             emulatorProvider = false,
             simulatorProvider = false,
             desktopAppProvider = declaresHeadlessApp(worktree.path),
+            runner = runner,
         )
+    }
 
     private suspend fun workflowContext(repository: String, worktree: Worktree): WorkflowContext {
         val providers = provisioningSource.read(repository).providers
+        val runner = runnerInUse()
         return WorkflowContext(
             inMainCheckout = worktree.isMain,
-            herdrAvailable = herdrAvailable(),
+            runnerAvailable = runnerAvailable(runner),
             emulatorProvider = providers.emulator != null,
             simulatorProvider = providers.iosSimulator != null && appleSimulators.isSupported(),
             composeProvider = providers.dockerCompose != null,
             desktopAppProvider = declaresHeadlessApp(worktree.path),
+            runner = runner,
             flutterProvider = providers.flutter != null,
             flutterUsesFvm = usesFvm(fileManager, worktree.path),
         )
@@ -1991,6 +2009,11 @@ class ShogunCli(
 
     private fun declaresHeadlessApp(worktreePath: String): Boolean =
         appWindows.isSupported && runCatching { provisioningSource.read(worktreePath).providers.desktopApp }.getOrNull() != null
+
+    private suspend fun runnerAvailable(runner: RunnerId): Boolean = when (runner) {
+        RunnerId.HERDR -> herdrAvailable()
+        RunnerId.ORCA -> orca.isInstalled()
+    }
 
     private suspend fun herdrAvailable(): Boolean = try {
         withTimeout(HERDR_PROBE_MILLIS) { herdr.listAgents() }
@@ -2007,7 +2030,7 @@ class ShogunCli(
         val topic = command.topic?.let(WorkflowTopic::parse)
         when {
             command.migrate -> migrateText(command.file?.let(::absolute)).forEach { out.line(it) }
-            command.plain -> plainGuideText(WorkflowRules.all.filter { topic == null || it.topic == topic }).forEach { out.line(it) }
+            command.plain -> plainGuideText(WorkflowRules.forRunner(runnerInUse()).filter { topic == null || it.topic == topic }).forEach { out.line(it) }
             else -> {
                 if (ResolveRepositoryUseCase(executor)(workingDirectory).isFailure) {
                     err.line("shogun: No Git repository found here, so the rules that apply can't be chosen.")
@@ -2899,8 +2922,34 @@ class ShogunCli(
             ?: return hookUsageError("orca", "$ORCA_WORKTREE_PATH isn't set; run it from the scripts of Orca's orca.yaml")
         val repository = repositoryOfOrcaWorktree(path)
         return when (action) {
-            OrcaHookAction.SETUP -> provisionWorktreeAt(path, RepositoryApproval.SKIP, ::noteOutsideWorktreesRoot, configDirectory = repository)
+            OrcaHookAction.SETUP -> provisionWorktreeAt(path, RepositoryApproval.SKIP, ::noteOutsideWorktreesRootAndSyncWithOrca, configDirectory = repository)
             OrcaHookAction.ARCHIVE -> releaseOrcaWorktree(path, repository)
+        }
+    }
+
+    private suspend fun noteOutsideWorktreesRootAndSyncWithOrca(worktree: Worktree, config: ProjectConfig) {
+        noteOutsideWorktreesRoot(worktree, config)
+        syncWithOrca(worktree, config)
+    }
+
+    private suspend fun syncWithOrca(worktree: Worktree, config: ProjectConfig) {
+        val failures = try {
+            val agents = DetectRunningAgentsUseCase(executor, herdr, sessionStore, claudeSessions = claudeSessions, orca = orcaReader)(config, listOf(worktree))
+                .getOrNull().orEmpty()[worktree.path].orEmpty()
+            val rows = orcaReader.lastRows() ?: return
+            val mainBranch = ResolveMainBranchUseCase(config, executor)().getOrNull()
+            val base = worktree.branch?.let(ResolveRecordedBasesUseCase(config, executor)()::get) ?: mainBranch
+            val status = ReadWorktreeStatusUseCase(executor, fileManager)(worktree, mainBranch, base).getOrNull()
+            val item = OrcaSyncItem(worktree, status, agents, worktreeActivity(worktree, status, agents, now()))
+            OrcaWorktreeSync(orca, orcaWorkspaces, gitHub).sync(listOf(item), rows).map { it.error }
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            listOf(error)
+        }
+        failures.forEach { error ->
+            val reason = (error as? WorktreeError)?.orcaDetail() ?: failureReason(error)
+            err.line("shogun: couldn't update ${worktree.path} in Orca: $reason")
         }
     }
 
@@ -3005,6 +3054,7 @@ class ShogunCli(
             entry.base?.let { add("base=$it") }
             if (worktree.isLocked) add("locked")
             entry.agents.takeIf { it.isNotEmpty() }?.let { agents -> add("agents=${agents.joinToString(",") { agentLabel(it) }}") }
+            entry.listeningPorts?.takeIf { it.isNotEmpty() }?.let { ports -> add("listening=${ports.joinToString(",") { it.port.toString() }}") }
             desktopTurnStatusNote(entry.desktop, worktree.path)?.let(::add)
             when {
                 worktree.isPrunable -> add("folder-missing")

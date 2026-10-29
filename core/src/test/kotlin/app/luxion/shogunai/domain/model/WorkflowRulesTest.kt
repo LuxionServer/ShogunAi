@@ -7,14 +7,14 @@ import kotlin.test.assertTrue
 
 class WorkflowRulesTest {
 
-    private val worktree = WorkflowContext(inMainCheckout = false, herdrAvailable = true, emulatorProvider = true, simulatorProvider = true, composeProvider = true, desktopAppProvider = true, flutterProvider = true)
-    private val bare = WorkflowContext(inMainCheckout = true, herdrAvailable = false, emulatorProvider = false, simulatorProvider = false)
+    private val worktree = WorkflowContext(inMainCheckout = false, runnerAvailable = true, emulatorProvider = true, simulatorProvider = true, composeProvider = true, desktopAppProvider = true, flutterProvider = true)
+    private val bare = WorkflowContext(inMainCheckout = true, runnerAvailable = false, emulatorProvider = false, simulatorProvider = false)
 
     private fun ids(rules: List<WorkflowRule>) = rules.map { it.id }
 
     @Test
     fun `every rule appears exactly where its condition holds`() {
-        listOf(worktree, bare, worktree.copy(herdrAvailable = false), bare.copy(emulatorProvider = true)).forEach { context ->
+        listOf(worktree, bare, worktree.copy(runnerAvailable = false), bare.copy(emulatorProvider = true)).forEach { context ->
             val selection = WorkflowRules.rulesFor(context)
             selection.applicable.forEach { assertTrue(context.holds(it.condition), it.id) }
             selection.inapplicable.forEach { assertFalse(context.holds(it.condition), it.id) }
@@ -122,11 +122,31 @@ class WorkflowRulesTest {
     }
 
     @Test
-    fun `session start without Herdr has no rule about opening or messaging sessions`() {
-        val text = WorkflowRules.sessionStartLines(worktree.copy(herdrAvailable = false)).joinToString("\n")
+    fun `session start without a runner has no rule about opening or messaging sessions`() {
+        val text = WorkflowRules.sessionStartLines(worktree.copy(runnerAvailable = false)).joinToString("\n")
 
         assertFalse("--herdr" in text)
         assertFalse("messages" in text)
+    }
+
+    @Test
+    fun `with Orca in use the open rule names --orca everywhere`() {
+        val orca = worktree.copy(runner = RunnerId.ORCA)
+        val text = WorkflowRules.sessionStartLines(orca).joinToString("\n")
+
+        assertTrue("`shogun open <id> --orca`" in text, text)
+        assertFalse("--herdr" in text)
+        assertTrue(WorkflowRules.forRunner(RunnerId.ORCA).none { "--herdr" in it.text })
+        assertEquals(WorkflowRules.all, WorkflowRules.forRunner(RunnerId.HERDR))
+    }
+
+    @Test
+    fun `an unavailable runner leaves its rules marked with the condition`() {
+        val inapplicable = WorkflowRules.rulesFor(worktree.copy(runner = RunnerId.ORCA, runnerAvailable = false), WorkflowTopic.PARALLEL).inapplicable
+
+        assertEquals(listOf("parallel.open", "parallel.messages"), ids(inapplicable))
+        assertTrue(inapplicable.all { it.condition == WorkflowCondition.RUNNER })
+        assertTrue("--orca" in inapplicable.first().text)
     }
 
     @Test

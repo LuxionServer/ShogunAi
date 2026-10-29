@@ -25,6 +25,7 @@ import app.luxion.shogunai.domain.model.parseEnvironmentVariable
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -64,6 +65,7 @@ class OpenWorktreeInOrcaUseCaseTest {
         usesPowerShell: Boolean = false,
         samePath: (String, String) -> Boolean = { first, second -> first == second },
         runningEmulator: suspend (String) -> String? = { null },
+        runningSimulator: suspend (String) -> String? = { null },
     ) = OpenWorktreeInOrcaUseCase(
         config,
         orca,
@@ -72,6 +74,7 @@ class OpenWorktreeInOrcaUseCaseTest {
         usesPowerShell = usesPowerShell,
         samePath = samePath,
         runningEmulator = runningEmulator,
+        runningSimulator = runningSimulator,
     )
 
     @Test
@@ -111,6 +114,45 @@ class OpenWorktreeInOrcaUseCaseTest {
 
         assertEquals(OrcaOpening(OrcaOutcome.FOCUSED, "term_agent", "claude", emulator = "emulator-5556"), opening)
         assertEquals(listOf("attach:${task.path}:emulator-5556", "switch:term_agent"), orca.events)
+    }
+
+    @Test
+    fun `a booted simulator is shown before the agent's terminal is created`() = runTest {
+        val orca = FakeOrcaClient(repos = listOf(known), visibleWorktrees = visible)
+
+        val opening = useCase(orca, runningSimulator = { path -> SIMULATOR_UDID.takeIf { path == task.path } })(task).getOrThrow()
+
+        assertEquals(SIMULATOR_UDID, opening.simulator)
+        assertNull(opening.emulator)
+        assertFalse(opening.devicesSkipped)
+        assertEquals(listOf("attach:${task.path}:$SIMULATOR_UDID", "create:${task.path}"), orca.events)
+    }
+
+    @Test
+    fun `with the emulator and the simulator both running neither is shown`() = runTest {
+        val orca = FakeOrcaClient(repos = listOf(known), visibleWorktrees = visible)
+
+        val opening = useCase(orca, runningEmulator = { "emulator-5556" }, runningSimulator = { SIMULATOR_UDID })(task).getOrThrow()
+
+        assertTrue(opening.devicesSkipped)
+        assertNull(opening.emulator)
+        assertNull(opening.simulator)
+        assertTrue(orca.attachedEmulators.isEmpty())
+        assertEquals(OrcaOutcome.STARTED_AGENT, opening.outcome)
+    }
+
+    @Test
+    fun `a simulator lookup that fails leaves the running emulator shown`() = runTest {
+        val orca = FakeOrcaClient(repos = listOf(known), visibleWorktrees = visible)
+
+        val opening = useCase(
+            orca,
+            runningEmulator = { "emulator-5556" },
+            runningSimulator = { throw IllegalStateException("simctl failed") },
+        )(task).getOrThrow()
+
+        assertEquals("emulator-5556", opening.emulator)
+        assertEquals(listOf(task.path to "emulator-5556"), orca.attachedEmulators)
     }
 
     @Test
@@ -498,3 +540,5 @@ class OpenWorktreeInOrcaUseCaseTest {
         assertIs<WorktreeError.OrcaAgentNotStarted>(result.exceptionOrNull())
     }
 }
+
+private const val SIMULATOR_UDID = "8D2C51A4-3F0B-4C6E-9A1D-5B7E2F90C3A1"

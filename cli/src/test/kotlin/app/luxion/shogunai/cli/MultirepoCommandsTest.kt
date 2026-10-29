@@ -12,6 +12,7 @@ import app.luxion.shogunai.domain.FakeGradleDaemonSource
 import app.luxion.shogunai.domain.FakeHerdrClient
 import app.luxion.shogunai.domain.FakeHerdrConfigSource
 import app.luxion.shogunai.domain.FakeOrcaClient
+import app.luxion.shogunai.domain.FakeToolPreferenceRepository
 import app.luxion.shogunai.domain.FakeKmpTestWiring
 import app.luxion.shogunai.domain.FakeMachineCapacity
 import app.luxion.shogunai.domain.FakeMultirepoSource
@@ -38,6 +39,7 @@ import app.luxion.shogunai.domain.model.MultirepoDeclaration
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.ResourceSettings
+import app.luxion.shogunai.domain.model.RunnerId
 import app.luxion.shogunai.domain.model.WorkspaceSetting
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonNull
@@ -103,6 +105,7 @@ class MultirepoCommandsTest {
         provisioning: FakeRepositoryProvisioningSource = FakeRepositoryProvisioningSource(),
         trust: RepositoryTrust = RepositoryTrust.NONE,
         orca: FakeOrcaClient = FakeOrcaClient(installed = false),
+        runner: FakeToolPreferenceRepository = FakeToolPreferenceRepository(),
     ) = ShogunCli(
         executor = git,
         fileManager = fileManager,
@@ -128,6 +131,7 @@ class MultirepoCommandsTest {
         environmentVariable = { if (it == "CLAUDE_ENV_FILE") envFile.toString() else null },
         userHome = "/home/dev",
         herdr = herdrClient,
+        toolPreferences = runner,
         herdrAgentStartTimeout = 100.milliseconds,
         readAnswer = { answer },
         sessionStore = sessionStore,
@@ -465,7 +469,7 @@ class MultirepoCommandsTest {
 
         val repo = json()["groups"]!!.jsonArray.single().jsonObject["repos"]!!.jsonArray.first().jsonObject
         assertEquals(
-            Json.parseToJsonElement("""[{"name": "claude", "state": null, "stateSource": null, "herdrState": null, "sessions": [{"name": "app-task-1", "pid": 400}]}]"""),
+            Json.parseToJsonElement("""[{"name": "claude", "state": null, "stateSource": null, "herdrState": null, "sessions": [{"name": "app-task-1", "pid": 400}], "activity": null}]"""),
             repo["agents"],
         )
     }
@@ -594,6 +598,26 @@ class MultirepoCommandsTest {
         assertTrue(out.lines().first().startsWith("ShogunAi multirepo product at $folder"))
         assertTrue(out.contains("shogun status"))
         assertEquals("", envFile.readText())
+    }
+
+    @Test
+    fun `session start in the multirepo folder names the runner in use`() {
+        cli(input = """{"cwd": "$folder"}""", orca = FakeOrcaClient(), runner = FakeToolPreferenceRepository(runner = RunnerId.ORCA)).run(listOf("hook", "session-start"))
+
+        assertTrue(out.contains("`shogun open <id> --orca` to open its worktrees"), out.toString())
+        assertFalse(out.contains("--herdr"), out.toString())
+    }
+
+    @Test
+    fun `open without a runner flag opens the group in the runner in use`() {
+        groupTask1()
+        val orca = FakeOrcaClient()
+
+        val exitCode = cli(orca = orca, runner = FakeToolPreferenceRepository(runner = RunnerId.ORCA)).run(listOf("open", "TASK-1"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals(listOf("$worktreesRoot/app/TASK-1", "$worktreesRoot/api/TASK-1"), orca.created.map { it.worktreePath })
+        assertTrue(herdr.opened.isEmpty())
     }
 
     @Test

@@ -70,16 +70,37 @@ class OpenGroupInOrcaUseCaseTest {
     fun `a member with a running emulator gets it shown by its own repository's lookup`() = runTest {
         val orca = FakeOrcaClient()
         val lookups = mutableListOf<Pair<String, String>>()
-        val open = OpenGroupInOrcaUseCase(orca, resolveEnvironment, usesPowerShell = false) { config, path ->
-            lookups += config.baseRepositoryPath to path
-            "emulator-5556".takeIf { config.baseRepositoryPath == world.appBase }
-        }
+        val open = OpenGroupInOrcaUseCase(
+            orca,
+            resolveEnvironment,
+            usesPowerShell = false,
+            runningEmulator = { config, path ->
+                lookups += config.baseRepositoryPath to path
+                "emulator-5556".takeIf { config.baseRepositoryPath == world.appBase }
+            },
+        )
 
         val openings = open(group()).getOrThrow()
 
         assertEquals(listOf(world.appBase to appTask, world.apiBase to apiTask), lookups)
         assertEquals(listOf(appTask to "emulator-5556"), orca.attachedEmulators)
         assertEquals(listOf("emulator-5556", null), openings.map { it.result.getOrThrow().emulator })
+    }
+
+    @Test
+    fun `a member with a booted simulator gets it shown by its own repository's lookup`() = runTest {
+        val orca = FakeOrcaClient()
+        val open = OpenGroupInOrcaUseCase(
+            orca,
+            resolveEnvironment,
+            usesPowerShell = false,
+            runningSimulator = { config, _ -> SIMULATOR_UDID.takeIf { config.baseRepositoryPath == world.apiBase } },
+        )
+
+        val openings = open(group()).getOrThrow()
+
+        assertEquals(listOf(apiTask to SIMULATOR_UDID), orca.attachedEmulators)
+        assertEquals(listOf(null, SIMULATOR_UDID), openings.map { it.result.getOrThrow().simulator })
     }
 
     @Test
@@ -244,3 +265,5 @@ class OpenGroupInOrcaUseCaseTest {
         assertEquals(1, orca.psReads)
     }
 }
+
+private const val SIMULATOR_UDID = "8D2C51A4-3F0B-4C6E-9A1D-5B7E2F90C3A1"

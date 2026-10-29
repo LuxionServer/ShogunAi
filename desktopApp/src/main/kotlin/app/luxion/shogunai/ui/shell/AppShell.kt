@@ -32,6 +32,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import app.luxion.shogunai.domain.model.RunnerId
 import app.luxion.shogunai.AppContainer
 import app.luxion.shogunai.domain.model.GroupedView
 import app.luxion.shogunai.domain.model.Project
@@ -99,12 +100,14 @@ fun AppShell(
         WorktreeBoard(
             useCasesFor = appContainer::worktreeUseCases,
             detectAgents = appContainer.detectRunningAgents::invoke,
+            syncOrca = appContainer::syncOrca,
             preferences = appContainer.shellPreferenceRepository,
             approval = appContainer.repositoryApproval,
             rememberFetchBeforeCreate = viewModel::rememberFetchBeforeCreate,
             onWorktreeUsed = { ref -> viewModel.recordWorktree(ref.projectId, ref.path) },
             inactivity = inactivity,
             multirepoActions = appContainer.multirepoActions,
+            runnerInUse = { appContainer.tools.defaultRunner ?: RunnerId.HERDR },
             desktopTurn = appContainer.desktopTurn,
         )
     }

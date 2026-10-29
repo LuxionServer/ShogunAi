@@ -13,12 +13,16 @@ import kotlin.time.Duration.Companion.seconds
 class ShowEmulatorInOrcaUseCase(
     private val orca: OrcaClient,
     private val samePath: (String, String) -> Boolean = ::sameDirectory,
-    private val timeout: Duration = 10.seconds,
+    private val timeout: Duration = 30.seconds,
 ) {
-    suspend operator fun invoke(worktreePath: String, serial: String): OrcaEmulatorView {
+    suspend operator fun invoke(
+        worktreePath: String,
+        device: String,
+        otherDeviceRunning: suspend () -> Boolean = { false },
+    ): OrcaEmulatorView {
         if (!orca.isInstalled()) return OrcaEmulatorView.NotOpen
         return try {
-            withTimeout(timeout) { show(worktreePath, serial) }
+            withTimeout(timeout) { show(worktreePath, device, otherDeviceRunning) }
         } catch (error: TimeoutCancellationException) {
             OrcaEmulatorView.Failed("Orca didn't answer within ${timeout.inWholeSeconds} seconds")
         } catch (error: CancellationException) {
@@ -28,12 +32,22 @@ class ShowEmulatorInOrcaUseCase(
         }
     }
 
-    private suspend fun show(worktreePath: String, serial: String): OrcaEmulatorView {
+    private suspend fun show(worktreePath: String, device: String, otherDeviceRunning: suspend () -> Boolean): OrcaEmulatorView {
         if (!orca.status().running) return OrcaEmulatorView.NotOpen
         if (orca.agentsByWorktree().none { samePath(it.path, worktreePath) }) return OrcaEmulatorView.NotOpen
-        orca.attachEmulator(OrcaWorkspace.Worktree(worktreePath), serial)
+        if (isRunning(otherDeviceRunning)) return OrcaEmulatorView.Skipped
+        orca.attachEmulator(OrcaWorkspace.Worktree(worktreePath), device)
         return OrcaEmulatorView.Shown
     }
+
+    private suspend fun isRunning(lookup: suspend () -> Boolean): Boolean =
+        try {
+            lookup()
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            false
+        }
 
     private fun message(error: Exception): String =
         (error as? WorktreeError.OrcaCommandFailed)?.detail ?: error.message ?: error::class.simpleName.orEmpty()

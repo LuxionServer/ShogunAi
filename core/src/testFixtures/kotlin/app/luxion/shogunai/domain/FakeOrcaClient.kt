@@ -2,11 +2,13 @@ package app.luxion.shogunai.domain
 
 import app.luxion.shogunai.domain.io.OrcaClient
 import app.luxion.shogunai.domain.model.ClaudeSession
+import app.luxion.shogunai.domain.model.OrcaPort
 import app.luxion.shogunai.domain.model.OrcaRepo
 import app.luxion.shogunai.domain.model.OrcaStatus
 import app.luxion.shogunai.domain.model.OrcaTerminal
 import app.luxion.shogunai.domain.model.OrcaWorkspace
 import app.luxion.shogunai.domain.model.OrcaWorktree
+import app.luxion.shogunai.domain.model.OrcaWorktreeUpdate
 import app.luxion.shogunai.domain.model.WorktreeError
 
 class FakeOrcaClient(
@@ -24,9 +26,12 @@ class FakeOrcaClient(
     private val failure: Throwable? = null,
     private val statusFailure: Throwable? = null,
     private val psFailure: Throwable? = null,
+    var listeningPorts: List<OrcaPort> = emptyList(),
+    var portsFailure: Throwable? = null,
     private val terminalsFailure: Throwable? = null,
     private val closeFailures: Map<String, Throwable> = emptyMap(),
     private val folderPaths: Map<String, String> = emptyMap(),
+    private val updateFailures: Map<String, Throwable> = emptyMap(),
     private val attachFailure: Throwable? = null,
 ) : OrcaClient {
 
@@ -43,11 +48,14 @@ class FakeOrcaClient(
         private set
     var psReads = 0
         private set
+    var portReads = 0
+        private set
     val addedRepos = mutableListOf<String>()
     val shownExternal = mutableListOf<String>()
     val created = mutableListOf<Created>()
     val switched = mutableListOf<String>()
     val closedWorktrees = mutableListOf<String>()
+    val updates = mutableListOf<Pair<String, OrcaWorktreeUpdate>>()
     val attachedEmulators = mutableListOf<Pair<String, String>>()
     val events = mutableListOf<String>()
     val terminalLookups = mutableListOf<String>()
@@ -110,6 +118,19 @@ class FakeOrcaClient(
         return psRows
     }
 
+    override suspend fun updateWorktree(path: String, update: OrcaWorktreeUpdate) {
+        requireReady()
+        updateFailures[path]?.let { throw it }
+        updates += path to update
+    }
+
+    override suspend fun ports(): List<OrcaPort> {
+        requireInstalled()
+        portReads++
+        portsFailure?.let { throw it }
+        return listeningPorts
+    }
+
     override suspend fun terminals(workspace: OrcaWorkspace): List<OrcaTerminal> {
         requireReady()
         val worktreePath = keyOf(workspace)
@@ -159,12 +180,12 @@ class FakeOrcaClient(
         terminalsByPath -= worktreePath
     }
 
-    override suspend fun attachEmulator(workspace: OrcaWorkspace, serial: String) {
+    override suspend fun attachEmulator(workspace: OrcaWorkspace, device: String) {
         requireReady()
         attachFailure?.let { throw it }
         val worktreePath = keyOf(workspace)
-        attachedEmulators += worktreePath to serial
-        events += "attach:$worktreePath:$serial"
+        attachedEmulators += worktreePath to device
+        events += "attach:$worktreePath:$device"
     }
 
     private fun keyOf(workspace: OrcaWorkspace): String = when (workspace) {

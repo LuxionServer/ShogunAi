@@ -30,7 +30,7 @@ class CommandLineTool(
     private val os: HostOs,
     private val appLauncher: String?,
     private val home: String,
-    private val pathFolders: List<String>,
+    private val pathFolders: () -> List<String>,
     private val userBinFolders: List<String>,
     private val findShogun: () -> String?,
     private val files: LauncherFiles,
@@ -113,7 +113,7 @@ class CommandLineTool(
 
     private fun isOnPath(folder: String): Boolean {
         val wanted = normalize(folder)
-        return pathFolders.any { normalize(it) == wanted }
+        return pathFolders().any { normalize(it) == wanted }
     }
 
     private fun normalize(folder: String): String {
