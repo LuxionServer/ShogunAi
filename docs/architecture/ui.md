@@ -59,7 +59,7 @@ The branches come from `ListBranchesUseCase`, read once when the dialog opens or
 
 ### Worktree list and detail
 
-The view's header shows "Active", "All worktrees" or the filtered project's name and, right-aligned, the reload action, "Project settings" in a filtered view (opens `ShellDestination.ProjectSettings` through `ShellViewModel.editProject`), "Clean up" and "New worktree". A second row holds, in "Active" and "All worktrees" only, the local project filter (`ViewProjectFilter`: "All projects" and each project, set with `WorktreeBoard.updateViewProjectFilter`, which narrows the current view without navigating, so the sidebar keeps its selection; a project's view has none), the text filter, the grouping selector (by state or by project), which each view remembers as `grouping.active` and `grouping.all` in `settings.json`, and the sort selector (`SortSelector`: "Name" or "Last activity"), shown in every view and remembered per view as `sorting.active`, `sorting.all` and `sorting.project`. Below them, `WorktreeScreen` lays out `WorktreeListPane` and, when there's room, a 360 dp detail pane with a vertical divider. `BoxWithConstraints` on the content area decides the layout: below 760 dp of content width the detail is drawn over the list from the right edge, with a scrim, and closing it clears the selection.
+The view's header shows "Active", "All worktrees" or the filtered project's name and, right-aligned, the reload action, "Project settings" in a filtered view (opens `ShellDestination.ProjectSettings` through `ShellViewModel.editProject`), "Clean up" (a ghost button) and "New worktree" (the view's only ink action). A second row holds, in "Active" and "All worktrees" only, the local project filter (`ViewProjectFilter`: "All projects" and each project, set with `WorktreeBoard.updateViewProjectFilter`, which narrows the current view without navigating, so the sidebar keeps its selection; a project's view has none), the text filter, the grouping selector (by state or by project), which each view remembers as `grouping.active` and `grouping.all` in `settings.json`, and the sort selector (`SortSelector`: "Name" or "Last activity"), shown in every view and remembered per view as `sorting.active`, `sorting.all` and `sorting.project`. Below them, `WorktreeScreen` lays out `WorktreeListPane` and, when there's room, a 320 dp detail pane (`ShogunLayout.inspectorWidth`) with a vertical divider. `BoxWithConstraints` on the content area decides the layout: below 760 dp of content width (`ShogunLayout.compactBreakpoint`) the detail is drawn over the list from the right edge, with the theme's scrim, and closing it clears the selection.
 
 - **Rows**: `WorktreeListPane` is a `LazyColumn` keyed by project and worktree path. Rows are ordered by the view's sort (`sortWorktreeItems` in `WorktreeSorting.kt`): "Name" compares branches in natural order (`naturalComparator`: case-insensitive, digit runs compared by value, the full label as tie-breaker), "Last activity" compares `activityDate` descending with undated worktrees last, and the main worktree comes first in both; grouped by state the sort applies across projects within each group. Each `WorktreeRow` renders a `WorktreeRowModel` built by the pure `worktreeRowModel(...)` (in `WorktreeRowModel.kt`, unit-tested without Compose) as a grid of fixed-width cells with two fixed-height lines each, kept even when empty so the same data sits at the same x position in every row: a 20 dp state badge (`StateBadge`: a circle in the state's color with a distinct Material icon, the state's name as tooltip and `contentDescription`), a 136 dp execution cell (the most urgent agent, by blocked > done > working > unknown > idle, with "+N" and a tooltip listing all agents, and a second line, `DeviceLine`, with the first of the worktree's desktop turn (holding or waiting, from the board's `DesktopTurnWatch`), its emulator or simulator while booting or running and its running headless app, with "+N" and a tooltip listing them; 44 dp and icons only when compact), the name cell taking the remaining width (the branch, then the folder when it differs from the branch's last segment, the origin and, last and truncated last, the project when the view spans several projects and isn't grouped by project), a 76 dp Git cell (`✎N`, then `↑N ↓N` or "merged", with the main branch in tooltips, a progress indicator while loading and a muted dash when unavailable), a 104 dp time cell (the activity date as "commit 3 hours ago" or "created 2 days ago", then the main and locked marks) and a 28 dp action slot. `WorktreeListPane` measures its width with `BoxWithConstraints` and passes `compact = width < 640.dp` to every row, so they all switch together. Hovering a row shows a copy-launch-command `IconAction`; its context menu offers copy launch command, and, while the folder exists, open in Herdr, "Open in <terminal>", "Open in <IDE>" and "Open folder" (`OpenAction`s), then one entry per other agent of the project for each launch ("Open in terminal · Codex", since Compose's context menu has no submenus), copy path and, except for the main worktree, delete.
 - **Selection**: `WorktreeBoard.selected` is a `WorktreeRef` set with `select(ref)` and the up and down arrows (`selectNext()`/`selectPrevious()`, which cross project groups, skip collapsed ones and stop at the ends), and `animateScrollToItem` keeps the selected row visible. `selectedWorktree` resolves it against the shown projects' lists, so a worktree that's no longer listed isn't shown as selected and the selection survives auto refresh.
@@ -234,7 +234,7 @@ List loads are tagged with a generation number: a result is only applied if no n
 
 ## Shared components (`ui/components`)
 
-- **`Spacing`**: spacing scale (`xxs=2dp`, `xs=4dp`, `sm=8dp`, `md=16dp`, `lg=24dp`, `xl=32dp`) used instead of ad hoc `dp` values. Component-internal sizes, such as icon sizes, are named constants.
+- **`Spacing`**: spacing scale (`xxs=2dp`, `xs=4dp`, `sm=8dp`, `smd=12dp`, `md=16dp`, `lg=24dp`, `xl=32dp`) used instead of ad hoc `dp` values. Component-internal sizes, such as icon sizes, are named constants.
 - **`SegmentedSelector<T>`**: segmented control (`SingleChoiceSegmentedButtonRow`/`SegmentedButton`) for a small, fixed set of options that should all be visible at once (e.g. `CreateMode`, `BranchType`). Labels are sized to their full text (`Modifier.width(IntrinsicSize.Max)`): the row sizes its segments from their minimum intrinsic width, which for plain text is only its longest word.
 - **`DropdownSelector<T>`**: dropdown (`ExposedDropdownMenuBox`) for longer or dynamically loaded lists, with optional collapsible groups (`groupBy`) and disabled options (`enabled`), which are ignored whatever the input method.
 - **`SectionCard`**: titled `OutlinedCard`, used to group sections of a long form (every section of `ProjectSettingsView`).
@@ -246,42 +246,84 @@ List loads are tagged with a generation number: a result is only applied if no n
 
 ## Design system
 
-The theme and the shared components form the app's design system. Screens use its tokens and components instead of literal colors, sizes or per-screen copies.
+The theme and the shared components form the app's design system. Screens use its tokens and components instead of literal colors, sizes or per-screen copies. The idea is an instrument panel: surfaces stay neutral and calm, color is kept for state, and each view has a single action in ink.
 
 ### Palette
 
-Every Material 3 color role of the light and dark schemes is defined by the app (`ShogunLightColorScheme`, `ShogunDarkColorScheme` in `Theme.kt`), so no dialog, menu or selected control falls back to Material's baseline purple. The roles come from one cool neutral ramp (`Neutral*` in `Color.kt`) and one brand accent. The brand red is `primary`: it's used for the main action of a view and for brand marks, never to convey a status. It's slightly darker in the light scheme, so white text on it stays readable.
+Every Material 3 color role of the light and dark schemes is defined by the app (`ShogunLightColorScheme`, `ShogunDarkColorScheme` in `Theme.kt`), so no dialog, menu or selected control falls back to Material's baseline purple. The roles come from one cool neutral ramp (`Neutral*` in `Color.kt`):
 
-Status colors are separate tokens with one meaning each, exposed as `ShogunTheme.status` (`ShogunStatusColors`). Each status has a `color` for text and icons, an `onColor`, and a `container`/`onContainer` pair for chips and notices:
+- **`primary` is ink**: Neutral9 with white text in light, Neutral91 with Neutral6 text in dark, with neutral containers. It marks the one main action of a view ("New worktree", "New change", a dialog's confirmation). Material controls that read `primary` (switches, checkboxes, progress indicators) are ink as well.
+- **Accent**: `ShogunTheme.colors.accent` (SlateBlue, with `onAccent`, `accentContainer` and `onAccentContainer`) is for the keyboard focus ring, links, the selected row (on `accentContainer`), the active entry of an index and the palette's cursor. `tertiary` keeps the same values as an alias. It never conveys a status.
+- **Brand**: `ShogunTheme.colors.brand` is the brand red. It only appears in brand marks (logo, tray icon), never on a control, a link, a focus indicator or a state, so red always means danger.
+- **Disabled**: `disabledContent` and `disabledContainer` reach 3:1 on every surface; the shared buttons and `IconAction` use them instead of Material's 38 % alpha.
+- **Scrim**: `ShogunTheme.colors.scrim` dims what's behind an overlay panel, such as the worktree detail on a narrow window.
+
+Status colors are separate tokens with one meaning each, exposed as `ShogunTheme.status` (`ShogunStatusColors`). Each status has a `color` for text and icons, an `onColor`, and a `container`/`onContainer` pair for chips and notices. `attention` is an alias of warning and `active` of info, so code can name the use:
 
 | Status | Meaning | Examples |
 |---|---|---|
 | success | done or healthy | merged, device running, operation succeeded |
-| warning | needs your attention, not broken | uncommitted changes, inactive |
-| info | work in progress | agent running, device booting |
+| warning (`attention`) | needs your attention, not broken | needs you, uncommitted changes, inactive |
+| info (`active`) | work in progress | agent running, device booting |
 | danger | failed or destructive | errors, missing folder, delete actions |
-| neutral | plain state | locked, device stopped |
+| neutral | plain state | new, locked, device stopped |
 
-The mapping from worktree indicators and device states to a status lives in `StatusMapping.kt`.
+The mapping from worktree indicators and device states to a status lives in `StatusMapping.kt`. The "New" state badge is an outlined circle in the neutral color.
 
-Contrast is checked by tests, not by eye: `ThemeContrastTest` uses `contrastRatio` (WCAG relative luminance) to assert that text reaches 4.5:1 and outlines 3:1 on every surface, in both schemes, and `ColorSchemeTest` asserts that no role keeps Material's baseline value.
+Contrast is checked by tests, not by eye: `ThemeContrastTest` uses `contrastRatio` (WCAG relative luminance) to assert that text reaches 4.5:1 and outlines 3:1 on every surface, in both schemes, together with ink on `primary`, the accent on every surface, text and status colors on the selection, disabled content at 3:1 and the elevation levels. `ColorSchemeTest` asserts that no role keeps Material's baseline value or uses the brand red, and that the primary container differs from the danger container.
+
+### Elevation
+
+`ShogunTheme.elevation` has three levels, and borders carry the separation more than shadows:
+
+| Level | Container | Border | Shadow | Use |
+|---|---|---|---|---|
+| `level0` | `surface` | none | none | the view |
+| `level1` | `surfaceContainerLow` | 1 dp `outlineVariant` | none | panels and cards |
+| `level2` | `surfaceContainerHigh` | 1 dp `outlineVariant` | 4 dp | menus, dialogs, popovers (the command palette) |
+
+`Modifier.elevation(level, shape)` draws a level.
 
 ### Type
 
-The app bundles Geist for UI text and Geist Mono for data, in weights 400, 500 and 600, under `desktopApp/src/main/resources/fonts/` with their SIL Open Font License (`OFL.txt`). Bundling them makes text render the same on macOS, Windows and Linux. Every `Typography` slot uses Geist, with sizes tuned for a dense desktop tool. `ShogunTheme.typography` adds two styles for data, `data` and `dataSmall`, in Geist Mono with tabular figures: paths, branches, ports, PIDs, sizes, counts and relative times use them, so values that refresh don't shift the layout.
+The app bundles Geist for UI text and Geist Mono for data, in weights 400, 500 and 600, under `desktopApp/src/main/resources/fonts/` with their SIL Open Font License (`OFL.txt`). Bundling them makes text render the same on macOS, Windows and Linux. Every `Typography` slot uses Geist, with sizes tuned for a dense desktop tool. `ShogunTheme.typography` adds the roles of the design system:
 
-### Shapes and focus
+| Role | Style | Use |
+|---|---|---|
+| `viewTitle` | Geist 600 · 16/22 | one per view, in its header |
+| `sectionTitle` | Geist 600 · 13/18 | group headers, settings sections, dialog titles |
+| `eyebrow` | Geist Mono 500 · 10.5/14, +0.06 em, uppercase (`Eyebrow`) | section labels and table columns |
+| `bodyMedium` | Geist 400 · 13/18 | general text; buttons use `labelLarge` (500 · 13/18) |
+| `bodySmall` | Geist 400 · 12/16 | second lines of rows, help and hints |
+| `data`, `dataSmall` | Geist Mono 400 · 13/18 and 12/16, tabular figures | values |
 
-`ShogunShapes` sets the corner radius scale (`extraSmall` 4, `small` 6, `medium` 10, `large` 14, `extraLarge` 20 dp). The theme raises the focused state layer of Material's ripple, so keyboard focus is visible on every Material control.
+Mono is for data, not for states: branches, paths, ports, PIDs, sizes and counts use `data` or `dataSmall`, so values that refresh don't shift the layout; agent states ("working", "busy"), relative dates written as text ("commit 3 h ago") and project names use the sans.
+
+### Shapes, sizes and focus
+
+The radius scale has four steps, named in `Shape.kt`: `ControlShape` 4 dp (buttons, chips, fields), `RowShape` 6 dp (rows, menu items, `Modifier.interactive`), `PanelShape` 8 dp (panels, menus, the palette) and `DialogShape` 12 dp. `ShogunShapes` maps Material's `extraSmall` to `extraLarge` onto 4, 6, 8, 12 and 12. No control is drawn as a pill.
+
+Controls are 28 dp high in their compact size and 32 dp in forms and dialogs, with 10 dp of horizontal padding; icon-only actions are 28 × 28 dp. The layout widths are tokens in `ShogunLayout`: the sidebar between 196 and 240 dp, the inspector (the worktree detail) 320 dp, and the 760 dp breakpoint below which the detail is drawn over the list.
+
+The focus ring (`Modifier.focusRing`) is 2 dp in the accent color. The theme raises the focused state layer of Material's ripple, so keyboard focus is also visible on every Material control.
 
 ### Shared components
 
+- **Buttons**: `PrimaryButton` (ink fill), `SecondaryButton` (outlined), `GhostButton` (no fill or border, secondary text color), `DangerButton` (danger fill), `DangerTextButton` and `NeutralTextButton`. Each takes `size` (`ButtonSize.Compact` by default, `Regular` for forms and dialogs) and sets its own label style, so screens never restyle a label. Labels stay on one line. A filled `DangerButton` is only the confirm action of a confirmation dialog; where a destructive action is offered it's a `DangerTextButton`, and an action in a view's header that only opens a confirmation (such as "Clean up") is a `GhostButton`.
 - **`InlineProgress`**: the one inline spinner, in `Small` and `Medium` sizes.
 - **`Notice`**: error, warning, success and info messages with their status icon and color, the message and a dismiss action. It has a `details` slot for extra content. `ErrorNotice` builds on it for errors (summary, next step, fix, "Try again" and "Technical details").
 - **`StatusChip`**: a compact label on a status container color, with an optional icon.
-- **`DangerButton`, `DangerTextButton`**: destructive actions, where they're offered and in the confirmation that follows. **`NeutralTextButton`** is the text button for neutral actions such as "Cancel", so the brand color stays reserved for main actions.
-- **`IconAction`**: an icon-only action whose label is both its tooltip and its accessible description.
+- **`IconAction`**: a 28 × 28 dp icon-only action whose label is both its tooltip and its accessible description.
 - **`Modifier.interactive`**: makes a custom row or header clickable, with a hover state, the hand pointer and a focus ring (`Modifier.focusRing`).
+
+### Rules
+
+- One main action per view, in ink; nothing else uses the primary style.
+- Color only means state, and always comes from `StatusMapping` with an icon or a text next to it. The brand never appears on controls or states. No `Color(0x…)` or loose `.dp` in screens: a component's internal sizes are named constants and layout widths are tokens.
+- Selection, focus and links use the accent.
+- A disabled control stays readable at 3:1.
+- Mono is for data, not for states.
+- What already works isn't changed casually: Geist, Geist Mono with tabular figures, the neutral ramp and the status tokens with their contrast tests need their own OpenSpec change, saying which problem it solves, to change.
 
 ## Multirepo and its workspace repository
 

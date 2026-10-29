@@ -59,7 +59,7 @@ Las ramas salen de `ListBranchesUseCase`, que se lee una vez al abrir el diálog
 
 ### Lista y detalle de worktrees
 
-La cabecera de la vista muestra "Activos", "Todos los worktrees" o el nombre del proyecto filtrado y, alineadas a la derecha, la acción de recargar, "Configuración de proyecto" en una vista filtrada (abre `ShellDestination.ProjectSettings` con `ShellViewModel.editProject`), "Limpiar" y "Nuevo worktree". Una segunda fila contiene, solo en "Activos" y "Todos los worktrees", el filtro de proyecto local (`ViewProjectFilter`: "Todos los proyectos" y cada proyecto, que se fija con `WorktreeBoard.updateViewProjectFilter` y reduce la vista actual sin navegar, así que la barra lateral mantiene su selección; la vista de un proyecto no lo tiene), el filtro de texto, el selector de agrupación (por estado o por proyecto), que cada vista recuerda como `grouping.active` y `grouping.all` en `settings.json`, y el selector de orden (`SortSelector`: «Nombre» o «Última actividad»), presente en todas las vistas y recordado por vista como `sorting.active`, `sorting.all` y `sorting.project`. Debajo, `WorktreeScreen` coloca `WorktreeListPane` y, cuando hay sitio, un panel de detalle de 360 dp con un divisor vertical. `BoxWithConstraints` sobre el área de contenido decide la disposición: por debajo de 760 dp de ancho de contenido el detalle se dibuja sobre la lista desde el borde derecho, con un velo, y al cerrarlo se borra la selección.
+La cabecera de la vista muestra "Activos", "Todos los worktrees" o el nombre del proyecto filtrado y, alineadas a la derecha, la acción de recargar, "Configuración de proyecto" en una vista filtrada (abre `ShellDestination.ProjectSettings` con `ShellViewModel.editProject`), "Limpiar" (un botón ghost) y "Nuevo worktree" (la única acción en tinta de la vista). Una segunda fila contiene, solo en "Activos" y "Todos los worktrees", el filtro de proyecto local (`ViewProjectFilter`: "Todos los proyectos" y cada proyecto, que se fija con `WorktreeBoard.updateViewProjectFilter` y reduce la vista actual sin navegar, así que la barra lateral mantiene su selección; la vista de un proyecto no lo tiene), el filtro de texto, el selector de agrupación (por estado o por proyecto), que cada vista recuerda como `grouping.active` y `grouping.all` en `settings.json`, y el selector de orden (`SortSelector`: «Nombre» o «Última actividad»), presente en todas las vistas y recordado por vista como `sorting.active`, `sorting.all` y `sorting.project`. Debajo, `WorktreeScreen` coloca `WorktreeListPane` y, cuando hay sitio, un panel de detalle de 320 dp (`ShogunLayout.inspectorWidth`) con un divisor vertical. `BoxWithConstraints` sobre el área de contenido decide la disposición: por debajo de 760 dp de ancho de contenido (`ShogunLayout.compactBreakpoint`) el detalle se dibuja sobre la lista desde el borde derecho, con el scrim del tema, y al cerrarlo se borra la selección.
 
 - **Filas**: `WorktreeListPane` es un `LazyColumn` con el proyecto y la ruta del worktree como clave. Las filas se ordenan según el orden de la vista (`sortWorktreeItems` en `WorktreeSorting.kt`): «Nombre» compara las ramas en orden natural (`naturalComparator`: sin distinguir mayúsculas, comparando los números por su valor y la etiqueta completa como desempate), «Última actividad» compara `activityDate` de más reciente a más antigua con los worktrees sin fecha al final, y el worktree principal va primero en ambos; agrupado por estado, el orden se aplica entre proyectos dentro de cada grupo. Cada `WorktreeRow` pinta un `WorktreeRowModel` construido por la función pura `worktreeRowModel(...)` (en `WorktreeRowModel.kt`, probada sin Compose) como una cuadrícula de celdas de ancho fijo con dos líneas de alto fijo cada una, que se conservan aunque estén vacías para que el mismo dato quede en la misma posición x en todas las filas: una insignia de estado de 20 dp (`StateBadge`: un círculo del color del estado con un icono Material distinto, el nombre del estado como tooltip y `contentDescription`), una celda de ejecución de 136 dp (el agente más urgente, por bloqueado > terminado > trabajando > sin estado > inactivo, con «+N» y un tooltip que lista todos los agentes, y una segunda línea, `DeviceLine`, con lo primero entre el turno del escritorio del worktree (lo tiene o lo espera, según el `DesktopTurnWatch` del tablero), su emulador o simulador mientras arranca o está en marcha y su app headless en marcha, con «+N» y un tooltip que los lista; 44 dp y solo iconos en modo compacto), la celda de nombre con el ancho restante (la rama, luego la carpeta cuando difiere del último segmento de la rama, el origen y, al final y lo último en recortarse, el proyecto cuando la vista abarca varios proyectos y no está agrupada por proyecto), una celda Git de 76 dp (`✎N`, luego `↑N ↓N` o «fusionado», con la rama principal en los tooltips, un indicador de progreso mientras carga y un guion atenuado si no está disponible), una celda de tiempo de 104 dp (la fecha de actividad como «commit hace 3 horas» o «creado hace 2 días», luego las marcas de principal y bloqueado) y un hueco de acción de 28 dp. `WorktreeListPane` mide su ancho con `BoxWithConstraints` y pasa `compact = width < 640.dp` a todas las filas, para que cambien a la vez. Al pasar el ratón por una fila aparece un `IconAction` para copiar el comando de lanzamiento; su menú contextual ofrece copiar el comando de lanzamiento y, mientras la carpeta existe, abrir en Herdr, «Abrir en <terminal>», «Abrir en <IDE>» y «Abrir carpeta» (`OpenAction`s), después una entrada por cada otro agente del proyecto para cada lanzamiento («Abrir en terminal · Codex», porque el menú contextual de Compose no tiene submenús), copiar la ruta y, salvo en el worktree principal, eliminar.
 - **Selección**: `WorktreeBoard.selected` es un `WorktreeRef` que se fija con `select(ref)` y con las flechas arriba y abajo (`selectNext()`/`selectPrevious()`, que cruzan los grupos de proyecto, se saltan los contraídos y se detienen en los extremos), y `animateScrollToItem` mantiene visible la fila seleccionada. `selectedWorktree` lo resuelve contra las listas de los proyectos mostrados, así un worktree que ya no aparece no se muestra como seleccionado y la selección sobrevive al refresco automático.
@@ -234,7 +234,7 @@ Las cargas de la lista llevan un número de generación: un resultado solo se ap
 
 ## Componentes compartidos (`ui/components`)
 
-- **`Spacing`**: escala de espaciado (`xxs=2dp`, `xs=4dp`, `sm=8dp`, `md=16dp`, `lg=24dp`, `xl=32dp`) usada en vez de valores `dp` sueltos. Los tamaños internos de los componentes, como los de los iconos, son constantes con nombre.
+- **`Spacing`**: escala de espaciado (`xxs=2dp`, `xs=4dp`, `sm=8dp`, `smd=12dp`, `md=16dp`, `lg=24dp`, `xl=32dp`) usada en vez de valores `dp` sueltos. Los tamaños internos de los componentes, como los de los iconos, son constantes con nombre.
 - **`SegmentedSelector<T>`**: control segmentado (`SingleChoiceSegmentedButtonRow`/`SegmentedButton`) para un conjunto pequeño y fijo de opciones siempre visibles (p. ej. `CreateMode`, `BranchType`). Las etiquetas se dimensionan a su texto completo (`Modifier.width(IntrinsicSize.Max)`): la fila calcula el ancho de sus segmentos a partir de su ancho mínimo intrínseco, que para un texto normal es solo su palabra más larga.
 - **`DropdownSelector<T>`**: dropdown (`ExposedDropdownMenuBox`) para listas más largas o cargadas dinámicamente, con grupos plegables opcionales (`groupBy`) y opciones deshabilitadas (`enabled`), que se ignoran sea cual sea el método de entrada.
 - **`SectionCard`**: `OutlinedCard` con título, usada para agrupar secciones de un formulario largo (todas las secciones de `ProjectSettingsView`).
@@ -246,42 +246,84 @@ Las cargas de la lista llevan un número de generación: un resultado solo se ap
 
 ## Sistema de diseño
 
-El tema y los componentes compartidos forman el sistema de diseño de la app. Las pantallas usan sus tokens y componentes en vez de colores o tamaños literales o de copias por pantalla.
+El tema y los componentes compartidos forman el sistema de diseño de la app. Las pantallas usan sus tokens y componentes en vez de colores o tamaños literales o de copias por pantalla. La idea es un panel de instrumentos: las superficies van en neutros y en calma, el color se reserva al estado y cada vista tiene una sola acción en tinta.
 
 ### Paleta
 
-La app define todos los roles de color de Material 3 de los esquemas claro y oscuro (`ShogunLightColorScheme`, `ShogunDarkColorScheme` en `Theme.kt`), así que ningún diálogo, menú o control seleccionado cae en el morado base de Material. Los roles salen de una gama de neutros fríos (`Neutral*` en `Color.kt`) y un único color de marca. El rojo de marca es `primary`: se usa para la acción principal de una vista y para elementos de marca, nunca para indicar un estado. En el esquema claro es algo más oscuro, para que el texto blanco encima siga siendo legible.
+La app define todos los roles de color de Material 3 de los esquemas claro y oscuro (`ShogunLightColorScheme`, `ShogunDarkColorScheme` en `Theme.kt`), así que ningún diálogo, menú o control seleccionado cae en el morado base de Material. Los roles salen de una gama de neutros fríos (`Neutral*` en `Color.kt`):
 
-Los colores de estado son tokens aparte, cada uno con un único significado, expuestos como `ShogunTheme.status` (`ShogunStatusColors`). Cada estado tiene un `color` para texto e iconos, un `onColor` y un par `container`/`onContainer` para chips y avisos:
+- **`primary` es tinta**: Neutral9 con texto blanco en claro y Neutral91 con texto Neutral6 en oscuro, con contenedores neutros. Marca la única acción principal de una vista ("Nuevo worktree", "Nuevo cambio", la confirmación de un diálogo). Los controles de Material que leen `primary` (interruptores, casillas, indicadores de progreso) también van en tinta.
+- **Accent**: `ShogunTheme.colors.accent` (SlateBlue, con `onAccent`, `accentContainer` y `onAccentContainer`) es para el anillo de foco del teclado, los enlaces, la fila seleccionada (sobre `accentContainer`), la entrada activa de un índice y el cursor de la paleta. `tertiary` conserva los mismos valores como alias. Nunca indica un estado.
+- **Marca**: `ShogunTheme.colors.brand` es el rojo de marca. Solo aparece en elementos de marca (logotipo, icono de la bandeja), nunca en un control, un enlace, un indicador de foco ni un estado, así que el rojo siempre significa peligro.
+- **Deshabilitado**: `disabledContent` y `disabledContainer` llegan a 3:1 sobre cualquier superficie; los botones compartidos e `IconAction` los usan en vez del alfa del 38 % de Material.
+- **Scrim**: `ShogunTheme.colors.scrim` oscurece lo que queda detrás de un panel superpuesto, como el detalle del worktree en una ventana estrecha.
+
+Los colores de estado son tokens aparte, cada uno con un único significado, expuestos como `ShogunTheme.status` (`ShogunStatusColors`). Cada estado tiene un `color` para texto e iconos, un `onColor` y un par `container`/`onContainer` para chips y avisos. `attention` es un alias de warning y `active` de info, para que el código nombre el uso:
 
 | Estado | Significado | Ejemplos |
 |---|---|---|
 | success | hecho o sano | mergeada, dispositivo en marcha, operación correcta |
-| warning | requiere tu atención, sin estar roto | cambios sin commitear, inactivo |
-| info | trabajo en curso | agente trabajando, dispositivo arrancando |
+| warning (`attention`) | requiere tu atención, sin estar roto | te necesita, cambios sin commitear, inactivo |
+| info (`active`) | trabajo en curso | agente trabajando, dispositivo arrancando |
 | danger | fallido o destructivo | errores, carpeta que falta, acciones de borrado |
-| neutral | estado sin más | bloqueado, dispositivo parado |
+| neutral | estado sin más | nuevo, bloqueado, dispositivo parado |
 
-La correspondencia entre indicadores de worktree y estados de dispositivo y su estado vive en `StatusMapping.kt`.
+La correspondencia entre indicadores de worktree y estados de dispositivo y su estado vive en `StatusMapping.kt`. El indicador del estado "Nuevo" es un círculo con contorno en el color neutro.
 
-El contraste lo comprueban los tests, no el ojo: `ThemeContrastTest` usa `contrastRatio` (luminancia relativa WCAG) para asegurar que el texto llega a 4,5:1 y los contornos a 3:1 sobre cada superficie, en los dos esquemas, y `ColorSchemeTest` asegura que ningún rol conserva el valor base de Material.
+El contraste lo comprueban los tests, no el ojo: `ThemeContrastTest` usa `contrastRatio` (luminancia relativa WCAG) para asegurar que el texto llega a 4,5:1 y los contornos a 3:1 sobre cada superficie, en los dos esquemas, junto con la tinta sobre `primary`, el accent sobre cada superficie, el texto y los colores de estado sobre la selección, el contenido deshabilitado a 3:1 y los niveles de elevación. `ColorSchemeTest` asegura que ningún rol conserva el valor base de Material ni usa el rojo de marca, y que el contenedor de `primary` es distinto del de peligro.
+
+### Elevación
+
+`ShogunTheme.elevation` tiene tres niveles, y la separación la dan más los bordes que las sombras:
+
+| Nivel | Contenedor | Borde | Sombra | Uso |
+|---|---|---|---|---|
+| `level0` | `surface` | ninguno | ninguna | la vista |
+| `level1` | `surfaceContainerLow` | 1 dp `outlineVariant` | ninguna | paneles y tarjetas |
+| `level2` | `surfaceContainerHigh` | 1 dp `outlineVariant` | 4 dp | menús, diálogos, popovers (la paleta de comandos) |
+
+`Modifier.elevation(level, shape)` dibuja un nivel.
 
 ### Tipografía
 
-La app incluye Geist para el texto de la interfaz y Geist Mono para los datos, en pesos 400, 500 y 600, en `desktopApp/src/main/resources/fonts/` con su licencia SIL Open Font License (`OFL.txt`). Al incluirlas, el texto se ve igual en macOS, Windows y Linux. Todos los estilos de `Typography` usan Geist, con tamaños ajustados a una herramienta de escritorio densa. `ShogunTheme.typography` añade dos estilos para datos, `data` y `dataSmall`, en Geist Mono con cifras tabulares: los usan las rutas, ramas, puertos, PIDs, tamaños, recuentos y tiempos relativos, así los valores que se refrescan no mueven el diseño.
+La app incluye Geist para el texto de la interfaz y Geist Mono para los datos, en pesos 400, 500 y 600, en `desktopApp/src/main/resources/fonts/` con su licencia SIL Open Font License (`OFL.txt`). Al incluirlas, el texto se ve igual en macOS, Windows y Linux. Todos los estilos de `Typography` usan Geist, con tamaños ajustados a una herramienta de escritorio densa. `ShogunTheme.typography` añade los roles del sistema de diseño:
 
-### Formas y foco
+| Rol | Estilo | Uso |
+|---|---|---|
+| `viewTitle` | Geist 600 · 16/22 | uno por vista, en su cabecera |
+| `sectionTitle` | Geist 600 · 13/18 | cabeceras de grupo, secciones de ajustes, títulos de diálogo |
+| `eyebrow` | Geist Mono 500 · 10,5/14, +0,06 em, mayúsculas (`Eyebrow`) | etiquetas de sección y columnas de tabla |
+| `bodyMedium` | Geist 400 · 13/18 | texto general; los botones usan `labelLarge` (500 · 13/18) |
+| `bodySmall` | Geist 400 · 12/16 | segundas líneas de las filas, ayudas y pistas |
+| `data`, `dataSmall` | Geist Mono 400 · 13/18 y 12/16, cifras tabulares | valores |
 
-`ShogunShapes` fija la escala de radios de esquina (`extraSmall` 4, `small` 6, `medium` 10, `large` 14, `extraLarge` 20 dp). El tema refuerza la capa de estado de foco del ripple de Material, para que el foco del teclado se vea en todos los controles de Material.
+El mono es para datos, no para estados: las ramas, rutas, puertos, PIDs, tamaños y recuentos usan `data` o `dataSmall`, así los valores que se refrescan no mueven el diseño; los estados del agente ("working", "busy"), las fechas relativas escritas en texto ("commit hace 3 h") y los nombres de proyecto van en la sans.
+
+### Formas, tamaños y foco
+
+La escala de radios tiene cuatro pasos, con nombre en `Shape.kt`: `ControlShape` 4 dp (botones, chips, campos), `RowShape` 6 dp (filas, elementos de menú, `Modifier.interactive`), `PanelShape` 8 dp (paneles, menús, la paleta) y `DialogShape` 12 dp. `ShogunShapes` asigna a los estilos `extraSmall` a `extraLarge` de Material 4, 6, 8, 12 y 12. Ningún control se dibuja como píldora.
+
+Los controles miden 28 dp de alto en su tamaño compacto y 32 dp en formularios y diálogos, con 10 dp de padding horizontal; las acciones solo con icono miden 28 × 28 dp. Los anchos de layout son tokens de `ShogunLayout`: la barra lateral entre 196 y 240 dp, el inspector (el detalle del worktree) 320 dp y el punto de corte de 760 dp, por debajo del cual el detalle se dibuja sobre la lista.
+
+El anillo de foco (`Modifier.focusRing`) es de 2 dp en el color accent. El tema refuerza la capa de estado de foco del ripple de Material, para que el foco del teclado también se vea en todos los controles de Material.
 
 ### Componentes compartidos
 
+- **Botones**: `PrimaryButton` (relleno de tinta), `SecondaryButton` (con contorno), `GhostButton` (sin relleno ni borde, en el color de texto secundario), `DangerButton` (relleno de peligro), `DangerTextButton` y `NeutralTextButton`. Todos aceptan `size` (`ButtonSize.Compact` por defecto, `Regular` para formularios y diálogos) y fijan su propio estilo de etiqueta, así que las pantallas nunca lo cambian. Las etiquetas quedan en una línea. Un `DangerButton` con relleno solo es la acción de confirmar de un diálogo de confirmación; donde se ofrece una acción destructiva es un `DangerTextButton`, y una acción de la cabecera de una vista que solo abre una confirmación (como "Limpiar") es un `GhostButton`.
 - **`InlineProgress`**: el único indicador de progreso en línea, en tamaños `Small` y `Medium`.
 - **`Notice`**: mensajes de error, aviso, éxito e información con el icono y el color de su estado, el mensaje y una acción para cerrarlo. Tiene un hueco `details` para contenido adicional. `ErrorNotice` se apoya en él para los errores (resumen, siguiente paso, arreglo, "Volver a intentar" y "Detalles técnicos").
 - **`StatusChip`**: una etiqueta compacta sobre el color contenedor de un estado, con icono opcional.
-- **`DangerButton`, `DangerTextButton`**: acciones destructivas, tanto donde se ofrecen como en la confirmación que les sigue. **`NeutralTextButton`** es el botón de texto para acciones neutras como "Cancelar", para reservar el color de marca a las acciones principales.
-- **`IconAction`**: una acción solo con icono cuya etiqueta es a la vez su tooltip y su descripción accesible.
+- **`IconAction`**: una acción solo con icono de 28 × 28 dp cuya etiqueta es a la vez su tooltip y su descripción accesible.
 - **`Modifier.interactive`**: hace clicable una fila o cabecera propia, con estado hover, el puntero de mano y un anillo de foco (`Modifier.focusRing`).
+
+### Normas
+
+- Una sola acción principal por vista, y en tinta; nada más usa el estilo primary.
+- El color solo indica estado, sale siempre de `StatusMapping` y va acompañado de un icono o un texto. La marca no aparece nunca en controles ni en estados. Ningún `Color(0x…)` ni `.dp` suelto en las pantallas: los tamaños internos de un componente son constantes con nombre y los anchos de layout, tokens.
+- La selección, el foco y los enlaces usan el accent.
+- Un control deshabilitado se sigue leyendo, a 3:1.
+- El mono es para datos, no para estados.
+- Lo que ya funciona no se cambia a la ligera: Geist, Geist Mono con cifras tabulares, la gama neutra y los tokens de estado con sus tests de contraste necesitan su propio cambio de OpenSpec, que diga qué problema resuelve, para cambiar.
 
 ## Multirepo y su repositorio workspace
 

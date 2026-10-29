@@ -72,6 +72,7 @@ import app.luxion.shogunai.ui.multirepo.MultirepoSettingsState
 import app.luxion.shogunai.ui.multirepo.MultirepoSettingsView
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.filter
+import app.luxion.shogunai.ui.theme.ShogunTheme
 
 private val NarrowWindowThreshold = 900.dp
 private val EmptyStateMaxWidth = 420.dp
@@ -158,7 +159,7 @@ fun AppShell(
             }
             .then(
                 if (folderDrop.hovering) {
-                    Modifier.border(FocusRingWidth, MaterialTheme.colorScheme.primary)
+                    Modifier.border(FocusRingWidth, ShogunTheme.colors.accent)
                 } else {
                     Modifier
                 },
@@ -507,7 +508,7 @@ internal fun EmptyState(onAddProject: () -> Unit, onTakeTour: () -> Unit) {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(Spacing.md),
         ) {
-            Text(strings.emptyStateTitle, style = MaterialTheme.typography.headlineSmall)
+            Text(strings.emptyStateTitle, style = ShogunTheme.typography.viewTitle)
             Text(
                 strings.emptyStateMessage,
                 style = MaterialTheme.typography.bodyLarge,

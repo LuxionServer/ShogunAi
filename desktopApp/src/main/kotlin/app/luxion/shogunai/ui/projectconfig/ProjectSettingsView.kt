@@ -234,7 +234,7 @@ private fun SettingsForm(
                     ) {
                         Text(
                             settingsTitle(strings, viewModel.isNewProject, viewModel.savedName),
-                            style = MaterialTheme.typography.headlineSmall,
+                            style = ShogunTheme.typography.viewTitle,
                         )
                         GeneralSection(viewModel, nameFocus, baseRepositoryFocus, worktreesRootFocus, settleBasePath, sectionTops)
                         HorizontalDivider()
@@ -304,7 +304,7 @@ private fun SectionIndex(
             Text(
                 text = section.title(strings),
                 style = MaterialTheme.typography.bodyMedium,
-                color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                color = if (selected) ShogunTheme.colors.accent else MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier
                     .fillMaxWidth()
                     .interactive { onSelect(section) }
@@ -644,8 +644,8 @@ private fun AgentEditor(
             Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm), verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     if (index == 0) "${config.displayName} · ${strings.defaultAgentMark}" else config.displayName,
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.primary,
+                    style = ShogunTheme.typography.sectionTitle,
+                    color = MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier.weight(1f),
                 )
                 if (index > 0) NeutralTextButton(onClick = { viewModel.makeDefault(index) }) { Text(strings.makeDefaultAgent) }
@@ -725,7 +725,7 @@ private fun EditorOverrideField(viewModel: ProjectConfigViewModel) {
     val override = viewModel.editorOverride
     val options = listOf<EditorId?>(null) + (tools.availableEditors + listOfNotNull(override)).distinct()
     SettingsField(strings.projectEditorLabel) {
-        Text(strings.machineOnlyLabel, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+        Text(strings.machineOnlyLabel, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         DropdownSelector(
             options = options,
             selected = override,
@@ -763,7 +763,7 @@ private fun AddProjectFolderStep(viewModel: ProjectConfigViewModel, initialFolde
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(Spacing.md),
         ) {
-            Text(strings.addProjectTitle, style = MaterialTheme.typography.headlineSmall)
+            Text(strings.addProjectTitle, style = ShogunTheme.typography.viewTitle)
             Text(
                 strings.addProjectIntro,
                 style = MaterialTheme.typography.bodyLarge,

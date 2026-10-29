@@ -70,6 +70,9 @@ import app.luxion.shogunai.ui.i18n.Strings
 import app.luxion.shogunai.ui.isMacOs
 import app.luxion.shogunai.ui.machine.icon
 import app.luxion.shogunai.ui.theme.ShogunTheme
+import app.luxion.shogunai.ui.theme.PanelShape
+import app.luxion.shogunai.ui.theme.ElevationBorderWidth
+import androidx.compose.foundation.BorderStroke
 
 private val PaletteWidth = 560.dp
 private val ResultRowHeight = 40.dp
@@ -109,8 +112,10 @@ fun CommandPalette(
     ) {
         Surface(
             modifier = Modifier.width(PaletteWidth),
-            shape = MaterialTheme.shapes.large,
-            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            shape = PanelShape,
+            color = ShogunTheme.elevation.level2.container,
+            border = ShogunTheme.elevation.level2.border?.let { BorderStroke(ElevationBorderWidth, it) },
+            shadowElevation = ShogunTheme.elevation.level2.shadow,
         ) {
             Column {
                 Row(
@@ -191,7 +196,7 @@ private fun SearchField(query: String, onQueryChange: (String) -> Unit, modifier
         onValueChange = onQueryChange,
         singleLine = true,
         textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
-        cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+        cursorBrush = SolidColor(ShogunTheme.colors.accent),
         modifier = modifier.trackTextInputFocus(),
         decorationBox = { inner ->
             Box(modifier = Modifier.heightIn(min = ResultRowHeight), contentAlignment = Alignment.CenterStart) {

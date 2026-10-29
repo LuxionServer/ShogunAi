@@ -18,6 +18,8 @@ import app.luxion.shogunai.domain.model.ThemeMode
 
 private val LocalShogunStatusColors = staticCompositionLocalOf { DarkStatusColors }
 private val LocalShogunTextStyles = staticCompositionLocalOf { ShogunDataTextStyles }
+private val LocalShogunColors = staticCompositionLocalOf { DarkShogunColors }
+private val LocalShogunElevation = staticCompositionLocalOf { DarkElevation }
 
 object ShogunTheme {
     val status: ShogunStatusColors
@@ -25,14 +27,20 @@ object ShogunTheme {
 
     val typography: ShogunTextStyles
         @Composable get() = LocalShogunTextStyles.current
+
+    val colors: ShogunColors
+        @Composable get() = LocalShogunColors.current
+
+    val elevation: ShogunElevation
+        @Composable get() = LocalShogunElevation.current
 }
 
 val ShogunLightColorScheme: ColorScheme = lightColorScheme(
-    primary = BrandRedLightScheme,
+    primary = Neutral9,
     onPrimary = Neutral100,
-    primaryContainer = BrandRedContainerLight,
-    onPrimaryContainer = OnBrandRedContainerLight,
-    inversePrimary = BrandRedInverseLight,
+    primaryContainer = Neutral89,
+    onPrimaryContainer = Neutral9,
+    inversePrimary = Neutral91,
     secondary = Neutral38,
     onSecondary = Neutral100,
     secondaryContainer = Neutral89,
@@ -47,7 +55,7 @@ val ShogunLightColorScheme: ColorScheme = lightColorScheme(
     onSurface = Neutral9,
     surfaceVariant = Neutral89,
     onSurfaceVariant = Neutral34,
-    surfaceTint = BrandRedLightScheme,
+    surfaceTint = Neutral50,
     inverseSurface = Neutral18,
     inverseOnSurface = Neutral94,
     error = DangerLight,
@@ -64,10 +72,10 @@ val ShogunLightColorScheme: ColorScheme = lightColorScheme(
     surfaceContainerLow = Neutral96,
     surfaceContainerLowest = Neutral100,
     surfaceDim = Neutral91,
-    primaryFixed = BrandRedContainerLight,
-    primaryFixedDim = BrandRedFixedDim,
-    onPrimaryFixed = OnBrandRedFixed,
-    onPrimaryFixedVariant = OnBrandRedFixedVariant,
+    primaryFixed = Neutral89,
+    primaryFixedDim = Neutral80,
+    onPrimaryFixed = Neutral9,
+    onPrimaryFixedVariant = Neutral26,
     secondaryFixed = Neutral89,
     secondaryFixedDim = Neutral80,
     onSecondaryFixed = Neutral9,
@@ -79,11 +87,11 @@ val ShogunLightColorScheme: ColorScheme = lightColorScheme(
 )
 
 val ShogunDarkColorScheme: ColorScheme = darkColorScheme(
-    primary = BrandRedDarkScheme,
-    onPrimary = Neutral100,
-    primaryContainer = BrandRedContainerDark,
-    onPrimaryContainer = OnBrandRedContainerDark,
-    inversePrimary = BrandRedLightScheme,
+    primary = Neutral91,
+    onPrimary = Neutral6,
+    primaryContainer = Neutral22,
+    onPrimaryContainer = Neutral91,
+    inversePrimary = Neutral9,
     secondary = Neutral74,
     onSecondary = Neutral11,
     secondaryContainer = Neutral22,
@@ -98,7 +106,7 @@ val ShogunDarkColorScheme: ColorScheme = darkColorScheme(
     onSurface = Neutral91,
     surfaceVariant = Neutral18,
     onSurfaceVariant = Neutral74,
-    surfaceTint = BrandRedDarkScheme,
+    surfaceTint = Neutral70,
     inverseSurface = Neutral91,
     inverseOnSurface = Neutral11,
     error = DangerDark,
@@ -115,10 +123,10 @@ val ShogunDarkColorScheme: ColorScheme = darkColorScheme(
     surfaceContainerLow = Neutral9,
     surfaceContainerLowest = Neutral4,
     surfaceDim = Neutral6,
-    primaryFixed = BrandRedContainerLight,
-    primaryFixedDim = BrandRedFixedDim,
-    onPrimaryFixed = OnBrandRedFixed,
-    onPrimaryFixedVariant = OnBrandRedFixedVariant,
+    primaryFixed = Neutral89,
+    primaryFixedDim = Neutral80,
+    onPrimaryFixed = Neutral9,
+    onPrimaryFixedVariant = Neutral26,
     secondaryFixed = Neutral89,
     secondaryFixedDim = Neutral80,
     onSecondaryFixed = Neutral9,
@@ -144,6 +152,8 @@ fun ShogunAiTheme(themeMode: ThemeMode, content: @Composable () -> Unit) {
     CompositionLocalProvider(
         LocalShogunStatusColors provides if (useDark) DarkStatusColors else LightStatusColors,
         LocalShogunTextStyles provides ShogunDataTextStyles,
+        LocalShogunColors provides if (useDark) DarkShogunColors else LightShogunColors,
+        LocalShogunElevation provides if (useDark) DarkElevation else LightElevation,
     ) {
         MaterialTheme(
             colorScheme = if (useDark) ShogunDarkColorScheme else ShogunLightColorScheme,

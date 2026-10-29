@@ -51,7 +51,7 @@ fun ComposeProjectsView(machine: MachineResources, onOpenWorktree: (String, Stri
                         HorizontalDivider()
                         MachineRowLine {
                             MachineDataText(project.entry.project.name, Modifier.weight(1f))
-                            MachineDataText(project.entry.project.status, Modifier.width(150.dp))
+                            MachineStateText(project.entry.project.status, Modifier.width(150.dp))
                             ComposeOwnerCell(machine, project, onOpenWorktree)
                         }
                     }

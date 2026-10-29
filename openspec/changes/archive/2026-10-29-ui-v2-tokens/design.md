@@ -61,7 +61,7 @@ The scrim is `Neutral2` at 40 % alpha (the previous literal was black at 40 %), 
 
 ### Typography roles
 
-`ShogunTextStyles` gains `viewTitle`, `sectionTitle` and `eyebrow`. Uppercasing can't live in a `TextStyle`, so an `Eyebrow(text)` composable in `ui/theme` uppercases with the current locale. The Material slots keep their values, because dialogs, menus and fields read them; only the view headers change from `headlineSmall` to `viewTitle` (worktree views, project settings, add project, multirepo settings, Machine views and the first-launch empty state). Dialog titles move to `sectionTitle` with `ShogunDialog` in the forms change. The project settings section headings (`SettingsSection`) take `sectionTitle`.
+`ShogunTextStyles` gains `viewTitle`, `sectionTitle` and `eyebrow`. Uppercasing can't live in a `TextStyle`, so an `Eyebrow(text)` composable in `ui/theme` uppercases with the current locale. The Material slots keep their values, because dialogs, menus and fields read them; only the view headers change from `headlineSmall` to `viewTitle` (worktree views, project settings, add project, multirepo settings, Machine views and the first-launch empty state). Dialog titles move to `sectionTitle` with `ShogunDialog` in the forms change. The project settings section headings (`SettingsSection`) keep their size: at 13/18 they read the same as the field labels, and the forms change rebuilds that form with `Field`.
 
 `data` and `dataSmall` keep their 13/18 and 12/16 sizes. The design's table lists 12/16 and 11.5/16 but marks them as kept; resizing data would change every row's density, which belongs to `ui-v2-inspector-and-rows`.
 

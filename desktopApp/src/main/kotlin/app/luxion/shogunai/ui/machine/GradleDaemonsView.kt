@@ -90,7 +90,7 @@ private fun LoadedDaemons(daemons: List<MachineDaemon>, machine: MachineResource
         MachineRowLine {
             MachineDataText(daemonTitle(daemon, strings), Modifier.weight(1f))
             MachineDataText(formatSize(daemon.process.residentMemoryBytes), Modifier.width(80.dp))
-            MachineDataText(daemonStateText(daemon, strings), Modifier.width(170.dp))
+            MachineStateText(daemonStateText(daemon, strings), Modifier.width(170.dp))
             OwnerCell(daemon.owner, machine::projectName, onOpenWorktree, Modifier.width(MachineOwnerColumnWidth))
             Row(Modifier.width(MachineActionColumnWidth), horizontalArrangement = Arrangement.End) {
                 SecondaryButton(

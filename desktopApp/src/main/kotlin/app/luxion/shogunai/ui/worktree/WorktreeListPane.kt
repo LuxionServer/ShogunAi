@@ -340,7 +340,7 @@ private fun ProjectGroupHeader(
         DangerTextButton(
             onClick = { board.openCleanup(projectId) },
             enabled = board.canCleanUp(projectId),
-        ) { Text(strings.cleanUp, style = MaterialTheme.typography.bodySmall) }
+        ) { Text(strings.cleanUp) }
         IconAction(icon = Icons.Default.Settings, label = strings.projectConfigTitle, onClick = onOpenProjectSettings)
         IconAction(icon = Icons.Default.Add, label = strings.newWorktree, onClick = { board.openCreateDialog(projectId) })
     }
@@ -451,7 +451,7 @@ internal fun StateGroupHeader(
             DangerTextButton(
                 onClick = onCleanUp,
                 enabled = canCleanUp,
-            ) { Text(strings.cleanUp, style = MaterialTheme.typography.bodySmall) }
+            ) { Text(strings.cleanUp) }
         }
     }
 }
@@ -595,15 +595,15 @@ internal fun ChangeGroupHeaderView(
                 overflow = TextOverflow.Ellipsis,
             )
         }
-        StatusChip(group.state.status ?: Status.INFO, group.state.label(strings))
+        StatusChip(group.state.status, group.state.label(strings))
         if (isAdding) InlineProgress()
         NeutralTextButton(onClick = onOpenAll) {
-            Text(strings.openAllInHerdr, style = MaterialTheme.typography.bodySmall)
+            Text(strings.openAllInHerdr)
         }
         if (addableAliases.isNotEmpty()) AddRepositoryMenu(addableAliases, onAddRepository)
         val cleanUp: @Composable () -> Unit = {
             DangerTextButton(onClick = onCleanUp, enabled = canCleanUp) {
-                Text(strings.cleanUpGroup, style = MaterialTheme.typography.bodySmall)
+                Text(strings.cleanUpGroup)
             }
         }
         cleanUpBlocker?.let { WithTooltip(label = it, content = cleanUp) } ?: cleanUp()
@@ -616,7 +616,7 @@ private fun AddRepositoryMenu(aliases: List<String>, onPick: (String) -> Unit) {
     var expanded by remember { mutableStateOf(false) }
     Box {
         NeutralTextButton(onClick = { expanded = true }) {
-            Text(strings.addRepositoryToGroup, style = MaterialTheme.typography.bodySmall)
+            Text(strings.addRepositoryToGroup)
         }
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             aliases.forEach { alias ->
