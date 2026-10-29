@@ -127,9 +127,10 @@ sealed class WorktreeError(message: String, cause: Throwable? = null) : Exceptio
     )
 
     class DesktopTurnTaken(val holder: DesktopTurn?, val waiting: Int = 0) : WorktreeError(
-        (holder?.let { "The desktop is taken by ${it.displayName} until ${it.expiryClockTime()}" + desktopWaitingNote(waiting) } ?: desktopQueueNote(waiting)) +
-            ". Wait for it with --wait",
-    )
+        desktopTakenSummary(holder, waiting) + ". Wait for it with --wait",
+    ) {
+        val summary: String get() = desktopTakenSummary(holder, waiting)
+    }
 
     class DesktopTurnWaitTimedOut(val waited: Duration, val holder: DesktopTurn?) : WorktreeError(
         "Waited ${waited.toWaitText()} for the desktop" +
@@ -358,6 +359,9 @@ private fun desktopWaitingNote(waiting: Int): String = when (waiting) {
     1 -> "; 1 worktree is waiting for it"
     else -> "; $waiting worktrees are waiting for it"
 }
+
+private fun desktopTakenSummary(holder: DesktopTurn?, waiting: Int): String =
+    holder?.let { "The desktop is taken by ${it.displayName} until ${it.expiryClockTime()}" + desktopWaitingNote(waiting) } ?: desktopQueueNote(waiting)
 
 private fun desktopQueueNote(waiting: Int): String =
     if (waiting == 1) "1 worktree is waiting for the desktop first" else "$waiting worktrees are waiting for the desktop first"
