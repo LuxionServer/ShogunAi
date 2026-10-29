@@ -30,12 +30,12 @@ ShogunAi tiene que funcionar a la primera en una máquina que no es en la que se
 
 - Tests que obligan al producto a cumplirlo:
   - Cobertura de líneas y ramas medida en todos los módulos (Kover) y exigida en CI: el 100% de `core` y `cli`, y de la app de escritorio fuera de sus composables, que cubren los tests end to end. Un cambio que la baje rompe la build.
-  - Tests end to end del CLI contra repositorios Git reales en carpetas temporales, sin dobles: crear, provisionar, abrir y limpiar worktrees y grupos, con archivos locales copiados, enlazados y seleccionados por patrones.
+  - Abrir en Herdr en los tests end to end del CLI en Windows, donde el cliente de Herdr solo ejecuta `herdr.exe` y los tests necesitan un ejecutable que lo sustituya; en Linux y macOS ya se ejecutan contra un `herdr` falso.
   - Que los tests end to end de la app de escritorio fijen si `shogun` está instalado, cuando el entorno del host se resuelva en un solo sitio: hoy los tests del recorrido y de los hooks siguen lo que tenga la máquina, porque en macOS siempre se busca en `/opt/homebrew/bin`, y "falta el comando" solo se cubre con dobles.
   - Un test de regresión por cada bug corregido, escrito primero para reproducirlo, como ya lo tiene el falso aviso de «no está en el `PATH`».
 - Una prueba de humo de la app empaquetada en una máquina limpia en CI antes de cada versión: instalar el `.dmg` en un runner de macOS, abrir la app con el entorno que le da el Dock, instalar el comando y los hooks, añadir un proyecto con archivos locales, ejecutar `shogun new` y comprobar los archivos copiados. Una versión que no la pasa no se publica. Después, lo mismo en Windows y Linux con sus paquetes, que cubre también instalar el comando desde la app en Windows y en un equipo sin `~/.local/bin` en el `PATH`.
-- Un ensayo en una cuenta de usuario de macOS limpia, sin las instrucciones ni la configuración de quien desarrolla, recorriendo el recorrido guiado antes de cada versión o demo, siguiendo un guion en `docs/process/`.
 - Más comprobaciones en `shogun doctor` y «Comprobar instalación»: las herramientas de los providers que declara un repositorio (Xcode, el SDK de Android, Docker), y los multirepos con sus repositorios y grupos.
+- Un paso que ejecute `shogun doctor` en el [ensayo en una cuenta limpia](process/clean-account-rehearsal.md), para que un fallo allí llegue con qué está mal y cómo arreglarlo.
 
 ### 2. Orca, un segundo runner de primera clase
 

@@ -30,12 +30,12 @@ ShogunAi has to work the first time on a machine that isn't the one it's develop
 
 - Tests that hold the product to it:
   - Line and branch coverage measured on every module (Kover) and enforced in CI: 100% of `core` and `cli`, and of the desktop app outside its composables, which the end-to-end tests cover. A change that lowers it fails the build.
-  - End-to-end tests of the CLI against real Git repositories in temporary folders, without fakes: creating, provisioning, opening and cleaning worktrees and groups, with local files copied, linked and matched by patterns.
+  - Opening in Herdr in the CLI's end-to-end tests on Windows, where Herdr's client only runs `herdr.exe` and the tests need a stand-in executable for it; on Linux and macOS they already run against a fake `herdr`.
   - The desktop app's end-to-end tests forcing whether `shogun` is installed, once the host environment is resolved in one place: today the tour and the hooks tests follow what the machine has, since `/opt/homebrew/bin` is always searched on macOS, and "the command is missing" is covered only with fakes.
   - A regression test for every bug fixed, written first to reproduce it, as the false "not on the `PATH`" warning already has.
 - A smoke test of the packaged app on a clean machine in CI before every release: install the `.dmg` on a macOS runner, open the app with the environment the Dock gives it, install the command and the hooks, add a project with local files, run `shogun new` and check the copied files. A release that fails it isn't published. Then the same on Windows and Linux with their packages, which also covers installing the command from the app on Windows and on a machine without `~/.local/bin` on its `PATH`.
-- A rehearsal on a clean macOS user account, without the developer's instructions or settings, going through the guided tour before each release or demo, following a script in `docs/process/`.
 - More checks in `shogun doctor` and "Check Installation": the tools of the providers a repository declares (Xcode, the Android SDK, Docker), and multirepos with their repositories and groups.
+- A step running `shogun doctor` in the [clean account rehearsal](process/clean-account-rehearsal.md), so a failure there arrives with what is wrong and how to fix it.
 
 ### 2. Orca, a second first-class runner
 
