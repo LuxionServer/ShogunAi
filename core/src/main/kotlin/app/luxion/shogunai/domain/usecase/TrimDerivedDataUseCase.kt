@@ -80,6 +80,6 @@ class TrimDerivedDataUseCase(
     }
 
     private companion object {
-        val IN_USE_GRACE: Duration = Duration.ofHours(1)
+        private val IN_USE_GRACE: Duration = Duration.ofHours(1)
     }
 }

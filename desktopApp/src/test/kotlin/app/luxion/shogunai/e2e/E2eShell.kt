@@ -11,6 +11,8 @@ import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.SemanticsNodeInteractionsProvider
 import androidx.compose.ui.test.isRoot
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onFirst
+import androidx.compose.ui.test.performClick
 import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import app.luxion.shogunai.AppContainer
@@ -30,10 +32,8 @@ import kotlin.test.fail
 
 const val E2E_TIMEOUT_MILLIS = 30_000L
 
-class AnsweringPathPicker(var folder: File? = null, var files: List<File> = emptyList()) : PathPicker {
-    override fun pickDirectory(initialPath: String, dialogTitle: String): String? = folder?.absolutePath
-
-    override fun pickFiles(initialPath: String, dialogTitle: String): List<String> = files.map { it.absolutePath }
+class AnsweringPathPicker(var folder: File? = null) : PathPicker {
+    override suspend fun pickDirectory(initialPath: String, dialogTitle: String): String? = folder?.absolutePath
 }
 
 @OptIn(ExperimentalTestApi::class)
@@ -87,11 +87,22 @@ fun ComposeUiTest.awaitCondition(description: String, condition: () -> Boolean) 
 }
 
 @OptIn(ExperimentalTestApi::class)
+fun ComposeUiTest.clickUntil(text: String, description: String, condition: () -> Boolean) {
+    awaitCondition(description) {
+        val targets = onAllNodesWithText(text)
+        if (!condition() && targets.fetchSemanticsNodes().isNotEmpty()) targets.onFirst().performClick()
+        condition()
+    }
+}
+
+@OptIn(ExperimentalTestApi::class)
 private fun ComposeUiTest.textsOnScreen(): List<String> =
     onAllNodes(isRoot(), useUnmergedTree = true).fetchSemanticsNodes().flatMap { root -> textsOf(root) }
 
 private fun textsOf(node: SemanticsNode): List<String> =
-    node.config.getOrNull(SemanticsProperties.Text).orEmpty().map { it.text } + node.children.flatMap(::textsOf)
+    node.config.getOrNull(SemanticsProperties.Text).orEmpty().map { it.text } +
+        listOfNotNull(node.config.getOrNull(SemanticsProperties.EditableText)?.text) +
+        node.children.flatMap(::textsOf)
 
 private fun SemanticsNodeInteractionsProvider.hasNodeWithText(text: String, substring: Boolean): Boolean =
     onAllNodesWithText(text, substring = substring, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()

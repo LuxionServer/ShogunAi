@@ -18,6 +18,26 @@ data class DaemonProcess(
     val residentMemoryBytes: Long,
     val lastBuildDirectory: String?,
     val state: DaemonState,
+    val holder: HoldingBuild? = null,
+)
+
+data class HoldingBuild(
+    val directory: String,
+    val startedAt: Instant?,
+    val client: GradleClient?,
+)
+
+data class GradleClient(
+    val pid: Long,
+    val tasks: List<String>,
+    val ancestors: List<Long> = emptyList(),
+    val session: AgentSessionRef? = null,
+)
+
+data class AgentSessionRef(
+    val sessionId: String,
+    val agent: String,
+    val worktreePath: String,
 )
 
 sealed interface DaemonOwner {

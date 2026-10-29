@@ -176,30 +176,41 @@ class AcquireWorktreeResourceUseCase(
         worktreePath: String,
         directories: WorktreeGitDirectories,
         requested: SimulatorSettings,
-    ): Boolean = when (kind) {
-        ResourceKind.EMULATOR -> {
-            val taken = stateStore.reservedPortsOnMachine(directories.common)
-            val free = (FIRST_EMULATOR_PORT..LAST_EMULATOR_PORT step 2).filter { candidate ->
-                candidate !in taken && portProbe.isFree(candidate) && portProbe.isFree(candidate + 1)
-            }
-            val previous = stateStore.readReleases(directories.admin)[key]?.previous?.let(::portOf)
-            val quarantined = recentlyReleasedPorts(directories.common, key)
-            val port = free.firstOrNull { it == previous } ?: free.firstOrNull { it !in quarantined } ?: free.firstOrNull()
-            if (port != null) {
-                stateStore.writePorts(directories.admin, stateStore.readPorts(directories.admin) + (key to port))
-            }
-            port != null
+    ): Boolean =
+        if (kind == ResourceKind.EMULATOR) {
+            reserveEmulatorPort(key, directories)
+        } else {
+            reserveSimulator(key, repositoryPath, worktreePath, directories, requested)
         }
-        ResourceKind.IOS_SIMULATOR -> {
-            val providers = provisioningSource.read(repositoryPath).providers
-            val request = contributions(requested).forRepository(repositoryPath, providers)
-                .flatMap { it.resources }
-                .first { it.key == key }
-            val udid = request.create(ResourceContext(folderName(repositoryPath), folderName(worktreePath)))
-            stateStore.writeResources(directories.admin, stateStore.readResources(directories.admin) + (key to udid))
-            true
+
+    private fun reserveEmulatorPort(key: String, directories: WorktreeGitDirectories): Boolean {
+        val taken = stateStore.reservedPortsOnMachine(directories.common)
+        val free = (FIRST_EMULATOR_PORT..LAST_EMULATOR_PORT step 2).filter { candidate ->
+            candidate !in taken && portProbe.isFree(candidate) && portProbe.isFree(candidate + 1)
         }
-        ResourceKind.GRADLE_DAEMON -> throw IllegalArgumentException("Gradle daemons aren't acquired")
+        val previous = stateStore.readReleases(directories.admin)[key]?.previous?.let(::portOf)
+        val quarantined = recentlyReleasedPorts(directories.common, key)
+        val port = free.firstOrNull { it == previous } ?: free.firstOrNull { it !in quarantined } ?: free.firstOrNull()
+        if (port != null) {
+            stateStore.writePorts(directories.admin, stateStore.readPorts(directories.admin) + (key to port))
+        }
+        return port != null
+    }
+
+    private suspend fun reserveSimulator(
+        key: String,
+        repositoryPath: String,
+        worktreePath: String,
+        directories: WorktreeGitDirectories,
+        requested: SimulatorSettings,
+    ): Boolean {
+        val providers = provisioningSource.read(repositoryPath).providers
+        val request = contributions(requested).forRepository(repositoryPath, providers)
+            .flatMap { it.resources }
+            .first { it.key == key }
+        val udid = request.create(ResourceContext(folderName(repositoryPath), folderName(worktreePath)))
+        stateStore.writeResources(directories.admin, stateStore.readResources(directories.admin) + (key to udid))
+        return true
     }
 
     private suspend fun release(holder: PoolHolder, key: String, repositoryPath: String, beneficiary: String) {
@@ -253,11 +264,7 @@ class AcquireWorktreeResourceUseCase(
         }
     }
 
-    private fun keyOf(kind: ResourceKind): String = when (kind) {
-        ResourceKind.EMULATOR -> EMULATOR_PORT_KEY
-        ResourceKind.IOS_SIMULATOR -> IOS_SIMULATOR_KEY
-        ResourceKind.GRADLE_DAEMON -> throw IllegalArgumentException("Gradle daemons aren't acquired")
-    }
+    private fun keyOf(kind: ResourceKind): String = if (kind == ResourceKind.EMULATOR) EMULATOR_PORT_KEY else IOS_SIMULATOR_KEY
 
     private fun folderName(path: String): String = normalizePath(path).substringAfterLast('/')
 

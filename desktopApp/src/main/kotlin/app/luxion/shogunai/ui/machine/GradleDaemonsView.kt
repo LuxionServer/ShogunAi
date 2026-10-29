@@ -77,7 +77,8 @@ private fun LoadedDaemons(daemons: List<MachineDaemon>, machine: MachineResource
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        MachineDataText(strings.gradleDaemonsSummary(daemons.size, formatSize(processes.sumOf { it.residentMemoryBytes })))
+        val gradle = processes.count { it.kind == DaemonKind.GRADLE }
+        MachineDataText(strings.gradleDaemonsSummary(gradle, processes.size - gradle, formatSize(processes.sumOf { it.residentMemoryBytes })))
         Row(verticalAlignment = Alignment.CenterVertically) {
             if (machine.isStoppingDaemons) InlineProgress(modifier = Modifier.padding(end = Spacing.sm))
             val stopIdleBlock = stopIdleBlock(daemons, machine.isStoppingDaemons)

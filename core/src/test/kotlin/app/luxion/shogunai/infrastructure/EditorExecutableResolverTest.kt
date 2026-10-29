@@ -170,4 +170,9 @@ class EditorExecutableResolverTest {
         assertEquals(3, executor.executedCommands.size)
         assertEquals(listOf("reg", "query"), executor.executedCommands.first().take(2))
     }
+
+    @Test
+    fun `without an uninstall source there are no uninstall locations`() = runTest {
+        assertEquals(emptyList(), EditorExecutableResolver(HostOs.WINDOWS, ExecutableLocator(HostOs.WINDOWS, "C:\\Users\\dev", { emptyList() })).snapshot().locations())
+    }
 }

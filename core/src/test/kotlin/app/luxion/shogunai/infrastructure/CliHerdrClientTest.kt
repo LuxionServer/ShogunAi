@@ -41,6 +41,14 @@ class CliHerdrClientTest {
     }
 
     @Test
+    fun `location is the herdr binary that would run`() {
+        val executor = FakeShellCommandExecutor()
+
+        assertEquals("/home/dev/tools/bin/herdr", client(executor, onPath = mapOf("herdr" to "/home/dev/tools/bin/herdr")).location())
+        assertNull(client(executor).location())
+    }
+
+    @Test
     fun `a worktree is opened focused under its repository`() = runTest {
         val executor = FakeShellCommandExecutor { FakeShellCommandExecutor.success(it, fixture("worktree-open.json")) }
 

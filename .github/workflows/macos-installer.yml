@@ -107,6 +107,7 @@ jobs:
           echo "SIGNING_IDENTITY=${IDENTITY}" >> "$GITHUB_ENV"
 
       - name: Build signed installer
+        timeout-minutes: 40
         run: |
           ./gradlew :desktopApp:packageReleaseDmg \
             "-PappVersion=${VERSION}" \

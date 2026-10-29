@@ -107,6 +107,18 @@ class CliOrcaClientTest {
     }
 
     @Test
+    fun `bringing Orca to the front opens it and an Orca that can't run counts as not installed`() = runTest {
+        val executor = answering("open.json")
+        val broken = FakeShellCommandExecutor { throw CommandExecutionException(it, RuntimeException("exec format error")) }
+
+        client(executor).bringToFront()
+
+        assertEquals(listOf(orca, "open", "--json"), executor.executedCommands.single())
+        assertFailsWith<WorktreeError.OrcaNotInstalled> { client(broken).start() }
+        assertFailsWith<WorktreeError.OrcaNotInstalled> { client(broken).repos() }
+    }
+
+    @Test
     fun `repositories are listed with their id, path and visibility`() = runTest {
         val executor = answering("repo-list.json")
 
@@ -188,6 +200,13 @@ class CliOrcaClientTest {
             listOf(OrcaAgent("claude", AgentState.BLOCKED, AgentActivity(waitingOn, "Use the Bash tool to run: curl -s https://example.com -o page.html"))),
             row.agents,
         )
+    }
+
+    @Test
+    fun `an agent state Orca doesn't name is unknown`() = runTest {
+        val executor = FakeShellCommandExecutor { FakeShellCommandExecutor.success(it, fixture("worktree-ps-tool.json").replace("\"waiting\"", "\"thinking\"")) }
+
+        assertNull(client(executor).agentsByWorktree().single { it.path == external }.agents.single().state)
     }
 
     @Test
@@ -448,6 +467,15 @@ class CliOrcaClientTest {
         client(executor, files = setOf(bundle), onPath = emptyMap()).status()
 
         assertEquals(bundle, executor.executedCommands.single().first())
+    }
+
+    @Test
+    fun `location is the binary that would run, the app bundle's included`() {
+        val bundle = "/Applications/Orca.app/Contents/Resources/bin/orca"
+
+        assertEquals(bundle, client(FakeShellCommandExecutor(), files = setOf(bundle), onPath = emptyMap()).location())
+        assertEquals("/opt/tools/orca", client(FakeShellCommandExecutor(), files = setOf(bundle), onPath = mapOf("orca" to "/opt/tools/orca")).location())
+        assertNull(client(FakeShellCommandExecutor(), files = emptySet(), onPath = emptyMap()).location())
     }
 
     @Test

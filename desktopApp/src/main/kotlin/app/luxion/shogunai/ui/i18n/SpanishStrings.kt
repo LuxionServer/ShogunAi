@@ -1,5 +1,8 @@
 package app.luxion.shogunai.ui.i18n
 
+import app.luxion.shogunai.domain.model.CheckState
+import app.luxion.shogunai.domain.model.InstallationCheck
+import app.luxion.shogunai.domain.model.InstallationReport
 import app.luxion.shogunai.domain.model.AgentStateSource
 import app.luxion.shogunai.ui.components.AgentPhase
 import app.luxion.shogunai.domain.model.ComposeResourceKind
@@ -37,7 +40,6 @@ object SpanishStrings : Strings {
     override val collapse = "Contraer"
 
     override val selectFolderDialogTitle = "Selecciona una carpeta"
-    override val selectLocalFilesDialogTitle = "Selecciona archivos o carpetas locales"
 
     override val projectsTitle = "Proyectos"
     override val addProject = "Añadir proyecto"
@@ -89,6 +91,17 @@ object SpanishStrings : Strings {
     override val localFilesSection = "Archivos locales"
     override val removeLocalFile = "Eliminar archivo o carpeta local"
     override val newLocalFileLabel = "Nuevo archivo o carpeta local"
+    override val chooseLocalFiles = "Elegir…"
+    override val localFilePickerTitle = "Elegir archivos locales"
+    override fun localFilePickerDescription(repository: String) = "Archivos y carpetas que Git no sigue en $repository."
+    override val localFileFilterPlaceholder = "Filtra, o escribe un patrón como *.jks"
+    override fun addLocalPattern(pattern: String) = "Añadir el patrón $pattern"
+    override fun suggestedLocalFile(kind: String) = "Sugerido · $kind"
+    override val providedByRepository = "Ya lo aporta el repositorio"
+    override val noLocalFileCandidates = "El repositorio no tiene archivos sin seguir ni ignorados."
+    override val noLocalFileMatches = "Nada coincide con el filtro."
+    override fun selectedLocalFiles(count: Int) = if (count == 1) "1 seleccionado" else "$count seleccionados"
+    override val applyLocalFiles = "Aplicar"
     override val localFilesDescription =
         "Rutas de archivos o carpetas, o patrones como *.jks, que se copian a cada nuevo worktree, o se enlazan si activas Enlazar (una carpeta enlazada muestra al momento los cambios de la carpeta base, y un secreto enlazado lo comparten todos los worktrees). Solo se guardan en esta máquina."
     override val repositoryProvisioningSection = "Del repositorio"
@@ -423,8 +436,9 @@ object SpanishStrings : Strings {
     override val alsoStopIdleGradleDaemons = "Parar también los daemons de Gradle ociosos de los worktrees que se eliminan"
     override val alsoStopIdleMavenDaemons = "Parar también los daemons de Maven ociosos de los worktrees que se eliminan"
     override val gradleDaemonsTitle = "Daemons de Gradle"
-    override fun gradleDaemonsSummary(count: Int, totalMemory: String) =
-        (if (count == 1) "1 daemon" else "$count daemons") + " · $totalMemory"
+    override fun gradleDaemonsSummary(gradle: Int, kotlin: Int, totalMemory: String) =
+        (if (gradle == 1) "1 daemon de Gradle" else "$gradle daemons de Gradle") +
+            (if (kotlin > 0) " y $kotlin de Kotlin" else "") + " · $totalMemory"
     override val noGradleDaemons = "No hay daemons de Gradle ni de Kotlin en ejecución"
     override val gradleDaemonsUnavailable = "No se pueden inspeccionar los daemons en este sistema"
     override fun gradleDaemonLabel(version: String?) = listOfNotNull("Gradle", version).joinToString(" ")
@@ -547,15 +561,25 @@ object SpanishStrings : Strings {
     override fun poolUsage(inUse: Int, limit: Int?) = if (limit == null) "$inUse en uso" else "$inUse de $limit en uso"
     override val overLimit = "por encima del límite"
     override val overLimitChip = "Por encima del límite"
+    override val overLimitBuildsRunningChip = "Por encima del límite: builds en curso"
+    override fun overLimitNothingIdle(busy: Int, unknown: Int): String {
+        val reasons = listOfNotNull(
+            busy.takeIf { it > 0 }?.let { if (it == 1) "1 tiene un build en curso" else "$it tienen un build en curso" },
+            unknown.takeIf { it > 0 }?.let { if (it == 1) "1 tiene un estado desconocido" else "$it tienen un estado desconocido" },
+        )
+        return "Ninguno se puede parar ahora: ${reasons.joinToString(" y ")}. " +
+            "Los que queden inactivos se paran automáticamente mientras se supere el límite."
+    }
     override val changeInPreferences = "Cambiar en Preferencias"
     override fun releasedNotice(kind: ResourceKind, released: String, forWorktree: String) = when (kind) {
         ResourceKind.EMULATOR -> "El emulador de $released se liberó para dejar sitio a $forWorktree"
         ResourceKind.IOS_SIMULATOR -> "El simulador de $released se eliminó para dejar sitio a $forWorktree"
         ResourceKind.GRADLE_DAEMON -> "Un daemon de Gradle de $released se detuvo para dejar sitio a $forWorktree"
     }
-    override fun trimmedNotice(count: Int, limit: Int?) =
+    override fun trimmedNotice(count: Int, limit: Int?, trims: Int, lastTime: String) =
         (if (count == 1) "Se detuvo 1 daemon de Gradle inactivo" else "Se detuvieron $count daemons de Gradle inactivos") +
-            (limit?.let { " para mantenerse dentro del límite de $it" } ?: "")
+            (limit?.let { " para mantenerse dentro del límite de $it" } ?: "") +
+            (if (trims == 1) " a las $lastTime" else " · $trims veces, la última a las $lastTime")
     override fun poolSummary(inUse: Int, limit: Int?) = if (limit == null) "$inUse" else "$inUse/$limit"
     override val machineTitle = "Máquina"
     override val machineStatusGradle = "Gradle"
@@ -805,6 +829,15 @@ object SpanishStrings : Strings {
     override val showIconInTray = "Mostrar el icono en la bandeja del sistema"
     override val keepRunningWhenClosed = "Seguir ejecutándose al cerrar la ventana"
     override val menuCopyDiagnosticReport = "Copiar informe de diagnóstico"
+    override val menuCheckInstallation = "Comprobar instalación…"
+    override val installationCheckTitle = "Comprobar instalación"
+    override val installationCheckRunning = "Comprobando la instalación…"
+    override val installationCheckAgain = "Volver a comprobar"
+    override fun installationCheckFailed(reason: String) = "No se ha podido hacer la comprobación: $reason"
+    override fun installationOverview(report: InstallationReport) = spanishInstallationOverview(report)
+    override fun installationState(state: CheckState) = spanishInstallationState(state)
+    override fun installationSummary(check: InstallationCheck) = spanishInstallationSummary(check)
+    override fun installationFix(check: InstallationCheck) = spanishInstallationFix(check)
     override val secondaryWindowError = "La ventana se cerró por un error. Quedó registrado en el registro de diagnóstico."
     override val menuCheckForUpdates = "Buscar actualizaciones…"
     override fun updateAvailableMessage(newVersion: String, runningVersion: String) =

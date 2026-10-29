@@ -24,7 +24,9 @@ class CliHerdrClient(
     private val osName: String = System.getProperty("os.name").orEmpty(),
 ) : HerdrClient {
 
-    override fun isInstalled(): Boolean = findExecutable(binaryName()) != null
+    override fun isInstalled(): Boolean = location() != null
+
+    override fun location(): String? = findExecutable(binaryName())
 
     override suspend fun openWorktree(repository: String, path: String, label: String): HerdrWorktreeOpening {
         val arguments = listOf("worktree", "open", "--cwd", repository, "--path", path, "--label", label, "--focus")

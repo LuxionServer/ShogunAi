@@ -7,6 +7,9 @@ import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.test.runTest
+import java.io.IOException
+import java.nio.file.attribute.PosixFilePermissions
+import org.junit.Assume.assumeTrue
 import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Instant
@@ -291,6 +294,36 @@ class MacDerivedDataSourceTest {
 
         assertFalse(Files.exists(child))
         assertTrue(Files.exists(outside.resolve("keep.txt")))
+    }
+
+    @Test
+    fun `a project exists while its workspace is on disk`() {
+        val project = home.resolve("App.xcodeproj").createDirectories()
+
+        assertTrue(dataSource().projectExists(project.toString()))
+        assertFalse(dataSource().projectExists(home.resolve("Gone.xcodeproj").toString()))
+    }
+
+    @Test
+    fun `unreadable folders are skipped when measuring, unreadable plists are ignored and deleting fails`() = runTest {
+        assumeTrue(home.fileSystem.supportedFileAttributeViews().contains("posix"))
+        val child = folder("Locked-hash").apply { writePlist(this, "/home/dev/projects/main-repo/iosApp/iosApp.xcodeproj") }
+        val locked = child.resolve("Build").createDirectories()
+        locked.resolve("app").writeText("binary")
+        val unreadablePlist = folder("Unreadable-hash").apply { writePlist(this, "/home/dev/projects/other/Other.xcodeproj") }.resolve("info.plist")
+        Files.setPosixFilePermissions(unreadablePlist, emptySet())
+        Files.setPosixFilePermissions(locked, emptySet())
+        val source = dataSource()
+        try {
+            val listed = source.folders().single()
+
+            assertEquals(child.toString(), listed.path)
+            assertEquals(Files.size(child.resolve("info.plist")), source.size(listed))
+            assertFailsWith<IOException> { source.delete(listed) }
+        } finally {
+            Files.setPosixFilePermissions(locked, PosixFilePermissions.fromString("rwx------"))
+            Files.setPosixFilePermissions(unreadablePlist, PosixFilePermissions.fromString("rw-------"))
+        }
     }
 
     private fun dataSource(

@@ -222,7 +222,7 @@ class MacDerivedDataSource(
         const val LOAD_EXTERNAL_DTD_FEATURE = "http://apache.org/xml/features/nonvalidating/load-external-dtd"
         const val EXTERNAL_GENERAL_ENTITIES_FEATURE = "http://xml.org/sax/features/external-general-entities"
         const val EXTERNAL_PARAMETER_ENTITIES_FEATURE = "http://xml.org/sax/features/external-parameter-entities"
-        val BPLIST_MAGIC = "bplist00".toByteArray(Charsets.ISO_8859_1)
+        private val BPLIST_MAGIC = "bplist00".toByteArray(Charsets.ISO_8859_1)
     }
 }
 

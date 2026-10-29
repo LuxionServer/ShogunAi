@@ -1,7 +1,9 @@
+import kotlinx.kover.gradle.plugin.dsl.CoverageUnit
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
 
 plugins {
     alias(libs.plugins.kotlinJvm)
+    alias(libs.plugins.kover)
     alias(libs.plugins.composeMultiplatform)
     alias(libs.plugins.composeCompiler)
 }
@@ -21,7 +23,7 @@ dependencies {
     implementation(libs.kotlinx.coroutinesCore)
     implementation(libs.androidx.lifecycle.viewmodelCompose)
     implementation(libs.androidx.lifecycle.runtimeCompose)
-
+    implementation(libs.filekit.dialogs)
 
     testImplementation(testFixtures(project(":core")))
     testImplementation(libs.kotlin.testJunit)
@@ -96,7 +98,7 @@ compose.desktop {
             val appVersion = (findProperty("appVersion") as String?) ?: "0.0.0"
             packageVersion = appVersion
 
-            modules("java.net.http", "java.management", "jdk.management")
+            modules("java.net.http", "java.management", "jdk.management", "jdk.net", "jdk.security.auth")
 
             macOS {
                 packageVersion = macBundleVersion(appVersion)
@@ -135,6 +137,25 @@ tasks.withType<org.jetbrains.compose.desktop.application.tasks.AbstractJLinkTask
         val javaExecutable = File(javaHome.get(), "bin/java.exe")
         if (javaExecutable.exists()) {
             javaExecutable.copyTo(destinationDir.get().asFile.resolve("bin/java.exe"), overwrite = true)
+        }
+    }
+}
+
+kover {
+    reports {
+        filters {
+            excludes {
+                annotatedBy("androidx.compose.runtime.Composable", "androidx.compose.ui.tooling.preview.Preview")
+                classes("*ComposableSingletons*")
+            }
+        }
+        verify {
+            rule("desktop app lines") {
+                minBound(83, CoverageUnit.LINE)
+            }
+            rule("desktop app branches") {
+                minBound(66, CoverageUnit.BRANCH)
+            }
         }
     }
 }

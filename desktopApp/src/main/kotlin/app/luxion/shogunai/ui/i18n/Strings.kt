@@ -16,6 +16,9 @@ import app.luxion.shogunai.domain.usecase.HookEntry
 import app.luxion.shogunai.domain.usecase.HookReplacement
 import app.luxion.shogunai.domain.usecase.HooksInstallState
 import app.luxion.shogunai.domain.model.HostOs
+import app.luxion.shogunai.domain.model.CheckState
+import app.luxion.shogunai.domain.model.InstallationCheck
+import app.luxion.shogunai.domain.model.InstallationReport
 import app.luxion.shogunai.domain.usecase.CommandLineToolInstallation
 import app.luxion.shogunai.domain.usecase.CommandLineToolState
 import app.luxion.shogunai.domain.usecase.CommandLineToolStatus
@@ -39,7 +42,6 @@ interface Strings {
     val collapse: String
 
     val selectFolderDialogTitle: String
-    val selectLocalFilesDialogTitle: String
 
     val projectsTitle: String
     val addProject: String
@@ -88,6 +90,17 @@ interface Strings {
     val localFilesSection: String
     val removeLocalFile: String
     val newLocalFileLabel: String
+    val chooseLocalFiles: String
+    val localFilePickerTitle: String
+    fun localFilePickerDescription(repository: String): String
+    val localFileFilterPlaceholder: String
+    fun addLocalPattern(pattern: String): String
+    fun suggestedLocalFile(kind: String): String
+    val providedByRepository: String
+    val noLocalFileCandidates: String
+    val noLocalFileMatches: String
+    fun selectedLocalFiles(count: Int): String
+    val applyLocalFiles: String
     val localFilesDescription: String
     val repositoryProvisioningSection: String
     val repositoryProvisioningDescription: String
@@ -361,7 +374,7 @@ interface Strings {
     val alsoStopIdleGradleDaemons: String
     val alsoStopIdleMavenDaemons: String
     val gradleDaemonsTitle: String
-    fun gradleDaemonsSummary(count: Int, totalMemory: String): String
+    fun gradleDaemonsSummary(gradle: Int, kotlin: Int, totalMemory: String): String
     val noGradleDaemons: String
     val gradleDaemonsUnavailable: String
     fun gradleDaemonLabel(version: String?): String
@@ -448,9 +461,11 @@ interface Strings {
     fun poolUsage(inUse: Int, limit: Int?): String
     val overLimit: String
     val overLimitChip: String
+    val overLimitBuildsRunningChip: String
+    fun overLimitNothingIdle(busy: Int, unknown: Int): String
     val changeInPreferences: String
     fun releasedNotice(kind: ResourceKind, released: String, forWorktree: String): String
-    fun trimmedNotice(count: Int, limit: Int?): String
+    fun trimmedNotice(count: Int, limit: Int?, trims: Int, lastTime: String): String
     fun poolSummary(inUse: Int, limit: Int?): String
     val androidEmulatorsTitle: String
     val iosSimulatorsTitle: String
@@ -489,6 +504,15 @@ interface Strings {
     fun compactMonths(count: Long): String
     fun compactYears(count: Long): String
     val menuCopyDiagnosticReport: String
+    val menuCheckInstallation: String
+    val installationCheckTitle: String
+    val installationCheckRunning: String
+    val installationCheckAgain: String
+    fun installationCheckFailed(reason: String): String
+    fun installationOverview(report: InstallationReport): String
+    fun installationState(state: CheckState): String
+    fun installationSummary(check: InstallationCheck): String
+    fun installationFix(check: InstallationCheck): String?
     val secondaryWindowError: String
     val menuCheckForUpdates: String
     fun updateAvailableMessage(newVersion: String, runningVersion: String): String

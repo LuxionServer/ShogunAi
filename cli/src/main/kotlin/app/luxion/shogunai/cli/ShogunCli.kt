@@ -61,6 +61,7 @@ import app.luxion.shogunai.domain.model.DerivedDataFolder
 import app.luxion.shogunai.domain.model.DerivedDataOwner
 import app.luxion.shogunai.domain.model.EmulatorState
 import app.luxion.shogunai.domain.model.AGENT_START_SECONDS
+import app.luxion.shogunai.domain.model.ClaudeComputerUse
 import app.luxion.shogunai.domain.model.OrcaComputerUse
 import app.luxion.shogunai.domain.model.OrcaEmulatorView
 import app.luxion.shogunai.domain.model.RunnerId
@@ -71,6 +72,7 @@ import app.luxion.shogunai.domain.model.runnerInUse
 import app.luxion.shogunai.domain.model.MainBranch
 import app.luxion.shogunai.domain.model.Multirepo
 import app.luxion.shogunai.domain.model.GradleDaemon
+import app.luxion.shogunai.domain.model.HoldingBuild
 import app.luxion.shogunai.domain.model.IOS_SIMULATOR_UDID
 import app.luxion.shogunai.domain.model.PoolHolder
 import app.luxion.shogunai.domain.model.PoolRelease
@@ -154,6 +156,11 @@ import app.luxion.shogunai.domain.usecase.usesFvm
 import app.luxion.shogunai.domain.usecase.PrepareWorktreeEnvironmentUseCase
 import app.luxion.shogunai.domain.usecase.ProviderContributions
 import app.luxion.shogunai.domain.usecase.CheckProvisionedFilesUseCase
+import app.luxion.shogunai.domain.usecase.CheckInstallationUseCase
+import app.luxion.shogunai.domain.usecase.CommandLineTool
+import app.luxion.shogunai.domain.usecase.InstallationReportText
+import app.luxion.shogunai.infrastructure.NioLauncherFiles
+import app.luxion.shogunai.infrastructure.PowerShellUserPath
 import app.luxion.shogunai.domain.usecase.ProvisionWorktreeUseCase
 import app.luxion.shogunai.domain.usecase.ReadEmulatorStatesUseCase
 import app.luxion.shogunai.domain.usecase.ReadAgentActivityUseCase
@@ -317,12 +324,12 @@ class ShogunCli(
     private val now: () -> Instant = Instant::now,
     private val environment: HostEnvironment,
     private val files: ShogunFiles = ShogunFiles(environment.home),
-    private val locator: ExecutableLocator = ExecutableLocator(environment),
-    private val herdr: HerdrClient = CliHerdrClient(executor, locator::find),
+    private val findExecutable: (String) -> String? = ExecutableLocator(environment)::find,
+    private val herdr: HerdrClient = CliHerdrClient(executor, findExecutable),
     private val toolPreferences: ToolPreferenceRepository = JsonToolPreferenceRepository(JsonSettingsFile(files.settings)),
     private val herdrAgentStartTimeout: kotlin.time.Duration = AGENT_START_SECONDS.seconds,
-    private val orca: OrcaClient = CliOrcaClient(executor, locator::find),
-    private val gitHub: GitHubClient = CliGitHubClient(executor, locator::find),
+    private val orca: OrcaClient = CliOrcaClient(executor, findExecutable),
+    private val gitHub: GitHubClient = CliGitHubClient(executor, findExecutable),
     private val orcaWorkspaces: OrcaWorkspaceStore = JsonOrcaWorkspaceStore(files.orcaWorkspaces),
     private val trust: RepositoryTrust = RepositoryTrust.NONE,
     private val readAnswer: () -> String? = { null },
@@ -350,6 +357,17 @@ class ShogunCli(
         ClaudeCodeHooks.claudeSessionsDirectory(environment.variable(CLAUDE_CONFIG_DIR), environment.home),
     ),
     private val isClaudeProcessAlive: (Long) -> Boolean = ::isLiveClaudeProcess,
+    private val onShutdown: (Thread) -> () -> Unit = ::addJvmShutdownHook,
+    private val commandLineTool: CommandLineTool = CommandLineTool(
+        os = environment.os,
+        appLauncher = null,
+        home = environment.home,
+        pathFolders = { environment.path.folders },
+        userBinFolders = ExecutableLocator(environment).userBinFolders(),
+        findShogun = { findExecutable("shogun") },
+        files = NioLauncherFiles(),
+        userPath = PowerShellUserPath(executor),
+    ),
 ) {
     private val userHome: String = environment.home
 
@@ -479,11 +497,11 @@ class ShogunCli(
             job.cancel()
             runBlocking { job.join() }
         }
-        Runtime.getRuntime().addShutdownHook(hook)
+        val removeHook = onShutdown(hook)
         try {
             return block()
         } finally {
-            runCatching { Runtime.getRuntime().removeShutdownHook(hook) }
+            removeHook()
         }
     }
 
@@ -506,6 +524,7 @@ class ShogunCli(
             CliCommand.HookWorktreeRemove -> hookWorktreeRemove()
             is CliCommand.Gradle -> gradle(command)
             is CliCommand.Stacks -> stacks(command)
+            is CliCommand.Doctor -> doctor(command)
             is CliCommand.Maven -> maven(command)
             is CliCommand.MavenStop -> mavenStop(command)
             is CliCommand.Compose -> compose(command)
@@ -571,12 +590,13 @@ class ShogunCli(
         }
         if (command.fetch) FetchRemoteUseCase(config, executor)().getOrThrow()
         val approval = if (command.json) RepositoryApproval.SKIP else terminalApproval
+        var startPoint: String? = null
         val created = if (command.branch != null) {
             CreateWorktreeFromBranchUseCase(
                 config, executor, fileManager, provisioningSource, prepareEnvironment, trust, approval, provisioningRecords,
             )(command.branch)
         } else {
-            val startPoint = resolveStartPoint(workingDirectory, command.from)
+            startPoint = resolveStartPoint(workingDirectory, command.from)
             CreateWorktreeUseCase(config, executor, fileManager, provisioningSource, prepareEnvironment, trust, approval, provisioningRecords)(
                 command.taskId.orEmpty(),
                 command.branchType,
@@ -600,6 +620,7 @@ class ShogunCli(
             return EXIT_OK
         }
         out.line(worktree.path)
+        startPoint?.let { noteStartCommit(it, command.from) }
         noteSkippedLinks(worktree.skippedLinks)
         podsLines(worktree.pods).forEach { err.line("shogun: $it") }
         worktree.flutter?.let { err.line("shogun: ${flutterPubGetLine(it)}") }
@@ -1159,6 +1180,11 @@ class ShogunCli(
         } else {
             resolve(directory, "HEAD").getOrElse { throw WorktreeError.RepositoryHasNoCommits }
         }
+    }
+
+    private suspend fun noteStartCommit(commit: String, from: String?) {
+        val described = ResolveStartPointUseCase(executor).describe(workingDirectory, commit) ?: return
+        err.line(if (from != null) "shogun: branched from $from at $described" else "shogun: branched at $described")
     }
 
     private suspend fun resolveBaseBranch(directory: String, from: String?): String? =
@@ -2156,7 +2182,7 @@ class ShogunCli(
     private suspend fun gradle(command: CliCommand.Gradle): Int {
         val repository = ResolveRepositoryUseCase(executor)(workingDirectory).getOrNull()
         val worktrees = repository?.let { ListWorktreesUseCase(configFor(workingDirectory), executor)().getOrNull() }
-        val daemons = ListGradleDaemonsUseCase(daemonSource, fileManager)(worktrees).getOrThrow()
+        val daemons = ListGradleDaemonsUseCase(daemonSource, fileManager, sessionStore)(worktrees) { knownWorktreePaths(worktrees) }.getOrThrow()
         if (command.json) {
             printJson(gradleJson(daemons, attributed = worktrees != null))
             return EXIT_OK
@@ -2164,7 +2190,10 @@ class ShogunCli(
         if (daemons.isEmpty()) {
             out.line("No Gradle or Kotlin daemons running.")
         } else {
-            daemons.forEach { out.line(daemonLine(it, attributed = worktrees != null)) }
+            daemons.forEach { daemon ->
+                out.line(daemonLine(daemon, attributed = worktrees != null))
+                daemon.process.holder?.let { out.line(holderLine(it)) }
+            }
             out.line("total  memory=${formatMemory(totalResidentMemory(daemons))}  daemons=${daemons.size}")
         }
         if (repository != null && declaresGradle(repository) &&
@@ -2242,6 +2271,25 @@ class ShogunCli(
             },
         )
         return EXIT_OK
+    }
+
+    private suspend fun doctor(command: CliCommand.Doctor): Int {
+        val report = CheckInstallationUseCase(
+            executor = executor,
+            findExecutable = findExecutable,
+            path = { environment.path },
+            shell = environment.shell,
+            commandLineTool = commandLineTool::status,
+            hooks = claudeHooks,
+            hooksSettingsPath = userHooksSettingsPath(),
+            herdrLocation = herdr::location,
+            orcaLocation = orca::location,
+            projects = projectRepository,
+            fileManager = fileManager,
+            provisioningSource = provisioningSource,
+        )()
+        if (command.json) printJson(doctorJson(report)) else InstallationReportText.lines(report).forEach { out.line(it) }
+        return if (report.failed) EXIT_FAILURE else EXIT_OK
     }
 
     private suspend fun stacks(command: CliCommand.Stacks): Int {
@@ -2635,6 +2683,23 @@ class ShogunCli(
         return (listOf(process.pid.toString()) + details).joinToString("  ")
     }
 
+    private suspend fun knownWorktreePaths(current: List<Worktree>?): List<String> {
+        val others = projectRepository.list().flatMap { ListWorktreesUseCase(it.config, executor)().getOrNull().orEmpty() }
+        return (current.orEmpty() + others).map { it.path }.distinctBy { it.trimEnd('/') }
+    }
+
+    private fun holderLine(holder: HoldingBuild): String {
+        val client = holder.client
+        val build = when {
+            client == null -> "a build"
+            client.tasks.isEmpty() -> "pid ${client.pid}"
+            else -> "pid ${client.pid} (${client.tasks.joinToString(" ")})"
+        }
+        val running = holder.startedAt?.let { " for ${formatDuration(Duration.between(it, now()))}" }.orEmpty()
+        val session = client?.session?.let { ", session ${it.sessionId} of ${it.worktreePath}" }.orEmpty()
+        return "  held by $build in ${holder.directory}$running$session"
+    }
+
     private fun kindLabel(process: DaemonProcess): String =
         listOfNotNull(process.kind.label, process.gradleVersion).joinToString(" ")
 
@@ -2800,9 +2865,7 @@ class ShogunCli(
 
     private suspend fun hookDesktopTurn(): Int {
         val input = hookInput("desktop-turn") ?: return EXIT_USAGE
-        if (input.string("tool_name") != BASH_TOOL) return EXIT_OK
-        val command = (input["tool_input"] as? JsonObject)?.string("command") ?: return EXIT_OK
-        if (!OrcaComputerUse.drivesDesktop(command)) return EXIT_OK
+        if (!drivesDesktop(input)) return EXIT_OK
         try {
             val directory = input.string("cwd") ?: workingDirectory
             if (ResolveRepositoryUseCase(executor)(directory).isFailure) return EXIT_OK
@@ -2817,6 +2880,13 @@ class ShogunCli(
         return EXIT_OK
     }
 
+    private fun drivesDesktop(input: JsonObject): Boolean {
+        val tool = input.string("tool_name") ?: return false
+        if (tool != BASH_TOOL) return ClaudeComputerUse.drivesDesktop(tool)
+        val command = (input["tool_input"] as? JsonObject)?.string("command") ?: return false
+        return OrcaComputerUse.drivesDesktop(command)
+    }
+
     private fun desktopTurnDenial(taken: WorktreeError.DesktopTurnTaken): JsonObject = buildJsonObject {
         put(
             "hookSpecificOutput",
@@ -2826,7 +2896,7 @@ class ShogunCli(
                 put(
                     "permissionDecisionReason",
                     "${taken.summary}. Take your turn first with `shogun desktop acquire --wait`, run in the background " +
-                        "since it can wait up to 30 minutes, then run this command again.",
+                        "since it can wait up to 30 minutes, then try again.",
                 )
             },
         )
@@ -3176,3 +3246,8 @@ internal fun claudeAncestorPid(): Long? =
     generateSequence(ProcessHandle.current().parent().orElse(null)) { it.parent().orElse(null) }
         .firstOrNull { it.info().command().orElse("").substringAfterLast('/') == "claude" }
         ?.pid()
+
+private fun addJvmShutdownHook(hook: Thread): () -> Unit {
+    Runtime.getRuntime().addShutdownHook(hook)
+    return { runCatching { Runtime.getRuntime().removeShutdownHook(hook) } }
+}

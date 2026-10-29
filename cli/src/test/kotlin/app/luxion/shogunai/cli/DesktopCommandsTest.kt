@@ -93,8 +93,8 @@ class DesktopCommandsTest {
         }
     }
 
-    private fun cli(workingDirectory: String = task1, input: String = "", store: DesktopTurnStore = turnStore) = ShogunCli(
-        executor = executor,
+    private fun cli(workingDirectory: String = task1, input: String = "", store: DesktopTurnStore = turnStore, git: ShellCommandExecutor = executor) = ShogunCli(
+        executor = git,
         fileManager = FakeFileManager(existing = listOf(base, task1, task2)),
         projectRepository = FakeProjectRepository(emptyList()),
         provisioningSource = FakeRepositoryProvisioningSource(),
@@ -295,6 +295,32 @@ class DesktopCommandsTest {
     }
 
     @Test
+    fun `worktree status json names the waiters and the desktop's queue`() {
+        heldByTask2()
+        queue.write(WaitQueueName.DESKTOP, listOf(WaitTicket("t", admin1, task1, ProcessIdentity(5, 1), now.toEpochMilli())))
+
+        assertEquals(0, cli(workingDirectory = base).run(listOf("status", "--json")), err.toString())
+        val waiter = json()["worktrees"]!!.jsonArray.map { it.jsonObject }.single { it["path"]?.jsonPrimitive?.content == task1 }["desktop"]!!.jsonObject
+        out.clear()
+        assertEquals(0, cli().run(listOf("desktop", "status", "--json")), err.toString())
+
+        assertEquals("waiting", waiter["role"]?.jsonPrimitive?.content)
+        assertEquals(1, waiter["position"]?.jsonPrimitive?.int)
+        assertEquals(task1, json()["waiting"]!!.jsonArray.single().jsonObject["worktree"]?.jsonPrimitive?.content)
+    }
+
+    @Test
+    fun `a free desktop reads as free and releasing it says nobody holds it`() {
+        assertEquals(0, cli().run(listOf("desktop", "status")), err.toString())
+        val status = out.toString()
+        out.clear()
+        assertEquals(0, cli().run(listOf("desktop", "release")), err.toString())
+
+        assertEquals("desktop free\n", status)
+        assertEquals("nobody holds the desktop\n", out.toString())
+    }
+
+    @Test
     fun `removing the holder's worktree releases the desktop`() {
         heldByTask2()
 
@@ -317,8 +343,8 @@ class DesktopCommandsTest {
             ),
         )
 
-    private fun desktopTurnHook(command: String, cwd: String = task1, tool: String = "Bash", store: DesktopTurnStore = turnStore): Int =
-        cli(input = preToolUse(command, cwd, tool), store = store).run(listOf("hook", "desktop-turn"))
+    private fun desktopTurnHook(command: String, cwd: String = task1, tool: String = "Bash", store: DesktopTurnStore = turnStore, git: ShellCommandExecutor = executor): Int =
+        cli(input = preToolUse(command, cwd, tool), store = store, git = git).run(listOf("hook", "desktop-turn"))
 
     private fun denialReason(): String {
         val output = json().getValue("hookSpecificOutput").jsonObject
@@ -399,6 +425,103 @@ class DesktopCommandsTest {
     }
 
     @Test
+    fun `desktop-turn hook leaves calls without a tool name or a command alone`() {
+        val turn = heldByTask2()
+
+        listOf(
+            mapOf("cwd" to JsonPrimitive(task1)),
+            mapOf("cwd" to JsonPrimitive(task1), "tool_name" to JsonPrimitive("Bash")),
+            mapOf("cwd" to JsonPrimitive(task1), "tool_name" to JsonPrimitive("Bash"), "tool_input" to JsonObject(emptyMap())),
+        ).forEach { fields ->
+            val input = Json.encodeToString(JsonObject.serializer(), JsonObject(fields))
+
+            assertEquals(0, cli(input = input, store = turnStore).run(listOf("hook", "desktop-turn")), err.toString())
+            assertEquals("", out.toString(), input)
+            assertEquals(turn, turnStore.turn)
+        }
+    }
+
+    private fun computerUseHook(tool: String, cwd: String = task1): Int {
+        val input = Json.encodeToString(
+            JsonObject.serializer(),
+            JsonObject(
+                mapOf(
+                    "session_id" to JsonPrimitive("963d9441"),
+                    "cwd" to JsonPrimitive(cwd),
+                    "hook_event_name" to JsonPrimitive("PreToolUse"),
+                    "tool_name" to JsonPrimitive(tool),
+                    "tool_input" to JsonObject(mapOf("coordinate" to JsonPrimitive("[10, 20]"))),
+                ),
+            ),
+        )
+        return cli(input = input, store = turnStore).run(listOf("hook", "desktop-turn"))
+    }
+
+    @Test
+    fun `desktop-turn hook takes a free desktop before Claude's computer use acts`() {
+        assertEquals(0, computerUseHook("mcp__computer-use__left_click"), err.toString())
+
+        assertEquals("", out.toString())
+        assertEquals(admin1, turnStore.turn?.adminDirectory)
+    }
+
+    @Test
+    fun `desktop-turn hook renews the holder's turn for Claude's computer use`() {
+        computerUseHook("mcp__computer-use__left_click")
+        now += Duration.ofMinutes(5)
+
+        assertEquals(0, computerUseHook("mcp__computer-use__type"), err.toString())
+
+        assertEquals("", out.toString())
+        assertEquals((now + Duration.ofMinutes(10)).toEpochMilli(), turnStore.turn?.expiresAt)
+    }
+
+    @Test
+    fun `desktop-turn hook takes the turn for a linked machine's computer use`() {
+        assertEquals(0, computerUseHook("mcp__remote-devices__computer_key"), err.toString())
+
+        assertEquals("", out.toString())
+        assertEquals(admin1, turnStore.turn?.adminDirectory)
+    }
+
+    @Test
+    fun `desktop-turn hook denies Claude's computer use while another worktree holds the turn`() {
+        val turn = heldByTask2()
+
+        assertEquals(0, computerUseHook("mcp__computer-use__left_click"), err.toString())
+
+        val reason = denialReason()
+        assertTrue("main-repo · TASK-2" in reason, reason)
+        assertTrue(clock(Instant.ofEpochMilli(turn.expiresAt)) in reason, reason)
+        assertTrue("shogun desktop acquire --wait" in reason && "background" in reason, reason)
+        assertEquals(turn, turnStore.turn)
+        assertTrue(queue.read(WaitQueueName.DESKTOP).isEmpty())
+    }
+
+    @Test
+    fun `desktop-turn hook denies Claude's computer use while others wait and keeps them first`() {
+        val waiter = WaitTicket("t", admin2, task2, ProcessIdentity(5, 1), 0)
+        queue.write(WaitQueueName.DESKTOP, listOf(waiter))
+
+        assertEquals(0, computerUseHook("mcp__computer-use__scroll", cwd = base), err.toString())
+
+        assertTrue("1 worktree is waiting" in denialReason())
+        assertNull(turnStore.turn)
+        assertEquals(listOf(waiter), queue.read(WaitQueueName.DESKTOP))
+    }
+
+    @Test
+    fun `desktop-turn hook lets Claude's screenshots run while the desktop is taken`() {
+        val turn = heldByTask2()
+
+        listOf("mcp__computer-use__screenshot", "mcp__remote-devices__computer_zoom", "mcp__computer-use__request_access").forEach { tool ->
+            assertEquals(0, computerUseHook(tool), err.toString())
+            assertEquals("", out.toString(), tool)
+            assertEquals(turn, turnStore.turn)
+        }
+    }
+
+    @Test
     fun `desktop-turn hook does nothing outside a repository`() {
         assertEquals(0, desktopTurnHook("orca computer click --app com.example.app", cwd = "/tmp/elsewhere"), err.toString())
 
@@ -416,6 +539,55 @@ class DesktopCommandsTest {
         assertEquals(0, desktopTurnHook("orca computer click --app com.example.app", store = unreadable))
 
         assertEquals("", out.toString())
+    }
+
+    @Test
+    fun `desktop-turn hook lets the command run when the worktree can't be read`() {
+        val noTopLevel = object : ShellCommandExecutor {
+            override suspend fun execute(command: List<String>, workingDirectory: String?): CommandResult =
+                if ("--show-toplevel" in command) CommandResult(command, 128, "", "fatal: not a work tree") else executor.execute(command, workingDirectory)
+        }
+
+        assertEquals(0, desktopTurnHook("orca computer click --app com.example.app", git = noTopLevel))
+
+        assertEquals("", out.toString())
+        assertNull(turnStore.turn)
+    }
+
+    @Test
+    fun `by default a waiter sleeps on the real clock until the holder's turn expires`() {
+        val start = Instant.now()
+        turnStore.turn = DesktopTurn(admin2, task2, start.toEpochMilli(), (start + Duration.ofMillis(100)).toEpochMilli())
+        val realTime = ShogunCli(
+            executor = executor,
+            fileManager = FakeFileManager(existing = listOf(base, task1, task2)),
+            projectRepository = FakeProjectRepository(emptyList()),
+            provisioningSource = FakeRepositoryProvisioningSource(),
+            daemonSource = FakeGradleDaemonSource(),
+            gradleUserHome = "/home/dev/.gradle",
+            environmentStateStore = stateStore,
+            portProbe = FakePortProbe(),
+            androidSdk = FakeAndroidSdk(),
+            appleSimulators = FakeAppleSimulators(),
+            kmpTestWiring = FakeKmpTestWiring(),
+            resourceLimits = FakeResourceLimitsRepository(ResourceSettings(desktopTurnMinutes = 10)),
+            machineCapacity = FakeMachineCapacity(),
+            derivedDataSource = FakeDerivedDataSource(),
+            herdrConfig = FakeHerdrConfigSource(),
+            orca = FakeOrcaClient(installed = false),
+            workingDirectory = task1,
+            out = out,
+            err = err,
+            canonicalPath = { it.trimEnd('/') },
+            environment = hostEnvironment(),
+            deviceWaitQueue = queue,
+            processLiveness = FakeProcessLiveness(),
+            desktopTurnStore = turnStore,
+        )
+
+        assertEquals(0, realTime.run(listOf("desktop", "acquire", "--wait")), err.toString())
+
+        assertEquals(admin1, turnStore.turn?.adminDirectory)
     }
 
     @Test

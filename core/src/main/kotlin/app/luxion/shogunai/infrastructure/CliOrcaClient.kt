@@ -36,7 +36,9 @@ class CliOrcaClient(
     private val isFile: (String) -> Boolean = { File(it).isFile },
 ) : OrcaClient {
 
-    override fun isInstalled(): Boolean = executableOrNull() != null
+    override fun isInstalled(): Boolean = location() != null
+
+    override fun location(): String? = executableOrNull()
 
     override suspend fun status(): OrcaStatus {
         val result = run(listOf("status"))

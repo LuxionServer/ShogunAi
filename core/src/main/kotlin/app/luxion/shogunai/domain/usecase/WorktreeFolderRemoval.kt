@@ -16,7 +16,7 @@ internal class WorktreeFolderRemoval(
     private val releaseDesktopTurn: ReleaseDesktopTurnUseCase? = null,
     private val closeOrcaTerminals: CloseOrcaTerminalsUseCase? = null,
 ) {
-    suspend fun remove(path: String, force: Boolean, workspaceId: String?, hasOrcaTerminals: Boolean = false): HolderClosing {
+    suspend fun remove(path: String, force: Boolean, workspaceId: String?, hasOrcaTerminals: Boolean): HolderClosing {
         val headlessAppFailure = stopHeadlessApp?.beforeRemoving(path)
         releaseDesktopTurn?.onWorktreeRemoved(path)
         return removeFolder(path, force, workspaceId, hasOrcaTerminals).copy(headlessAppFailure = headlessAppFailure)

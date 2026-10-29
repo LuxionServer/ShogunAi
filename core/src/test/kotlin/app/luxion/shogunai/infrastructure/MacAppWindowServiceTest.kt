@@ -60,6 +60,14 @@ class MacAppWindowServiceTest {
     }
 
     @Test
+    fun `hides the app through the helper`() = runTest {
+        val executor = FakeShellCommandExecutor { success(it, stdout = """{"code":0}""") }
+
+        assertEquals(HideOutcome.HIDDEN, MacAppWindowService(executor, scripts.toString(), osName = "Mac OS X").hide(4242))
+        assertEquals("hide", executor.executedCommands.single()[4])
+    }
+
+    @Test
     fun `reads each permission from the helper`() = runTest {
         val executor = FakeShellCommandExecutor { success(it, stdout = """{"screenRecording":false,"accessibility":true}""") }
         val service = MacAppWindowService(executor, scripts.toString(), osName = "Mac OS X")
