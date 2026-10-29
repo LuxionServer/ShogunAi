@@ -60,6 +60,7 @@ import app.luxion.shogunai.domain.model.DerivedDataOwner
 import app.luxion.shogunai.domain.model.EmulatorState
 import app.luxion.shogunai.domain.model.AGENT_START_SECONDS
 import app.luxion.shogunai.domain.model.HerdrOpening
+import app.luxion.shogunai.domain.model.OrcaComputerUse
 import app.luxion.shogunai.domain.model.OrcaOpening
 import app.luxion.shogunai.domain.model.OrcaOutcome
 import app.luxion.shogunai.domain.model.HerdrOutcome
@@ -275,6 +276,8 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 
 class ShogunCli(
     private val executor: ShellCommandExecutor,
@@ -496,6 +499,7 @@ class ShogunCli(
             CliCommand.HookHerdr -> hookHerdr()
             is CliCommand.HookOrca -> hookOrca(command.action)
             CliCommand.HookAgentState -> hookAgentState()
+            CliCommand.HookDesktopTurn -> hookDesktopTurn()
             is CliCommand.Hooks -> hooks(command)
             is CliCommand.Guide -> guide(command)
             is CliCommand.GuideBlock -> guideBlock(command)
@@ -2727,6 +2731,40 @@ class ShogunCli(
         return EXIT_OK
     }
 
+    private suspend fun hookDesktopTurn(): Int {
+        val input = hookInput("desktop-turn") ?: return EXIT_USAGE
+        if (input.string("tool_name") != BASH_TOOL) return EXIT_OK
+        val command = (input["tool_input"] as? JsonObject)?.string("command") ?: return EXIT_OK
+        if (!OrcaComputerUse.drivesDesktop(command)) return EXIT_OK
+        try {
+            val directory = input.string("cwd") ?: workingDirectory
+            if (ResolveRepositoryUseCase(executor)(directory).isFailure) return EXIT_OK
+            val worktree = worktreeTopLevel(directory)
+            val taken = acquireDesktopTurn(worktree).exceptionOrNull() as? WorktreeError.DesktopTurnTaken ?: return EXIT_OK
+            printJson(desktopTurnDenial(taken))
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            return EXIT_OK
+        }
+        return EXIT_OK
+    }
+
+    private fun desktopTurnDenial(taken: WorktreeError.DesktopTurnTaken): JsonObject = buildJsonObject {
+        put(
+            "hookSpecificOutput",
+            buildJsonObject {
+                put("hookEventName", "PreToolUse")
+                put("permissionDecision", "deny")
+                put(
+                    "permissionDecisionReason",
+                    "${taken.summary}. Take your turn first with `shogun desktop acquire --wait`, run in the background " +
+                        "since it can wait up to 30 minutes, then run this command again.",
+                )
+            },
+        )
+    }
+
     private suspend fun unversionedMultirepoFolder(directory: String): String? {
         if (ResolveRepositoryUseCase(executor)(directory).isSuccess) return null
         return resolveMultirepo.known().firstOrNull { sameDirectory(it.folder, directory) }?.folder
@@ -3002,6 +3040,7 @@ class ShogunCli(
         private const val IGNORED_DECLARED_AGENT =
             "The declaration's agent is ignored; set the multirepo agent on this machine with 'shogun multirepo agent'."
         private const val SESSION_END = "SessionEnd"
+        private const val BASH_TOOL = "Bash"
         private val DESKTOP_RELEASING_EVENTS = setOf("Stop", SESSION_END)
         private const val HERDR_PLUGIN_EVENT = "HERDR_PLUGIN_EVENT"
         private const val HERDR_PLUGIN_EVENT_JSON = "HERDR_PLUGIN_EVENT_JSON"

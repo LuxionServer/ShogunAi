@@ -168,7 +168,7 @@ object WorkflowRules {
         WorkflowRule(
             "resources.desktop-turn",
             WorkflowTopic.RESOURCES,
-            "Before driving the desktop with computer use, take the machine's desktop turn with `shogun desktop acquire --wait`, " +
+            "Before driving the desktop with computer use, Orca's `orca computer` commands included, take the machine's desktop turn with `shogun desktop acquire --wait`, " +
                 "run in the background or with a long enough shell timeout, since it can wait up to 30 minutes; " +
                 "run it again to renew the turn during a long check, before it expires, and give it back with `shogun desktop release` as soon as you are done.",
             inSessionStart = true,
