@@ -40,14 +40,14 @@ The system SHALL consider for cleanup every non-main worktree that is merged int
 - **THEN** it is selected for cleanup
 
 ### Requirement: Confirm before cleaning up
-The system SHALL offer a "Clean up" action in the worktree view's header, covering the projects shown in the view, and in each project group's header, covering that project. Each action SHALL be enabled only when at least one worktree in its scope is selected for cleanup. Activating it SHALL show a confirmation dialog listing the selected worktrees grouped by project, with an option to also delete their local branches that is off by default. No Git command SHALL run until the user confirms.
+The system SHALL offer a "Clean up" action as the last item of the worktree view header's "More" (⋯) menu, in danger text, covering the projects shown in the view, and in each project group's header, covering that project. Each action SHALL be enabled only when at least one worktree in its scope is selected for cleanup, and when disabled SHALL say why in a tooltip. Activating it SHALL show a confirmation dialog listing the selected worktrees grouped by project, with an option to also delete their local branches that is off by default. No Git command SHALL run until the user confirms.
 
 #### Scenario: Nothing to clean up
 - **WHEN** no worktree in the action's scope is selected for cleanup
-- **THEN** that "Clean up" action is disabled
+- **THEN** that "Clean up" action is disabled and its tooltip says why
 
 #### Scenario: Confirmation dialog
-- **WHEN** the user activates "Clean up" in "All worktrees" with candidates in `api` and `main-repo`
+- **WHEN** the user activates "Clean up" in the ⋯ menu of "All worktrees" with candidates in `api` and `main-repo`
 - **THEN** a dialog lists the candidates under an `api` heading and a `main-repo` heading, with an unchecked "also delete their local branches" option, and nothing is removed until the user confirms
 
 #### Scenario: User cancels

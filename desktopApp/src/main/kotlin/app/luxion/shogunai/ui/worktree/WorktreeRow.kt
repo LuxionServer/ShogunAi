@@ -1,7 +1,5 @@
 package app.luxion.shogunai.ui.worktree
 
-import androidx.compose.foundation.ContextMenuArea
-import androidx.compose.foundation.ContextMenuItem
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -44,6 +42,7 @@ import app.luxion.shogunai.ui.components.CompactBehavior
 import app.luxion.shogunai.ui.components.DataCell
 import app.luxion.shogunai.ui.components.DataRow
 import app.luxion.shogunai.ui.components.InlineProgress
+import app.luxion.shogunai.ui.components.MenuEntry
 import app.luxion.shogunai.ui.components.ProgressSize
 import app.luxion.shogunai.ui.components.Spacing
 import app.luxion.shogunai.ui.components.WithTooltip
@@ -59,39 +58,14 @@ fun WorktreeRow(
     model: WorktreeRowModel,
     selected: Boolean,
     isCopied: Boolean,
-    isMain: Boolean,
     compact: Boolean = false,
     onSelect: () -> Unit,
     onCopyLaunchCommand: () -> Unit,
-    onCopyPath: () -> Unit,
-    onOpenInHerdr: () -> Unit,
-    onOpenInOrca: () -> Unit = {},
-    agentName: String? = null,
-    launchChoices: List<LaunchChoice> = emptyList(),
-    onLaunch: (LaunchChoice) -> Unit = {},
-    openActions: List<OpenAction> = emptyList(),
+    contextMenu: () -> List<MenuEntry> = { emptyList() },
     onOpenGroupTag: () -> Unit = {},
-    onRemove: () -> Unit,
 ) {
     val strings = LocalStrings.current
-    val prunable = model.isFolderMissing
-    ContextMenuArea(
-        items = {
-            buildList {
-                add(ContextMenuItem(withAgent(strings.copyLaunchCommand, agentName, strings), onClick = onCopyLaunchCommand))
-                if (!prunable) {
-                    add(ContextMenuItem(withAgent(strings.openInHerdr, agentName, strings), onClick = onOpenInHerdr))
-                    add(ContextMenuItem(withAgent(strings.openInOrca, agentName, strings), onClick = onOpenInOrca))
-                    openActions.forEach { add(ContextMenuItem(it.label, onClick = it.onClick)) }
-                }
-                launchChoices.forEach { choice -> add(ContextMenuItem(choice.label, onClick = { onLaunch(choice) })) }
-                add(ContextMenuItem(strings.copyPath, onClick = onCopyPath))
-                if (!isMain) {
-                    add(ContextMenuItem(strings.deleteWorktree, onClick = onRemove))
-                }
-            }
-        },
-    ) {
+    WorktreeContextMenu(entries = contextMenu) {
         DataRow(
             cells = listOfNotNull(
                 model.alias?.let { alias -> DataCell(AliasColumn) { AliasCellView(alias) } },
@@ -362,6 +336,3 @@ private fun TimeCellView(time: TimeCell) {
         }
     }
 }
-
-private fun withAgent(label: String, agentName: String?, strings: Strings): String =
-    if (agentName == null) label else strings.launchWithAgent(label, agentName)

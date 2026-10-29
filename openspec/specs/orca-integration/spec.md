@@ -6,7 +6,7 @@ Connects ShogunAi with Orca, the desktop app for running coding agents in worktr
 ## Requirements
 
 ### Requirement: Open a worktree in Orca from the desktop app
-The worktree's detail and its row's context menu SHALL offer an "Open in Orca" action that opens the worktree in Orca under its repository. The action SHALL open a focused terminal in the worktree whose shell has the worktree's environment, and SHALL run the project's agent launch command in it.
+When Orca is installed, the worktree's detail, its row's context menu, the command palette, the tray and the menu bar SHALL offer an "Open in Orca" action, as the primary action when Orca is the default runner and in "Open with…" otherwise, that opens the worktree in Orca under its repository. The action SHALL open a focused terminal in the worktree whose shell has the worktree's environment, and SHALL run the project's agent launch command in it.
 
 #### Scenario: Worktree with an environment
 - **WHEN** the user opens in Orca a worktree whose repository declares `env` or a provider that adds variables

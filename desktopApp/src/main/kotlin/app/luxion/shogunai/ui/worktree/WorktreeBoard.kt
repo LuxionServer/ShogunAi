@@ -17,6 +17,13 @@ import app.luxion.shogunai.domain.model.WorktreeSort
 import app.luxion.shogunai.domain.usecase.activityDate
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.RecentWorktree
+import app.luxion.shogunai.domain.model.RunnerId
+import app.luxion.shogunai.ui.actions.ActionId
+import app.luxion.shogunai.ui.actions.ActionTools
+import app.luxion.shogunai.ui.actions.WorktreeActionContext
+import app.luxion.shogunai.ui.actions.WorktreeCatalog
+import app.luxion.shogunai.ui.actions.trayEntries
+import app.luxion.shogunai.ui.actions.worktreeCatalog
 import app.luxion.shogunai.ui.i18n.Strings
 import app.luxion.shogunai.ui.components.TextInputFocus
 import app.luxion.shogunai.domain.model.ProjectConfig
@@ -26,7 +33,6 @@ import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.usecase.Activity
 import app.luxion.shogunai.ui.machine.DesktopTurnWatch
 import app.luxion.shogunai.ui.machine.MachineProject
-import app.luxion.shogunai.ui.tray.TrayOpenAction
 import app.luxion.shogunai.ui.tray.TrayWorktree
 import app.luxion.shogunai.domain.usecase.AgentSearch
 import app.luxion.shogunai.domain.usecase.isActive
@@ -401,20 +407,40 @@ class WorktreeBoard(
     val terminalChoice: ProjectWorktrees?
         get() = entries.values.firstOrNull { it.holder.terminalChoiceFor != null }?.holder
 
-    fun selectedOpenActions(strings: Strings): List<OpenAction> =
-        selectedWorktree?.let { it.holder.openActions(it.worktree, strings) }.orEmpty()
+    var openWithRequests by mutableIntStateOf(0)
+        private set
 
-    fun selectedLaunchChoices(strings: Strings): List<LaunchChoice> =
-        selectedWorktree?.let { it.holder.launchChoices(it.worktree, strings) }.orEmpty()
+    fun selectedCatalog(strings: Strings): WorktreeCatalog? =
+        selectedWorktree?.let { it.holder.actionCatalog(it.worktree, strings) }
 
-    fun launchSelected(kind: LaunchKind, agentName: String) {
-        val selected = selectedWorktree ?: return
-        val agent = selected.holder.agentOptions.firstOrNull { it.displayName == agentName } ?: return
-        selected.holder.launch(selected.worktree, kind, agent)
+    fun menuBarCatalog(strings: Strings): WorktreeCatalog = selectedCatalog(strings) ?: worktreeCatalog(
+        WorktreeActionContext(
+            tools = entries.values.firstOrNull()?.holder?.actionTools(strings) ?: ActionTools(RunnerId.entries, RunnerId.HERDR, null, null, false),
+            isMain = false,
+            isFolderMissing = false,
+            agents = emptyList(),
+            agent = null,
+        ),
+        strings,
+    )
+
+    fun performOnSelected(id: ActionId, agent: String? = null) {
+        selectedWorktree?.let { it.holder.perform(it.worktree, id, agent) }
     }
 
-    fun openSelected(kind: OpenKind) {
-        selectedWorktree?.let { it.holder.open(it.worktree, kind) }
+    private fun canActOnSelection(): Boolean = !isCreateDialogOpen && !TextInputFocus.isActive && selectedWorktree != null
+
+    fun runFromMenu(id: ActionId) {
+        when (id) {
+            ActionId.CopyLaunchCommand -> copySelectedLaunchCommand()
+            ActionId.RemoveWorktree -> deleteSelectedWorktree()
+            ActionId.OpenWith -> requestOpenWith()
+            else -> if (canActOnSelection()) performOnSelected(id)
+        }
+    }
+
+    fun requestOpenWith() {
+        if (canActOnSelection()) openWithRequests++
     }
 
     val isCatalogLoaded: Boolean
@@ -449,9 +475,9 @@ class WorktreeBoard(
             entry.holder.actionErrors.map { (path, failure) -> WorktreeRef(entry.project.id, path) to failure }
         }.toMap()
 
-    fun open(ref: WorktreeRef, kind: OpenKind) {
+    fun perform(ref: WorktreeRef, id: ActionId) {
         val holder = holder(ref.projectId) ?: return
-        holder.worktrees.firstOrNull { it.path == ref.path }?.let { holder.open(it, kind) }
+        holder.worktrees.firstOrNull { it.path == ref.path }?.let { holder.perform(it, id) }
     }
 
     fun trayWorktrees(recents: List<RecentWorktree>, strings: Strings): List<TrayWorktree> =
@@ -466,7 +492,7 @@ class WorktreeBoard(
                 projectName = project.name,
                 activity = if (holder != null && worktree != null) activityOf(holder, worktree) else Activity.Unknown,
                 isLoaded = worktree != null,
-                openActions = worktree?.let { holder.openActions(it, strings).map { action -> TrayOpenAction(action.kind, action.label) } }.orEmpty(),
+                actions = worktree?.let { holder.actionCatalog(it, strings).trayEntries() },
             )
         }
 
@@ -1003,11 +1029,6 @@ class WorktreeBoard(
     fun copySelectedLaunchCommand() {
         if (isCreateDialogOpen || TextInputFocus.isActive) return
         selectedWorktree?.let { it.holder.copyLaunchCommand(it.worktree) }
-    }
-
-    fun openSelectedInHerdr() {
-        if (isCreateDialogOpen || TextInputFocus.isActive) return
-        selectedWorktree?.let { it.holder.openInHerdr(it.worktree) }
     }
 
     fun deleteSelectedWorktree() {

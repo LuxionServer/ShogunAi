@@ -1,5 +1,6 @@
 package app.luxion.shogunai.ui.worktree
 
+import app.luxion.shogunai.ui.components.ButtonSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -63,6 +64,13 @@ import app.luxion.shogunai.ui.components.StateAction
 import app.luxion.shogunai.ui.components.ViewTitle
 import app.luxion.shogunai.ui.components.handPointer
 import app.luxion.shogunai.ui.components.onNewItemShortcut
+import app.luxion.shogunai.ui.actions.ActionId
+import app.luxion.shogunai.ui.actions.PerformAction
+import app.luxion.shogunai.ui.actions.ViewActionContext
+import app.luxion.shogunai.ui.actions.toMenu
+import app.luxion.shogunai.ui.actions.viewCatalog
+import app.luxion.shogunai.ui.actions.viewOverflow
+import app.luxion.shogunai.ui.components.MoreMenuButton
 import app.luxion.shogunai.ui.i18n.LocalStrings
 import app.luxion.shogunai.ui.i18n.Strings
 import app.luxion.shogunai.ui.machine.MachineResource
@@ -73,7 +81,6 @@ import app.luxion.shogunai.ui.multirepo.multirepoNoticeMessage
 import app.luxion.shogunai.ui.shell.LocalAppMessages
 import app.luxion.shogunai.ui.shell.MessageAction
 import java.io.File
-import app.luxion.shogunai.ui.components.GhostButton
 import app.luxion.shogunai.ui.theme.ShogunLayout
 import app.luxion.shogunai.ui.theme.ShogunTheme
 
@@ -139,23 +146,39 @@ fun WorktreeScreen(
                     AgentIndicator(it)
                 }
                 IconAction(icon = Icons.Default.Settings, label = strings.multirepoSettingsTitle, onClick = onOpenMultirepoSettings)
-                SecondaryButton(onClick = board::openMultirepoAgent, enabled = !needsReview && !board.isOpeningMultirepoAgent) {
-                    Text(strings.openMultirepoAgent)
+            }
+            val reviewReason = CleanupBlock.NeedsReview.describe(strings).takeIf { needsReview }
+            val catalog = viewCatalog(
+                ViewActionContext(
+                    isMultirepo = multirepo != null,
+                    isProjectView = filteredProject != null,
+                    createBlocked = when {
+                        multirepo != null && multirepo.aliases.isEmpty() -> strings.addRepositoryFirst
+                        multirepo == null && board.projects.isEmpty() -> strings.addProjectFirst
+                        else -> null
+                    },
+                    cleanUpBlocked = reviewReason ?: board.cleanUpBlock()?.describe(strings),
+                    isOpeningMultirepoAgent = board.isOpeningMultirepoAgent,
+                    multirepoNeedsReview = reviewReason,
+                ),
+                strings,
+            )
+            val performView: PerformAction = { spec, _ ->
+                when (spec.id) {
+                    ActionId.OpenMultirepoAgent -> board.openMultirepoAgent()
+                    ActionId.CleanUp -> board.openCleanup()
+                    ActionId.NewChange -> board.openNewChange()
+                    ActionId.NewWorktree -> board.openCreateDialog()
+                    else -> Unit
                 }
             }
-            val cleanUpBlock = if (needsReview) CleanupBlock.NeedsReview else board.cleanUpBlock()
-            DisabledReason(cleanUpBlock?.describe(strings)) {
-                GhostButton(onClick = { board.openCleanup() }, enabled = cleanUpBlock == null) { Text(strings.cleanUp) }
-            }
-            if (multirepo != null) {
-                PrimaryButton(onClick = board::openNewChange, enabled = !needsReview && multirepo.aliases.isNotEmpty()) {
-                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(ButtonIconSize))
-                    Text(strings.newChange, modifier = Modifier.padding(start = Spacing.sm))
-                }
-            } else {
-                PrimaryButton(onClick = { board.openCreateDialog() }, enabled = board.projects.isNotEmpty()) {
-                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(ButtonIconSize))
-                    Text(strings.newWorktree, modifier = Modifier.padding(start = Spacing.sm))
+            MoreMenuButton(label = strings.moreActions, entries = viewOverflow(catalog).toMenu(strings, performView))
+            catalog.primary?.let { spec ->
+                DisabledReason(spec.disabledReason) {
+                    PrimaryButton(onClick = { performView(spec, null) }, enabled = spec.isAvailable) {
+                        Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(ButtonIconSize))
+                        Text(spec.label, modifier = Modifier.padding(start = Spacing.sm))
+                    }
                 }
             }
         }
@@ -347,6 +370,7 @@ private fun RemoveWorktreeDialog(holder: ProjectWorktrees) {
             NeutralTextButton(
                 onClick = { holder.dismissPendingRemoval() },
                 enabled = !holder.isRemoving,
+                size = ButtonSize.Regular,
             ) {
                 Text(strings.cancel)
             }
@@ -355,6 +379,7 @@ private fun RemoveWorktreeDialog(holder: ProjectWorktrees) {
             DangerButton(
                 onClick = { holder.confirmPendingRemoval() },
                 enabled = !holder.isRemoving,
+                size = ButtonSize.Regular,
             ) {
                 Text(if (requiresForce) strings.forceRemove else strings.delete)
             }
@@ -436,6 +461,7 @@ private fun SelectedDetail(board: WorktreeBoard, selected: SelectedWorktree, mod
         projectName = selected.project.name.takeIf { !board.isFiltered },
         projectId = selected.project.id,
         desktopTurn = board.desktopTurn,
+        openWithRequests = board.openWithRequests,
         modifier = modifier,
     )
 }

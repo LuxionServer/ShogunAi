@@ -22,7 +22,10 @@ class CliHerdrClient(
     private val userHome: String = System.getProperty("user.home"),
     private val osName: String = System.getProperty("os.name").orEmpty(),
     private val isFile: (String) -> Boolean = { File(it).isFile },
+    private val findOnPath: (String) -> String? = { name -> ExecutableLocator().find(name) },
 ) : HerdrClient {
+
+    fun isInstalled(): Boolean = executable().let { isFile(it) || findOnPath(it) != null }
 
     override suspend fun openWorktree(repository: String, path: String, label: String): HerdrWorktreeOpening {
         val arguments = listOf("worktree", "open", "--cwd", repository, "--path", path, "--label", label, "--focus")

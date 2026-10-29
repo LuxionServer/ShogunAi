@@ -538,6 +538,20 @@ interface Strings {
     fun openInTool(name: String): String
     val claudeDesktopName: String
     val openFolder: String
+    val openWith: String
+    val openWithMenu: String
+    val withAgent: String
+    fun actionWithAgent(action: String, agent: String): String
+    val defaultRunnerMark: String
+    val setDefaultRunner: String
+    val defaultRunnerLabel: String
+    val noRunnerFound: String
+    val deleteWorktreeAction: String
+    val moreActions: String
+    val folderMissingReason: String
+    val openingReason: String
+    val addProjectFirst: String
+    val addRepositoryFirst: String
     val chooseTerminalTitle: String
     val chooseTerminalMessage: String
     val projectEditorLabel: String

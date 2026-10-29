@@ -1,13 +1,12 @@
 package app.luxion.shogunai.ui.palette
 
 import app.luxion.shogunai.domain.model.Project
+import app.luxion.shogunai.ui.actions.PaletteEntry
 import app.luxion.shogunai.ui.i18n.Strings
 import app.luxion.shogunai.ui.isMacOs
 import app.luxion.shogunai.ui.machine.MachineResource
 import app.luxion.shogunai.ui.machine.title
 import app.luxion.shogunai.ui.shell.ShellDestination
-import app.luxion.shogunai.ui.worktree.LaunchChoice
-import app.luxion.shogunai.ui.worktree.OpenAction
 import app.luxion.shogunai.ui.worktree.PaletteWorktree
 import app.luxion.shogunai.ui.worktree.WorktreeRef
 
@@ -17,15 +16,13 @@ fun buildPaletteIndex(
     machineResources: List<MachineResource>,
     canCleanUp: Boolean,
     strings: Strings,
-    openActions: List<OpenAction> = emptyList(),
-    launchChoices: List<LaunchChoice> = emptyList(),
+    worktreeActions: List<PaletteEntry> = emptyList(),
     shortcutLabel: (key: String, shift: Boolean) -> String,
 ): List<PaletteItem> =
     viewItems(projects, machineResources, strings, shortcutLabel) +
         projects.flatMap { projectItems(it, strings) } +
         worktrees.map { worktreeItem(it, strings) } +
-        openActionItems(openActions, strings) +
-        launchChoiceItems(launchChoices, strings) +
+        worktreeActionItems(worktreeActions, strings, shortcutLabel) +
         actionItems(projects, canCleanUp, strings, shortcutLabel)
 
 fun pruneRecent(recentIds: List<String>, items: List<PaletteItem>): List<String> {
@@ -123,27 +120,20 @@ private fun worktreeItem(entry: PaletteWorktree, strings: Strings): PaletteItem 
     )
 }
 
-private fun openActionItems(openActions: List<OpenAction>, strings: Strings): List<PaletteItem> =
-    openActions.map { action ->
+private fun worktreeActionItems(
+    entries: List<PaletteEntry>,
+    strings: Strings,
+    shortcutLabel: (String, Boolean) -> String,
+): List<PaletteItem> =
+    entries.map { entry ->
         PaletteItem(
-            id = "action:open:${action.kind.name.lowercase()}",
+            id = "action:${entry.key}",
             kind = PaletteKind.ACTION,
-            title = action.label,
-            keys = listOf(action.label),
+            title = entry.title,
+            keys = listOf(entry.title),
             context = strings.paletteKindAction,
-            primary = PaletteAction.OpenSelected(action.kind),
-        )
-    }
-
-private fun launchChoiceItems(choices: List<LaunchChoice>, strings: Strings): List<PaletteItem> =
-    choices.map { choice ->
-        PaletteItem(
-            id = "action:launch:${choice.kind.name.lowercase()}:${choice.agent.displayName}",
-            kind = PaletteKind.ACTION,
-            title = choice.label,
-            keys = listOf(choice.label),
-            context = strings.paletteKindAction,
-            primary = PaletteAction.LaunchSelected(choice.kind, choice.agent.displayName),
+            shortcut = entry.spec.shortcut?.takeIf { entry.agent == null }?.let { shortcutLabel(it.key, it.shift) },
+            primary = PaletteAction.RunSelected(entry.spec.id, entry.agent),
         )
     }
 

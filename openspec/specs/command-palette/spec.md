@@ -13,11 +13,19 @@ Cmd/Ctrl+K and View > Command palette SHALL open the command palette over the ma
 - **THEN** the palette opens with the search field focused, then closes, and the view is unchanged
 
 ### Requirement: What the palette searches
-The palette SHALL search the views (Active, All worktrees, each visible machine resource, Preferences), every saved project, the worktrees of every saved project, and the actions "Add project", "New worktree in <project>", "Settings of <project>", "Clean up", "Reload" and "Toggle sidebar".
+The palette SHALL search the views (Active, All worktrees, each visible machine resource, Preferences), every saved project, the worktrees of every saved project, the actions "Add project", "New worktree in <project>", "Settings of <project>", "Clean up", "Reload" and "Toggle sidebar", and, when a worktree is selected, its available non-destructive actions from the action catalog, with one item per other agent for agent-aware actions when its project has several agents.
 
 #### Scenario: Find a worktree of another project
 - **WHEN** the user is in the view filtered to `main-repo` and types `TASK-9`
 - **THEN** the palette lists the worktree `feature/TASK-9` of `api`
+
+#### Scenario: Open with another agent
+- **WHEN** a worktree of a project with Claude and Codex is selected, its agent is Claude, Orca is installed, and the user types `orca codex`
+- **THEN** the palette lists "Open in Orca with Codex", which opens the selected worktree in Orca running Codex
+
+#### Scenario: Tool not installed
+- **WHEN** Orca isn't installed
+- **THEN** the palette lists no "Open in Orca" item
 
 ### Requirement: Matching and ranking
 Results SHALL match when the typed characters appear in order in the result's name, branch, folder or project, ignoring case, gaps allowed. Results SHALL be ranked: exact or prefix matches first, then matches at word starts (after `/`, `-`, `_` or a space), then any other match, ties SHALL go to the most recently used item, and remaining ties SHALL go to projects before worktrees.

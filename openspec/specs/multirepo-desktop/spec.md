@@ -77,7 +77,7 @@ Each change group's header SHALL offer "Open all in Herdr", which opens every wo
 - **THEN** its worktrees are removed and the dialog listed them and their Herdr workspaces before confirming, with the same option to delete merged branches as "Clean up"
 
 ### Requirement: Open the multirepo agent from the app
-The multirepo view SHALL offer "Open multirepo agent in Herdr", which opens the multirepo agent as `shogun open --herdr` does in the multirepo folder, and SHALL tell apart, in English and Spanish, that the agent was opened, started in its already open workspace, or focused.
+The multirepo view SHALL offer "Open multirepo agent in Herdr" in its header's "More" (⋯) menu, which opens the multirepo agent as `shogun open --herdr` does in the multirepo folder, and SHALL tell apart, in English and Spanish, that the agent was opened, started in its already open workspace, or focused.
 
 #### Scenario: Open the multirepo agent
 - **WHEN** the user activates it in `product`'s view
