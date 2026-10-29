@@ -5,7 +5,22 @@ enum class MobileSecretKind(val id: String) {
     SIGNING_PROPERTIES("signing-properties"),
     KEYSTORE("keystore"),
     FIREBASE_CONFIG("firebase-config"),
+    ;
+
+    companion object {
+        private val FIREBASE_CONFIG_FILES = setOf("google-services.json", "GoogleService-Info.plist", "firebase_options.dart")
+
+        fun of(fileName: String): MobileSecretKind? = when {
+            fileName == "local.properties" -> LOCAL_PROPERTIES
+            fileName == "keystore.properties" || fileName == "key.properties" -> SIGNING_PROPERTIES
+            fileName.endsWith(".jks") || fileName.endsWith(".keystore") -> KEYSTORE
+            fileName in FIREBASE_CONFIG_FILES -> FIREBASE_CONFIG
+            else -> null
+        }
+    }
 }
+
+val GENERATED_FOLDERS = setOf("build", ".gradle", ".dart_tool", "node_modules", "Pods", "DerivedData")
 
 data class MobileSecret(val path: String, val kind: MobileSecretKind) {
     val linkPattern: String get() = "/$path"

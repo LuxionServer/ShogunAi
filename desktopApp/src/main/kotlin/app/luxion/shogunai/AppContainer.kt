@@ -145,6 +145,7 @@ import app.luxion.shogunai.domain.model.XcodeProvider
 import app.luxion.shogunai.domain.usecase.CheckGradleBuildCacheUseCase
 import app.luxion.shogunai.domain.usecase.CleanUpWorktreesUseCase
 import app.luxion.shogunai.domain.usecase.DetectMobileSecretsUseCase
+import app.luxion.shogunai.domain.usecase.ListLocalFileCandidatesUseCase
 import app.luxion.shogunai.domain.usecase.DetectRepositoryStacksUseCase
 import app.luxion.shogunai.domain.usecase.ListComposeProjectsUseCase
 import app.luxion.shogunai.domain.usecase.ListMavenDaemonsUseCase
@@ -591,6 +592,9 @@ class AppContainer {
 
     suspend fun detectMobileSecrets(config: ProjectConfig) =
         DetectMobileSecretsUseCase(shellCommandExecutor, fileManager, repositoryProvisioningSource)(config)
+
+    suspend fun listLocalFileCandidates(config: ProjectConfig) =
+        ListLocalFileCandidatesUseCase(shellCommandExecutor, fileManager, repositoryProvisioningSource)(config)
 
     fun listLocalFolder(path: String): DirectoryListing? = if (fileManager.isDirectory(path)) fileManager.listTree(path) else null
 
