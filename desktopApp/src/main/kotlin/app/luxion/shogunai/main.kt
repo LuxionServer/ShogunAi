@@ -99,6 +99,16 @@ fun main(args: Array<String>) {
     openWindow()
 }
 
+internal fun shellViewModelOf(appContainer: AppContainer) = ShellViewModel(
+    appContainer.projectRepository,
+    appContainer.shellPreferenceRepository,
+    appContainer::settingsProblem,
+    appContainer::acknowledgeSettingsProblem,
+    MultirepoCatalog(appContainer::knownMultirepos),
+    appContainer::registerWorkspaceProject,
+    appContainer::forgetMissingMultirepos,
+)
+
 @OptIn(ExperimentalComposeUiApi::class)
 private fun openWindow() = application {
     val appContainer = remember { AppContainer() }
@@ -283,17 +293,7 @@ private fun openWindow() = application {
             }
         }
         SideEffect { mainWindowHolder.value = window }
-        val shellViewModel = viewModel {
-            ShellViewModel(
-                appContainer.projectRepository,
-                appContainer.shellPreferenceRepository,
-                appContainer::settingsProblem,
-                appContainer::acknowledgeSettingsProblem,
-                MultirepoCatalog(appContainer::knownMultirepos),
-                appContainer::registerWorkspaceProject,
-                appContainer::forgetMissingMultirepos,
-            )
-        }
+        val shellViewModel = viewModel { shellViewModelOf(appContainer) }
         SideEffect { shellViewModelHolder.value = shellViewModel }
         val clipboard = LocalClipboard.current
         val reportScope = rememberCoroutineScope { diagnosticsHandler }

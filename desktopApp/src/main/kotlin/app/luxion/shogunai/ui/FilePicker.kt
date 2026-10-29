@@ -1,10 +1,19 @@
 package app.luxion.shogunai.ui
 
+import androidx.compose.runtime.staticCompositionLocalOf
 import java.io.File
 import javax.swing.JFileChooser
 
-object FilePicker {
-    fun pickDirectory(initialPath: String, dialogTitle: String): String? {
+interface PathPicker {
+    fun pickDirectory(initialPath: String, dialogTitle: String): String?
+
+    fun pickFiles(initialPath: String, dialogTitle: String): List<String>
+}
+
+val LocalPathPicker = staticCompositionLocalOf<PathPicker> { FilePicker }
+
+object FilePicker : PathPicker {
+    override fun pickDirectory(initialPath: String, dialogTitle: String): String? {
         val chooser = JFileChooser(currentDirectoryOrNull(initialPath)).apply {
             fileSelectionMode = JFileChooser.DIRECTORIES_ONLY
             isFileHidingEnabled = false
@@ -17,7 +26,7 @@ object FilePicker {
         }
     }
 
-    fun pickFiles(initialPath: String, dialogTitle: String): List<String> {
+    override fun pickFiles(initialPath: String, dialogTitle: String): List<String> {
         val chooser = JFileChooser(currentDirectoryOrNull(initialPath)).apply {
             fileSelectionMode = JFileChooser.FILES_AND_DIRECTORIES
             isFileHidingEnabled = false
