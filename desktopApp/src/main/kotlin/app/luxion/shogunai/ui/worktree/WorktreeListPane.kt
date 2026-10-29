@@ -48,10 +48,6 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
-import androidx.compose.ui.platform.LocalClipboard
-import app.luxion.shogunai.ui.components.copyText
-import androidx.compose.runtime.rememberCoroutineScope
-import kotlinx.coroutines.launch
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.luxion.shogunai.domain.model.DEFAULT_INACTIVE_AFTER_DAYS
@@ -510,8 +506,6 @@ private fun WorktreeRowFor(
     onOpenGroup: (GroupTag) -> Unit = {},
 ) {
     val strings = LocalStrings.current
-    val clipboard = LocalClipboard.current
-    val scope = rememberCoroutineScope()
     val ref = WorktreeRef(project.id, worktree.path)
     val groupTag = board.groupTagOf(ref)
     WorktreeRow(
@@ -534,19 +528,11 @@ private fun WorktreeRowFor(
         ),
         selected = board.selected == ref,
         isCopied = holder.copiedWorktreePath == worktree.path,
-        isMain = worktree.isMain,
         compact = compact,
         onSelect = { board.select(ref) },
         onCopyLaunchCommand = { holder.copyLaunchCommand(worktree) },
-        onCopyPath = { scope.launch { clipboard.copyText(worktree.path) } },
-        onOpenInHerdr = { holder.openInHerdr(worktree) },
-        onOpenInOrca = { holder.openInOrca(worktree) },
-        openActions = holder.openActions(worktree, strings),
-        agentName = holder.agentFor(worktree).displayName.takeIf { holder.hasAgentChoice },
-        launchChoices = holder.launchChoices(worktree, strings),
-        onLaunch = { holder.launch(worktree, it.kind, it.agent) },
+        contextMenu = worktreeContextMenu(holder, worktree),
         onOpenGroupTag = { groupTag?.let(onOpenGroup) },
-        onRemove = { holder.requestRemoval(worktree) },
     )
 }
 

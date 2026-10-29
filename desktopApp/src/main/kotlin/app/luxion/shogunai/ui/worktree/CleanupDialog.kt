@@ -1,5 +1,6 @@
 package app.luxion.shogunai.ui.worktree
 
+import app.luxion.shogunai.ui.components.ButtonSize
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
@@ -56,13 +57,13 @@ fun CleanupDialog(board: WorktreeBoard) {
             { runnerNotices.forEach { Notice(kind = NoticeKind.WARNING, message = it, onDismiss = null) } }
         },
         confirm = {
-            DangerButton(onClick = { board.confirmCleanup() }, enabled = enabled) {
+            DangerButton(onClick = { board.confirmCleanup() }, enabled = enabled, size = ButtonSize.Regular) {
                 Text(strings.cleanUp)
             }
         },
         dismiss = {
             if (board.isCleaningUp) InlineProgress()
-            NeutralTextButton(onClick = { board.dismissCleanup() }, enabled = enabled) {
+            NeutralTextButton(onClick = { board.dismissCleanup() }, enabled = enabled, size = ButtonSize.Regular) {
                 Text(strings.cancel)
             }
         },

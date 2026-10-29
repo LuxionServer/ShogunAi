@@ -81,13 +81,9 @@ class WorktreeRowUiTest {
             model = model,
             selected = false,
             isCopied = false,
-            isMain = false,
             compact = compact,
             onSelect = {},
             onCopyLaunchCommand = {},
-            onCopyPath = {},
-            onOpenInHerdr = {},
-            onRemove = {},
         )
     }
 

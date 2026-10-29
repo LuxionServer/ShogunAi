@@ -59,13 +59,9 @@ class MultirepoViewUiTest {
                     model = model(groupTag = "TASK-12 · +api"),
                     selected = false,
                     isCopied = false,
-                    isMain = false,
                     onSelect = {},
                     onCopyLaunchCommand = {},
-                    onCopyPath = {},
-                    onOpenInHerdr = {},
                     onOpenGroupTag = { opened++ },
-                    onRemove = {},
                 )
             }
         }
@@ -82,12 +78,8 @@ class MultirepoViewUiTest {
                     model = model(alias = "api"),
                     selected = false,
                     isCopied = false,
-                    isMain = false,
                     onSelect = {},
                     onCopyLaunchCommand = {},
-                    onCopyPath = {},
-                    onOpenInHerdr = {},
-                    onRemove = {},
                 )
             }
         }

@@ -1,16 +1,16 @@
 package app.luxion.shogunai.ui.palette
 
-import app.luxion.shogunai.domain.model.AgentLaunchConfig
+import app.luxion.shogunai.domain.model.RunnerId
+import app.luxion.shogunai.ui.actions.ActionId
+import app.luxion.shogunai.ui.actions.OpenTarget
+import app.luxion.shogunai.ui.actions.catalogFor
+import app.luxion.shogunai.ui.actions.paletteEntries
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.ui.i18n.EnglishStrings
 import app.luxion.shogunai.ui.machine.MachineResource
 import app.luxion.shogunai.ui.shell.ShellDestination
-import app.luxion.shogunai.ui.worktree.LaunchChoice
-import app.luxion.shogunai.ui.worktree.LaunchKind
-import app.luxion.shogunai.ui.worktree.OpenAction
-import app.luxion.shogunai.ui.worktree.OpenKind
 import app.luxion.shogunai.ui.worktree.PaletteWorktree
 import app.luxion.shogunai.ui.worktree.WorktreeRef
 import kotlin.test.Test
@@ -37,19 +37,15 @@ class PaletteIndexTest {
     ) = buildPaletteIndex(projects, worktrees, machine, canCleanUp, EnglishStrings) { key, shift -> "${if (shift) "S" else ""}$key" }
 
     @Test
-    fun `the selected worktree's open actions are listed and run on the selection`() {
-        val actions = listOf(
-            OpenAction(OpenKind.TERMINAL, "Open in iTerm2") {},
-            OpenAction(OpenKind.FOLDER, "Open folder") {},
-        )
+    fun `the selected worktree's catalog actions are listed and run on the selection`() {
+        val entries = catalogFor(agents = listOf("Claude"), agent = "Claude").paletteEntries(EnglishStrings)
 
-        val items = buildPaletteIndex(listOf(api), emptyList(), emptyList(), false, EnglishStrings, actions) { key, _ -> key }
+        val items = buildPaletteIndex(listOf(api), emptyList(), emptyList(), false, EnglishStrings, entries) { key, _ -> key }
 
-        assertEquals(
-            listOf(PaletteAction.OpenSelected(OpenKind.TERMINAL), PaletteAction.OpenSelected(OpenKind.FOLDER)),
-            items.filter { it.title.startsWith("Open") }.map { it.primary },
-        )
-        assertTrue(index().none { it.primary is PaletteAction.OpenSelected })
+        assertTrue(PaletteAction.RunSelected(ActionId.Open(OpenTarget.ORCA), null) in items.map { it.primary })
+        assertTrue(PaletteAction.RunSelected(ActionId.Open(OpenTarget.TERMINAL), null) in items.map { it.primary })
+        assertTrue(items.none { (it.primary as? PaletteAction.RunSelected)?.id == ActionId.RemoveWorktree })
+        assertTrue(index().none { it.primary is PaletteAction.RunSelected })
     }
 
     @Test
@@ -129,19 +125,21 @@ class PaletteIndexTest {
     }
 
     @Test
-    fun `the other agents' launch choices run on the selection`() {
-        val codex = AgentLaunchConfig(name = "Codex", agentCommand = "codex")
-        val choices = listOf(
-            LaunchChoice(LaunchKind.COPY, codex, "Copy launch command · Codex"),
-            LaunchChoice(LaunchKind.HERDR, codex, "Open in Herdr · Codex"),
-        )
+    fun `the other agents' launches are found by runner and agent`() {
+        val entries = catalogFor(agents = listOf("Claude", "Codex"), agent = "Claude").paletteEntries(EnglishStrings)
 
-        val items = buildPaletteIndex(listOf(api), emptyList(), emptyList(), false, EnglishStrings, launchChoices = choices) { key, _ -> key }
+        val items = buildPaletteIndex(listOf(api), emptyList(), emptyList(), false, EnglishStrings, entries) { key, _ -> key }
 
-        assertEquals(
-            listOf(PaletteAction.LaunchSelected(LaunchKind.COPY, "Codex"), PaletteAction.LaunchSelected(LaunchKind.HERDR, "Codex")),
-            items.map { it.primary }.filterIsInstance<PaletteAction.LaunchSelected>(),
-        )
-        assertTrue(index().none { it.primary is PaletteAction.LaunchSelected })
+        val orcaWithCodex = items.single { it.title == "Open in Orca with Codex" }
+        assertEquals(PaletteAction.RunSelected(ActionId.Open(OpenTarget.ORCA), "Codex"), orcaWithCodex.primary)
+        assertTrue(items.none { it.title == "Open in Orca with Claude" })
+        assertTrue(items.any { it.title == "Copy launch command with Codex" })
+    }
+
+    @Test
+    fun `a runner that isn't installed isn't offered`() {
+        val entries = catalogFor(runners = listOf(RunnerId.HERDR)).paletteEntries(EnglishStrings)
+
+        assertTrue(entries.none { it.title.contains("Orca") })
     }
 }

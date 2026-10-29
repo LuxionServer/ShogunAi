@@ -1,5 +1,10 @@
 package app.luxion.shogunai.ui.worktree
 
+import androidx.compose.ui.test.isSelected
+import androidx.compose.ui.test.hasText
+import app.luxion.shogunai.ui.actions.ActionId
+import app.luxion.shogunai.ui.actions.OpenTarget
+import app.luxion.shogunai.ui.actions.paletteEntries
 import app.luxion.shogunai.HeadlessAppUseCases
 import app.luxion.shogunai.domain.FakeAppWindowService
 import app.luxion.shogunai.domain.FakeHeadlessAppLauncher
@@ -2693,18 +2698,19 @@ class ProjectWorktreesTest {
 
     @OptIn(ExperimentalTestApi::class)
     @Test
-    fun `the detail of a multi-agent project names the worktree's agent on its launch actions`() = runComposeUiTest {
+    fun `the detail picks the worktree's agent once, in the open with menu`() = runComposeUiTest {
         val holder = projectWorktrees(withAgents())
         setContent { MaterialTheme { WorktreeDetailPane(worktree, multiAgentConfig, holder) } }
 
-        onNodeWithText("Copy launch command · Claude").assertIsDisplayed()
-        onNodeWithText("Open in Herdr · Claude").assertIsDisplayed()
+        onNodeWithText("Open in Herdr").assertIsDisplayed()
+        onNodeWithContentDescription("Open with…", substring = true).performClick()
+        onNodeWithText("With agent").assertIsDisplayed()
+        onNode(hasText("Claude") and isSelected()).assertExists()
 
-        holder.setAgent(worktree, codex)
+        onNodeWithText("Codex").performClick()
         waitForIdle()
 
-        onNodeWithText("Copy launch command · Codex").assertIsDisplayed()
-        onNodeWithText("Open in Herdr · Codex").assertIsDisplayed()
+        assertEquals(codex, holder.agentFor(worktree))
     }
 
     @OptIn(ExperimentalTestApi::class)
@@ -2713,7 +2719,9 @@ class ProjectWorktreesTest {
         val holder = projectWorktrees(withAgents(projectConfig = config))
         setContent { MaterialTheme { WorktreeDetailPane(worktree, config, holder) } }
 
-        onNodeWithText("Copy launch command").assertIsDisplayed()
+        onNodeWithContentDescription("Copy launch command", substring = true).assertIsDisplayed()
+        onNodeWithContentDescription("Open with…", substring = true).performClick()
+        onNodeWithText("With agent").assertDoesNotExist()
         onNodeWithContentDescription("Choose agent").assertDoesNotExist()
     }
 
@@ -3504,12 +3512,11 @@ class ProjectWorktreesTest {
         advanceUntilIdle()
         val target = holder.worktrees.first { it.path == worktreePath }
 
-        val choice = holder.launchChoices(target, EnglishStrings).single { it.kind == LaunchKind.ORCA }
-        holder.launch(target, choice.kind, choice.agent)
+        holder.perform(target, ActionId.Open(OpenTarget.ORCA), agent = "Codex")
         advanceUntilIdle()
 
-        assertEquals("Open in Orca · Codex", choice.label)
         assertEquals(listOf(codex), used)
+        assertEquals(codex, holder.agentFor(target))
     }
 
     @Test
@@ -3919,15 +3926,15 @@ class ProjectWorktreesTest {
         val (holder) = withTools(installed, chosenTerminal = TerminalId.ITERM2)
         advanceUntilIdle()
 
-        val actions = holder.openActions(holder.worktrees.first { it.path == worktreePath }, EnglishStrings)
+        val actions = holder.toolOpens(holder.worktrees.first { it.path == worktreePath })
 
         assertEquals(
             listOf(
-                OpenKind.TERMINAL to "Open in iTerm2",
-                OpenKind.EDITOR to "Open in VS Code",
-                OpenKind.FOLDER to "Open folder",
+                OpenTarget.TERMINAL to "Open in iTerm2",
+                OpenTarget.EDITOR to "Open in VS Code",
+                OpenTarget.FOLDER to "Open folder",
             ),
-            actions.map { it.kind to it.label },
+            actions,
         )
     }
 
@@ -3936,13 +3943,13 @@ class ProjectWorktreesTest {
         val (holder) = withTools(installed.copy(claudeDesktop = true), chosenTerminal = TerminalId.ITERM2)
         advanceUntilIdle()
 
-        val actions = holder.openActions(holder.worktrees.first { it.path == worktreePath }, EnglishStrings)
+        val actions = holder.toolOpens(holder.worktrees.first { it.path == worktreePath })
 
         assertEquals(
-            listOf(OpenKind.TERMINAL, OpenKind.EDITOR, OpenKind.CLAUDE_DESKTOP, OpenKind.FOLDER),
-            actions.map { it.kind },
+            listOf(OpenTarget.TERMINAL, OpenTarget.EDITOR, OpenTarget.CLAUDE_DESKTOP, OpenTarget.FOLDER),
+            actions.map { it.first },
         )
-        assertEquals("Open in Claude Desktop", actions.first { it.kind == OpenKind.CLAUDE_DESKTOP }.label)
+        assertEquals("Open in Claude Desktop", actions.first { it.first == OpenTarget.CLAUDE_DESKTOP }.second)
     }
 
     @Test
@@ -3951,10 +3958,11 @@ class ProjectWorktreesTest {
         val (prunable) = withTools(installed.copy(claudeDesktop = true))
         advanceUntilIdle()
 
-        val offered = missingApp.openActions(missingApp.worktrees.first { it.path == worktreePath }, EnglishStrings)
+        val offered = missingApp.toolOpens(missingApp.worktrees.first { it.path == worktreePath })
 
-        assertTrue(offered.none { it.kind == OpenKind.CLAUDE_DESKTOP })
-        assertTrue(prunable.openActions(Worktree(path = worktreePath, branch = null, isPrunable = true), EnglishStrings).isEmpty())
+        assertTrue(offered.none { it.first == OpenTarget.CLAUDE_DESKTOP })
+        val missingFolder = prunable.actionCatalog(Worktree(path = worktreePath, branch = null, isPrunable = true), EnglishStrings)
+        assertTrue(missingFolder.opens.none { it.isAvailable })
     }
 
     @Test
@@ -3964,10 +3972,10 @@ class ProjectWorktreesTest {
         advanceUntilIdle()
         val target = holder.worktrees.first { it.path == worktreePath }
 
-        holder.open(target, OpenKind.CLAUDE_DESKTOP)
+        holder.perform(target, ActionId.Open(OpenTarget.CLAUDE_DESKTOP))
         advanceUntilIdle()
         calls.failure = WorktreeError.ClaudeDesktopLaunchFailed("boom")
-        holder.open(target, OpenKind.CLAUDE_DESKTOP)
+        holder.perform(target, ActionId.Open(OpenTarget.CLAUDE_DESKTOP))
         advanceUntilIdle()
 
         assertEquals(listOf(worktreePath, worktreePath), calls.claudeDesktop)
@@ -3981,7 +3989,7 @@ class ProjectWorktreesTest {
         advanceUntilIdle()
 
         fun labels(holder: ProjectWorktrees) =
-            holder.openActions(holder.worktrees.first { it.path == worktreePath }, EnglishStrings).map { it.label }
+            holder.toolOpens(holder.worktrees.first { it.path == worktreePath }).map { it.second }
 
         assertTrue("Open in Android Studio" in labels(overridden))
         assertTrue("Open in VS Code" in labels(uninstalled))
@@ -3992,17 +4000,19 @@ class ProjectWorktreesTest {
         val (holder) = withTools(DetectedTools())
         advanceUntilIdle()
 
-        val actions = holder.openActions(holder.worktrees.first { it.path == worktreePath }, EnglishStrings)
+        val actions = holder.toolOpens(holder.worktrees.first { it.path == worktreePath })
 
-        assertEquals(listOf(OpenKind.FOLDER), actions.map { it.kind })
+        assertEquals(listOf(OpenTarget.FOLDER), actions.map { it.first })
     }
 
     @Test
-    fun `a worktree whose folder is missing offers no open action`() = runTest(dispatcher) {
+    fun `a worktree whose folder is missing offers its open actions disabled with the reason`() = runTest(dispatcher) {
         val (holder) = withTools(installed, chosenTerminal = TerminalId.TERMINAL)
         advanceUntilIdle()
 
-        assertTrue(holder.openActions(Worktree(path = worktreePath, branch = null, isPrunable = true), EnglishStrings).isEmpty())
+        val catalog = holder.actionCatalog(Worktree(path = worktreePath, branch = null, isPrunable = true), EnglishStrings)
+        assertTrue(catalog.opens.isNotEmpty())
+        assertTrue(catalog.opens.all { it.disabledReason == "The worktree's folder is missing" })
     }
 
     @Test
@@ -4244,7 +4254,7 @@ class ProjectWorktreesTest {
 
         assertEquals(listOf("cd '$worktreePath' && codex", "cd '$worktreePath' && codex"), clipboard.writtenText)
         assertEquals(codex, holder.agentFor(target))
-        assertEquals("Copy launch command · Codex", holder.launchLabel("Copy launch command", target, EnglishStrings))
+        assertEquals("Codex", holder.actionCatalog(target, EnglishStrings).context.agent)
     }
 
     @Test
@@ -4294,21 +4304,20 @@ class ProjectWorktreesTest {
         val target = holder.worktrees.first { it.path == worktreePath }
 
         assertFalse(holder.hasAgentChoice)
-        assertEquals("Copy launch command", holder.launchLabel("Copy launch command", target, EnglishStrings))
-        assertTrue(holder.launchChoices(target, EnglishStrings).isEmpty())
+        assertTrue(holder.actionCatalog(target, EnglishStrings).agentChoices.isEmpty())
     }
 
     @Test
-    fun `the launch choices offer the other agents`() = runTest(dispatcher) {
+    fun `the palette offers launches with the other agents`() = runTest(dispatcher) {
         val holder = projectWorktrees(withAgents())
         advanceUntilIdle()
         val target = holder.worktrees.first { it.path == worktreePath }
 
-        val choices = holder.launchChoices(target, EnglishStrings)
+        val withOtherAgent = holder.actionCatalog(target, EnglishStrings).paletteEntries(EnglishStrings).filter { it.agent != null }
 
-        assertTrue(choices.isNotEmpty())
-        assertTrue(choices.all { it.agent == codex })
-        assertEquals("Copy launch command · Codex", choices.first { it.kind == LaunchKind.COPY }.label)
+        assertTrue(withOtherAgent.isNotEmpty())
+        assertTrue(withOtherAgent.all { it.agent == "Codex" })
+        assertTrue(withOtherAgent.any { it.title == "Copy launch command with Codex" })
     }
 
     @Test
@@ -4323,4 +4332,9 @@ class ProjectWorktreesTest {
 
         assertEquals(listOf(codex), used)
     }
+
+    private fun ProjectWorktrees.toolOpens(worktree: Worktree): List<Pair<OpenTarget, String>> =
+        actionCatalog(worktree, EnglishStrings).opens
+            .map { (it.id as ActionId.Open).target to it.label }
+            .filter { it.first != OpenTarget.HERDR && it.first != OpenTarget.ORCA }
 }

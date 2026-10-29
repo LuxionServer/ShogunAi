@@ -27,7 +27,8 @@ import app.luxion.shogunai.ui.components.PrimaryButton
 import app.luxion.shogunai.ui.components.SecondaryButton
 import app.luxion.shogunai.ui.components.Spacing
 import app.luxion.shogunai.ui.i18n.LocalStrings
-import app.luxion.shogunai.ui.worktree.OpenKind
+import app.luxion.shogunai.ui.actions.ActionId
+import app.luxion.shogunai.ui.actions.OpenTarget
 import app.luxion.shogunai.ui.worktree.WorktreeBoard
 import app.luxion.shogunai.ui.worktree.WorktreeRef
 import kotlinx.coroutines.launch
@@ -101,6 +102,8 @@ fun TourDialog(
     }
 }
 
+private val TourLaunchTargets = listOf(OpenTarget.TERMINAL, OpenTarget.HERDR, OpenTarget.ORCA, OpenTarget.CLAUDE_DESKTOP)
+
 @Composable
 fun TourAgentChoices(board: WorktreeBoard, project: Project, onLaunched: () -> Unit, onCopied: () -> Unit) {
     val strings = LocalStrings.current
@@ -111,31 +114,24 @@ fun TourAgentChoices(board: WorktreeBoard, project: Project, onLaunched: () -> U
         return
     }
     LaunchedEffect(project.id, main.path) { board.revealInAllWorktrees(WorktreeRef(project.id, main.path)) }
-    val openActions = holder.openActions(main, strings).filter { it.kind == OpenKind.TERMINAL || it.kind == OpenKind.CLAUDE_DESKTOP }
+    val catalog = holder.actionCatalog(main, strings)
+    val launches = TourLaunchTargets.mapNotNull { target -> catalog.find(ActionId.Open(target))?.takeIf { it.isAvailable } }
+    val hasClaudeDesktop = launches.any { it.id == ActionId.Open(OpenTarget.CLAUDE_DESKTOP) }
     Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
         FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.xs), verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
-            openActions.filter { it.kind == OpenKind.TERMINAL }.forEach { action ->
-                PrimaryButton(onClick = {
-                    action.onClick()
+            launches.forEachIndexed { index, spec ->
+                val launch = {
+                    holder.perform(main, spec.id)
                     onLaunched()
-                }) { Text(action.label) }
-            }
-            SecondaryButton(onClick = {
-                holder.openInHerdr(main)
-                onLaunched()
-            }) { Text(holder.launchLabel(strings.openInHerdr, main, strings)) }
-            openActions.filter { it.kind == OpenKind.CLAUDE_DESKTOP }.forEach { action ->
-                SecondaryButton(onClick = {
-                    action.onClick()
-                    onLaunched()
-                }) { Text(action.label) }
+                }
+                if (index == 0) PrimaryButton(onClick = launch) { Text(spec.label) } else SecondaryButton(onClick = launch) { Text(spec.label) }
             }
             SecondaryButton(onClick = {
                 holder.copyLaunchCommand(main, onCopied)
                 onLaunched()
-            }) { Text(holder.launchLabel(strings.copyLaunchCommand, main, strings)) }
+            }) { Text(strings.copyLaunchCommand) }
         }
-        if (openActions.any { it.kind == OpenKind.CLAUDE_DESKTOP }) {
+        if (hasClaudeDesktop) {
             Text(strings.tourClaudeDesktopHint, style = MaterialTheme.typography.bodySmall)
         }
         Text(strings.tourAgentsNeeded, style = MaterialTheme.typography.bodySmall)

@@ -12,7 +12,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -20,8 +19,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -56,12 +53,8 @@ import app.luxion.shogunai.domain.model.WorktreeEnvironment
 import app.luxion.shogunai.domain.usecase.EnvironmentFormat
 import app.luxion.shogunai.domain.usecase.classifyOrigin
 import app.luxion.shogunai.domain.usecase.formatEnvironment
-import app.luxion.shogunai.ui.components.DangerTextButton
-import app.luxion.shogunai.ui.components.DropdownSelector
-import app.luxion.shogunai.ui.components.IconAction
 import app.luxion.shogunai.ui.components.InlineProgress
 import app.luxion.shogunai.ui.components.NeutralTextButton
-import app.luxion.shogunai.ui.components.PrimaryButton
 import app.luxion.shogunai.ui.components.ProgressSize
 import app.luxion.shogunai.ui.components.SecondaryButton
 import app.luxion.shogunai.ui.components.Spacing
@@ -82,6 +75,7 @@ fun WorktreeDetailPane(
     projectName: String? = null,
     projectId: String? = null,
     desktopTurn: DesktopTurnWatch = DesktopTurnWatch.NONE,
+    openWithRequests: Int = 0,
 ) {
     val strings = LocalStrings.current
     val status = viewModel.statuses[worktree.path]
@@ -131,80 +125,7 @@ fun WorktreeDetailPane(
                 )
             }
         }
-        if (viewModel.hasAgentChoice) {
-            DropdownSelector(
-                options = viewModel.agentOptions,
-                selected = viewModel.agentFor(worktree),
-                onSelect = { viewModel.setAgent(worktree, it) },
-                label = { it.displayName },
-                placeholder = strings.chooseAgent,
-                modifier = Modifier.fillMaxWidth(),
-                fieldLabel = strings.worktreeAgentLabel,
-            )
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm), verticalAlignment = Alignment.CenterVertically) {
-            PrimaryButton(onClick = { viewModel.copyLaunchCommand(worktree) }, modifier = Modifier.weight(1f)) {
-                Text(
-                    viewModel.launchLabel(strings.copyLaunchCommand, worktree, strings),
-                    style = MaterialTheme.typography.bodySmall,
-                )
-            }
-            if (viewModel.hasAgentChoice) {
-                AgentMenuButton(viewModel.agentOptions) { viewModel.copyLaunchCommand(worktree, picked = it) }
-            }
-        }
-        val openActions = viewModel.openActions(worktree, strings)
-        if (openActions.isNotEmpty()) {
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
-                verticalArrangement = Arrangement.spacedBy(Spacing.sm),
-                itemVerticalAlignment = Alignment.CenterVertically,
-            ) {
-                openActions.forEach { action ->
-                    if (action.kind == OpenKind.FOLDER) {
-                        IconAction(icon = Icons.Default.FolderOpen, label = action.label, onClick = action.onClick)
-                    } else {
-                        SecondaryButton(onClick = action.onClick) {
-                            Text(action.label, style = MaterialTheme.typography.bodySmall)
-                        }
-                        if (action.kind == OpenKind.TERMINAL && viewModel.hasAgentChoice) {
-                            AgentMenuButton(viewModel.agentOptions) { viewModel.openInTerminal(worktree, it) }
-                        }
-                    }
-                }
-            }
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm), verticalAlignment = Alignment.CenterVertically) {
-            if (!worktree.isPrunable) {
-                val opening = worktree.path in viewModel.openingInHerdr
-                SecondaryButton(
-                    onClick = { viewModel.openInHerdr(worktree) },
-                    enabled = !opening,
-                ) {
-                    Text(viewModel.launchLabel(strings.openInHerdr, worktree, strings), style = MaterialTheme.typography.bodySmall)
-                    if (opening) InlineProgress(size = ProgressSize.Small)
-                }
-                if (viewModel.hasAgentChoice) {
-                    AgentMenuButton(viewModel.agentOptions) { viewModel.openInHerdr(worktree, it) }
-                }
-                val openingOrca = worktree.path in viewModel.openingInOrca
-                SecondaryButton(
-                    onClick = { viewModel.openInOrca(worktree) },
-                    enabled = !openingOrca,
-                ) {
-                    Text(viewModel.launchLabel(strings.openInOrca, worktree, strings), style = MaterialTheme.typography.bodySmall)
-                    if (openingOrca) InlineProgress(size = ProgressSize.Small)
-                }
-                if (viewModel.hasAgentChoice) {
-                    AgentMenuButton(viewModel.agentOptions) { viewModel.openInOrca(worktree, it) }
-                }
-            }
-            if (!worktree.isMain) {
-                DangerTextButton(onClick = { viewModel.requestRemoval(worktree) }) {
-                    Text(strings.deleteWorktree, style = MaterialTheme.typography.bodySmall)
-                }
-            }
-        }
+        WorktreeActionBar(viewModel, worktree, openWithRequests = openWithRequests)
         viewModel.actionErrors[worktree.path]?.let { failure ->
             ErrorNotice(
                 error = failure,

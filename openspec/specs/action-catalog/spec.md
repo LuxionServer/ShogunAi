@@ -1,9 +1,9 @@
-# action-catalog
+# action-catalog Specification
 
 ## Purpose
 A single declaration of the desktop app's actions and the rules that derive every surface (action bar, menus, command palette, tray and menu bar) from it, so an action, runner or agent added once appears consistently everywhere.
 
-## ADDED Requirements
+## Requirements
 
 ### Requirement: Every action is declared once
 The desktop app SHALL declare each action once with an identifier, a scope (app, project, multirepo, worktree or machine), a group (open, copy, provision, resources, manage or destructive), a label, an icon, an optional shortcut, an availability, whether it is agent-aware, and the confirmation it requires, if any.
@@ -47,11 +47,15 @@ An agent-aware action (opening in Herdr, Orca or the terminal, and copying the l
 - **THEN** no menu shows a "with agent" submenu
 
 ### Requirement: Menus with sections, submenus and keyboard navigation
-The app's action menus SHALL support sections, separators, submenus, shortcuts shown next to their item, checked items and disabled items with their reason, drawn on the floating surface level. They SHALL be usable with the keyboard alone: arrow keys move between items, Right or Enter opens a submenu with its first item focused, Left or Escape closes a submenu, Enter activates the focused item and Escape closes the menu. Destructive items SHALL come last, after a separator, in danger text.
+The app's action menus SHALL support sections, separators, submenus, shortcuts shown next to their item, checked items and disabled items with their reason, drawn on the floating surface level. They SHALL be usable with the keyboard alone: arrow keys move between items, Right opens a submenu with its first item focused, Left or Escape closes a submenu, Enter activates the focused item (or opens its submenu when the entry isn't an action itself) and Escape closes the menu.
 
 #### Scenario: Navigate into a submenu
 - **WHEN** the "Open with…" menu is open, the user moves to "Open in Orca" and presses Right
 - **THEN** its "with agent" submenu opens with its first agent focused
+
+#### Scenario: Destructive items last
+- **WHEN** a menu offers "Delete worktree…"
+- **THEN** it is the last item, after a separator, in danger text
 
 #### Scenario: Close with Escape
 - **WHEN** a submenu is open and the user presses Escape twice

@@ -45,6 +45,9 @@ import app.luxion.shogunai.ui.components.FocusRingWidth
 import app.luxion.shogunai.ui.components.NeutralTextButton
 import app.luxion.shogunai.ui.components.PrimaryButton
 import app.luxion.shogunai.ui.components.Spacing
+import app.luxion.shogunai.ui.actions.ActionId
+import app.luxion.shogunai.ui.actions.menuBarEntries
+import app.luxion.shogunai.ui.actions.paletteEntries
 import app.luxion.shogunai.ui.components.ErrorFixActions
 import app.luxion.shogunai.ui.components.ErrorNotice
 import app.luxion.shogunai.ui.components.LocalErrorFixActions
@@ -68,6 +71,8 @@ import app.luxion.shogunai.ui.worktree.WorktreeRef
 import app.luxion.shogunai.ui.worktree.WorktreeScreen
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import androidx.compose.ui.platform.LocalClipboard
+import app.luxion.shogunai.ui.components.copyText
 import app.luxion.shogunai.ui.multirepo.AddMultirepoDialog
 import app.luxion.shogunai.ui.multirepo.AddMultirepoState
 import app.luxion.shogunai.ui.multirepo.MultirepoSettingsState
@@ -314,9 +319,18 @@ private fun PaletteHost(
     onOpenPreferences: () -> Unit,
 ) {
     val strings = LocalStrings.current
-    val openActions = board.selectedOpenActions(strings)
-    val launchChoices = board.selectedLaunchChoices(strings)
-    val items = remember(viewModel.projects, board.paletteWorktrees, machine.visibleResources, board.canCleanUp(), strings, openActions.map { it.label }, launchChoices.map { it.label }) {
+    val worktreeActions = board.selectedCatalog(strings)?.paletteEntries(strings).orEmpty()
+    val clipboard = LocalClipboard.current
+    val scope = rememberCoroutineScope()
+    val copySelectedPath: () -> Unit = {
+        board.selectedWorktree?.worktree?.path?.let { path ->
+            scope.launch {
+                clipboard.copyText(path)
+                messages.show(strings.copied)
+            }
+        }
+    }
+    val items = remember(viewModel.projects, board.paletteWorktrees, machine.visibleResources, board.canCleanUp(), strings, worktreeActions.map { it.key }) {
         buildPaletteIndex(
             projects = viewModel.projects,
             worktrees = board.paletteWorktrees,
@@ -324,8 +338,7 @@ private fun PaletteHost(
             canCleanUp = board.canCleanUp(),
             strings = strings,
             shortcutLabel = ::platformShortcutLabel,
-            openActions = openActions,
-            launchChoices = launchChoices,
+            worktreeActions = worktreeActions,
         )
     }
     val knownIds = remember(items) { items.mapTo(mutableSetOf()) { it.id } }
@@ -335,7 +348,7 @@ private fun PaletteHost(
         onRun = { item, action ->
             viewModel.closePalette()
             viewModel.rememberPaletteItem(item.id, knownIds)
-            runPaletteAction(action, viewModel, board, onOpenPreferences) { messages.show(strings.copied) }
+            runPaletteAction(action, viewModel, board, onOpenPreferences, copySelectedPath) { messages.show(strings.copied) }
         },
         onDismiss = viewModel::closePalette,
     )
@@ -346,6 +359,7 @@ private fun runPaletteAction(
     viewModel: ShellViewModel,
     board: WorktreeBoard,
     onOpenPreferences: () -> Unit,
+    copySelectedPath: () -> Unit,
     onCopied: () -> Unit,
 ) {
     when (action) {
@@ -354,8 +368,7 @@ private fun runPaletteAction(
             board.revealInAllWorktrees(action.ref)
         }
         is PaletteAction.CopyLaunchCommand -> board.copyLaunchCommand(action.ref, onCopied)
-        is PaletteAction.OpenSelected -> board.openSelected(action.kind)
-        is PaletteAction.LaunchSelected -> board.launchSelected(action.kind, action.agent)
+        is PaletteAction.RunSelected -> if (action.id == ActionId.CopyPath) copySelectedPath() else board.performOnSelected(action.id, action.agent)
         is PaletteAction.NewWorktreeIn -> viewModel.navigate(ShellDestination.All(projectFilter = action.projectId)) {
             board.openCreateDialog(action.projectId)
         }
@@ -428,9 +441,8 @@ private fun WorktreeView(destination: ShellDestination, shellViewModel: ShellVie
         shellViewModel.updateWorktreeActions(
             WorktreeActions(
                 onFind = board::requestFind,
-                onCopySelectedLaunchCommand = board::copySelectedLaunchCommand,
-                onOpenSelectedInHerdr = board::openSelectedInHerdr,
-                onDeleteSelectedWorktree = board::deleteSelectedWorktree,
+                menuBar = { strings -> board.menuBarCatalog(strings).menuBarEntries() },
+                onRun = board::runFromMenu,
                 onClearSelection = board::clearSelection,
                 onEscape = board::escape,
                 hasSelection = { board.selectedWorktree != null },
