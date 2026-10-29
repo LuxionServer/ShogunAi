@@ -1,6 +1,10 @@
 package app.luxion.shogunai.infrastructure
 
 import app.luxion.shogunai.domain.io.DirectoryListing
+import app.luxion.shogunai.domain.model.UnavailableReason
+import java.net.StandardProtocolFamily
+import java.net.UnixDomainSocketAddress
+import java.nio.channels.ServerSocketChannel
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import kotlin.io.path.createSymbolicLinkPointingTo
@@ -14,11 +18,12 @@ import java.nio.file.FileSystemException
 import java.nio.file.attribute.PosixFilePermissions
 import org.junit.Assume.assumeTrue
 import kotlin.test.assertFailsWith
-import kotlin.test.assertNull
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertIs
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class NioFileManagerTest {
@@ -285,6 +290,39 @@ class NioFileManagerTest {
     }
 
     @Test
+    fun `a readable file or folder has no unavailable reason`() {
+        val file = root.resolve("local.properties").also { Files.writeString(it, "sdk.dir=/opt/android") }
+
+        assertNull(fileManager.unavailableReason(file.toString()))
+        assertNull(fileManager.unavailableReason(root.toString()))
+    }
+
+    @Test
+    fun `a missing path is unavailable as missing`() {
+        assertEquals(UnavailableReason.Missing, fileManager.unavailableReason(root.resolve("absent").toString()))
+    }
+
+    @Test
+    fun `a link to nothing is unavailable as a broken link naming its target`() {
+        val target = root.resolve("missing/keys.properties")
+        val link = root.resolve("keys.properties").createSymbolicLinkPointingTo(target)
+
+        assertEquals(UnavailableReason.BrokenLink(target.toString()), fileManager.unavailableReason(link.toString()))
+    }
+
+    @Test
+    fun `a file without read permission is unavailable as unreadable`() {
+        val file = root.resolve("secret.properties").also { Files.writeString(it, "token=placeholder") }
+        if (!file.toFile().setReadable(false, false) || Files.isReadable(file)) return
+
+        try {
+            assertIs<UnavailableReason.Unreadable>(fileManager.unavailableReason(file.toString()))
+        } finally {
+            file.toFile().setReadable(true, false)
+        }
+    }
+
+    @Test
     fun `a read-only folder keeps its files from being deleted`() {
         assumeTrue(root.fileSystem.supportedFileAttributeViews().contains("posix"))
         val folder = root.resolve("sealed").createDirectories()
@@ -294,6 +332,33 @@ class NioFileManagerTest {
             assertFailsWith<AccessDeniedException> { fileManager.deleteRecursively(folder.toString()) }
         } finally {
             Files.setPosixFilePermissions(folder, PosixFilePermissions.fromString("rwx------"))
+        }
+    }
+
+    @Test
+    fun `a folder entry that can't be read is listed as unreadable`() {
+        val keys = root.resolve("keys").createDirectories()
+        Files.writeString(keys.resolve("a.pem"), "a")
+        val private = keys.resolve("private").createDirectories()
+        Files.writeString(private.resolve("b.pem"), "b")
+        if (!private.toFile().setReadable(false, false) || Files.isReadable(private)) return
+
+        try {
+            assertEquals(DirectoryListing(files = listOf("a.pem"), unreadable = listOf("private")), fileManager.listTree(keys.toString()))
+            assertIs<UnavailableReason.Unreadable>(fileManager.unavailableReason(private.toString()))
+        } finally {
+            private.toFile().setReadable(true, false)
+        }
+    }
+
+    @Test
+    fun `a file that can't be opened as a file is unavailable naming why`() {
+        assumeTrue(root.fileSystem.supportedFileAttributeViews().contains("posix"))
+        val socket = root.resolve("agent.sock")
+        ServerSocketChannel.open(StandardProtocolFamily.UNIX).use { server ->
+            server.bind(UnixDomainSocketAddress.of(socket))
+
+            assertIs<UnavailableReason.Unreadable>(fileManager.unavailableReason(socket.toString()))
         }
     }
 }

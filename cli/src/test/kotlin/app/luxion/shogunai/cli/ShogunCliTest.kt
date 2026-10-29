@@ -29,6 +29,7 @@ import app.luxion.shogunai.domain.model.MavenProvider
 import app.luxion.shogunai.domain.FakeDerivedDataSource
 import app.luxion.shogunai.domain.FakeEnvironmentStateStore
 import app.luxion.shogunai.domain.FakeFileManager
+import app.luxion.shogunai.domain.model.UnavailableReason
 import app.luxion.shogunai.domain.FakeHerdrClient
 import app.luxion.shogunai.domain.FakeHerdrConfigSource
 import app.luxion.shogunai.domain.FakeGitHubClient
@@ -1190,6 +1191,24 @@ class ShogunCliTest {
         assertEquals(0, cli(executor).run(listOf("new", "--branch", "hotfix/login")), err.toString())
 
         assertEquals(null, executor.recordedBase("hotfix/login"))
+    }
+
+    @Test
+    fun `new prints each unavailable local file with its fix and creates nothing`() {
+        val executor = repositoryExecutor()
+        val fileManager = FakeFileManager(existing = listOf(base, "$base/local.properties"))
+        fileManager.unavailable["$base/local.properties"] = UnavailableReason.Unreadable("Operation not permitted")
+
+        val exitCode = cli(executor, fileManager = fileManager).run(listOf("new", "TASK-123"))
+
+        assertEquals(1, exitCode)
+        assertEquals(
+            "shogun: These local files can't be copied or linked from $base, so nothing was changed:\n" +
+                "  local.properties: $base/local.properties can't be read (Operation not permitted). " +
+                "Make it readable for your user, or remove it from the project's local files\n",
+            err.toString(),
+        )
+        assertFalse(executor.calls.any { "add" in it.first })
     }
 
     @Test

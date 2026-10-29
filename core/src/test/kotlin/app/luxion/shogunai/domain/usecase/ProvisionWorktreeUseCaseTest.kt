@@ -20,6 +20,7 @@ import app.luxion.shogunai.domain.model.ProvisionedFile
 import app.luxion.shogunai.domain.model.RepositoryProvisioning
 import app.luxion.shogunai.domain.model.PodsPreparation
 import app.luxion.shogunai.domain.model.WorktreeError
+import app.luxion.shogunai.domain.model.UnavailableReason
 import app.luxion.shogunai.domain.model.parseEnvironmentVariable
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -104,10 +105,23 @@ class ProvisionWorktreeUseCaseTest {
     }
 
     @Test
+    fun `an unreadable file fails before anything in the worktree changes`() = runTest {
+        val fileManager = FakeFileManager(existing = listOf("$base/local.properties"))
+        fileManager.unavailable["$base/.env"] = UnavailableReason.Unreadable("permission denied")
+
+        val error = ProvisionWorktreeUseCase(config, executor(), fileManager, provisioning)(linked).exceptionOrNull()
+
+        assertIs<WorktreeError.LocalFilesUnavailable>(error)
+        assertEquals(listOf(".env"), error.files.map { it.path })
+        assertTrue(fileManager.copied.isEmpty())
+        assertTrue(fileManager.deletedFiles.isEmpty())
+    }
+
+    @Test
     fun `fails when a local file is missing`() = runTest {
         val error = ProvisionWorktreeUseCase(config, executor(), FakeFileManager(), provisioning)(linked).exceptionOrNull()
 
-        assertIs<WorktreeError.SecretFileNotFound>(error)
+        assertIs<WorktreeError.LocalFilesUnavailable>(error)
     }
 
     @Test
@@ -433,7 +447,7 @@ class ProvisionWorktreeUseCaseTest {
 
         val error = provision(keysConfig, fileManager, records)(linked).exceptionOrNull()
 
-        assertIs<WorktreeError.SecretFileNotFound>(error)
+        assertIs<WorktreeError.LocalFilesUnavailable>(error)
         assertTrue(fileManager.deletedFiles.isEmpty())
     }
 

@@ -83,6 +83,8 @@ Measured on macOS after this change's tests:
 | `cli` | 100% (rule: 100) | 83.03% (rule: 83) |
 | `desktopApp` outside composables | 76.15% (rule: 76) | 62.27% (rule: 62) |
 
+Bringing in `develop` before the pull request added `desktop-e2e-tests` and `worktree-preflight`. The desktop app's end-to-end tests raised its figures to 83.40% of lines and 65.37% of branches, so its floors went up to 83 and 65; `worktree-preflight` left one line of `core` without a test (a file that exists but can't be opened as one), covered here with a Unix socket file.
+
 ## Effect on the changes in flight
 
 Six reliability changes started in parallel from `develop` at 8d2e40c1. Whichever merges after this one has to pass `koverVerify` once it brings in `develop`:

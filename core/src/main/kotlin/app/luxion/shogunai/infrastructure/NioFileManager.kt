@@ -3,6 +3,7 @@ package app.luxion.shogunai.infrastructure
 import app.luxion.shogunai.domain.io.DirectoryListing
 import app.luxion.shogunai.domain.io.FileManager
 import app.luxion.shogunai.domain.io.SymbolicLinksNotSupported
+import app.luxion.shogunai.domain.model.UnavailableReason
 import java.io.IOException
 import java.nio.file.AccessDeniedException
 import java.nio.file.FileSystemException
@@ -20,6 +21,26 @@ class NioFileManager(
 ) : FileManager {
 
     override fun exists(path: String): Boolean = Files.exists(Path.of(path))
+
+    override fun unavailableReason(path: String): UnavailableReason? {
+        val file = Path.of(path)
+        return when {
+            !Files.exists(file, LinkOption.NOFOLLOW_LINKS) -> UnavailableReason.Missing
+            !Files.exists(file) -> UnavailableReason.BrokenLink(Files.readSymbolicLink(file).toString())
+            else -> readFailure(file)?.let { UnavailableReason.Unreadable(it) }
+        }
+    }
+
+    private fun readFailure(file: Path): String? = try {
+        if (Files.isDirectory(file)) Files.newDirectoryStream(file).close() else Files.newByteChannel(file).close()
+        null
+    } catch (error: AccessDeniedException) {
+        error.reason ?: "permission denied"
+    } catch (error: FileSystemException) {
+        error.reason ?: error.javaClass.simpleName
+    } catch (error: IOException) {
+        error.message ?: error.javaClass.simpleName
+    }
 
     override fun isInside(root: String, path: String): Boolean = runCatching {
         val realRoot = Path.of(root).toRealPath()
@@ -100,6 +121,7 @@ class NioFileManager(
         if (!Files.isDirectory(root)) return DirectoryListing()
         val files = mutableListOf<String>()
         val skippedLinks = mutableListOf<String>()
+        val unreadable = mutableListOf<String>()
         Files.walkFileTree(
             root,
             object : SimpleFileVisitor<Path>() {
@@ -112,10 +134,13 @@ class NioFileManager(
                     return FileVisitResult.CONTINUE
                 }
 
-                override fun visitFileFailed(file: Path, exc: IOException): FileVisitResult = FileVisitResult.CONTINUE
+                override fun visitFileFailed(file: Path, exc: IOException): FileVisitResult {
+                    unreadable += root.relativize(file).joinToString("/")
+                    return FileVisitResult.CONTINUE
+                }
             },
         )
-        return DirectoryListing(files, skippedLinks)
+        return DirectoryListing(files, skippedLinks, unreadable)
     }
 
     override fun isSymbolicLink(path: String): Boolean = Files.isSymbolicLink(Path.of(path))

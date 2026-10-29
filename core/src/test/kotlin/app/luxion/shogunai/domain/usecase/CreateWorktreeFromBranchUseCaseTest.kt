@@ -122,8 +122,8 @@ class CreateWorktreeFromBranchUseCaseTest {
 
         val error = useCase(branch).exceptionOrNull()
 
-        val secretError = assertIs<WorktreeError.SecretFileNotFound>(error)
-        assertEquals(listOf("app-secrets.properties"), secretError.files)
+        val secretError = assertIs<WorktreeError.LocalFilesUnavailable>(error)
+        assertEquals(listOf("app-secrets.properties"), secretError.files.map { it.path })
         assertFalse(exec.executed("git", "worktree", "add", worktreePath, branch))
     }
 
@@ -375,8 +375,8 @@ class CreateWorktreeFromBranchUseCaseTest {
 
         val error = useCase(branch).exceptionOrNull()
 
-        assertIs<WorktreeError.SecretFileNotFound>(error)
-        assertEquals(listOf("keys"), error.files)
+        assertIs<WorktreeError.LocalFilesUnavailable>(error)
+        assertEquals(listOf("keys"), error.files.map { it.path })
         assertFalse(exec.executedCommands.any { it.getOrNull(2) == "add" })
     }
 

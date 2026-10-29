@@ -52,7 +52,7 @@ import app.luxion.shogunai.ui.components.DialogSize
 import app.luxion.shogunai.ui.components.Field
 import app.luxion.shogunai.ui.components.PathField
 import app.luxion.shogunai.ui.components.ShogunDialog
-import app.luxion.shogunai.ui.FilePicker
+import app.luxion.shogunai.ui.LocalPathPicker
 import app.luxion.shogunai.domain.model.AgentLaunchConfig
 import app.luxion.shogunai.ui.components.DangerTextButton
 import app.luxion.shogunai.ui.components.DropdownSelector
@@ -357,6 +357,7 @@ private fun GeneralSection(
     tops: MutableMap<SettingsSectionId, Int>,
 ) {
     val strings = LocalStrings.current
+    val pathPicker = LocalPathPicker.current
     SettingsSection(strings.generalSection, Modifier.trackTop(SettingsSectionId.GENERAL, tops)) {
         SettingsField(strings.nameLabel) {
             val error = viewModel.isErrorVisible(ProjectConfigField.NAME)
@@ -376,7 +377,7 @@ private fun GeneralSection(
                 value = viewModel.baseRepositoryPath,
                 onValueChange = { viewModel.baseRepositoryPath = it },
                 onBrowse = {
-                    FilePicker.pickDirectory(viewModel.baseRepositoryPath, strings.selectFolderDialogTitle)?.let {
+                    pathPicker.pickDirectory(viewModel.baseRepositoryPath, strings.selectFolderDialogTitle)?.let {
                         viewModel.baseRepositoryPath = it
                         onSettleBasePath()
                     }
@@ -394,7 +395,7 @@ private fun GeneralSection(
                 value = viewModel.worktreesRoot,
                 onValueChange = { viewModel.worktreesRoot = it },
                 onBrowse = {
-                    FilePicker.pickDirectory(viewModel.worktreesRoot, strings.selectFolderDialogTitle)?.let {
+                    pathPicker.pickDirectory(viewModel.worktreesRoot, strings.selectFolderDialogTitle)?.let {
                         viewModel.worktreesRoot = it
                     }
                 },
@@ -447,6 +448,7 @@ private fun WorktreeFilesSection(
     tops: MutableMap<SettingsSectionId, Int>,
 ) {
     val strings = LocalStrings.current
+    val pathPicker = LocalPathPicker.current
     SettingsSection(strings.worktreeFilesSection, Modifier.trackTop(SettingsSectionId.WORKTREE_FILES, tops)) {
         SettingsField(strings.repositoryProvisioningSection) {
             Text(
@@ -490,7 +492,7 @@ private fun WorktreeFilesSection(
                 }
                 SecondaryButton(
                     onClick = {
-                        FilePicker.pickFiles(viewModel.baseRepositoryPath, strings.selectLocalFilesDialogTitle).forEach { absolutePath ->
+                        pathPicker.pickFiles(viewModel.baseRepositoryPath, strings.selectLocalFilesDialogTitle).forEach { absolutePath ->
                             viewModel.addSecretFile(relativeToBase(viewModel.baseRepositoryPath, absolutePath))
                         }
                     },
@@ -727,6 +729,7 @@ private fun EditorOverrideField(viewModel: ProjectConfigViewModel) {
 @Composable
 private fun AddProjectFolderStep(viewModel: ProjectConfigViewModel, initialFolder: String?, onCancel: () -> Unit) {
     val strings = LocalStrings.current
+    val pathPicker = LocalPathPicker.current
     val scope = rememberCoroutineScope()
     LaunchedEffect(initialFolder) {
         if (initialFolder != null) viewModel.chooseFolder(initialFolder)
@@ -758,7 +761,7 @@ private fun AddProjectFolderStep(viewModel: ProjectConfigViewModel, initialFolde
                 )
             }
             PrimaryButton(onClick = {
-                FilePicker.pickDirectory("", strings.selectFolderDialogTitle)?.let { folder ->
+                pathPicker.pickDirectory("", strings.selectFolderDialogTitle)?.let { folder ->
                     scope.launch { viewModel.chooseFolder(folder) }
                 }
             }) {
