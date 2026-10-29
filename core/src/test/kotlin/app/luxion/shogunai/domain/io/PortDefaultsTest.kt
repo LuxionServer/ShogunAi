@@ -2,6 +2,7 @@ package app.luxion.shogunai.domain.io
 
 import app.luxion.shogunai.domain.FakeFileManager
 import app.luxion.shogunai.domain.FakeHerdrClient
+import app.luxion.shogunai.domain.FakeOrcaClient
 import app.luxion.shogunai.domain.model.RepositoryApprovalSubject
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -30,6 +31,17 @@ class PortDefaultsTest {
     @Test
     fun `herdr counts as installed unless told otherwise`() {
         assertTrue(FakeHerdrClient().isInstalled())
+        assertNull(FakeHerdrClient().location())
+    }
+
+    @Test
+    fun `orca without a location isn't installed`() {
+        val orca = object : OrcaClient by FakeOrcaClient() {
+            override fun isInstalled(): Boolean = super<OrcaClient>.isInstalled()
+        }
+
+        assertNull(orca.location())
+        assertFalse(orca.isInstalled())
     }
 
     @Test

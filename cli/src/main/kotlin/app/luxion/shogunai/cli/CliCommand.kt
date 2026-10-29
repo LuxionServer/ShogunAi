@@ -99,6 +99,9 @@ sealed interface CliCommand {
     data class Stacks(val json: Boolean = false) : CliCommand, JsonOutput {
         override fun withJson() = copy(json = true)
     }
+    data class Doctor(val json: Boolean = false) : CliCommand, JsonOutput {
+        override fun withJson() = copy(json = true)
+    }
     data class Maven(val json: Boolean = false) : CliCommand, JsonOutput {
         override fun withJson() = copy(json = true)
     }
@@ -242,6 +245,7 @@ fun parseArguments(args: List<String>): ParsedArguments {
                 "guide" -> parseGuide(arguments)
                 "gradle" -> parseGradle(arguments)
                 "stacks" -> noArguments(name, arguments, CliCommand.Stacks())
+                "doctor" -> noArguments(name, arguments, CliCommand.Doctor())
                 "maven" -> parseMaven(arguments)
                 "compose" -> parseCompose(arguments)
                 "pool" -> parsePool(arguments)
@@ -265,7 +269,7 @@ private const val JSON_FLAG = "--json"
 
 private const val ARGUMENTS_SEPARATOR = "--"
 
-private val JSON_COMMANDS = setOf("new", "base", "multirepo", "provision", "trust", "remove", "repair", "open", "clean", "gradle", "stacks", "maven", "compose", "pool", "project", "xcode", "emulator", "simulator", "headless", "desktop", "hooks", "guide")
+private val JSON_COMMANDS = setOf("new", "base", "multirepo", "provision", "trust", "remove", "repair", "open", "clean", "gradle", "stacks", "maven", "compose", "pool", "project", "xcode", "emulator", "simulator", "headless", "desktop", "hooks", "guide", "doctor")
 
 private fun isSimulatorGradleInit(name: String, rest: List<String>) = name == "simulator" && rest.firstOrNull() == "gradle-init"
 

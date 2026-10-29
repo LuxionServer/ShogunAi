@@ -27,6 +27,7 @@ import app.luxion.shogunai.diagnostics.SecondaryWindowErrorHandler
 import app.luxion.shogunai.diagnostics.UiFreezeWatchdog
 import app.luxion.shogunai.diagnostics.asWindowExceptionHandlerFactory
 import app.luxion.shogunai.diagnostics.copyDiagnosticReport
+import app.luxion.shogunai.ui.shell.InstallationCheckWindow
 import app.luxion.shogunai.diagnostics.diagnosticsExceptionHandler
 import app.luxion.shogunai.diagnostics.installUncaughtExceptionLogging
 import app.luxion.shogunai.domain.io.DiagnosticsLog
@@ -121,6 +122,7 @@ private fun openWindow() = application {
     var preferencesOpen by remember { mutableStateOf(false) }
     var preferencesFrontRequests by remember { mutableIntStateOf(0) }
     var aboutOpen by remember { mutableStateOf(false) }
+    var installationCheckOpen by remember { mutableStateOf(false) }
     val openPreferences: () -> Unit = {
         if (preferencesOpen) preferencesFrontRequests++ else preferencesOpen = true
     }
@@ -133,6 +135,11 @@ private fun openWindow() = application {
     val aboutErrorHandlers = SecondaryWindowErrorHandler(
         appContainer.diagnosticsLog,
         onClosed = { aboutOpen = false },
+        onReport = reportSecondaryWindowError,
+    ).asWindowExceptionHandlerFactory()
+    val installationCheckErrorHandlers = SecondaryWindowErrorHandler(
+        appContainer.diagnosticsLog,
+        onClosed = { installationCheckOpen = false },
         onReport = reportSecondaryWindowError,
     ).asWindowExceptionHandlerFactory()
     val updateScope = rememberCoroutineScope { diagnosticsHandler }
@@ -335,6 +342,7 @@ private fun openWindow() = application {
             onPreferences = openPreferences,
             onCheckForUpdates = checkForUpdates,
             onTour = appContainer.tour::start,
+            onCheckInstallation = { installationCheckOpen = true },
             onCopyDiagnosticReport = copyDiagnosticReport,
             onAbout = { aboutOpen = true },
             onQuit = requestQuit,
@@ -360,6 +368,14 @@ private fun openWindow() = application {
             LocalWindowExceptionHandlerFactory provides preferencesErrorHandlers,
         ) {
             PreferencesWindow(appearance, appContainer.tools, appContainer.resources, appContainer.claudeHooks, appContainer.updates, trayPreferences, inactivityPreferences, preferencesFrontRequests, onClose = { preferencesOpen = false })
+        }
+    }
+    if (installationCheckOpen) {
+        CompositionLocalProvider(
+            LocalShownErrorLog provides appContainer.shownErrorLog,
+            LocalWindowExceptionHandlerFactory provides installationCheckErrorHandlers,
+        ) {
+            InstallationCheckWindow(appearance, appContainer.installationCheck, appContainer.diagnosticReport::build, onClose = { installationCheckOpen = false })
         }
     }
     if (aboutOpen) {
