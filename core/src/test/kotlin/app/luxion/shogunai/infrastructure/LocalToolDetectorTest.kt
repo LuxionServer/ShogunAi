@@ -5,6 +5,7 @@ import app.luxion.shogunai.domain.executor.CommandExecutionException
 import app.luxion.shogunai.domain.model.DetectedTools
 import app.luxion.shogunai.domain.model.EditorId
 import app.luxion.shogunai.domain.model.HostOs
+import app.luxion.shogunai.domain.model.RunnerId
 import app.luxion.shogunai.domain.model.TerminalId
 import kotlinx.coroutines.test.runTest
 import java.io.IOException
@@ -21,6 +22,7 @@ class LocalToolDetectorTest {
         sessions: Set<String> = emptySet(),
         programFolders: List<String> = emptyList(),
         registry: List<String> = emptyList(),
+        runners: Set<RunnerId> = emptySet(),
     ): LocalToolDetector {
         val executor = FakeShellCommandExecutor { command ->
             when {
@@ -41,7 +43,14 @@ class LocalToolDetectorTest {
             locator = locator,
             editorResolver = EditorExecutableResolver(os, locator) { registry },
             isDirectory = { it in directories },
+            isRunnerInstalled = { it in runners },
         )
+    }
+
+    @Test
+    fun `reports which runners are installed`() = runTest {
+        assertEquals(setOf(RunnerId.ORCA), detector(HostOs.MACOS, runners = setOf(RunnerId.ORCA)).detect().runners)
+        assertEquals(emptySet(), detector(HostOs.LINUX).detect().runners)
     }
 
     @Test
@@ -85,7 +94,7 @@ class LocalToolDetectorTest {
             detector(HostOs.LINUX, files, sessions = setOf("tmux")).detect().terminals,
         )
         assertEquals(
-            DetectedTools(),
+            DetectedTools(runners = emptySet()),
             detector(HostOs.LINUX, files).detect(),
         )
         assertEquals(
@@ -138,7 +147,7 @@ class LocalToolDetectorTest {
             isDirectory = { false },
         )
 
-        assertEquals(DetectedTools(), detector.detect())
+        assertEquals(DetectedTools(runners = emptySet()), detector.detect())
     }
 
     @Test

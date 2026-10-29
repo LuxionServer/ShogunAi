@@ -2,9 +2,11 @@ package app.luxion.shogunai.domain.usecase
 
 import app.luxion.shogunai.domain.io.OrcaClient
 import app.luxion.shogunai.domain.model.AGENT_START_SECONDS
+import app.luxion.shogunai.domain.model.ClaudeSession
 import app.luxion.shogunai.domain.model.OrcaOpening
 import app.luxion.shogunai.domain.model.OrcaOutcome
 import app.luxion.shogunai.domain.model.OrcaRepo
+import app.luxion.shogunai.domain.model.OrcaTerminal
 import app.luxion.shogunai.domain.model.OrcaWorkspace
 import app.luxion.shogunai.domain.model.WorktreeError
 import kotlinx.coroutines.CancellationException
@@ -31,13 +33,27 @@ class OrcaAgentLauncher(
         orca.repos().firstOrNull { samePath(it.path, path) } ?: orca.addRepo(path)
 
     suspend fun focusLiveAgent(workspace: OrcaWorkspace, folder: String, sessionName: String): OrcaOpening? {
-        val (terminal, agent) = orca.terminals(workspace).firstNotNullOfOrNull { terminal ->
+        val terminals = orca.terminals(workspace)
+        val (terminal, agent) = terminals.firstNotNullOfOrNull { terminal ->
             orca.terminalAgent(terminal.handle)?.let { terminal to it }
-        } ?: return null
+        } ?: return focusUnreportedClaude(terminals, folder, sessionName)
         orca.switchTo(terminal.handle)
         raiseWindow()
         val name = if (agent == CLAUDE) naming.focusedSessionName(folder, sessionName) else null
         return OrcaOpening(OrcaOutcome.FOCUSED, terminal.handle, agent, name)
+    }
+
+    private suspend fun focusUnreportedClaude(terminals: List<OrcaTerminal>, folder: String, sessionName: String): OrcaOpening? {
+        if (terminals.isEmpty()) return null
+        val handles = terminals.map { it.handle }.toSet()
+        val sessions = naming.liveSessionsIn(folder)
+            .sortedWith(compareByDescending<ClaudeSession> { it.name == sessionName }.thenByDescending { it.startedAt ?: Long.MIN_VALUE })
+        val (session, handle) = sessions.firstNotNullOfOrNull { session ->
+            naming.terminalOf(session)?.takeIf { it in handles }?.let { session to it }
+        } ?: return null
+        orca.switchTo(handle)
+        raiseWindow()
+        return OrcaOpening(OrcaOutcome.FOCUSED, handle, CLAUDE, session.name)
     }
 
     suspend fun start(
@@ -52,11 +68,18 @@ class OrcaAgentLauncher(
         val commandLine = line(naming.named(command, name))
         val terminal = orca.createTerminal(workspace, name ?: agentName, commandLine, focus = true)
         withTimeoutOrNull(timeout) {
-            while (orca.terminalAgent(terminal.handle) == null) delay(pollInterval)
+            while (!started(terminal.handle, folder, name)) delay(pollInterval)
         } ?: throw WorktreeError.OrcaAgentNotStarted(terminal.handle, commandLine)
         raiseWindow()
         val confirmed = name?.let { naming.awaitSession(it, folder) }
         return OrcaOpening(OrcaOutcome.STARTED_AGENT, terminal.handle, agentName, confirmed)
+    }
+
+    private suspend fun started(handle: String, folder: String, name: String?): Boolean {
+        if (orca.terminalAgent(handle) != null) return true
+        val sessions = naming.liveSessionsIn(folder)
+        if (name != null && sessions.any { it.name == name }) return true
+        return sessions.any { naming.terminalOf(it) == handle }
     }
 
     private suspend fun raiseWindow() {

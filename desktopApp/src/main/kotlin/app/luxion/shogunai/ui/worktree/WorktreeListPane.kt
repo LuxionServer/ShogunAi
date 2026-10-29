@@ -1,24 +1,33 @@
 package app.luxion.shogunai.ui.worktree
 
+import app.luxion.shogunai.ui.components.AgentIndicator
+import app.luxion.shogunai.ui.components.AgentIndicatorModel
+import app.luxion.shogunai.ui.actions.ActionId
+import app.luxion.shogunai.ui.actions.ActionSpec
+import app.luxion.shogunai.ui.actions.GroupActionContext
+import app.luxion.shogunai.ui.actions.OpenTarget
+import app.luxion.shogunai.ui.actions.groupCatalog
+import app.luxion.shogunai.ui.actions.projectGroupOverflow
+import app.luxion.shogunai.ui.actions.GroupCatalog
+import app.luxion.shogunai.ui.actions.PerformAction
+import app.luxion.shogunai.ui.actions.toMenu
+import app.luxion.shogunai.ui.components.MoreMenuButton
+import app.luxion.shogunai.ui.components.DisabledReason
+import app.luxion.shogunai.ui.components.GroupTitle
+import app.luxion.shogunai.ui.components.SkeletonRows
 import app.luxion.shogunai.ui.components.StatusChip
 import app.luxion.shogunai.ui.components.WithTooltip
 import app.luxion.shogunai.ui.machine.MachineResource
 import app.luxion.shogunai.ui.theme.Status
-
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import app.luxion.shogunai.domain.usecase.GroupKept
 import app.luxion.shogunai.domain.usecase.GroupKeptReason
 import app.luxion.shogunai.ui.components.NeutralTextButton
+import app.luxion.shogunai.ui.components.DangerTextButton
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -46,17 +55,13 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
-import androidx.compose.ui.platform.LocalClipboard
-import app.luxion.shogunai.ui.components.copyText
-import androidx.compose.runtime.rememberCoroutineScope
-import kotlinx.coroutines.launch
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import app.luxion.shogunai.domain.model.DEFAULT_INACTIVE_AFTER_DAYS
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.usecase.classifyOrigin
-import app.luxion.shogunai.ui.components.DangerTextButton
 import app.luxion.shogunai.ui.components.IconAction
 import app.luxion.shogunai.ui.components.InlineProgress
 import app.luxion.shogunai.ui.components.Spacing
@@ -108,6 +113,15 @@ fun WorktreeListPane(
             },
     ) {
         val compact = maxWidth < CompactListWidth
+        val aliasWidth = aliasColumnWidth(
+            items.mapNotNull { item ->
+                when (item) {
+                    is ListItem.ChangeRow -> item.aliased.alias
+                    is ListItem.StateRow -> board.aliasOf(item.entry.project.id)
+                    else -> null
+                }
+            },
+        )
         LazyColumn(
             state = listState,
             modifier = Modifier.fillMaxSize(),
@@ -124,7 +138,14 @@ fun WorktreeListPane(
                         )
                     }
                     is ListItem.StateHeader -> stickyHeader(key = item.key) {
-                        StateGroupHeader(item.group.kind, item.group.items.size, board.canCleanUp(), { board.openCleanup() }, board.inactivity.days)
+                        StateGroupHeader(
+                            item.group.kind,
+                            item.group.items.size,
+                            board.canCleanUp(),
+                            { board.openCleanup() },
+                            board.inactivity.days,
+                            board.cleanUpBlock()?.describe(LocalStrings.current),
+                        )
                     }
                     is ListItem.StateRow -> item(key = item.key) {
                         val entry = item.entry
@@ -133,6 +154,7 @@ fun WorktreeListPane(
                             projectName = entry.project.name.takeIf { board.shownProjects.size > 1 && !board.isMultirepoView },
                             compact = compact,
                             alias = board.aliasOf(entry.project.id),
+                            aliasWidth = aliasWidth,
                             onOpenGroup = onOpenGroup,
                         )
                         HorizontalDivider()
@@ -145,7 +167,7 @@ fun WorktreeListPane(
                     }
                     is ListItem.ChangeRow -> item(key = item.key) {
                         val entry = item.aliased.entry
-                        WorktreeRowFor(board, entry.project, entry.holder, entry.worktree, projectName = null, compact = compact, alias = item.aliased.alias)
+                        WorktreeRowFor(board, entry.project, entry.holder, entry.worktree, projectName = null, compact = compact, alias = item.aliased.alias, aliasWidth = aliasWidth)
                         HorizontalDivider()
                     }
                     is ListItem.GroupState -> item(key = item.key) {
@@ -313,11 +335,8 @@ private fun ProjectGroupHeader(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
         ) {
-            Text(
+            GroupTitle(
                 board.multirepoNameOf(projectId)?.let { "$it / ${group.project.name}" } ?: group.project.name,
-                style = MaterialTheme.typography.titleSmall,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f, fill = false),
             )
             Text(
@@ -337,12 +356,14 @@ private fun ProjectGroupHeader(
                 }
             }
         }
-        DangerTextButton(
-            onClick = { board.openCleanup(projectId) },
-            enabled = board.canCleanUp(projectId),
-        ) { Text(strings.cleanUp, style = MaterialTheme.typography.bodySmall) }
         IconAction(icon = Icons.Default.Settings, label = strings.projectConfigTitle, onClick = onOpenProjectSettings)
         IconAction(icon = Icons.Default.Add, label = strings.newWorktree, onClick = { board.openCreateDialog(projectId) })
+        MoreMenuButton(
+            label = strings.moreActions,
+            entries = projectGroupOverflow(board.cleanUpBlock(projectId)?.describe(strings), strings).toMenu(strings) { spec, _ ->
+                if (spec.id == ActionId.CleanUp) board.openCleanup(projectId)
+            },
+        )
     }
 }
 
@@ -358,14 +379,7 @@ private fun GroupState(holder: ProjectWorktrees, projectId: String, projectName:
         )
     }
     when (val state = holder.loadState) {
-        ProjectLoadState.Loading -> Row(
-            modifier = noticeModifier,
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
-        ) {
-            InlineProgress()
-            Text(strings.loadingWorktrees, style = MaterialTheme.typography.bodySmall)
-        }
+        ProjectLoadState.Loading -> SkeletonRows(description = strings.loadingWorktrees)
         is ProjectLoadState.Failed -> ErrorNotice(
             error = state.error,
             onDismiss = null,
@@ -418,6 +432,7 @@ internal fun StateGroupHeader(
     canCleanUp: Boolean,
     onCleanUp: () -> Unit,
     inactiveDays: Int = DEFAULT_INACTIVE_AFTER_DAYS,
+    cleanUpBlockedReason: String? = null,
 ) {
     val strings = LocalStrings.current
     val colors = MaterialTheme.colorScheme
@@ -439,7 +454,7 @@ internal fun StateGroupHeader(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
                 ) {
-                    Text(kind.label(strings), style = MaterialTheme.typography.titleSmall, maxLines = 1)
+                    GroupTitle(kind.label(strings))
                     Text(
                         kind.hint(strings, inactiveDays),
                         style = MaterialTheme.typography.bodySmall,
@@ -453,10 +468,12 @@ internal fun StateGroupHeader(
             Text(strings.worktreeCount(count), style = ShogunTheme.typography.dataSmall, color = colors.onSurfaceVariant, maxLines = 1)
         }
         if (kind == StateGroupKind.MERGED) {
-            DangerTextButton(
-                onClick = onCleanUp,
-                enabled = canCleanUp,
-            ) { Text(strings.cleanUp, style = MaterialTheme.typography.bodySmall) }
+            DisabledReason(cleanUpBlockedReason.takeUnless { canCleanUp }) {
+                DangerTextButton(
+                    onClick = onCleanUp,
+                    enabled = canCleanUp,
+                ) { Text(strings.cleanUp) }
+            }
         }
     }
 }
@@ -503,11 +520,10 @@ private fun WorktreeRowFor(
     projectName: String?,
     compact: Boolean,
     alias: String? = null,
+    aliasWidth: Dp = DefaultAliasColumnWidth,
     onOpenGroup: (GroupTag) -> Unit = {},
 ) {
     val strings = LocalStrings.current
-    val clipboard = LocalClipboard.current
-    val scope = rememberCoroutineScope()
     val ref = WorktreeRef(project.id, worktree.path)
     val groupTag = board.groupTagOf(ref)
     WorktreeRow(
@@ -527,22 +543,16 @@ private fun WorktreeRowFor(
             groupTag = groupTag?.label,
             desktopTurn = board.desktopTurn.rowTurn(worktree.path),
             headlessApp = holder.headlessApps[worktree.path]?.takeIf { holder.isHeadlessAppRepository },
+            agentsReadAt = holder.agentsReadAt,
         ),
         selected = board.selected == ref,
         isCopied = holder.copiedWorktreePath == worktree.path,
-        isMain = worktree.isMain,
         compact = compact,
+        aliasWidth = aliasWidth,
         onSelect = { board.select(ref) },
         onCopyLaunchCommand = { holder.copyLaunchCommand(worktree) },
-        onCopyPath = { scope.launch { clipboard.copyText(worktree.path) } },
-        onOpenInHerdr = { holder.openInHerdr(worktree) },
-        onOpenInOrca = { holder.openInOrca(worktree) },
-        openActions = holder.openActions(worktree, strings),
-        agentName = holder.agentFor(worktree).displayName.takeIf { holder.hasAgentChoice },
-        launchChoices = holder.launchChoices(worktree, strings),
-        onLaunch = { holder.launch(worktree, it.kind, it.agent) },
+        contextMenu = worktreeContextMenu(holder, worktree),
         onOpenGroupTag = { groupTag?.let(onOpenGroup) },
-        onRemove = { holder.requestRemoval(worktree) },
     )
 }
 
@@ -551,35 +561,42 @@ private fun ChangeGroupHeader(group: ChangeGroup, board: WorktreeBoard) {
     val strings = LocalStrings.current
     ChangeGroupHeaderView(
         group = group,
-        cleanUpBlocker = board.groupCleanupBlocker(group)?.describe(strings),
-        canCleanUp = board.canCleanUpGroup(group),
-        addableAliases = if (board.canAddRepositories(group)) board.missingAliases(group) else emptyList(),
-        isAdding = board.addingToGroup.any { it.startsWith("${group.branch}:") },
+        catalog = groupCatalog(
+            GroupActionContext(
+                orcaInstalled = board.isOrcaInstalled,
+                isOpeningInOrca = group.branch in board.openingGroupsInOrca,
+                defaultRunner = board.defaultRunner,
+                addableAliases = if (board.canAddRepositories(group)) board.missingAliases(group) else emptyList(),
+                isAdding = board.addingToGroup.any { it.startsWith("${group.branch}:") },
+                cleanUpBlocked = board.groupCleanUpBlock(group)?.describe(strings),
+            ),
+            strings,
+        ),
         onToggle = { board.toggleChangeCollapsed(group.branch) },
-        onOpenAll = { board.openAllInHerdr(group) },
-        onOpenAllInOrca = { board.openAllInOrca(group) }.takeIf { board.isOrcaInstalled },
-        isOpeningInOrca = group.branch in board.openingGroupsInOrca,
-        onAddRepository = { board.addRepositoryToGroup(group, it) },
-        onCleanUp = { board.openGroupCleanup(group) },
+        onAction = { spec ->
+            when (val id = spec.id) {
+                ActionId.OpenAll(OpenTarget.HERDR) -> board.openAllInHerdr(group)
+                ActionId.OpenAll(OpenTarget.ORCA) -> board.openAllInOrca(group)
+                is ActionId.AddRepository -> board.addRepositoryToGroup(group, id.alias)
+                ActionId.CleanUpGroup -> board.openGroupCleanup(group)
+                else -> Unit
+            }
+        },
+        agent = agentIndicator(board.agentsOf(group), board.agentsReadAtOf(group), Instant.now(), strings),
     )
 }
 
 @Composable
 internal fun ChangeGroupHeaderView(
     group: ChangeGroup,
-    cleanUpBlocker: String?,
-    canCleanUp: Boolean,
-    addableAliases: List<String>,
-    isAdding: Boolean,
+    catalog: GroupCatalog,
     onToggle: () -> Unit,
-    onOpenAll: () -> Unit,
-    onAddRepository: (String) -> Unit,
-    onCleanUp: () -> Unit,
-    onOpenAllInOrca: (() -> Unit)? = null,
-    isOpeningInOrca: Boolean = false,
+    onAction: (ActionSpec) -> Unit,
+    agent: AgentIndicatorModel? = null,
 ) {
     val strings = LocalStrings.current
     val colors = MaterialTheme.colorScheme
+    val perform: PerformAction = { spec, _ -> onAction(spec) }
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -596,55 +613,37 @@ internal fun ChangeGroupHeaderView(
             tint = colors.onSurfaceVariant,
         )
         Column(modifier = Modifier.weight(1f)) {
-            Text(group.title, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(
-                listOf(group.branch, group.aliases.joinToString(", ")).joinToString(" · "),
-                style = ShogunTheme.typography.dataSmall,
-                color = colors.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-        StatusChip(group.state.status ?: Status.INFO, group.state.label(strings))
-        if (isAdding || isOpeningInOrca) InlineProgress()
-        NeutralTextButton(onClick = onOpenAll) {
-            Text(strings.openAllInHerdr, style = MaterialTheme.typography.bodySmall)
-        }
-        onOpenAllInOrca?.let { openAllInOrca ->
-            NeutralTextButton(onClick = openAllInOrca, enabled = !isOpeningInOrca) {
-                Text(strings.openAllInOrca, style = MaterialTheme.typography.bodySmall)
-            }
-        }
-        if (addableAliases.isNotEmpty()) AddRepositoryMenu(addableAliases, onAddRepository)
-        val cleanUp: @Composable () -> Unit = {
-            DangerTextButton(onClick = onCleanUp, enabled = canCleanUp) {
-                Text(strings.cleanUpGroup, style = MaterialTheme.typography.bodySmall)
-            }
-        }
-        cleanUpBlocker?.let { WithTooltip(label = it, content = cleanUp) } ?: cleanUp()
-    }
-}
-
-@Composable
-private fun AddRepositoryMenu(aliases: List<String>, onPick: (String) -> Unit) {
-    val strings = LocalStrings.current
-    var expanded by remember { mutableStateOf(false) }
-    Box {
-        NeutralTextButton(onClick = { expanded = true }) {
-            Text(strings.addRepositoryToGroup, style = MaterialTheme.typography.bodySmall)
-        }
-        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            aliases.forEach { alias ->
-                DropdownMenuItem(
-                    text = { Text(alias) },
-                    onClick = {
-                        expanded = false
-                        onPick(alias)
-                    },
+            GroupTitle(group.title)
+            val branchLine = listOf(group.branch, group.aliases.joinToString(", ")).joinToString(" · ")
+            WithTooltip(label = branchLine) {
+                Text(
+                    branchLine,
+                    style = ShogunTheme.typography.dataSmall,
+                    color = colors.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
         }
+        agent?.let { AgentIndicator(it) }
+        StatusChip(group.state.status, group.state.label(strings))
+        if (catalog.isBusy) InlineProgress()
+        catalog.primary?.let { spec ->
+            DisabledReason(spec.disabledReason) {
+                NeutralTextButton(onClick = { onAction(spec) }, enabled = spec.isAvailable) {
+                    Text(spec.label)
+                }
+            }
+        }
+        MoreMenuButton(label = strings.moreActions, entries = catalog.overflowEntries(strings).toMenu(strings, perform))
     }
+}
+
+internal fun CleanupBlock.describe(strings: Strings): String = when (this) {
+    CleanupBlock.Running -> strings.cleanUpBlockedRunning
+    CleanupBlock.NothingToCleanUp -> strings.cleanUpBlockedNothing
+    CleanupBlock.NeedsReview -> strings.cleanUpBlockedReview
+    is CleanupBlock.Kept -> kept.describe(strings)
 }
 
 internal fun GroupKept.describe(strings: Strings): String = when (reason) {
@@ -666,7 +665,7 @@ private fun UngroupedHeader(count: Int) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
     ) {
-        Text(strings.ungrouped, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+        GroupTitle(strings.ungrouped, modifier = Modifier.weight(1f))
         Text(strings.worktreeCount(count), style = ShogunTheme.typography.dataSmall, color = colors.onSurfaceVariant)
     }
 }

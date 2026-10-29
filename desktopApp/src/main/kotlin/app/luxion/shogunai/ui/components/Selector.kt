@@ -1,8 +1,19 @@
 package app.luxion.shogunai.ui.components
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.ExpandMore
@@ -13,11 +24,8 @@ import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
+import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -25,10 +33,15 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.unit.dp
+import app.luxion.shogunai.ui.theme.ControlShape
+import app.luxion.shogunai.ui.theme.ShogunTheme
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun <T> SegmentedSelector(
     options: List<T>,
@@ -38,27 +51,53 @@ fun <T> SegmentedSelector(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
 ) {
-    SingleChoiceSegmentedButtonRow(modifier = modifier) {
+    val colors = MaterialTheme.colorScheme
+    Row(
+        modifier = modifier
+            .height(SegmentHeight)
+            .border(SegmentBorderWidth, colors.outlineVariant, ControlShape)
+            .clip(ControlShape)
+            .selectableGroup(),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
         options.forEachIndexed { index, option ->
-            SegmentedButton(
-                selected = selected == option,
-                onClick = { onSelect(option) },
-                enabled = enabled,
-                modifier = Modifier.handPointer(enabled),
-                shape = SegmentedButtonDefaults.itemShape(index = index, count = options.size),
-                icon = {},
-                label = {
-                    Text(
-                        label(option),
-                        modifier = Modifier.width(IntrinsicSize.Max),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                },
-            )
+            if (index > 0) VerticalDivider(color = colors.outlineVariant)
+            Segment(label(option), isSelected = selected == option, enabled = enabled) { onSelect(option) }
         }
     }
 }
+
+@Composable
+private fun Segment(text: String, isSelected: Boolean, enabled: Boolean, onClick: () -> Unit) {
+    val content = when {
+        !enabled -> ShogunTheme.colors.disabledContent
+        isSelected -> ShogunTheme.colors.onAccentContainer
+        else -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    Box(
+        modifier = Modifier
+            .fillMaxHeight()
+            .background(if (isSelected) ShogunTheme.colors.accentContainer else Color.Transparent)
+            .focusRing(ControlShape)
+            .handPointer(enabled)
+            .selectable(selected = isSelected, enabled = enabled, role = Role.RadioButton, onClick = onClick)
+            .padding(horizontal = SegmentHorizontalPadding),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text,
+            style = MaterialTheme.typography.labelLarge,
+            color = content,
+            maxLines = 1,
+            softWrap = false,
+            modifier = Modifier.width(IntrinsicSize.Max),
+        )
+    }
+}
+
+private val SegmentHeight = 28.dp
+private val SegmentHorizontalPadding = 10.dp
+private val SegmentBorderWidth = 1.dp
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -86,16 +125,19 @@ fun <T> DropdownSelector(
         onExpandedChange = { expanded = it && fieldEnabled },
         modifier = modifier,
     ) {
-        OutlinedTextField(
-            value = selected?.let(label) ?: "",
-            onValueChange = {},
-            readOnly = true,
-            enabled = fieldEnabled,
-            placeholder = { Text(placeholder) },
-            label = fieldLabel?.let { { Text(it) } },
-            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-            modifier = Modifier.menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable, fieldEnabled).fillMaxWidth().handPointer(fieldEnabled),
-        )
+        Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+            fieldLabel?.let { FieldLabel(it, fieldEnabled) }
+            FieldInput(
+                value = selected?.let(label) ?: "",
+                onValueChange = {},
+                readOnly = true,
+                enabled = fieldEnabled,
+                description = fieldLabel,
+                placeholder = placeholder,
+                trailing = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                modifier = Modifier.menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable, fieldEnabled).fillMaxWidth().handPointer(fieldEnabled),
+            )
+        }
         ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             groupOptions(options, groupBy).forEach { (group, groupOptions) ->
                 if (group != null) {

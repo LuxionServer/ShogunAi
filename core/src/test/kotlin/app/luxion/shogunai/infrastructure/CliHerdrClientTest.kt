@@ -32,6 +32,14 @@ class CliHerdrClientTest {
     private val worktree = "/home/dev/projects/worktrees/TASK-9"
 
     @Test
+    fun `herdr is installed when found in a known folder or on the path`() {
+        val executor = FakeShellCommandExecutor { FakeShellCommandExecutor.failure(it) }
+        assertTrue(client(executor, files = setOf("/home/dev/.local/bin/herdr")).isInstalled())
+        assertTrue(CliHerdrClient(executor, userHome = "/home/dev", osName = "Linux", isFile = { false }, findOnPath = { "/usr/bin/$it" }).isInstalled())
+        assertFalse(CliHerdrClient(executor, userHome = "/home/dev", osName = "Linux", isFile = { false }, findOnPath = { null }).isInstalled())
+    }
+
+    @Test
     fun `a worktree is opened focused under its repository`() = runTest {
         val executor = FakeShellCommandExecutor { FakeShellCommandExecutor.success(it, fixture("worktree-open.json")) }
 

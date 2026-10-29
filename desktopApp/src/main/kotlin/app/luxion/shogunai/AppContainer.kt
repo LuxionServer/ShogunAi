@@ -82,6 +82,7 @@ import app.luxion.shogunai.infrastructure.NioLauncherFiles
 import app.luxion.shogunai.infrastructure.PowerShellUserPath
 import app.luxion.shogunai.infrastructure.FileAgentSessionStore
 import app.luxion.shogunai.infrastructure.FileClaudeSessionRegistry
+import app.luxion.shogunai.infrastructure.SystemProcessEnvironmentReader
 import app.luxion.shogunai.ui.shell.openInBrowser
 import java.nio.file.Files
 import java.nio.file.Path
@@ -97,6 +98,7 @@ import app.luxion.shogunai.domain.io.RepositoryTrust
 import app.luxion.shogunai.domain.io.ShellPreferenceRepository
 import app.luxion.shogunai.domain.io.ThemePreferenceRepository
 import app.luxion.shogunai.domain.model.EditorId
+import app.luxion.shogunai.domain.model.RunnerId
 import app.luxion.shogunai.domain.model.TerminalId
 import app.luxion.shogunai.domain.usecase.OpenWorktreeInTerminalUseCase
 import app.luxion.shogunai.infrastructure.CommandEditorLauncher
@@ -392,7 +394,7 @@ class AppContainer {
     )
     val tools = ToolsPreferences(
         JsonToolPreferenceRepository(settingsFile),
-        LocalToolDetector(shellCommandExecutor, editorResolver = editorResolver),
+        LocalToolDetector(shellCommandExecutor, editorResolver = editorResolver, isRunnerInstalled = ::isRunnerInstalled),
     )
     private val terminalLaunchers = listOf(
         MacTerminalLauncher(TerminalId.TERMINAL, shellCommandExecutor),
@@ -457,6 +459,11 @@ class AppContainer {
     private val herdrConfig = HerdrConfigFile()
     private val herdrClient = CliHerdrClient(shellCommandExecutor)
     private val orcaClient = CliOrcaClient(shellCommandExecutor)
+
+    private fun isRunnerInstalled(runner: RunnerId): Boolean = when (runner) {
+        RunnerId.HERDR -> herdrClient.isInstalled()
+        RunnerId.ORCA -> orcaClient.isInstalled()
+    }
     private val orcaReader = OrcaWorktreeReader(orcaClient, JsonOrcaWorkspaceStore())
     private val resourceLimitsRepository: ResourceLimitsRepository = JsonResourceLimitsRepository(settingsFile)
     private val resolveResourceLimits = ResolveResourceLimitsUseCase(resourceLimitsRepository, JvmMachineCapacity())
@@ -467,6 +474,9 @@ class AppContainer {
         ClaudeCodeHooks.claudeSessionsDirectory(System.getenv("CLAUDE_CONFIG_DIR"), System.getProperty("user.home")),
     )
     private val herdrLauncher = HerdrAgentLauncher(herdrClient, registry = claudeSessions)
+    private val processEnvironment = SystemProcessEnvironmentReader(shellCommandExecutor)
+
+    private fun orcaSessionNaming() = ClaudeSessionNaming(claudeSessions, processEnvironment = processEnvironment)
     private val readPool = ReadResourcePoolUseCase(
         resolveEnvironment,
         environmentStateStore,
@@ -644,11 +654,11 @@ class AppContainer {
             OpenGroupInOrcaUseCase(
                 orcaClient,
                 resolveEnvironment,
-                ClaudeSessionNaming(claudeSessions),
+                orcaSessionNaming(),
                 runningEmulator = readEmulatorStates::runningSerial,
             )(group)
         },
-        openAgentInOrca = { multirepo -> OpenMultirepoAgentInOrcaUseCase(orcaClient, ClaudeSessionNaming(claudeSessions))(multirepo) },
+        openAgentInOrca = { multirepo -> OpenMultirepoAgentInOrcaUseCase(orcaClient, orcaSessionNaming())(multirepo) },
         herdrInstalled = herdrClient.isInstalled(),
         orcaInstalled = orcaClient.isInstalled(),
     )
@@ -865,7 +875,7 @@ class AppContainer {
                 config,
                 orcaClient,
                 resolveEnvironment,
-                ClaudeSessionNaming(claudeSessions),
+                orcaSessionNaming(),
                 runningEmulator = { path -> readEmulatorStates.runningSerial(config, path) },
             )::invoke,
             withTerminals = { paths -> withContext(Dispatchers.IO) { CloseOrcaTerminalsUseCase(orcaClient).withTerminals(paths) } },

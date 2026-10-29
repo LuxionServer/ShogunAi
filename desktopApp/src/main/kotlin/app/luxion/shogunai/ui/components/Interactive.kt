@@ -3,8 +3,6 @@ package app.luxion.shogunai.ui.components
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ripple
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -21,18 +19,19 @@ import androidx.compose.ui.input.pointer.PointerIcon
 import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
+import app.luxion.shogunai.ui.theme.RowShape
+import app.luxion.shogunai.ui.theme.ShogunTheme
 
 val FocusRingWidth = 2.dp
 private const val PointerFocusWindowMillis = 500L
-val InteractiveShape: Shape = RoundedCornerShape(6.dp)
-val PillShape: Shape = RoundedCornerShape(percent = 50)
+val InteractiveShape: Shape = RowShape
 
 fun Modifier.focusRing(shape: Shape = InteractiveShape): Modifier = composed {
     var focused by remember { mutableStateOf(false) }
     var focusedByPointer by remember { mutableStateOf(false) }
     var lastPressMillis by remember { mutableStateOf(0L) }
     val ring = if (focused && !focusedByPointer) {
-        Modifier.border(FocusRingWidth, MaterialTheme.colorScheme.primary, shape)
+        Modifier.border(FocusRingWidth, ShogunTheme.colors.accent, shape)
     } else {
         Modifier
     }

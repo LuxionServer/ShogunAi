@@ -1,5 +1,6 @@
 package app.luxion.shogunai.ui.machine
 
+import app.luxion.shogunai.ui.components.GroupTitle
 import app.luxion.shogunai.ui.theme.Status
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -9,7 +10,6 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import app.luxion.shogunai.domain.model.EmulatorState
 import app.luxion.shogunai.domain.usecase.ProjectOwner
 import app.luxion.shogunai.ui.components.InlineProgress
@@ -39,21 +39,21 @@ fun AndroidEmulatorsView(machine: MachineResources, onOpenWorktree: (String, Str
         }
         val unowned = machine.unownedEmulators
         if (unowned.isNotEmpty()) {
-            Text(strings.unownedEmulatorsTitle, style = androidx.compose.material3.MaterialTheme.typography.titleSmall)
+            GroupTitle(strings.unownedEmulatorsTitle)
             unowned.forEach { emulator ->
                 HorizontalDivider()
-                MachineRowLine {
-                    MachineDataText(emulator.serial, Modifier.weight(1f))
-                    MachineDataText(strings.notOwnedByWorktree, Modifier.width(MachineOwnerColumnWidth))
-                    Box(Modifier.width(MachineStateColumnWidth)) { StatusChip(emulator.state.status(), emulatorStateLabel(emulator.state, strings)) }
-                    Row(Modifier.width(MachineActionColumnWidth), horizontalArrangement = Arrangement.End) {
+                MachineRow(
+                    machineCell(MachineMainColumn) { MachineDataText(emulator.serial) },
+                    machineCell(MachineOwnerColumn) { MachineStateText(strings.notOwnedByWorktree) },
+                    machineCell(MachineStateColumn) { StatusChip(emulator.state.status(), emulatorStateLabel(emulator.state, strings)) },
+                    machineActionCell {
                         if (emulator.serial in machine.startingDevices) {
                             InlineProgress(size = ProgressSize.Small)
                         } else {
                             SecondaryButton(onClick = { machine.stopUnownedEmulator(emulator.serial) }) { Text(strings.stopEmulator) }
                         }
-                    }
-                }
+                    },
+                )
             }
         }
     }
@@ -65,17 +65,19 @@ private fun WorktreeEmulatorRow(entry: MachineEmulator, machine: MachineResource
     val isBusy = machine.isBusy(entry.projectId, entry.worktreePath)
     val current = entry.emulator?.state ?: EmulatorState.STOPPED
     val state = if (isBusy && current != EmulatorState.RUNNING) EmulatorState.BOOTING else current
-    MachineRowLine {
-        MachineDataText(emulatorDeviceLabel(entry, machine.project(entry.projectId), strings), Modifier.weight(1f))
-        OwnerCell(ProjectOwner.Owned(entry.projectId, entry.worktreePath), machine::projectName, onOpenWorktree, Modifier.width(MachineOwnerColumnWidth))
-        Box(Modifier.width(MachineStateColumnWidth)) {
+    MachineRow(
+        machineCell(MachineMainColumn) { DeviceLabelText(emulatorDeviceLabel(entry, machine.project(entry.projectId), strings)) },
+        machineCell(MachineOwnerColumn) {
+            OwnerCell(ProjectOwner.Owned(entry.projectId, entry.worktreePath), machine::projectName, onOpenWorktree)
+        },
+        machineCell(MachineStateColumn) {
             if (entry.emulator == null && !isBusy) {
                 StatusChip(Status.NEUTRAL, strings.notAcquired)
             } else {
                 StatusChip(state.status(), emulatorStateLabel(state, strings))
             }
-        }
-        Row(Modifier.width(MachineActionColumnWidth), horizontalArrangement = Arrangement.End) {
+        },
+        machineActionCell {
             when {
                 isBusy -> InlineProgress(size = ProgressSize.Small)
                 state == EmulatorState.STOPPED ->
@@ -83,6 +85,6 @@ private fun WorktreeEmulatorRow(entry: MachineEmulator, machine: MachineResource
                 else ->
                     SecondaryButton(onClick = { machine.stopEmulator(entry.projectId, entry.worktreePath) }) { Text(strings.stopEmulator) }
             }
-        }
-    }
+        },
+    )
 }

@@ -283,7 +283,7 @@ class TourUiTest {
         var tours = 0
         setContent {
             CompositionLocalProvider(LocalStrings provides EnglishStrings) {
-                MaterialTheme { EmptyState(onAddProject = {}, onTakeTour = { tours++ }) }
+                MaterialTheme { FirstLaunchState(onAddProject = {}, onTakeTour = { tours++ }) }
             }
         }
 

@@ -17,6 +17,13 @@ import app.luxion.shogunai.domain.model.WorktreeSort
 import app.luxion.shogunai.domain.usecase.activityDate
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.RecentWorktree
+import app.luxion.shogunai.domain.model.RunnerId
+import app.luxion.shogunai.ui.actions.ActionId
+import app.luxion.shogunai.ui.actions.ActionTools
+import app.luxion.shogunai.ui.actions.WorktreeActionContext
+import app.luxion.shogunai.ui.actions.WorktreeCatalog
+import app.luxion.shogunai.ui.actions.trayEntries
+import app.luxion.shogunai.ui.actions.worktreeCatalog
 import app.luxion.shogunai.ui.i18n.Strings
 import app.luxion.shogunai.ui.components.TextInputFocus
 import app.luxion.shogunai.domain.model.ProjectConfig
@@ -26,7 +33,6 @@ import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.usecase.Activity
 import app.luxion.shogunai.ui.machine.DesktopTurnWatch
 import app.luxion.shogunai.ui.machine.MachineProject
-import app.luxion.shogunai.ui.tray.TrayOpenAction
 import app.luxion.shogunai.ui.tray.TrayWorktree
 import app.luxion.shogunai.domain.usecase.AgentSearch
 import app.luxion.shogunai.domain.usecase.isActive
@@ -110,6 +116,8 @@ class WorktreeBoard(
     var multirepoFolder by mutableStateOf<String?>(null)
         private set
     var multirepoAgents by mutableStateOf<Map<String, List<RunningAgent>>>(emptyMap())
+        private set
+    var multirepoAgentsReadAt by mutableStateOf<Instant?>(null)
         private set
     private var collapsedChanges by mutableStateOf<Set<String>>(emptySet())
     var multirepoNotice by mutableStateOf<MultirepoNotice?>(null)
@@ -316,6 +324,12 @@ class WorktreeBoard(
 
     fun multirepoAgentsOf(folder: String): List<RunningAgent> = multirepoAgents[folder].orEmpty()
 
+    fun agentsOf(group: ChangeGroup): List<RunningAgent> =
+        group.members.flatMap { it.entry.holder.agents.orEmpty()[it.entry.worktree.path].orEmpty() }
+
+    fun agentsReadAtOf(group: ChangeGroup): Instant? =
+        group.members.mapNotNull { it.entry.holder.agentsReadAt }.maxOrNull()
+
     fun multirepoActivityCountOf(folder: String): Int =
         multirepoAgentsOf(folder).count { it.state == AgentState.WORKING || it.state == AgentState.BLOCKED }
 
@@ -325,6 +339,7 @@ class WorktreeBoard(
     private fun applyMultirepoAgents(detected: Map<String, List<RunningAgent>>?) {
         val folders = memberships.map { it.folder }.toSet()
         multirepoAgents = detected?.filterKeys { it in folders }.orEmpty()
+        if (detected != null) multirepoAgentsReadAt = clock()
     }
 
     fun agentNamesOf(projectId: String): List<String> =
@@ -397,20 +412,40 @@ class WorktreeBoard(
     val terminalChoice: ProjectWorktrees?
         get() = entries.values.firstOrNull { it.holder.terminalChoiceFor != null }?.holder
 
-    fun selectedOpenActions(strings: Strings): List<OpenAction> =
-        selectedWorktree?.let { it.holder.openActions(it.worktree, strings) }.orEmpty()
+    var openWithRequests by mutableIntStateOf(0)
+        private set
 
-    fun selectedLaunchChoices(strings: Strings): List<LaunchChoice> =
-        selectedWorktree?.let { it.holder.launchChoices(it.worktree, strings) }.orEmpty()
+    fun selectedCatalog(strings: Strings): WorktreeCatalog? =
+        selectedWorktree?.let { it.holder.actionCatalog(it.worktree, strings) }
 
-    fun launchSelected(kind: LaunchKind, agentName: String) {
-        val selected = selectedWorktree ?: return
-        val agent = selected.holder.agentOptions.firstOrNull { it.displayName == agentName } ?: return
-        selected.holder.launch(selected.worktree, kind, agent)
+    fun menuBarCatalog(strings: Strings): WorktreeCatalog = selectedCatalog(strings) ?: worktreeCatalog(
+        WorktreeActionContext(
+            tools = entries.values.firstOrNull()?.holder?.actionTools(strings) ?: ActionTools(RunnerId.entries, RunnerId.HERDR, null, null, false),
+            isMain = false,
+            isFolderMissing = false,
+            agents = emptyList(),
+            agent = null,
+        ),
+        strings,
+    )
+
+    fun performOnSelected(id: ActionId, agent: String? = null) {
+        selectedWorktree?.let { it.holder.perform(it.worktree, id, agent) }
     }
 
-    fun openSelected(kind: OpenKind) {
-        selectedWorktree?.let { it.holder.open(it.worktree, kind) }
+    private fun canActOnSelection(): Boolean = !isCreateDialogOpen && !TextInputFocus.isActive && selectedWorktree != null
+
+    fun runFromMenu(id: ActionId) {
+        when (id) {
+            ActionId.CopyLaunchCommand -> copySelectedLaunchCommand()
+            ActionId.RemoveWorktree -> deleteSelectedWorktree()
+            ActionId.OpenWith -> requestOpenWith()
+            else -> if (canActOnSelection()) performOnSelected(id)
+        }
+    }
+
+    fun requestOpenWith() {
+        if (canActOnSelection()) openWithRequests++
     }
 
     val isCatalogLoaded: Boolean
@@ -445,9 +480,9 @@ class WorktreeBoard(
             entry.holder.actionErrors.map { (path, failure) -> WorktreeRef(entry.project.id, path) to failure }
         }.toMap()
 
-    fun open(ref: WorktreeRef, kind: OpenKind) {
+    fun perform(ref: WorktreeRef, id: ActionId) {
         val holder = holder(ref.projectId) ?: return
-        holder.worktrees.firstOrNull { it.path == ref.path }?.let { holder.open(it, kind) }
+        holder.worktrees.firstOrNull { it.path == ref.path }?.let { holder.perform(it, id) }
     }
 
     fun trayWorktrees(recents: List<RecentWorktree>, strings: Strings): List<TrayWorktree> =
@@ -462,7 +497,7 @@ class WorktreeBoard(
                 projectName = project.name,
                 activity = if (holder != null && worktree != null) activityOf(holder, worktree) else Activity.Unknown,
                 isLoaded = worktree != null,
-                openActions = worktree?.let { holder.openActions(it, strings).map { action -> TrayOpenAction(action.kind, action.label) } }.orEmpty(),
+                actions = worktree?.let { holder.actionCatalog(it, strings).trayEntries() },
             )
         }
 
@@ -543,6 +578,9 @@ class WorktreeBoard(
 
     val isOrcaInstalled: Boolean get() = multirepoActions.orcaInstalled
 
+    val defaultRunner: RunnerId
+        get() = entries.values.firstOrNull()?.holder?.tools?.defaultRunner ?: RunnerId.HERDR
+
     fun openAllInOrca(group: ChangeGroup) {
         if (group.branch in openingGroupsInOrca) return
         openingGroupsInOrca = openingGroupsInOrca + group.branch
@@ -617,9 +655,15 @@ class WorktreeBoard(
         return selectGroupCleanup(listOf(BranchGroupState(branchGroup, states))).kept.firstOrNull()
     }
 
-    fun canCleanUpGroup(group: ChangeGroup): Boolean =
-        !isCleaningUp && groupCleanupBlocker(group) == null &&
-            group.members.all { member -> member.entry.holder.cleanupCandidates.any { it.path == member.entry.worktree.path } }
+    fun groupCleanUpBlock(group: ChangeGroup): CleanupBlock? = when {
+        isCleaningUp -> CleanupBlock.Running
+        else -> groupCleanupBlocker(group)?.let(CleanupBlock::Kept)
+            ?: CleanupBlock.NothingToCleanUp.takeUnless {
+                group.members.all { member -> member.entry.holder.cleanupCandidates.any { it.path == member.entry.worktree.path } }
+            }
+    }
+
+    fun canCleanUpGroup(group: ChangeGroup): Boolean = groupCleanUpBlock(group) == null
 
     fun openGroupCleanup(group: ChangeGroup) {
         if (!canCleanUpGroup(group)) return
@@ -989,8 +1033,13 @@ class WorktreeBoard(
         }
     }
 
-    fun canCleanUp(projectId: String? = null): Boolean =
-        !isCleaningUp && cleanupTargets(projectId).isNotEmpty()
+    fun cleanUpBlock(projectId: String? = null): CleanupBlock? = when {
+        isCleaningUp -> CleanupBlock.Running
+        cleanupTargets(projectId).isEmpty() -> CleanupBlock.NothingToCleanUp
+        else -> null
+    }
+
+    fun canCleanUp(projectId: String? = null): Boolean = cleanUpBlock(projectId) == null
 
     private fun cleanupTargets(projectId: String?): List<String> =
         (projectId?.let(::listOf) ?: shownProjects.map { it.id }).filter { holder(it)?.canCleanUp == true }
@@ -1054,11 +1103,6 @@ class WorktreeBoard(
     fun copySelectedLaunchCommand() {
         if (isCreateDialogOpen || TextInputFocus.isActive) return
         selectedWorktree?.let { it.holder.copyLaunchCommand(it.worktree) }
-    }
-
-    fun openSelectedInHerdr() {
-        if (isCreateDialogOpen || TextInputFocus.isActive) return
-        selectedWorktree?.let { it.holder.openInHerdr(it.worktree) }
     }
 
     fun deleteSelectedWorktree() {
@@ -1126,3 +1170,10 @@ private const val MAX_PARALLEL_LISTS = 2
 private val AUTO_REFRESH_INTERVAL = 3.seconds
 private val DEVICE_REFRESH_INTERVAL = 10.seconds
 private val FOCUS_REFRESH_MIN_INTERVAL = 5.seconds
+
+sealed interface CleanupBlock {
+    data object Running : CleanupBlock
+    data object NothingToCleanUp : CleanupBlock
+    data object NeedsReview : CleanupBlock
+    data class Kept(val kept: GroupKept) : CleanupBlock
+}

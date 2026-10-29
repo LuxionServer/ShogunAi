@@ -14,6 +14,7 @@ import app.luxion.shogunai.domain.FakeToolDetector
 import app.luxion.shogunai.domain.FakeToolPreferenceRepository
 import app.luxion.shogunai.domain.model.DetectedTools
 import app.luxion.shogunai.domain.model.EditorId
+import app.luxion.shogunai.domain.model.RunnerId
 import app.luxion.shogunai.domain.model.TerminalId
 import app.luxion.shogunai.ui.i18n.EnglishStrings
 import app.luxion.shogunai.ui.i18n.LocalStrings
@@ -63,5 +64,34 @@ class ToolsSectionUiTest {
 
         onNodeWithText("No supported terminal found").assertIsDisplayed()
         onNodeWithText("No supported IDE found").assertIsDisplayed()
+    }
+
+    @Test
+    fun `the default runner lists the installed runners and saves the choice`() = runComposeUiTest {
+        val repository = FakeToolPreferenceRepository()
+        val tools = preferences(DetectedTools(runners = RunnerId.entries.toSet()), repository)
+        setContent {
+            CompositionLocalProvider(LocalStrings provides EnglishStrings) {
+                MaterialTheme { Column { ToolsSection(tools) } }
+            }
+        }
+
+        onNode(hasText(RunnerId.HERDR.displayName) and hasClickAction()).performClick()
+        onNodeWithText(RunnerId.ORCA.displayName).performClick()
+
+        assertEquals(RunnerId.ORCA, repository.runner)
+        assertEquals(RunnerId.ORCA, tools.defaultRunner)
+    }
+
+    @Test
+    fun `says so when no runner was found`() = runComposeUiTest {
+        val tools = preferences(DetectedTools(runners = emptySet()))
+        setContent {
+            CompositionLocalProvider(LocalStrings provides EnglishStrings) {
+                MaterialTheme { Column { ToolsSection(tools) } }
+            }
+        }
+
+        onNodeWithText(EnglishStrings.noRunnerFound).assertIsDisplayed()
     }
 }
