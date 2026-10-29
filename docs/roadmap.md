@@ -18,13 +18,29 @@ It plugs into the tools that run agents rather than replacing them: Claude Code'
 
 ## How priorities are set
 
-Agent tools are learning to create worktrees, copy local files into them and show which session works where, so ShogunAi keeps that part small and reaches it through their hooks. Priority goes to what none of them can do for the others: the environment and the machine's resources of every stack, shared fairly between agents from any vendor, declared once in the repository (`.shogunai.json`), and one view of all those agents. Within that, what the people using ShogunAi run into comes first.
+Agent tools are learning to create worktrees, copy local files into them and show which session works where, so ShogunAi keeps that part small and reaches it through their hooks. Priority goes to what none of them can do for the others: the environment and the machine's resources of every stack, shared fairly between agents from any vendor, declared once in the repository (`.shogunai.json`), and one view of all those agents. Within that, what the people using ShogunAi run into comes first, and above all of it, what ShogunAi already does has to work on any machine: reliability comes before new features.
 
 ## Planned
 
 Numbered in the order they will be picked up: the number is the priority.
 
-### 1. Orca, a second first-class runner
+### 1. Reliability on any machine
+
+ShogunAi has to work the first time on a machine that isn't the one it's developed on, and every regression has to be caught before a release reaches anyone. A demo on another Mac showed why: the app, opened from the Dock, gets macOS's minimal `PATH`, so it reported a `shogun` command installed by Homebrew as not on the `PATH`, the guided tour refused to start and Claude Code's hooks read as unusable; and creating a worktree failed while copying its local files. Neither showed up on the developer's machine, whose own setup hides them. In order:
+
+- Fixing the false "not on the `PATH`" warning: the app reads the login shell's `PATH` and uses it to check and install the `shogun` command.
+- One host environment resolved in one place: the login shell's `PATH`, the shell and the home folder read once at start-up and used by all the code, instead of reading environment variables wherever they're needed.
+- Checking the installation, as "Check installation" in the app and `shogun doctor`: Git's version, `shogun` on the login shell's `PATH`, Claude Code's hooks pointing at a launcher that exists, Claude Code, Herdr and Orca, and each project's declared local files present in its base folder, each with the fix to apply. Its result goes into the diagnostic report, so a failure on someone else's machine arrives as a report that says what is wrong.
+- Checking before acting: creating a worktree checks every file it has to copy or link before it starts, and if one is missing says which, where it looked and how to fix it, instead of failing half-way.
+- Tests that hold the product to it:
+  - Line and branch coverage measured on every module (Kover) and enforced in CI: 100% of `core` and `cli`, and of the desktop app outside its composables, which the end-to-end tests cover. A change that lowers it fails the build.
+  - End-to-end tests of the CLI against real Git repositories in temporary folders, without fakes: creating, provisioning, opening and cleaning worktrees and groups, with local files copied, linked and matched by patterns.
+  - End-to-end tests of the desktop app driving its interface: the guided tour, adding a project, creating a worktree with local files and the Claude Code hooks section.
+  - A regression test for every bug fixed, written first to reproduce it, starting with the two above.
+- A smoke test of the packaged app on a clean machine in CI before every release: install the `.dmg` on a macOS runner, open the app with the environment the Dock gives it, install the command and the hooks, add a project with local files, run `shogun new` and check the copied files. A release that fails it isn't published. Then the same on Windows and Linux with their packages, which also covers installing the command from the app on Windows and on a machine without `~/.local/bin` on its `PATH`.
+- A rehearsal on a clean macOS user account, without the developer's instructions or settings, going through the guided tour before each release or demo, following a script in `docs/process/`.
+
+### 2. Orca, a second first-class runner
 
 [Orca](https://www.onorca.dev), the desktop app for running coding agents in worktrees, gets everything ShogunAi does with Herdr, plus what Orca offers that Herdr doesn't. A spike compared the two: Orca's repository hooks (`orca.yaml`) can provision its worktrees with `shogun`, its CLI can open a ShogunAi worktree with its environment and agent, and it reports richer agent states that survive restarting the app. In order:
 
@@ -43,7 +59,7 @@ Numbered in the order they will be picked up: the number is the priority.
   - That Orca's notifications and its mobile companion follow the agents ShogunAi starts in Orca.
 - Left out on purpose: Orca's remote and SSH worktrees, since ShogunAi prepares worktrees on this machine; and Orca's orchestration runs, since the multirepo agent already coordinates a group.
 
-### 2. Provisioning and resources of mobile stacks
+### 3. Provisioning and resources of mobile stacks
 
 Provisioning and bounded resources for the stacks where a fresh worktree is furthest from building:
 
@@ -52,7 +68,7 @@ Provisioning and bounded resources for the stacks where a fresh worktree is furt
 - Flutter follow-ups: checking the provider end to end on a real project made with `flutter create` (a worktree that builds with `flutter build apk --debug` and `flutter build ios --simulator` without manual steps); showing the size of the pub cache (`~/.pub-cache` or `PUB_CACHE`) next to the other shared caches; finding a Flutter SDK outside `PATH` from the desktop app started from Finder; and Dart mono-repositories with pub workspaces or Melos, which today declare their own bootstrap as a post-creation command.
 - Waiting for a device from the desktop app, and showing the worktrees waiting for each pool in its machine views; today only `shogun emulator start --wait` and `shogun simulator start --wait` wait, and the app fails a start while others wait.
 
-### 3. Every agent, not only Claude Code
+### 4. Every agent, not only Claude Code
 
 ShogunAi's view is only neutral if it sees every agent:
 
@@ -63,7 +79,7 @@ ShogunAi's view is only neutral if it sees every agent:
 - Recording the base branch of the worktrees Herdr creates, if its `worktree.created` event gains their start point; today `shogun base --set` records it by hand, while `shogun new`, Claude Code's hook, the desktop app and multirepo groups record it themselves.
 - Showing each worktree's base branch in the desktop app's rows; today the Git column compares with it and names it in its tooltip and in the detail, and `shogun base` and `shogun status` report it.
 
-### 4. Multirepos for the whole team
+### 5. Multirepos for the whole team
 
 Multirepos and groups by branch are done in the CLI and the desktop app, and they're also how people who don't write the code follow a change across repositories. Left out:
 
@@ -73,11 +89,10 @@ Multirepos and groups by branch are done in the CLI and the desktop app, and the
 - A single session for the whole group, with a combined environment, as an option next to one agent per repository.
 - The pull request state of each repository of a group, which depends on the GitHub integration under exploration.
 
-### 5. Robustness and maintenance
+### 6. Robustness and maintenance
 
 - Detecting squash and rebase merges, which leave a branch reading as not merged into its base or the main branch, so cleanup doesn't offer it and `--delete-branch` keeps it.
 - Finding the root cause of the errors that closed the Preferences window, from the entries the isolation now leaves in the diagnostics log, and of the native crash seen on another machine that left an empty diagnostic report.
-- Checking the in-app installation of the `shogun` command on a real installed app on Windows (the `shogun.cmd` and the user `PATH` change are covered by tests with fakes only) and on a machine without `~/.local/bin` on its `PATH`.
 - Checking on a real Windows machine that removing and cleaning up worktrees with build outputs deeper than 260 characters now succeeds (Git's long path support and the leftover fallback are covered by tests with fakes only).
 - Moving the per-project ports of `ProjectWorktrees` that still run on the caller's dispatcher (emulator and simulator states, ports, releasing resources) off the interface thread, as the machine views now do.
 - Noticing a broken Herdr plugin: an install linked to a folder that no longer exists stops provisioning Herdr's worktrees without any error, so `shogun hooks status` and the app should check `herdr plugin list` and offer reinstalling it from the repository.

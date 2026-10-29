@@ -18,13 +18,29 @@ Se conecta con las herramientas que ejecutan agentes en vez de sustituirlas: los
 
 ## Cómo se fijan las prioridades
 
-Las herramientas de agentes están aprendiendo a crear worktrees, copiar en ellos los archivos locales y mostrar qué sesión trabaja dónde, así que ShogunAi mantiene esa parte pequeña y llega a ella a través de sus hooks. La prioridad es lo que ninguna puede hacer por las demás: el entorno y los recursos de la máquina de cada stack, repartidos con justicia entre agentes de cualquier proveedor, declarados una vez en el repositorio (`.shogunai.json`), y una sola vista de todos esos agentes. Dentro de eso, va primero lo que encuentran las personas que usan ShogunAi.
+Las herramientas de agentes están aprendiendo a crear worktrees, copiar en ellos los archivos locales y mostrar qué sesión trabaja dónde, así que ShogunAi mantiene esa parte pequeña y llega a ella a través de sus hooks. La prioridad es lo que ninguna puede hacer por las demás: el entorno y los recursos de la máquina de cada stack, repartidos con justicia entre agentes de cualquier proveedor, declarados una vez en el repositorio (`.shogunai.json`), y una sola vista de todos esos agentes. Dentro de eso, va primero lo que encuentran las personas que usan ShogunAi y, por encima de todo, lo que ShogunAi ya hace tiene que funcionar en cualquier máquina: la fiabilidad va antes que las funciones nuevas.
 
 ## Planificado
 
 Numerados en el orden en que se abordarán: el número es la prioridad.
 
-### 1. Orca, un segundo runner de primera clase
+### 1. Fiabilidad en cualquier máquina
+
+ShogunAi tiene que funcionar a la primera en una máquina que no es en la que se desarrolla, y cada regresión tiene que detectarse antes de que una versión llegue a nadie. Una demo en otro Mac mostró por qué: la app, abierta desde el Dock, recibe el `PATH` mínimo de macOS, así que dio por fuera del `PATH` un comando `shogun` instalado con Homebrew, el recorrido guiado se negó a empezar y los hooks de Claude Code aparecieron como inutilizables; y crear un worktree falló al copiar sus archivos locales. Ninguno de los dos fallos apareció en la máquina de desarrollo, cuya propia configuración los tapa. Por orden:
+
+- Corregir el falso aviso de «no está en el `PATH`»: la app lee el `PATH` del shell de login y lo usa para comprobar e instalar el comando `shogun`.
+- Un entorno del equipo resuelto en un solo sitio: el `PATH` del shell de login, el shell y la carpeta personal se leen una vez al arrancar y los usa todo el código, en vez de leer variables de entorno allí donde hacen falta.
+- Comprobar la instalación, como «Comprobar instalación» en la app y `shogun doctor`: la versión de Git, `shogun` en el `PATH` del shell de login, los hooks de Claude Code apuntando a un lanzador que existe, Claude Code, Herdr y Orca, y los archivos locales declarados de cada proyecto presentes en su carpeta base, cada uno con el arreglo que aplicar. Su resultado va al informe de diagnóstico, así que un fallo en la máquina de otra persona llega como un informe que dice qué está mal.
+- Comprobar antes de actuar: crear un worktree comprueba todos los archivos que tiene que copiar o enlazar antes de empezar y, si falta alguno, dice cuál, dónde lo buscó y cómo arreglarlo, en vez de fallar a medias.
+- Tests que obligan al producto a cumplirlo:
+  - Cobertura de líneas y ramas medida en todos los módulos (Kover) y exigida en CI: el 100% de `core` y `cli`, y de la app de escritorio fuera de sus composables, que cubren los tests end to end. Un cambio que la baje rompe la build.
+  - Tests end to end del CLI contra repositorios Git reales en carpetas temporales, sin dobles: crear, provisionar, abrir y limpiar worktrees y grupos, con archivos locales copiados, enlazados y seleccionados por patrones.
+  - Tests end to end de la app de escritorio manejando su interfaz: el recorrido guiado, añadir un proyecto, crear un worktree con archivos locales y la sección de hooks de Claude Code.
+  - Un test de regresión por cada bug corregido, escrito primero para reproducirlo, empezando por los dos de arriba.
+- Una prueba de humo de la app empaquetada en una máquina limpia en CI antes de cada versión: instalar el `.dmg` en un runner de macOS, abrir la app con el entorno que le da el Dock, instalar el comando y los hooks, añadir un proyecto con archivos locales, ejecutar `shogun new` y comprobar los archivos copiados. Una versión que no la pasa no se publica. Después, lo mismo en Windows y Linux con sus paquetes, que cubre también instalar el comando desde la app en Windows y en un equipo sin `~/.local/bin` en el `PATH`.
+- Un ensayo en una cuenta de usuario de macOS limpia, sin las instrucciones ni la configuración de quien desarrolla, recorriendo el recorrido guiado antes de cada versión o demo, siguiendo un guion en `docs/process/`.
+
+### 2. Orca, un segundo runner de primera clase
 
 [Orca](https://www.onorca.dev), la app de escritorio para ejecutar agentes de programación en worktrees, recibe todo lo que ShogunAi hace con Herdr, más lo que Orca ofrece y Herdr no. Un spike comparó los dos: los hooks de repositorio de Orca (`orca.yaml`) pueden provisionar sus worktrees con `shogun`, su CLI puede abrir un worktree de ShogunAi con su entorno y su agente, y informa de estados de agente más ricos que sobreviven a reiniciar la app. Por orden:
 
@@ -43,7 +59,7 @@ Numerados en el orden en que se abordarán: el número es la prioridad.
   - Que los avisos de Orca y su app móvil siguen a los agentes que ShogunAi arranca en Orca.
 - Fuera a propósito: los worktrees remotos y por SSH de Orca, porque ShogunAi prepara worktrees en esta máquina; y las ejecuciones de orquestación de Orca, porque el agente del multirepo ya coordina un grupo.
 
-### 2. Provisionado y recursos de los stacks móviles
+### 3. Provisionado y recursos de los stacks móviles
 
 Provisionado y recursos acotados para los stacks en los que un worktree recién creado está más lejos de compilar:
 
@@ -52,7 +68,7 @@ Provisionado y recursos acotados para los stacks en los que un worktree recién 
 - Seguimiento de Flutter: comprobar el provider de principio a fin en un proyecto real creado con `flutter create` (un worktree que compila con `flutter build apk --debug` y `flutter build ios --simulator` sin pasos manuales); mostrar el tamaño de la caché de pub (`~/.pub-cache` o `PUB_CACHE`) junto a las demás cachés compartidas; encontrar un SDK de Flutter fuera del `PATH` desde la app de escritorio abierta desde Finder; y los monorrepositorios de Dart con pub workspaces o Melos, que hoy declaran su propio bootstrap como comando post-creación.
 - Esperar un dispositivo desde la app de escritorio y mostrar en sus vistas de máquina los worktrees que esperan cada pool; hoy solo esperan `shogun emulator start --wait` y `shogun simulator start --wait`, y la app hace fallar un arranque mientras otros esperan.
 
-### 3. Todos los agentes, no solo Claude Code
+### 4. Todos los agentes, no solo Claude Code
 
 La vista de ShogunAi solo es neutral si ve a todos los agentes:
 
@@ -63,7 +79,7 @@ La vista de ShogunAi solo es neutral si ve a todos los agentes:
 - Registrar la rama base de los worktrees que crea Herdr, si su evento `worktree.created` llega a incluir el punto de partida; hoy se registra a mano con `shogun base --set`, mientras que `shogun new`, el hook de Claude Code, la app de escritorio y los grupos de los multirepos la registran solos.
 - Mostrar la rama base de cada worktree en las filas de la app de escritorio; hoy la columna Git se compara con ella y la nombra en su tooltip y en el detalle, y la informan `shogun base` y `shogun status`.
 
-### 4. Multirepos para todo el equipo
+### 5. Multirepos para todo el equipo
 
 Los multirepos y los grupos por rama están hechos en el CLI y en la app de escritorio, y son también la forma en que quienes no escriben el código siguen un cambio a través de los repositorios. Quedaron fuera:
 
@@ -73,11 +89,10 @@ Los multirepos y los grupos por rama están hechos en el CLI y en la app de escr
 - Una única sesión para todo el grupo, con un entorno combinado, como opción junto a un agente por repositorio.
 - El estado del pull request de cada repositorio de un grupo, que depende de la integración con GitHub en estudio.
 
-### 5. Robustez y mantenimiento
+### 6. Robustez y mantenimiento
 
 - Detectar los merges por squash y por rebase, que dejan una rama como no mergeada en su base ni en la rama principal, así que la limpieza no la ofrece y `--delete-branch` la conserva.
 - Encontrar la causa raíz de los errores que cerraban la ventana de Preferencias, a partir de las entradas que el aislamiento deja ahora en el registro de diagnóstico, y del crash nativo visto en otra máquina que dejó un informe de diagnóstico vacío.
-- Comprobar la instalación del comando `shogun` desde la app con una app instalada de verdad en Windows (el `shogun.cmd` y el cambio del `PATH` de usuario solo están cubiertos con pruebas con dobles) y en un equipo sin `~/.local/bin` en el `PATH`.
 - Comprobar en un Windows real que borrar y limpiar worktrees con salidas de build de más de 260 caracteres de profundidad funciona ahora (el soporte de rutas largas de Git y el borrado del resto solo están cubiertos con pruebas con dobles).
 - Sacar del hilo de la interfaz los puertos por proyecto de `ProjectWorktrees` que aún se ejecutan en el dispatcher de quien los llama (estados de emuladores y simuladores, puertos, liberar recursos), como ya hacen las vistas de la máquina.
 - Detectar un plugin de Herdr roto: una instalación enlazada a una carpeta que ya no existe deja de provisionar los worktrees de Herdr sin ningún error, así que `shogun hooks status` y la app deberían comprobar `herdr plugin list` y ofrecer reinstalarlo desde el repositorio.
