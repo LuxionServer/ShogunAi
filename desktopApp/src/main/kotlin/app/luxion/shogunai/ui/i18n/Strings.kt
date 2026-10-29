@@ -374,7 +374,7 @@ interface Strings {
     val alsoStopIdleGradleDaemons: String
     val alsoStopIdleMavenDaemons: String
     val gradleDaemonsTitle: String
-    fun gradleDaemonsSummary(count: Int, totalMemory: String): String
+    fun gradleDaemonsSummary(gradle: Int, kotlin: Int, totalMemory: String): String
     val noGradleDaemons: String
     val gradleDaemonsUnavailable: String
     fun gradleDaemonLabel(version: String?): String
@@ -461,9 +461,11 @@ interface Strings {
     fun poolUsage(inUse: Int, limit: Int?): String
     val overLimit: String
     val overLimitChip: String
+    val overLimitBuildsRunningChip: String
+    fun overLimitNothingIdle(busy: Int, unknown: Int): String
     val changeInPreferences: String
     fun releasedNotice(kind: ResourceKind, released: String, forWorktree: String): String
-    fun trimmedNotice(count: Int, limit: Int?): String
+    fun trimmedNotice(count: Int, limit: Int?, trims: Int, lastTime: String): String
     fun poolSummary(inUse: Int, limit: Int?): String
     val androidEmulatorsTitle: String
     val iosSimulatorsTitle: String

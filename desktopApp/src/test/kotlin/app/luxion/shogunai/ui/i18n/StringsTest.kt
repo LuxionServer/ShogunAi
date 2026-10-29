@@ -618,4 +618,41 @@ class StringsTest {
         assertEquals("Details (3)", EnglishStrings.noticeDetails(3))
         assertEquals("Detalles (3)", SpanishStrings.noticeDetails(3))
     }
+
+    @Test
+    fun `the gradle daemons summary counts gradle and kotlin daemons apart`() {
+        assertEquals("5 Gradle daemons and 2 Kotlin · 4.5 GB", EnglishStrings.gradleDaemonsSummary(5, 2, "4.5 GB"))
+        assertEquals("5 daemons de Gradle y 2 de Kotlin · 4.5 GB", SpanishStrings.gradleDaemonsSummary(5, 2, "4.5 GB"))
+        assertEquals("1 Gradle daemon · 300 MB", EnglishStrings.gradleDaemonsSummary(1, 0, "300 MB"))
+        assertEquals("3 daemons de Gradle · 1 GB", SpanishStrings.gradleDaemonsSummary(3, 0, "1 GB"))
+    }
+
+    @Test
+    fun `over the limit with nothing idle explains why`() {
+        assertEquals(
+            "None can be stopped now: 4 are running a build and 1 has an unknown state. Idle ones are stopped automatically while over the limit.",
+            EnglishStrings.overLimitNothingIdle(4, 1),
+        )
+        assertEquals(
+            "Ninguno se puede parar ahora: 4 tienen un build en curso y 1 tiene un estado desconocido. " +
+                "Los que queden inactivos se paran automáticamente mientras se supere el límite.",
+            SpanishStrings.overLimitNothingIdle(4, 1),
+        )
+        assertEquals(
+            "None can be stopped now: 1 is running a build. Idle ones are stopped automatically while over the limit.",
+            EnglishStrings.overLimitNothingIdle(1, 0),
+        )
+    }
+
+    @Test
+    fun `an accumulated trim names its trims and the last time`() {
+        assertEquals(
+            "Se detuvieron 22 daemons de Gradle inactivos para mantenerse dentro del límite de 3 · 15 veces, la última a las 00:09",
+            SpanishStrings.trimmedNotice(22, 3, 15, "00:09"),
+        )
+        assertEquals(
+            "Se detuvo 1 daemon de Gradle inactivo para mantenerse dentro del límite de 3 a las 00:09",
+            SpanishStrings.trimmedNotice(1, 3, 1, "00:09"),
+        )
+    }
 }
