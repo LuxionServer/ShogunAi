@@ -133,7 +133,7 @@ ShogunAi ejecuta el comando propio del proyecto en lugar del lanzador de agentes
 
 **Eliminación.** Eliminar un worktree desde ShogunAi (la acción de eliminar, "Limpiar", `shogun remove`, `shogun clean --yes` o la eliminación de Claude Code) también cierra sus terminales de Orca, y los agentes que tienen, una vez eliminado; si esas shells bloquean la carpeta, se cierran sus terminales y se reintenta la eliminación una vez. Los diálogos y la simulación de `shogun clean` avisan antes de qué worktrees tienen terminales de Orca. Si Orca no está instalado o abierto, no cambia nada y Orca no se arranca; si el cierre falla, la eliminación cuenta igualmente y un aviso muestra el mensaje de Orca.
 
-Los grupos de un multirepo aún no se pueden abrir en Orca: usa `--herdr` ahí.
+**Multirepos.** En la carpeta de un multirepo, `shogun open <id> --orca` y "Abrir todo en Orca" de la cabecera del grupo abren cada worktree del grupo bajo su propio repositorio de Orca, y `shogun open --orca` y "Abrir agente del multirepo en Orca" ejecutan el agente del multirepo en el espacio de trabajo de Orca de la carpeta del multirepo. Una carpeta que no es un repositorio Git necesita antes una preparación única en la app de Orca; ver [Multirepos y grupos](guide/multirepo.md#grupos). Mientras Orca informa de un agente en ese espacio de trabajo, la vista del multirepo muestra su estado como el del agente de un worktree.
 
 ## Reglas de flujo de ShogunAi
 

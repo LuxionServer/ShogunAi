@@ -787,6 +787,7 @@ object SpanishStrings : Strings {
     override val newChangeRepositories = "Repositorios"
     override val createChange = "Crear cambio"
     override val openAllInHerdr = "Abrir todo en Herdr"
+    override val openAllInOrca = "Abrir todo en Orca"
     override val addRepositoryToGroup = "Añadir repositorio"
     override val cleanUpGroup = "Limpiar grupo"
     override val cleanUpGroupTitle = "Limpiar grupo"
@@ -794,6 +795,15 @@ object SpanishStrings : Strings {
     override val multirepoAgentOpened = "Agente del multirepo abierto en Herdr"
     override val multirepoAgentFocused = "Agente del multirepo enfocado en Herdr"
     override val multirepoAgentStarted = "Agente del multirepo iniciado en su workspace abierto de Herdr"
+    override val openMultirepoAgentInOrca = "Abrir agente del multirepo en Orca"
+    override val openMultirepoAgentMenu = "Abrir agente del multirepo"
+    override val multirepoAgentStartedInOrca = "Agente del multirepo iniciado en una terminal nueva de Orca"
+    override val multirepoAgentFocusedInOrca = "El agente del multirepo ya estaba en marcha en Orca; se ha cambiado a él"
+    override val openNewChangeIn = "Después, abrirlo en"
+    override val dontOpen = "No abrir"
+    override val runnerOpened = "abierto"
+    override val runnerAgentStarted = "agente iniciado"
+    override val runnerAgentFocused = "agente en marcha enfocado"
     override val groupRepositoryCreated = "creado"
     override val groupRepositoryExisting = "ya existía"
     override val addMultirepo = "Añadir multirepo"
@@ -850,6 +860,12 @@ object SpanishStrings : Strings {
     override fun groupRepositoryFailed(reason: String) = "falló: $reason"
     override fun repositoryAddedToGroup(alias: String, title: String) = "$alias añadido a $title"
     override fun changeCreated(title: String, aliases: List<String>) = "$title creado en ${aliases.joinToString()}"
+    override fun groupOpenedInOrca(title: String, started: List<String>, focused: List<String>) =
+        listOfNotNull(
+            started.takeIf { it.isNotEmpty() }?.let { "agente iniciado en ${it.joinToString()}" },
+            focused.takeIf { it.isNotEmpty() }?.let { "agente en marcha enfocado en ${it.joinToString()}" },
+        ).joinToString("; ", prefix = "$title abierto en Orca: ")
+    override fun runnerOpenFailed(reason: String) = "no se abrió: $reason"
     override val multirepoNeedsReview = "Necesita revisión"
     override val multirepoNeedsReviewExplanation =
         "Este multirepo no está aprobado en este equipo: su declaración es nueva aquí o ha cambiado fuera de ShogunAi, por ejemplo con un pull. ShogunAi crea ramas y worktrees en los repositorios que lista y ejecuta sus comandos post-creación aprobados, así que revísalos antes de confiar en él."

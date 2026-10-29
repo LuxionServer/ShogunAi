@@ -3,12 +3,14 @@ package app.luxion.shogunai.cli
 import app.luxion.shogunai.domain.model.HerdrOpening
 import app.luxion.shogunai.domain.model.HerdrOutcome
 import app.luxion.shogunai.domain.model.Multirepo
+import app.luxion.shogunai.domain.model.OrcaOpening
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.usecase.AddedRepository
 import app.luxion.shogunai.domain.usecase.GroupCleanupSelection
 import app.luxion.shogunai.domain.usecase.GroupCreation
 import app.luxion.shogunai.domain.usecase.GroupKeptReason
 import app.luxion.shogunai.domain.usecase.GroupOpening
+import app.luxion.shogunai.domain.usecase.GroupOrcaOpening
 import app.luxion.shogunai.domain.usecase.GroupRepositoryOutcome
 import app.luxion.shogunai.domain.usecase.GroupWorktreeState
 import app.luxion.shogunai.domain.usecase.MultirepoState
@@ -228,6 +230,32 @@ fun groupOpenJson(branch: String, openings: List<GroupOpening>): JsonObject = bu
             })
         }
     })
+}
+
+fun groupOrcaOpenJson(branch: String, openings: List<GroupOrcaOpening>): JsonObject = buildJsonObject {
+    put("branch", branch)
+    put("repos", buildJsonArray {
+        openings.forEach { opening ->
+            add(buildJsonObject {
+                put("alias", opening.alias)
+                put("path", opening.path)
+                val orcaOpening = opening.result.getOrNull()
+                put("result", orcaOpening?.outcome?.jsonValue ?: "failed")
+                put("terminal", orcaOpening?.terminalHandle)
+                put("agent", orcaOpening?.agent)
+                put("session_name", orcaOpening?.sessionName)
+                put("error", opening.result.exceptionOrNull()?.message?.let(::JsonPrimitive) ?: JsonNull)
+            })
+        }
+    })
+}
+
+fun multirepoAgentOpenJson(multirepo: Multirepo, opening: OrcaOpening): JsonObject = buildJsonObject {
+    put("path", multirepo.folder)
+    put("orca", opening.outcome.jsonValue)
+    put("terminal", opening.terminalHandle)
+    put("agent", opening.agent ?: multirepo.agent.displayName)
+    put("session_name", opening.sessionName)
 }
 
 fun multirepoAgentOpenJson(multirepo: Multirepo, opening: HerdrOpening): JsonObject = buildJsonObject {

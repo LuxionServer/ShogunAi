@@ -267,6 +267,12 @@ sealed class WorktreeError(message: String, cause: Throwable? = null) : Exceptio
     class OrcaAgentNotStarted(val terminalHandle: String, val command: String) :
         WorktreeError("The agent `$command` didn't start in Orca terminal $terminalHandle within $AGENT_START_SECONDS seconds; the terminal is left open")
 
+    class OrcaMultirepoFolderNotOpen(val folder: String) : WorktreeError(
+        "Orca has no workspace for $folder, and only Orca's app can add a folder that isn't a Git repository. " +
+            "In Orca, add $folder as a project and import its repositories as a group, then add a folder workspace to that group; " +
+            "or add it and choose \"Open as Folder\". Then try again",
+    )
+
     class TerminalLaunchFailed(val terminal: TerminalId, val detail: String) :
         WorktreeError("${terminal.displayName} couldn't open the worktree" + if (detail.isBlank()) "" else ": $detail")
 

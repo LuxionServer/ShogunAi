@@ -4,9 +4,14 @@ import app.luxion.shogunai.domain.model.BranchType
 import app.luxion.shogunai.domain.model.HerdrOpening
 import app.luxion.shogunai.domain.model.HerdrOutcome
 import app.luxion.shogunai.domain.model.Multirepo
+import app.luxion.shogunai.domain.model.OrcaOpening
+import app.luxion.shogunai.domain.model.OrcaOutcome
 import app.luxion.shogunai.domain.usecase.GroupCreation
+import app.luxion.shogunai.domain.usecase.GroupOpening
+import app.luxion.shogunai.domain.usecase.GroupOrcaOpening
 import app.luxion.shogunai.domain.usecase.GroupRepositoryResult
 import app.luxion.shogunai.domain.usecase.MultirepoMember
+import app.luxion.shogunai.domain.usecase.WorktreeGroup
 
 class MultirepoActions(
     val createGroup: suspend (
@@ -18,6 +23,11 @@ class MultirepoActions(
     ) -> Result<GroupCreation>,
     val openAgent: suspend (Multirepo) -> Result<HerdrOpening>,
     val trust: suspend (Multirepo) -> Result<Multirepo> = { Result.failure(UnsupportedOperationException("no multirepo support")) },
+    val openGroupInHerdr: suspend (WorktreeGroup) -> List<GroupOpening> = { emptyList() },
+    val openGroupInOrca: suspend (WorktreeGroup) -> Result<List<GroupOrcaOpening>> = { Result.failure(UnsupportedOperationException("no multirepo support")) },
+    val openAgentInOrca: suspend (Multirepo) -> Result<OrcaOpening> = { Result.failure(UnsupportedOperationException("no multirepo support")) },
+    val herdrInstalled: Boolean = false,
+    val orcaInstalled: Boolean = false,
 ) {
     companion object {
         val NONE = MultirepoActions(
@@ -31,6 +41,8 @@ sealed interface MultirepoNotice {
     data class AddedToGroup(val alias: String, val title: String) : MultirepoNotice
     data class ChangeCreated(val title: String, val aliases: List<String>) : MultirepoNotice
     data class AgentOpened(val outcome: HerdrOutcome) : MultirepoNotice
+    data class AgentOpenedInOrca(val outcome: OrcaOutcome) : MultirepoNotice
+    data class GroupOpenedInOrca(val title: String, val outcomes: List<Pair<String, OrcaOutcome>>) : MultirepoNotice
     data class Failed(val error: Throwable) : MultirepoNotice
 }
 

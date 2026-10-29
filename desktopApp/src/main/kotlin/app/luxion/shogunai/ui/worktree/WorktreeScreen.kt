@@ -16,11 +16,14 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -29,7 +32,10 @@ import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -132,8 +138,13 @@ fun WorktreeScreen(
                     Text(strings.agentLabel(agent.name, agent.state), style = MaterialTheme.typography.bodySmall)
                 }
                 IconAction(icon = Icons.Default.Settings, label = strings.multirepoSettingsTitle, onClick = onOpenMultirepoSettings)
-                SecondaryButton(onClick = board::openMultirepoAgent, enabled = !needsReview && !board.isOpeningMultirepoAgent) {
-                    Text(strings.openMultirepoAgent)
+                val canOpenAgent = !needsReview && !board.isOpeningMultirepoAgent
+                if (board.isOrcaInstalled) {
+                    MultirepoAgentMenu(enabled = canOpenAgent, onOpenInHerdr = board::openMultirepoAgent, onOpenInOrca = board::openMultirepoAgentInOrca)
+                } else {
+                    SecondaryButton(onClick = board::openMultirepoAgent, enabled = canOpenAgent) {
+                        Text(strings.openMultirepoAgent)
+                    }
                 }
             }
             DangerTextButton(onClick = { board.openCleanup() }, enabled = !needsReview && board.canCleanUp()) { Text(strings.cleanUp) }
@@ -553,4 +564,32 @@ private fun PendingSuccess.action(strings: Strings, board: WorktreeBoard): Messa
         MessageAction(strings.copyLaunchCommand) { holder.copyLastCreatedLaunchCommand() }
     }
     else -> null
+}
+
+@Composable
+private fun MultirepoAgentMenu(enabled: Boolean, onOpenInHerdr: () -> Unit, onOpenInOrca: () -> Unit) {
+    val strings = LocalStrings.current
+    var expanded by remember { mutableStateOf(false) }
+    Box {
+        SecondaryButton(onClick = { expanded = true }, enabled = enabled) {
+            Text(strings.openMultirepoAgentMenu)
+            Icon(Icons.Default.ArrowDropDown, contentDescription = null, modifier = Modifier.size(ButtonIconSize))
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            DropdownMenuItem(
+                text = { Text(strings.openMultirepoAgent) },
+                onClick = {
+                    expanded = false
+                    onOpenInHerdr()
+                },
+            )
+            DropdownMenuItem(
+                text = { Text(strings.openMultirepoAgentInOrca) },
+                onClick = {
+                    expanded = false
+                    onOpenInOrca()
+                },
+            )
+        }
+    }
 }

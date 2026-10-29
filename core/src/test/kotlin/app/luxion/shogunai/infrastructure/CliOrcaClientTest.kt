@@ -9,6 +9,7 @@ import app.luxion.shogunai.domain.model.OrcaAgent
 import app.luxion.shogunai.domain.model.OrcaRepo
 import app.luxion.shogunai.domain.model.OrcaStatus
 import app.luxion.shogunai.domain.model.OrcaTerminal
+import app.luxion.shogunai.domain.model.OrcaWorkspace
 import app.luxion.shogunai.domain.model.OrcaWorktree
 import app.luxion.shogunai.domain.model.WorktreeError
 import kotlinx.coroutines.test.runTest
@@ -31,6 +32,8 @@ class CliOrcaClientTest {
     private val created = "/Users/user/orca/workspaces/main-repo/TASK-2"
     private val shogunai = "/projects/main-repo-worktrees/TASK-9"
     private val repoId = "0355427a-217f-4a07-9072-67d11e704c23"
+    private val folderId = "2f00a2db-d2c3-42f0-8f9a-6271686535cc"
+    private val folder = OrcaWorkspace.Folder(folderId)
 
     private fun client(
         executor: ShellCommandExecutor,
@@ -181,7 +184,7 @@ class CliOrcaClientTest {
     fun `terminals are listed by worktree path`() = runTest {
         val executor = answering("terminal-list-agent.json")
 
-        val terminals = client(executor).terminals(external)
+        val terminals = client(executor).terminals(OrcaWorkspace.Worktree(external))
 
         assertEquals(listOf(OrcaTerminal("term_44a32dcb-6aa6-478f-a1f0-0731154c76d2", external, "main-repo-task-1")), terminals)
         assertEquals(listOf(orca, "terminal", "list", "--worktree", "path:$external", "--json"), executor.executedCommands.single())
@@ -204,7 +207,7 @@ class CliOrcaClientTest {
     fun `a terminal is created with its title, command and focus`() = runTest {
         val executor = answering("terminal-create.json")
 
-        val terminal = client(executor).createTerminal(external, "main-repo-task-1", "env 'PORT=4100' claude -n main-repo-task-1", focus = true)
+        val terminal = client(executor).createTerminal(OrcaWorkspace.Worktree(external), "main-repo-task-1", "env 'PORT=4100' claude -n main-repo-task-1", focus = true)
 
         assertEquals(OrcaTerminal("term_44a32dcb-6aa6-478f-a1f0-0731154c76d2", external, "main-repo-task-1"), terminal)
         assertEquals(
@@ -223,7 +226,7 @@ class CliOrcaClientTest {
         }
 
         client(executor).switchTo("term_1")
-        client(executor).closeTerminals(external)
+        client(executor).closeTerminals(OrcaWorkspace.Worktree(external))
 
         assertEquals(
             listOf(
@@ -232,6 +235,87 @@ class CliOrcaClientTest {
             ),
             executor.executedCommands,
         )
+    }
+
+    @Test
+    fun `ps lists a folder workspace with its folder id and agents`() = runTest {
+        val rows = client(answering("worktree-ps-folder-agent.json")).agentsByWorktree().associateBy { it.path }
+
+        val workspace = rows.getValue("/projects/product")
+        assertEquals(folderId, workspace.folderId)
+        assertEquals(folder, workspace.workspace)
+        assertEquals(listOf(OrcaAgent("claude", AgentState.BLOCKED)), workspace.agents)
+        assertEquals(OrcaWorktree("/projects/plainmulti", false), rows["/projects/plainmulti"])
+        assertEquals(OrcaWorktree("/projects/gitmulti", false), rows["/projects/gitmulti"])
+        assertEquals(OrcaWorkspace.Worktree("/projects/product/product-app"), rows.getValue("/projects/product/product-app").workspace)
+    }
+
+    @Test
+    fun `a folder workspace without an agent is listed without agents`() = runTest {
+        val workspace = client(answering("worktree-ps-folder.json")).agentsByWorktree().single { it.folderId != null }
+
+        assertEquals("/projects/product", workspace.path)
+        assertEquals(emptyList(), workspace.agents)
+    }
+
+    @Test
+    fun `an unknown workspace kind is a worktree with a path`() = runTest {
+        val row = """{"ok": true, "result": {"worktrees": [{"workspaceKind": "remote-box", "worktreeId": "folder:x", "path": "/projects/box", "agents": []}]}}"""
+        val executor = FakeShellCommandExecutor { FakeShellCommandExecutor.success(it, row) }
+
+        assertEquals(listOf(OrcaWorktree("/projects/box", false)), client(executor).agentsByWorktree())
+    }
+
+    @Test
+    fun `a folder workspace's terminals are listed by its folder id`() = runTest {
+        val executor = answering("terminal-list-folder.json")
+
+        val terminals = client(executor).terminals(folder)
+
+        assertEquals(listOf("term_34d22a3f-c516-4008-92c8-3c01d8be4382", "term_f0d9d85e-d490-4984-9e25-64ce0aba0ebb"), terminals.map { it.handle })
+        assertEquals(listOf("Terminal 1", "product"), terminals.map { it.title })
+        assertEquals(listOf("", ""), terminals.map { it.worktreePath })
+        assertEquals(listOf(orca, "terminal", "list", "--worktree", "id:folder:$folderId", "--json"), executor.executedCommands.single())
+    }
+
+    @Test
+    fun `a terminal is created in a folder workspace by its folder id`() = runTest {
+        val executor = answering("terminal-create-folder.json")
+
+        val terminal = client(executor).createTerminal(folder, "product", "claude -n product", focus = true)
+
+        assertEquals("term_f0d9d85e-d490-4984-9e25-64ce0aba0ebb", terminal.handle)
+        assertEquals(
+            listOf(orca, "terminal", "create", "--worktree", "id:folder:$folderId", "--title", "product", "--command", "claude -n product", "--focus", "--json"),
+            executor.executedCommands.single(),
+        )
+    }
+
+    @Test
+    fun `a folder workspace's terminals are closed one by one by handle`() = runTest {
+        val executor = FakeShellCommandExecutor { command ->
+            FakeShellCommandExecutor.success(command, fixture(if ("list" in command) "terminal-list-folder.json" else "terminal-close-handle.json"))
+        }
+
+        client(executor).closeTerminals(folder)
+
+        assertEquals(
+            listOf(
+                listOf(orca, "terminal", "list", "--worktree", "id:folder:$folderId", "--json"),
+                listOf(orca, "terminal", "close", "--terminal", "term_34d22a3f-c516-4008-92c8-3c01d8be4382", "--json"),
+                listOf(orca, "terminal", "close", "--terminal", "term_f0d9d85e-d490-4984-9e25-64ce0aba0ebb", "--json"),
+            ),
+            executor.executedCommands,
+        )
+    }
+
+    @Test
+    fun `Orca rejects a folder that isn't a Git repository`() = runTest {
+        val executor = FakeShellCommandExecutor { CommandResult(it, 1, fixture("repo-add-not-git.json"), "") }
+
+        val error = assertFailsWith<WorktreeError.OrcaCommandFailed> { client(executor).addRepo("/projects/product") }
+
+        assertEquals("Not a valid git repository: /projects/product", error.detail)
     }
 
     @Test
