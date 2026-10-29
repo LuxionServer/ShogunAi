@@ -257,6 +257,11 @@ object SpanishStrings : Strings {
         AgentState.DONE -> "$name · terminado"
         AgentState.IDLE -> "$name · inactivo"
     }
+    override fun agentWaitingOn(tool: String, input: String?) = "Esperando a $tool" + (input?.let { ": $it" } ?: "")
+    override fun agentPrompt(prompt: String) = "Prompt: $prompt"
+    override fun agentLastMessage(message: String) = "Último mensaje: $message"
+    override fun portListening(label: String) = "$label (escuchando)"
+    override val orcaPortsTitle = "Escuchando, según Orca"
     override fun agentsRunning(names: List<String>) = "Agentes en ejecución: ${names.joinToString(", ")}"
     override val allProjects = "Todos los proyectos"
     override val projectLabel = "Proyecto"

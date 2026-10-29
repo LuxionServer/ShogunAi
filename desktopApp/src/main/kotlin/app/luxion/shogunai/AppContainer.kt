@@ -172,6 +172,7 @@ import app.luxion.shogunai.domain.usecase.OpenMultirepoAgentInOrcaUseCase
 import app.luxion.shogunai.domain.usecase.OpenWorktreeInOrcaUseCase
 import app.luxion.shogunai.domain.usecase.OrcaOrigins
 import app.luxion.shogunai.domain.usecase.OrcaWorktreeReader
+import app.luxion.shogunai.domain.model.ObservedPort
 import app.luxion.shogunai.domain.model.OrcaOpening
 import app.luxion.shogunai.infrastructure.CliOrcaClient
 import app.luxion.shogunai.infrastructure.JsonOrcaWorkspaceStore
@@ -846,6 +847,7 @@ class AppContainer {
             open = OpenWorktreeInOrcaUseCase(config, orcaClient, resolveEnvironment, ClaudeSessionNaming(claudeSessions))::invoke,
             withTerminals = { paths -> withContext(Dispatchers.IO) { CloseOrcaTerminalsUseCase(orcaClient).withTerminals(paths) } },
             origins = orcaReader::origins,
+            ports = orcaReader::ports,
         ),
         gradle = GradleUseCases(
             provider = {
@@ -1071,6 +1073,7 @@ data class OrcaUseCases(
     val open: suspend (Worktree, AgentLaunchConfig) -> Result<OrcaOpening>,
     val withTerminals: suspend (List<String>) -> Set<String> = { emptySet() },
     val origins: () -> OrcaOrigins? = { null },
+    val ports: (List<Worktree>) -> Map<String, List<ObservedPort>>? = { null },
 ) {
     companion object {
         val NONE = OrcaUseCases(open = { _, _ -> Result.failure(WorktreeError.OrcaNotInstalled) })

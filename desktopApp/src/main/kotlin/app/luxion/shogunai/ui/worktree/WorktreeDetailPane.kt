@@ -38,7 +38,9 @@ import app.luxion.shogunai.ui.machine.ReleaseDesktopTurnDialog
 import app.luxion.shogunai.ui.machine.clockTime
 import kotlinx.coroutines.launch
 import androidx.compose.ui.text.style.TextOverflow
+import app.luxion.shogunai.domain.model.AgentActivity
 import app.luxion.shogunai.domain.model.Divergence
+import app.luxion.shogunai.domain.model.ObservedPort
 import app.luxion.shogunai.domain.model.EMULATOR_PORT_KEY
 import app.luxion.shogunai.domain.model.EmulatorState
 import app.luxion.shogunai.domain.model.ProjectConfig
@@ -75,6 +77,8 @@ import kotlinx.coroutines.delay
 import java.time.Instant
 
 private const val PATH_COPIED_FEEDBACK_MS = 2000L
+
+private const val DETAIL_TEXT_MAX_LINES = 3
 
 @Composable
 fun WorktreeDetailPane(
@@ -241,7 +245,11 @@ fun WorktreeDetailPane(
             isProvisioning = worktree.path in viewModel.provisioningInProgress,
             onProvision = { viewModel.provision(worktree) },
         )
-        EnvironmentSection(viewModel.environments[worktree.path], viewModel.ports[worktree.path].orEmpty())
+        EnvironmentSection(
+            viewModel.environments[worktree.path],
+            viewModel.ports[worktree.path].orEmpty(),
+            viewModel.observedPorts[worktree.path].orEmpty(),
+        )
         DevicesSection(
             emulator = viewModel.emulators[worktree.path],
             emulatorRelease = viewModel.emulatorReleases[worktree.path],
@@ -361,8 +369,33 @@ private fun ColumnScope.AgentsSection(agents: List<RunningAgent>) {
     val strings = LocalStrings.current
     Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
         SectionTitle(strings.agentsTitle)
-        agents.forEach { DetailValue(strings.agentLabel(it.name, it.state)) }
+        agents.forEach { agent ->
+            DetailValue(strings.agentLabel(agent.name, agent.state))
+            agent.activity?.let { activity ->
+                agentActivityLines(activity, strings).forEach { line ->
+                    Text(
+                        line,
+                        style = ShogunTheme.typography.dataSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = DETAIL_TEXT_MAX_LINES,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+        }
     }
+}
+
+fun agentActivityLines(activity: AgentActivity, strings: Strings): List<String> =
+    listOfNotNull(
+        activity.waitingOn?.let { strings.agentWaitingOn(it.name, it.input) },
+        activity.prompt?.let(strings::agentPrompt),
+        activity.lastMessage?.let(strings::agentLastMessage),
+    ).map { shortened(it) }
+
+fun shortened(text: String, maxLines: Int = DETAIL_TEXT_MAX_LINES): String {
+    val lines = text.lines()
+    return if (lines.size <= maxLines) text else lines.take(maxLines).joinToString("\n") + "…"
 }
 
 @Composable
@@ -398,16 +431,24 @@ private fun ColumnScope.ProvisioningSection(
 }
 
 @Composable
-private fun ColumnScope.EnvironmentSection(environment: WorktreeEnvironment?, ports: Map<String, Int>) {
+private fun ColumnScope.EnvironmentSection(environment: WorktreeEnvironment?, ports: Map<String, Int>, observed: List<ObservedPort>) {
     val strings = LocalStrings.current
     val variables = environment?.variables.orEmpty()
     val awaiting = environment?.awaitingApproval.orEmpty()
-    if (variables.isEmpty() && ports.isEmpty() && awaiting.isEmpty()) return
+    if (variables.isEmpty() && ports.isEmpty() && awaiting.isEmpty() && observed.isEmpty()) return
     val clipboard = LocalClipboard.current
     val scope = rememberCoroutineScope()
     Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
         SectionTitle(strings.environmentTitle)
-        if (ports.isNotEmpty()) DetailValue(portsLabel(ports))
+        if (ports.isNotEmpty()) DetailValue(portsLabel(ports, observed.map { it.port }.toSet(), strings::portListening))
+        if (observed.isNotEmpty()) {
+            MutedText(strings.orcaPortsTitle)
+            SelectionContainer {
+                Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+                    observed.forEach { DetailValue(observedPortLabel(it)) }
+                }
+            }
+        }
         if (variables.isNotEmpty()) {
             SelectionContainer {
                 Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
@@ -612,6 +653,9 @@ fun statusSegments(status: WorktreeStatus, mainBranchName: String?, now: Instant
         status.createdAt?.let { strings.createdAgo(relativeTime(it, now, strings)) },
     )
 
-fun portsLabel(ports: Map<String, Int>): String =
+fun portsLabel(ports: Map<String, Int>, listening: Set<Int> = emptySet(), markListening: (String) -> String = { it }): String =
     ports.entries.filterNot { it.key == EMULATOR_PORT_KEY }.sortedBy { it.value }
-        .joinToString(" · ") { (key, port) -> "${portKeyLabel(key)} $port" }
+        .joinToString(" · ") { (key, port) -> "${portKeyLabel(key)} $port".let { if (port in listening) markListening(it) else it } }
+
+fun observedPortLabel(port: ObservedPort): String =
+    listOfNotNull(port.port.toString(), port.process, port.url).joinToString(" · ")

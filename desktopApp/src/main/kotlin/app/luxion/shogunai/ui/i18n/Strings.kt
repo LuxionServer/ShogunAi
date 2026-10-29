@@ -197,6 +197,11 @@ interface Strings {
     val menuAllWorktrees: String
     fun agentsRunning(names: List<String>): String
     fun agentLabel(name: String, state: AgentState?): String
+    fun agentWaitingOn(tool: String, input: String?): String
+    fun agentPrompt(prompt: String): String
+    fun agentLastMessage(message: String): String
+    fun portListening(label: String): String
+    val orcaPortsTitle: String
     val claudeCodeLabel: String
     fun claudeHooksStatus(state: HooksInstallState): String
     val claudeHooksInstall: String

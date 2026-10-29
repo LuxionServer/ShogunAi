@@ -465,7 +465,7 @@ class MultirepoCommandsTest {
 
         val repo = json()["groups"]!!.jsonArray.single().jsonObject["repos"]!!.jsonArray.first().jsonObject
         assertEquals(
-            Json.parseToJsonElement("""[{"name": "claude", "state": null, "stateSource": null, "herdrState": null, "sessions": [{"name": "app-task-1", "pid": 400}]}]"""),
+            Json.parseToJsonElement("""[{"name": "claude", "state": null, "stateSource": null, "herdrState": null, "sessions": [{"name": "app-task-1", "pid": 400}], "activity": null}]"""),
             repo["agents"],
         )
     }

@@ -65,7 +65,10 @@ import java.time.Instant
 import kotlinx.coroutines.runBlocking
 import app.luxion.shogunai.domain.model.HerdrPane
 import app.luxion.shogunai.domain.model.HostOs
+import app.luxion.shogunai.domain.model.AgentActivity
+import app.luxion.shogunai.domain.model.AgentTool
 import app.luxion.shogunai.domain.model.OrcaAgent
+import app.luxion.shogunai.domain.model.OrcaPort
 import app.luxion.shogunai.domain.model.OrcaRepo
 import app.luxion.shogunai.domain.model.OrcaTerminal
 import app.luxion.shogunai.domain.model.OrcaWorktree
@@ -1502,7 +1505,7 @@ class ShogunCliTest {
         assertEquals(
             Json.parseToJsonElement(
                 """[{"name": "claude", "state": "blocked", "stateSource": "claude-code", "herdrState": null,
-                    "sessions": [{"name": "main-repo-task-1", "pid": 4242}, {"name": "main-repo-task-1-2", "pid": 4243}]}]""",
+                    "sessions": [{"name": "main-repo-task-1", "pid": 4242}, {"name": "main-repo-task-1-2", "pid": 4243}], "activity": null}]""",
             ),
             worktrees[1].jsonObject.getValue("agents"),
         )
@@ -1514,7 +1517,7 @@ class ShogunCliTest {
 
         val worktrees = Json.parseToJsonElement(out.toString()).jsonObject.getValue("worktrees").jsonArray
         assertEquals(
-            Json.parseToJsonElement("""[{"name": "claude", "state": "blocked", "stateSource": "claude-code", "herdrState": null, "sessions": []}]"""),
+            Json.parseToJsonElement("""[{"name": "claude", "state": "blocked", "stateSource": "claude-code", "herdrState": null, "sessions": [], "activity": null}]"""),
             worktrees[1].jsonObject.getValue("agents"),
         )
     }
@@ -1543,6 +1546,56 @@ class ShogunCliTest {
     }
 
     @Test
+    fun `status json reports what an agent waits on in Orca`() {
+        val activity = AgentActivity(AgentTool("Bash", "curl -s https://example.com -o page.html"), prompt = "Download the page")
+        val orca = FakeOrcaClient(psRows = listOf(OrcaWorktree(merged, createdByOrca = false, listOf(OrcaAgent("claude", AgentState.BLOCKED, activity)))))
+
+        val exitCode = cli(repositoryExecutor(), orca = orca).run(listOf("status", "--json"))
+
+        assertEquals(0, exitCode, err.toString())
+        val worktrees = Json.parseToJsonElement(out.toString()).jsonObject.getValue("worktrees").jsonArray
+        assertEquals(
+            Json.parseToJsonElement(
+                """{"waitingOn": {"tool": "Bash", "input": "curl -s https://example.com -o page.html"}, "prompt": "Download the page", "lastMessage": null}""",
+            ),
+            worktrees[1].jsonObject.getValue("agents").jsonArray.single().jsonObject.getValue("activity"),
+        )
+    }
+
+    @Test
+    fun `status reports the ports Orca sees each worktree listen on`() {
+        val orca = FakeOrcaClient(
+            listeningPorts = listOf(OrcaPort(10011, merged, "java"), OrcaPort(8765, merged, "Python", "http://127.0.0.1:8765")),
+        )
+
+        val text = cli(repositoryExecutor(), orca = orca)
+        assertEquals(0, text.run(listOf("status")), err.toString())
+        assertTrue(out.lines().any { it.startsWith("$merged  ") && it.contains("  listening=8765,10011  ") }, out.toString())
+        assertTrue(out.lines().filterNot { it.startsWith("$merged  ") }.none { it.contains("listening=") }, out.toString())
+
+        out.clear()
+        assertEquals(0, cli(repositoryExecutor(), orca = orca).run(listOf("status", "--json")), err.toString())
+        val worktrees = Json.parseToJsonElement(out.toString()).jsonObject.getValue("worktrees").jsonArray
+        assertEquals(
+            Json.parseToJsonElement(
+                """[{"port": 8765, "process": "Python", "url": "http://127.0.0.1:8765"}, {"port": 10011, "process": "java", "url": null}]""",
+            ),
+            worktrees[1].jsonObject.getValue("listeningPorts"),
+        )
+        assertEquals(Json.parseToJsonElement("[]"), worktrees[0].jsonObject.getValue("listeningPorts"))
+    }
+
+    @Test
+    fun `status json has null listening ports without Orca`() {
+        val exitCode = cli(repositoryExecutor(), orca = FakeOrcaClient(running = false)).run(listOf("status", "--json"))
+
+        assertEquals(0, exitCode, err.toString())
+        val worktrees = Json.parseToJsonElement(out.toString()).jsonObject.getValue("worktrees").jsonArray
+        assertTrue(worktrees.all { it.jsonObject.getValue("listeningPorts") is JsonNull }, out.toString())
+        assertTrue(worktrees.all { it.jsonObject.getValue("agents").jsonArray.all { agent -> agent.jsonObject.getValue("activity") is JsonNull } })
+    }
+
+    @Test
     fun `status json reports Orca as the state source and origin`() {
         val orca = FakeOrcaClient(psRows = listOf(OrcaWorktree(merged, createdByOrca = true, listOf(OrcaAgent("claude", AgentState.BLOCKED)))))
 
@@ -1551,7 +1604,7 @@ class ShogunCliTest {
         assertEquals(0, exitCode, err.toString())
         val worktrees = Json.parseToJsonElement(out.toString()).jsonObject.getValue("worktrees").jsonArray
         assertEquals(
-            Json.parseToJsonElement("""[{"name": "claude", "state": "blocked", "stateSource": "orca", "herdrState": null, "sessions": []}]"""),
+            Json.parseToJsonElement("""[{"name": "claude", "state": "blocked", "stateSource": "orca", "herdrState": null, "sessions": [], "activity": null}]"""),
             worktrees[1].jsonObject.getValue("agents"),
         )
         assertEquals("orca", worktrees[1].jsonObject.getValue("origin").jsonPrimitive.content)
@@ -1571,11 +1624,11 @@ class ShogunCliTest {
         assertEquals(0, exitCode, err.toString())
         val worktrees = Json.parseToJsonElement(out.toString()).jsonObject.getValue("worktrees").jsonArray
         assertEquals(
-            Json.parseToJsonElement("""[{"name": "claude", "state": "blocked", "stateSource": "herdr", "herdrState": "blocked", "sessions": []}]"""),
+            Json.parseToJsonElement("""[{"name": "claude", "state": "blocked", "stateSource": "herdr", "herdrState": "blocked", "sessions": [], "activity": null}]"""),
             worktrees[1].jsonObject.getValue("agents"),
         )
         assertEquals(
-            Json.parseToJsonElement("""[{"name": "aider", "state": null, "stateSource": null, "herdrState": null, "sessions": []}]"""),
+            Json.parseToJsonElement("""[{"name": "aider", "state": null, "stateSource": null, "herdrState": null, "sessions": [], "activity": null}]"""),
             worktrees[2].jsonObject.getValue("agents"),
         )
     }
@@ -1630,7 +1683,7 @@ class ShogunCliTest {
                     "uncommittedChanges": 0, "upstream": null, "mainBranch": null, "base": null,
                     "merged": false, "lastCommitAt": null, "createdAt": null
                   },
-                  "desktop": null
+                  "desktop": null, "listeningPorts": null
                 },
                 {
                   "path": "$merged", "branch": "feature/TASK-1", "head": "2222222222222222222222222222222222222222",
@@ -1640,7 +1693,7 @@ class ShogunCliTest {
                     "base": {"branch": "main", "ahead": 0, "behind": 3},
                     "merged": true, "lastCommitAt": null, "createdAt": null
                   },
-                  "desktop": null
+                  "desktop": null, "listeningPorts": null
                 },
                 {
                   "path": "$dirty", "branch": "worktree-spike", "head": "3333333333333333333333333333333333333333",
@@ -1650,7 +1703,7 @@ class ShogunCliTest {
                     "base": {"branch": "main", "ahead": 2, "behind": 0},
                     "merged": false, "lastCommitAt": null, "createdAt": null
                   },
-                  "desktop": null
+                  "desktop": null, "listeningPorts": null
                 }
               ]
             }

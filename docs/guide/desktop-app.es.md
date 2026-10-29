@@ -72,9 +72,10 @@ Cada fila tiene dos líneas y un sitio fijo para cada dato, así que las filas s
 
 El detalle muestra más:
 
+- Sus **agentes**, con su estado y, en los que informa [Orca](../agents.md#orca), la herramienta a la que esperan con su entrada, el prompt que recibieron y su último mensaje, cada uno recortado a tres líneas.
 - Su **estado**: cambios sin commitear, commits por delante y por detrás de su upstream, de la rama principal y de su base, la fecha del último commit, la fecha de creación, y "mergeada en <rama>" (su base o la rama principal) o "sin empezar" cuando su rama nunca tuvo commits propios. "Carpeta no encontrada" cuando su carpeta se borró a mano.
 - Sus **archivos provisionados**: si los archivos y enlaces declarados para los worktrees nuevos coinciden con los del repositorio base, listando los que faltan, difieren o no están enlazados. En un worktree creado por otra herramienta, o cuyas copias están desactualizadas, **Provisionar** los copia, reserva sus puertos y escribe su archivo de entorno, como hace `shogun provision`.
-- Su **entorno**: los puertos y cada variable de `"env"` en `.shogunai.json` con su valor, en el orden en que las imprime `shogun env`. **Copiar como .env** las pone en el portapapeles en formato dotenv. Los valores no se ocultan, porque salen de plantillas del repositorio.
+- Su **entorno**: los puertos y cada variable de `"env"` en `.shogunai.json` con su valor, en el orden en que las imprime `shogun env`. **Copiar como .env** las pone en el portapapeles en formato dotenv. Los valores no se ocultan, porque salen de plantillas del repositorio. Mientras [Orca](../agents.md#orca) está en marcha, también lista los puertos en los que Orca ve escuchar al worktree, con el proceso y la dirección que un servidor de desarrollo imprimió en una terminal de Orca, y marca como escuchando los puertos reservados que estén entre ellos.
 - Su **tamaño** y los **puertos** reservados para él (ver [entorno por worktree](../agents.md#entorno-por-worktree)).
 - Las líneas de emulador y simulador con Arrancar y Parar, en repositorios que usan esos [providers](providers.md).
 
