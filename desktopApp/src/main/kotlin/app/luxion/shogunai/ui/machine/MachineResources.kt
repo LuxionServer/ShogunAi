@@ -42,6 +42,7 @@ import app.luxion.shogunai.domain.usecase.ProjectOwner
 import app.luxion.shogunai.domain.usecase.ResourceAcquisition
 import app.luxion.shogunai.domain.usecase.ProjectWorktreeSet
 import app.luxion.shogunai.domain.usecase.attributeToProjects
+import java.time.Instant
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -81,7 +82,7 @@ data class MachineSummary(
 
 sealed interface PoolNoticeContent {
     data class Released(val kind: ResourceKind, val released: String, val forWorktree: String) : PoolNoticeContent
-    data class Trimmed(val count: Int, val limit: Int?) : PoolNoticeContent
+    data class Trimmed(val count: Int, val limit: Int?, val trims: Int, val lastAt: Instant) : PoolNoticeContent
 }
 
 data class PoolNotice(val id: Long, val resource: MachineResource, val content: PoolNoticeContent)
@@ -131,6 +132,7 @@ class MachineResources(
     private val cadence: suspend () -> RefreshCadence = { RefreshCadence.BALANCED },
     val desktopTurn: DesktopTurnWatch = DesktopTurnWatch.NONE,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
+    private val clock: () -> Instant = Instant::now,
 ) {
     private var shownJob: Job? = null
     private val windowActivity = MutableStateFlow(WindowActivity.FOCUSED)
@@ -470,7 +472,23 @@ class MachineResources(
 
     private suspend fun trimGradleDaemons() {
         val trim = io { useCases.trimGradleDaemons(null) }.getOrNull() ?: return
-        if (trim.stopped.isNotEmpty()) addNotice(MachineResource.GRADLE_DAEMONS, PoolNoticeContent.Trimmed(trim.stopped.size, trim.limit))
+        if (trim.stopped.isNotEmpty()) recordTrim(trim.stopped.size, trim.limit)
+    }
+
+    private fun recordTrim(stopped: Int, limit: Int?) {
+        val existing = notices.firstOrNull { it.resource == MachineResource.GRADLE_DAEMONS && it.content is PoolNoticeContent.Trimmed }
+        val previous = existing?.content as? PoolNoticeContent.Trimmed
+        val content = PoolNoticeContent.Trimmed(
+            count = (previous?.count ?: 0) + stopped,
+            limit = limit,
+            trims = (previous?.trims ?: 0) + 1,
+            lastAt = clock(),
+        )
+        if (existing == null) {
+            addNotice(MachineResource.GRADLE_DAEMONS, content)
+        } else {
+            notices = notices.map { if (it.id == existing.id) it.copy(content = content) else it }
+        }
     }
 
     private suspend fun runLoader(resource: MachineResource) {

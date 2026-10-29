@@ -436,8 +436,9 @@ object EnglishStrings : Strings {
     override val alsoStopIdleGradleDaemons = "Also stop the idle Gradle daemons of the worktrees being removed"
     override val alsoStopIdleMavenDaemons = "Also stop the idle Maven daemons of the worktrees being removed"
     override val gradleDaemonsTitle = "Gradle daemons"
-    override fun gradleDaemonsSummary(count: Int, totalMemory: String) =
-        (if (count == 1) "1 daemon" else "$count daemons") + " · $totalMemory"
+    override fun gradleDaemonsSummary(gradle: Int, kotlin: Int, totalMemory: String) =
+        (if (gradle == 1) "1 Gradle daemon" else "$gradle Gradle daemons") +
+            (if (kotlin > 0) " and $kotlin Kotlin" else "") + " · $totalMemory"
     override val noGradleDaemons = "No Gradle or Kotlin daemons running"
     override val gradleDaemonsUnavailable = "Daemons can't be inspected on this system"
     override fun gradleDaemonLabel(version: String?) = listOfNotNull("Gradle", version).joinToString(" ")
@@ -569,15 +570,25 @@ object EnglishStrings : Strings {
     override fun poolUsage(inUse: Int, limit: Int?) = if (limit == null) "$inUse in use" else "$inUse of $limit in use"
     override val overLimit = "over the limit"
     override val overLimitChip = "Over the limit"
+    override val overLimitBuildsRunningChip = "Over the limit: builds running"
+    override fun overLimitNothingIdle(busy: Int, unknown: Int): String {
+        val reasons = listOfNotNull(
+            busy.takeIf { it > 0 }?.let { if (it == 1) "1 is running a build" else "$it are running a build" },
+            unknown.takeIf { it > 0 }?.let { if (it == 1) "1 has an unknown state" else "$it have an unknown state" },
+        )
+        return "None can be stopped now: ${reasons.joinToString(" and ")}. " +
+            "Idle ones are stopped automatically while over the limit."
+    }
     override val changeInPreferences = "Change in Preferences"
     override fun releasedNotice(kind: ResourceKind, released: String, forWorktree: String) = when (kind) {
         ResourceKind.EMULATOR -> "The emulator of $released was released to make room for $forWorktree"
         ResourceKind.IOS_SIMULATOR -> "The simulator of $released was deleted to make room for $forWorktree"
         ResourceKind.GRADLE_DAEMON -> "A Gradle daemon of $released was stopped to make room for $forWorktree"
     }
-    override fun trimmedNotice(count: Int, limit: Int?) =
+    override fun trimmedNotice(count: Int, limit: Int?, trims: Int, lastTime: String) =
         (if (count == 1) "1 idle Gradle daemon was stopped" else "$count idle Gradle daemons were stopped") +
-            (limit?.let { " to stay within the limit of $it" } ?: "")
+            (limit?.let { " to stay within the limit of $it" } ?: "") +
+            (if (trims == 1) " at $lastTime" else " · $trims times, last at $lastTime")
     override fun poolSummary(inUse: Int, limit: Int?) = if (limit == null) "$inUse" else "$inUse/$limit"
     override val androidEmulatorsTitle = "Android emulators"
     override val iosSimulatorsTitle = "iOS simulators"
