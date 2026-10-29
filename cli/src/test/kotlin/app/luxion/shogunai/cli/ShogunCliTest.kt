@@ -59,7 +59,9 @@ import app.luxion.shogunai.domain.model.AgentState
 import app.luxion.shogunai.domain.model.ClaudeSession
 import app.luxion.shogunai.domain.model.SimulatorState
 import app.luxion.shogunai.domain.model.WorktreeError
+import app.luxion.shogunai.domain.model.GradleClient
 import app.luxion.shogunai.domain.model.GradleProvider
+import app.luxion.shogunai.domain.model.HoldingBuild
 import app.luxion.shogunai.domain.model.IosSimulatorProvider
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.ProjectConfig
@@ -807,6 +809,53 @@ class ShogunCliTest {
         )
     }
 
+    private val apps = "/home/dev/projects/worktrees/apps/task-123"
+
+    private fun heldDaemons(client: GradleClient?) = FakeGradleDaemonSource(
+        listOf(
+            gradleDaemon(10, DaemonState.Busy, lastBuildDirectory = merged, memoryBytes = 1_073_741_824)
+                .copy(holder = HoldingBuild(merged, Instant.parse("2026-10-16T08:46:00Z"), client)),
+            gradleDaemon(11, idleSinceTenMinutes, lastBuildDirectory = merged, memoryBytes = 1_073_741_824),
+        ),
+    )
+
+    private val heldSessions = FakeAgentSessionStore(
+        mapOf(apps to listOf(AgentSessionRecord("963d9441", "claude", AgentState.WORKING, 0, pid = 700))),
+    )
+
+    private val appsProject = Project("apps", "apps", ProjectConfig("/home/dev/projects/apps", "/home/dev/projects/worktrees/apps", emptyList()))
+
+    private fun appsExecutor() = repositoryExecutor { command, directory ->
+        if (command.take(3) == listOf("git", "worktree", "list") && directory == appsProject.config.baseRepositoryPath) {
+            Executor.ok(command, "worktree ${appsProject.config.baseRepositoryPath}\nHEAD abc\nbranch refs/heads/develop\n\nworktree $apps\nHEAD def\nbranch refs/heads/feature/TASK-123\n\n")
+        } else {
+            null
+        }
+    }
+
+    @Test
+    fun `gradle names the build holding a busy daemon and the session that started it`() {
+        val daemons = heldDaemons(GradleClient(81234, listOf("benchRun"), listOf(81200, 700, 500)))
+        val fileManager = FakeFileManager(existing = listOf(base, merged))
+
+        val exitCode = cli(appsExecutor(), projects = listOf(project, appsProject), fileManager = fileManager, daemons = daemons, sessionStore = heldSessions)
+            .run(listOf("gradle"))
+
+        assertEquals(0, exitCode, err.toString())
+        val lines = out.lines()
+        assertTrue(lines[0].startsWith("10  gradle 9.6.1  memory=1.0 GB  state=busy"), out.toString())
+        assertEquals("  held by pid 81234 (benchRun) in $merged for 2h14m, session 963d9441 of $apps", lines[1])
+        assertTrue(lines[2].startsWith("11  gradle 9.6.1"), out.toString())
+    }
+
+    @Test
+    fun `gradle shows the holding build without client when it can't be traced`() {
+        val exitCode = cli(repositoryExecutor(), fileManager = FakeFileManager(existing = listOf(base, merged)), daemons = heldDaemons(null)).run(listOf("gradle"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals("  held by a build in $merged for 2h14m", out.lines()[1])
+    }
+
     @Test
     fun `gradle without daemons says so`() {
         val exitCode = cli(repositoryExecutor()).run(listOf("gradle"))
@@ -977,6 +1026,36 @@ class ShogunCliTest {
         assertTrue(executor.ran("git", "worktree", "add", "--no-track", "$worktreesRoot/TASK-123", "-b", "feature/TASK-123", "epic1234"))
     }
 
+    @Test
+    fun `new reports the commit the branch starts from on standard error`() {
+        val executor = repositoryExecutor { command, _ ->
+            when (command) {
+                listOf("git", "rev-parse", "--verify", "--quiet", "origin/develop^{commit}") -> Executor.ok(command, "a41d2651\n")
+                listOf("git", "log", "-1", "--format=%h %s", "a41d2651") -> Executor.ok(command, "a41d265 Merge pull request #12\n")
+                else -> null
+            }
+        }
+
+        val exitCode = cli(executor).run(listOf("new", "TASK-123", "--from", "origin/develop"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals("$worktreesRoot/TASK-123\n", out.toString())
+        assertTrue(err.contains("branched from origin/develop at a41d265 Merge pull request #12"), err.toString())
+    }
+
+    @Test
+    fun `new without from reports the current HEAD's commit`() {
+        val executor = repositoryExecutor { command, _ ->
+            if (command == listOf("git", "log", "-1", "--format=%h %s", "abc123")) Executor.ok(command, "abc123 Add login\n") else null
+        }
+
+        assertEquals(0, cli(executor).run(listOf("new", "TASK-123")), err.toString())
+
+        assertEquals("$worktreesRoot/TASK-123\n", out.toString())
+        assertTrue(err.contains("branched at abc123 Add login"), err.toString())
+        assertFalse(err.contains("branched from"), err.toString())
+    }
+
     private fun symbolicRefs(vararg refs: Pair<String, String>) = repositoryExecutor { command, _ ->
         if ("--symbolic-full-name" in command) {
             refs.toMap()[command.last()]?.let { Executor.ok(command, "$it\n") } ?: Executor.ok(command, "\n")
@@ -1143,6 +1222,8 @@ class ShogunCliTest {
 
         assertEquals(0, exitCode, err.toString())
         assertEquals("$worktreesRoot/hotfix-login\n", out.toString())
+        assertFalse(err.contains("branched"), err.toString())
+        assertFalse(executor.calls.any { it.first.take(2) == listOf("git", "log") })
     }
 
     @Test
@@ -3964,7 +4045,7 @@ class ShogunCliTest {
         assertEquals(setOf("daemons", "totalMemoryBytes"), json.keys)
         assertEquals(JsonPrimitive(2_684_354_560L), json.getValue("totalMemoryBytes"))
         val first = json.getValue("daemons").jsonArray[0].jsonObject
-        assertEquals(setOf("pid", "kind", "version", "memoryBytes", "state", "idleSince", "worktree"), first.keys)
+        assertEquals(setOf("pid", "kind", "version", "memoryBytes", "state", "idleSince", "worktree", "holder"), first.keys)
         assertEquals(JsonPrimitive(10), first.getValue("pid"))
         assertEquals("idle", (first.getValue("state") as JsonPrimitive).content)
         assertEquals(merged, (first.getValue("worktree") as JsonPrimitive).content)
@@ -3972,6 +4053,26 @@ class ShogunCliTest {
         val kotlin = json.getValue("daemons").jsonArray[2].jsonObject
         assertEquals("kotlin", (kotlin.getValue("kind") as JsonPrimitive).content)
         assertEquals(JsonNull, kotlin.getValue("idleSince"))
+    }
+
+    @Test
+    fun `gradle json adds the holding build of a busy daemon and null for an idle one`() {
+        val daemons = heldDaemons(GradleClient(81234, listOf("benchRun"), listOf(81200, 700, 500)))
+
+        val exitCode = cli(appsExecutor(), projects = listOf(project, appsProject), fileManager = FakeFileManager(existing = listOf(base, merged)), daemons = daemons, sessionStore = heldSessions)
+            .run(listOf("gradle", "--json"))
+
+        assertEquals(0, exitCode, err.toString())
+        val entries = jsonOut().getValue("daemons").jsonArray
+        val holder = entries[0].jsonObject.getValue("holder").jsonObject
+        assertEquals(merged, holder.getValue("directory").jsonPrimitive.content)
+        assertEquals("2026-10-16T08:46:00Z", holder.getValue("startedAt").jsonPrimitive.content)
+        assertEquals(JsonPrimitive(81234), holder.getValue("clientPid"))
+        assertEquals(listOf("benchRun"), holder.getValue("tasks").jsonArray.map { it.jsonPrimitive.content })
+        val session = holder.getValue("session").jsonObject
+        assertEquals("963d9441", session.getValue("id").jsonPrimitive.content)
+        assertEquals(apps, session.getValue("worktree").jsonPrimitive.content)
+        assertEquals(JsonNull, entries[1].jsonObject.getValue("holder"))
     }
 
     @Test

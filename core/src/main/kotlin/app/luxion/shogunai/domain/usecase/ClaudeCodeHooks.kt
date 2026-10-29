@@ -1,6 +1,7 @@
 package app.luxion.shogunai.domain.usecase
 
 import app.luxion.shogunai.domain.io.FileManager
+import app.luxion.shogunai.domain.model.ClaudeComputerUse
 import app.luxion.shogunai.domain.model.WorktreeError
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
@@ -85,22 +86,29 @@ class ClaudeCodeHooks(private val fileManager: FileManager) {
         val added = mutableListOf<HookEntry>()
         val replaced = mutableListOf<HookReplacement>()
         val removed = mutableListOf<HookEntry>()
-        val desired = if (install) DESIRED.associateBy { it.event } else emptyMap()
         (DESIRED.map { it.event } + hooks.keys).distinct().forEach { event ->
             val found = installedHooks(hooks[event])
-            val wanted = desired[event]
-            when {
-                wanted != null && isCurrent(found, wanted) -> Unit
-                wanted != null && found.isEmpty() -> added += HookEntry(event, wanted.command)
-                wanted != null -> replaced += HookReplacement(event, found.map { it.command }, wanted.command)
-                else -> found.forEach { removed += HookEntry(event, it.command) }
+            val wanted = if (install) desiredFor(event) else emptyList()
+            if (isCurrent(found, wanted)) return@forEach
+            val remaining = found.toMutableList()
+            val missing = wanted.filterNot { remaining.remove(it.installed()) }
+            val paired = missing.associateWith { wish -> remaining.filter { it.matcher == wish.matcher }.also { remaining.removeAll(it) } }
+            val unpaired = missing.firstOrNull { paired.getValue(it).isEmpty() }
+            missing.forEach { wish ->
+                val previous = paired.getValue(wish) + if (wish == unpaired) remaining.toList() else emptyList()
+                if (previous.isEmpty()) added += HookEntry(event, wish.command) else replaced += HookReplacement(event, previous.map { it.command }, wish.command)
             }
+            if (unpaired == null) remaining.forEach { removed += HookEntry(event, it.command) }
         }
         return HooksPreview(added, replaced, removed)
     }
 
-    private fun isCurrent(found: List<InstalledHook>, wanted: DesiredHook): Boolean =
-        found == listOf(InstalledHook(wanted.command, wanted.matcher, wanted.condition))
+    private fun desiredFor(event: String): List<DesiredHook> = DESIRED.filter { it.event == event }
+
+    private fun DesiredHook.installed(): InstalledHook = InstalledHook(command, matcher, condition)
+
+    private fun isCurrent(found: List<InstalledHook>, wanted: List<DesiredHook>): Boolean =
+        found.groupingBy { it }.eachCount() == wanted.map { it.installed() }.groupingBy { it }.eachCount()
 
     private fun installedHooks(groups: JsonElement?): List<InstalledHook> =
         (groups as? JsonArray).orEmpty().flatMap { group ->
@@ -121,10 +129,10 @@ class ClaudeCodeHooks(private val fileManager: FileManager) {
     private fun applyInstall(settings: JsonObject): JsonObject {
         val hooks = hooksOf(settings)
         val rebuilt = LinkedHashMap<String, JsonElement>(hooks)
-        DESIRED.forEach { wanted ->
-            if (isCurrent(installedHooks(hooks[wanted.event]), wanted)) return@forEach
-            val kept = stripped(hooks[wanted.event])
-            rebuilt[wanted.event] = JsonArray(kept + group(wanted))
+        DESIRED.map { it.event }.distinct().forEach { event ->
+            val wanted = desiredFor(event)
+            if (isCurrent(installedHooks(hooks[event]), wanted)) return@forEach
+            rebuilt[event] = JsonArray(stripped(hooks[event]) + wanted.map(::group))
         }
         hooks.keys.filter { event -> DESIRED.none { it.event == event } }.forEach { event -> restoreStripped(rebuilt, hooks, event) }
         return withHooks(settings, JsonObject(rebuilt))
@@ -192,6 +200,7 @@ class ClaudeCodeHooks(private val fileManager: FileManager) {
             DesiredHook("Stop", "shogun hook agent-state"),
             DesiredHook("SessionEnd", "shogun hook agent-state"),
             DesiredHook("PreToolUse", "shogun hook desktop-turn", matcher = "Bash", condition = "Bash(*computer *)"),
+            DesiredHook("PreToolUse", "shogun hook desktop-turn", matcher = ClaudeComputerUse.hookMatcher),
         )
 
         val AGENT_STATE_EVENTS: List<String> = listOf("UserPromptSubmit", "Notification", "Stop", "SessionEnd")
