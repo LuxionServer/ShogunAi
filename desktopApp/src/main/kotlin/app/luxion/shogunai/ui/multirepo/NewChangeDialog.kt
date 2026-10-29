@@ -15,8 +15,9 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import app.luxion.shogunai.domain.io.ApprovalDecision
 import app.luxion.shogunai.domain.model.BranchType
-import app.luxion.shogunai.domain.model.HerdrOutcome
-import app.luxion.shogunai.domain.model.OrcaOutcome
+import app.luxion.shogunai.domain.model.RunnerId
+import app.luxion.shogunai.domain.model.RunnerOpening
+import app.luxion.shogunai.domain.model.RunnerOutcome
 import app.luxion.shogunai.domain.usecase.GroupRepositoryOutcome
 import app.luxion.shogunai.domain.usecase.GroupRepositoryResult
 import app.luxion.shogunai.ui.components.DialogSize
@@ -154,42 +155,34 @@ private fun GroupRepositoryResult.label(strings: Strings): String = when (outcom
 fun Strings.multirepoNoticeMessage(notice: MultirepoNotice): String = when (notice) {
     is MultirepoNotice.AddedToGroup -> repositoryAddedToGroup(notice.alias, notice.title)
     is MultirepoNotice.ChangeCreated -> changeCreated(notice.title, notice.aliases)
-    is MultirepoNotice.AgentOpened -> when (notice.outcome) {
-        HerdrOutcome.OPENED -> multirepoAgentOpened
-        HerdrOutcome.STARTED_AGENT -> multirepoAgentStarted
-        HerdrOutcome.FOCUSED -> multirepoAgentFocused
-    }
-    is MultirepoNotice.AgentOpenedInOrca -> when (notice.outcome) {
-        OrcaOutcome.STARTED_AGENT -> multirepoAgentStartedInOrca
-        OrcaOutcome.FOCUSED -> multirepoAgentFocusedInOrca
+    is MultirepoNotice.AgentOpened -> when (notice.runner) {
+        RunnerId.HERDR -> when (notice.outcome) {
+            RunnerOutcome.OPENED -> multirepoAgentOpened
+            RunnerOutcome.STARTED_AGENT -> multirepoAgentStarted
+            RunnerOutcome.FOCUSED -> multirepoAgentFocused
+        }
+        RunnerId.ORCA -> when (notice.outcome) {
+            RunnerOutcome.OPENED, RunnerOutcome.STARTED_AGENT -> multirepoAgentStartedInOrca
+            RunnerOutcome.FOCUSED -> multirepoAgentFocusedInOrca
+        }
     }
     is MultirepoNotice.GroupOpenedInOrca -> groupOpenedInOrca(
         notice.title,
-        notice.outcomes.filter { it.second == OrcaOutcome.STARTED_AGENT }.map { it.first },
-        notice.outcomes.filter { it.second == OrcaOutcome.FOCUSED }.map { it.first },
+        notice.outcomes.filter { it.second != RunnerOutcome.FOCUSED }.map { it.first },
+        notice.outcomes.filter { it.second == RunnerOutcome.FOCUSED }.map { it.first },
     )
     is MultirepoNotice.Failed -> describe(notice.error).summary
 }
 
-private fun Result<RunnerOutcome>.label(strings: Strings): String = fold(
-    onSuccess = { outcome ->
-        when (outcome) {
-            is RunnerOutcome.Herdr -> when (outcome.outcome) {
-                HerdrOutcome.OPENED -> strings.runnerOpened
-                HerdrOutcome.STARTED_AGENT -> strings.runnerAgentStarted
-                HerdrOutcome.FOCUSED -> strings.runnerAgentFocused
-            }
-            is RunnerOutcome.Orca -> when (outcome.outcome) {
-                OrcaOutcome.STARTED_AGENT -> strings.runnerAgentStarted
-                OrcaOutcome.FOCUSED -> strings.runnerAgentFocused
-            }
+private fun Result<RunnerOpening>.label(strings: Strings): String = fold(
+    onSuccess = { opening ->
+        when (opening.outcome) {
+            RunnerOutcome.OPENED -> strings.runnerOpened
+            RunnerOutcome.STARTED_AGENT -> strings.runnerAgentStarted
+            RunnerOutcome.FOCUSED -> strings.runnerAgentFocused
         }
     },
     onFailure = { strings.runnerOpenFailed(strings.describe(it).summary) },
 )
 
-private fun ChangeRunner.label(strings: Strings): String = when (this) {
-    ChangeRunner.NONE -> strings.dontOpen
-    ChangeRunner.HERDR -> "Herdr"
-    ChangeRunner.ORCA -> "Orca"
-}
+private fun RunnerId?.label(strings: Strings): String = this?.displayName ?: strings.dontOpen

@@ -454,7 +454,25 @@ interface OrcaClient {
 }
 ```
 
-Las operaciones de [Orca](https://onorca.dev) que usa ShogunAi, con el vocabulario de Orca (un repositorio con worktrees y terminales, no los workspaces y panes de Herdr): si Orca está instalado y su runtime responde, arrancar la app de escritorio o traer su ventana al frente, registrar un repositorio y mostrar sus worktrees ajenos a Orca, listar los worktrees visibles de un repositorio, los agentes de todos los espacios de trabajo en una sola llamada (incluidos los de carpeta), las terminales de un espacio de trabajo y el agente que Orca identifica en una, fijar los metadatos de Orca de un worktree (comentario, estado del tablero, pull request e issue enlazadas), crear una terminal enfocada que ejecuta un comando, cambiar a una terminal, cerrar todas las terminales de un espacio de trabajo y mostrar un emulador o simulador en marcha en la vista de emuladores de un espacio de trabajo. Las operaciones de terminal reciben un `OrcaWorkspace`, así que las mismas llamadas sirven para un worktree y para el espacio de trabajo de carpeta de un multirepo. Todavía no hay un puerto genérico de runner: se extraerá cuando el runner sea una elección. Los errores son los casos `Orca*` de `WorktreeError`.
+Las operaciones de [Orca](https://onorca.dev) que usa ShogunAi, con el vocabulario de Orca (un repositorio con worktrees y terminales, no los workspaces y panes de Herdr): si Orca está instalado y su runtime responde, arrancar la app de escritorio o traer su ventana al frente, registrar un repositorio y mostrar sus worktrees ajenos a Orca, listar los worktrees visibles de un repositorio, los agentes de todos los espacios de trabajo en una sola llamada (incluidos los de carpeta), las terminales de un espacio de trabajo y el agente que Orca identifica en una, fijar los metadatos de Orca de un worktree (comentario, estado del tablero, pull request e issue enlazadas), crear una terminal enfocada que ejecuta un comando, cambiar a una terminal, cerrar todas las terminales de un espacio de trabajo y mostrar un emulador o simulador en marcha en la vista de emuladores de un espacio de trabajo. Las operaciones de terminal reciben un `OrcaWorkspace`, así que las mismas llamadas sirven para un worktree y para el espacio de trabajo de carpeta de un multirepo. La apertura pasa por el puerto [`AgentRunner`](#agentrunner). Los errores son los casos `Orca*` de `WorktreeError`.
+
+### `AgentRunner`
+
+```kotlin
+interface AgentRunner {
+    val id: RunnerId
+    fun isInstalled(): Boolean
+    suspend fun openWorktree(config: ProjectConfig, worktree: Worktree, agent: AgentLaunchConfig = config.agentLaunchConfig): Result<RunnerOpening>
+    suspend fun openGroup(group: WorktreeGroup): Result<List<GroupRunnerOpening>>
+    suspend fun openMultirepoAgent(multirepo: Multirepo): Result<RunnerOpening>
+}
+```
+
+Un solo puerto para abrir agentes en un runner, sea cual sea. `HerdrAgentRunner` y `OrcaAgentRunner` lo implementan sobre los casos de uso de apertura de cada runner, que siguen hablando el vocabulario de su cliente, y traducen su resultado a `RunnerOpening` (`runner`, `outcome` `OPENED`, `STARTED_AGENT` o `FOCUSED`, `handle`, el pane de Herdr o la terminal de Orca, `agent` y `sessionName`, más `emulator`, `simulator` y `devicesSkipped` de Orca). El `open` de la CLI y las acciones del multirepo y "Nuevo cambio" de la app de escritorio pasan por él. Cerrar espacios de trabajo y terminales al eliminar y leer los estados de los agentes siguen siendo de cada runner, porque se hacen para todos los runners instalados, se elija el que se elija.
+
+### Elección del runner
+
+El runner elegido en las preferencias es `ToolPreferenceRepository.loadRunner()`/`saveRunner()` (`RunnerId?`, en `settings.json`, junto al terminal y el IDE). `runnerInUse(chosen, installed)` lo convierte en el runner en uso: el elegido mientras esté instalado; si no, el primero instalado de Herdr y Orca; si no, el elegido o Herdr.
 
 ### `OrcaWorkspaceStore`
 

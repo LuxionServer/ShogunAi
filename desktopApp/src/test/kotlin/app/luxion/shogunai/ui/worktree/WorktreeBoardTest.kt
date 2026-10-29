@@ -1,5 +1,10 @@
 package app.luxion.shogunai.ui.worktree
 
+import app.luxion.shogunai.domain.model.GroupRunnerOpening
+import app.luxion.shogunai.domain.model.RunnerId
+import app.luxion.shogunai.domain.model.RunnerOpening
+import app.luxion.shogunai.domain.model.RunnerOutcome
+import app.luxion.shogunai.domain.usecase.toRunnerOpening
 import app.luxion.shogunai.ui.actions.ActionId
 import app.luxion.shogunai.ui.actions.menuBarEntries
 import app.luxion.shogunai.EmulatorUseCases
@@ -98,10 +103,8 @@ import app.luxion.shogunai.domain.usecase.GroupRepositoryOutcome
 import app.luxion.shogunai.domain.usecase.GroupRepositoryResult
 import app.luxion.shogunai.domain.usecase.MultirepoMember
 import app.luxion.shogunai.domain.usecase.WorktreeGroup as BranchGroup
-import app.luxion.shogunai.ui.multirepo.ChangeRunner
 import app.luxion.shogunai.ui.multirepo.MultirepoActions
 import app.luxion.shogunai.ui.multirepo.MultirepoNotice
-import app.luxion.shogunai.ui.multirepo.RunnerOutcome
 import app.luxion.shogunai.ui.multirepo.multirepoMemberships
 import app.luxion.shogunai.ui.multirepo.multirepoNoticeMessage
 
@@ -133,6 +136,7 @@ class WorktreeBoardTest {
     private var agentGate: CompletableDeferred<Unit>? = null
     private val executed = mutableListOf<List<String>>()
     private val openedInHerdr = mutableListOf<String>()
+    private val openedInOrca = mutableListOf<String>()
     private var divergenceOutput = "2\t0\n"
     private val unmergedPaths = mutableSetOf<String>()
     private var upstreamOutput: String? = null
@@ -242,7 +246,10 @@ class WorktreeBoardTest {
             },
             simulator = SimulatorUseCases.NONE,
             herdr = HerdrUseCases.NONE.copy(open = { target, _ -> openedInHerdr += target.path; Result.success(HerdrOpening(HerdrOutcome.OPENED, "w1:p1", "Claude")) }),
-            orca = OrcaUseCases.NONE.copy(withTerminals = { paths -> paths.filter { it in orcaTerminalPaths }.toSet() }),
+            orca = OrcaUseCases.NONE.copy(
+                open = { target, _ -> openedInOrca += target.path; Result.success(OrcaOpening(OrcaOutcome.STARTED_AGENT, "term_1", "Claude")) },
+                withTerminals = { paths -> paths.filter { it in orcaTerminalPaths }.toSet() },
+            ),
             gradle = GradleUseCases(
                 provider = { GradleProvider().takeIf { id in gradleDeclaredFor } },
                 listDaemons = ListGradleDaemonsUseCase(gradleDaemons, FakeFileManager(existing = listOf(base) + worktrees.map { it.first })),
@@ -266,6 +273,7 @@ class WorktreeBoardTest {
         clock: () -> Instant = Instant::now,
         onWorktreeUsed: (WorktreeRef) -> Unit = {},
         multirepoActions: MultirepoActions = MultirepoActions.NONE,
+        runnerInUse: RunnerId = RunnerId.HERDR,
         syncOrca: suspend (List<OrcaSyncItem>) -> Unit = {},
     ): WorktreeBoard = WorktreeBoard(
         useCasesFor = { config -> repositories.first { it.base == config.baseRepositoryPath }.useCases() },
@@ -280,6 +288,7 @@ class WorktreeBoardTest {
         ioDispatcher = dispatcher,
         onWorktreeUsed = onWorktreeUsed,
         multirepoActions = multirepoActions,
+        runnerInUse = { runnerInUse },
     ).also {
         it.syncCatalog(projects)
         it.show(null)
@@ -1393,9 +1402,9 @@ class WorktreeBoardTest {
         approved = true,
     )
 
-    private fun TestScope.productBoard(multirepoActions: MultirepoActions = MultirepoActions.NONE): WorktreeBoard {
+    private fun TestScope.productBoard(multirepoActions: MultirepoActions = MultirepoActions.NONE, runnerInUse: RunnerId = RunnerId.HERDR): WorktreeBoard {
         repositories = listOf(productApp, productApi, productDocs, tools)
-        val board = board(multirepoActions = multirepoActions)
+        val board = board(multirepoActions = multirepoActions, runnerInUse = runnerInUse)
         board.syncMultirepos(multirepoMemberships(listOf(product), board.projects))
         advanceUntilIdle()
         board.showMultirepo(product.folder)
@@ -1519,7 +1528,7 @@ class WorktreeBoardTest {
                     calls += Triple(members.map { it.alias }, taskId, type)
                     Result.success(GroupCreation("feature/$taskId", members.map { GroupRepositoryResult(it.alias, GroupRepositoryOutcome.CREATED) }))
                 },
-                openAgent = { Result.success(HerdrOpening(HerdrOutcome.OPENED, "w1:p1", "Claude")) },
+                openAgent = { _, _ -> Result.success(HerdrOpening(HerdrOutcome.OPENED, "w1:p1", "Claude").toRunnerOpening()) },
             ),
         )
         val group = board.changeView.groups.single { it.title == "TASK-1" }
@@ -1542,7 +1551,7 @@ class WorktreeBoardTest {
                     created += members.map { it.alias }
                     Result.success(GroupCreation("feature/$taskId", members.map { GroupRepositoryResult(it.alias, GroupRepositoryOutcome.CREATED) }))
                 },
-                openAgent = { Result.success(HerdrOpening(HerdrOutcome.OPENED, "w1:p1", "Claude")) },
+                openAgent = { _, _ -> Result.success(HerdrOpening(HerdrOutcome.OPENED, "w1:p1", "Claude").toRunnerOpening()) },
             ),
         )
 
@@ -1576,7 +1585,7 @@ class WorktreeBoardTest {
                         ),
                     )
                 },
-                openAgent = { Result.success(HerdrOpening(HerdrOutcome.OPENED, "w1:p1", "Claude")) },
+                openAgent = { _, _ -> Result.success(HerdrOpening(HerdrOutcome.OPENED, "w1:p1", "Claude").toRunnerOpening()) },
             ),
         )
 
@@ -1601,9 +1610,9 @@ class WorktreeBoardTest {
         val board = productBoard(
             MultirepoActions(
                 createGroup = { _, _, _, _, _ -> Result.failure(UnsupportedOperationException()) },
-                openAgent = { multirepo ->
+                openAgent = { _, multirepo ->
                     opened += multirepo.folder
-                    Result.success(HerdrOpening(HerdrOutcome.FOCUSED, "w1:p1", "claude"))
+                    Result.success(HerdrOpening(HerdrOutcome.FOCUSED, "w1:p1", "claude").toRunnerOpening())
                 },
             ),
         )
@@ -1612,7 +1621,7 @@ class WorktreeBoardTest {
         advanceUntilIdle()
 
         assertEquals(listOf(product.folder), opened)
-        assertEquals(MultirepoNotice.AgentOpened(HerdrOutcome.FOCUSED), board.multirepoNotice)
+        assertEquals(MultirepoNotice.AgentOpened(RunnerId.HERDR, RunnerOutcome.FOCUSED), board.multirepoNotice)
     }
 
     @Test
@@ -1621,13 +1630,13 @@ class WorktreeBoardTest {
         val board = productBoard(
             MultirepoActions(
                 createGroup = { _, _, _, _, _ -> Result.failure(UnsupportedOperationException()) },
-                openAgent = { result },
+                openAgent = { _, _ -> result.map { it.toRunnerOpening() } },
             ),
         )
 
         board.openMultirepoAgent()
         advanceUntilIdle()
-        assertEquals(MultirepoNotice.AgentOpened(HerdrOutcome.STARTED_AGENT), board.multirepoNotice)
+        assertEquals(MultirepoNotice.AgentOpened(RunnerId.HERDR, RunnerOutcome.STARTED_AGENT), board.multirepoNotice)
 
         val failure = WorktreeError.HerdrAgentNotStarted("w5:p2", "claude")
         result = Result.failure(failure)
@@ -1647,12 +1656,18 @@ class WorktreeBoardTest {
         orcaInstalled: Boolean = true,
     ) = MultirepoActions(
         createGroup = { members, taskId, _, _, _ -> createGroup(members, taskId) },
-        openAgent = { Result.failure(UnsupportedOperationException()) },
-        openGroupInHerdr = openGroupInHerdr,
-        openGroupInOrca = openGroupInOrca,
-        openAgentInOrca = openAgentInOrca,
-        herdrInstalled = herdrInstalled,
-        orcaInstalled = orcaInstalled,
+        openAgent = { runner, multirepo ->
+            if (runner == RunnerId.ORCA) openAgentInOrca(multirepo).map { it.toRunnerOpening() } else Result.failure(UnsupportedOperationException())
+        },
+        openGroup = { runner, group ->
+            when (runner) {
+                RunnerId.HERDR -> Result.success(openGroupInHerdr(group).map { GroupRunnerOpening(it.alias, it.path, it.result.map { opening -> opening.toRunnerOpening() }) })
+                RunnerId.ORCA -> openGroupInOrca(group).map { openings ->
+                    openings.map { GroupRunnerOpening(it.alias, it.path, it.result.map { opening -> opening.toRunnerOpening() }) }
+                }
+            }
+        },
+        installedRunners = setOfNotNull(RunnerId.HERDR.takeIf { herdrInstalled }, RunnerId.ORCA.takeIf { orcaInstalled }),
     )
 
     private fun orcaOpened(group: BranchGroup, outcome: (String) -> Result<OrcaOpening>) =
@@ -1678,7 +1693,7 @@ class WorktreeBoardTest {
         assertEquals(setOf("/home/dev/projects/app-TASK-1", "/home/dev/projects/api-TASK-1"), groups.single().worktrees.map { it.worktree.path }.toSet())
         val notice = board.multirepoNotice as MultirepoNotice.GroupOpenedInOrca
         assertEquals("TASK-1", notice.title)
-        assertEquals(setOf("app" to OrcaOutcome.STARTED_AGENT, "api" to OrcaOutcome.FOCUSED), notice.outcomes.toSet())
+        assertEquals(setOf("app" to RunnerOutcome.STARTED_AGENT, "api" to RunnerOutcome.FOCUSED), notice.outcomes.toSet())
         assertTrue(board.openingGroupsInOrca.isEmpty())
         EnglishStrings.multirepoNoticeMessage(notice).let { assertTrue(it.contains("agent started in app") && it.contains("running agent focused in api"), it) }
     }
@@ -1695,7 +1710,7 @@ class WorktreeBoardTest {
         board.openAllInOrca(board.changeView.groups.single { it.title == "TASK-1" })
         advanceUntilIdle()
 
-        assertEquals(MultirepoNotice.GroupOpenedInOrca("TASK-1", listOf("app" to OrcaOutcome.STARTED_AGENT)), board.multirepoNotice)
+        assertEquals(MultirepoNotice.GroupOpenedInOrca("TASK-1", listOf("app" to RunnerOutcome.STARTED_AGENT)), board.multirepoNotice)
         assertEquals(failure, board.holder("api")!!.actionErrors["/home/dev/projects/api-TASK-1"])
         assertNull(board.holder("app")!!.actionErrors["/home/dev/projects/app-TASK-1"])
         val details = EnglishStrings.describe(failure).details?.output.orEmpty()
@@ -1716,15 +1731,15 @@ class WorktreeBoardTest {
         board.openMultirepoAgentInOrca()
         advanceUntilIdle()
         assertEquals(listOf(product.folder), opened)
-        assertEquals(MultirepoNotice.AgentOpenedInOrca(OrcaOutcome.STARTED_AGENT), board.multirepoNotice)
+        assertEquals(MultirepoNotice.AgentOpened(RunnerId.ORCA, RunnerOutcome.STARTED_AGENT), board.multirepoNotice)
 
         result = Result.success(OrcaOpening(OrcaOutcome.FOCUSED, "term_1", "claude"))
         board.openMultirepoAgentInOrca()
         advanceUntilIdle()
-        assertEquals(MultirepoNotice.AgentOpenedInOrca(OrcaOutcome.FOCUSED), board.multirepoNotice)
+        assertEquals(MultirepoNotice.AgentOpened(RunnerId.ORCA, RunnerOutcome.FOCUSED), board.multirepoNotice)
         assertNotEquals(
-            EnglishStrings.multirepoNoticeMessage(MultirepoNotice.AgentOpenedInOrca(OrcaOutcome.STARTED_AGENT)),
-            EnglishStrings.multirepoNoticeMessage(MultirepoNotice.AgentOpenedInOrca(OrcaOutcome.FOCUSED)),
+            EnglishStrings.multirepoNoticeMessage(MultirepoNotice.AgentOpened(RunnerId.ORCA, RunnerOutcome.STARTED_AGENT)),
+            EnglishStrings.multirepoNoticeMessage(MultirepoNotice.AgentOpened(RunnerId.ORCA, RunnerOutcome.FOCUSED)),
         )
 
         val notOpen = WorktreeError.OrcaMultirepoFolderNotOpen(product.folder)
@@ -1768,19 +1783,28 @@ class WorktreeBoardTest {
     }
 
     @Test
-    fun `the new change selector offers each installed runner and defaults to not opening`() = runTest(dispatcher) {
+    fun `the new change selector offers each installed runner and starts on the runner in use`() = runTest(dispatcher) {
         val both = productBoard(orcaActions())
         both.openNewChange()
-        assertEquals(listOf(ChangeRunner.NONE, ChangeRunner.HERDR, ChangeRunner.ORCA), both.newChange!!.runners)
-        assertEquals(ChangeRunner.NONE, both.newChange!!.runner)
+        assertEquals(listOf(null, RunnerId.HERDR, RunnerId.ORCA), both.newChange!!.runners)
+        assertEquals(RunnerId.HERDR, both.newChange!!.runner)
 
         val herdrOnly = productBoard(orcaActions(orcaInstalled = false))
         herdrOnly.openNewChange()
-        assertEquals(listOf(ChangeRunner.NONE, ChangeRunner.HERDR), herdrOnly.newChange!!.runners)
+        assertEquals(listOf(null, RunnerId.HERDR), herdrOnly.newChange!!.runners)
 
         val neither = productBoard(orcaActions(herdrInstalled = false, orcaInstalled = false))
         neither.openNewChange()
         assertEquals(emptyList(), neither.newChange!!.runners)
+        assertNull(neither.newChange!!.runner)
+
+        val orcaInUse = productBoard(orcaActions(), runnerInUse = RunnerId.ORCA)
+        orcaInUse.openNewChange()
+        assertEquals(RunnerId.ORCA, orcaInUse.newChange!!.runner)
+
+        val orcaMissing = productBoard(orcaActions(orcaInstalled = false), runnerInUse = RunnerId.ORCA)
+        orcaMissing.openNewChange()
+        assertNull(orcaMissing.newChange!!.runner)
     }
 
     @Test
@@ -1790,6 +1814,7 @@ class WorktreeBoardTest {
 
         board.openNewChange()
         board.newChange!!.updateTaskId("TASK-20")
+        board.newChange!!.runner = null
         board.confirmNewChange()
         advanceUntilIdle()
 
@@ -1811,7 +1836,7 @@ class WorktreeBoardTest {
         board.openNewChange()
         val change = board.newChange!!
         change.updateTaskId("TASK-20")
-        change.runner = ChangeRunner.ORCA
+        change.runner = RunnerId.ORCA
         board.confirmNewChange()
         advanceUntilIdle()
 
@@ -1820,8 +1845,8 @@ class WorktreeBoardTest {
         assertEquals(change, board.newChange)
         assertEquals(setOf("api", "app"), change.results!!.map { it.alias }.toSet())
         assertEquals(
-            mapOf("api" to RunnerOutcome.Orca(OrcaOutcome.STARTED_AGENT), "app" to RunnerOutcome.Orca(OrcaOutcome.STARTED_AGENT)),
-            change.openings!!.mapValues { it.value.getOrThrow() },
+            mapOf("api" to RunnerOutcome.STARTED_AGENT, "app" to RunnerOutcome.STARTED_AGENT),
+            change.openings!!.mapValues { it.value.getOrThrow().outcome },
         )
     }
 
@@ -1837,12 +1862,12 @@ class WorktreeBoardTest {
 
         board.openNewChange()
         board.newChange!!.updateTaskId("TASK-20")
-        board.newChange!!.runner = ChangeRunner.HERDR
+        board.newChange!!.runner = RunnerId.HERDR
         board.confirmNewChange()
         advanceUntilIdle()
 
         assertEquals(listOf("api", "app"), groups.single().worktrees.map { it.alias })
-        assertEquals(RunnerOutcome.Herdr(HerdrOutcome.OPENED), board.newChange!!.openings!!["app"]!!.getOrThrow())
+        assertEquals(RunnerOpening(RunnerId.HERDR, RunnerOutcome.OPENED, "w1:p1", "Claude"), board.newChange!!.openings!!["app"]!!.getOrThrow())
     }
 
     @Test
@@ -1856,7 +1881,7 @@ class WorktreeBoardTest {
 
         board.openNewChange()
         board.newChange!!.updateTaskId("TASK-20")
-        board.newChange!!.runner = ChangeRunner.ORCA
+        board.newChange!!.runner = RunnerId.ORCA
         board.confirmNewChange()
         advanceUntilIdle()
 
@@ -1894,7 +1919,7 @@ class WorktreeBoardTest {
         board.openNewChange()
         board.newChange!!.updateTaskId("TASK-20")
         board.newChange!!.toggle("docs")
-        board.newChange!!.runner = ChangeRunner.ORCA
+        board.newChange!!.runner = RunnerId.ORCA
         board.confirmNewChange()
         advanceUntilIdle()
 
@@ -1909,7 +1934,7 @@ class WorktreeBoardTest {
         val board = board(
             multirepoActions = MultirepoActions(
                 createGroup = { _, _, _, _, _ -> Result.failure(UnsupportedOperationException()) },
-                openAgent = { multirepo -> opened += multirepo.folder; Result.success(HerdrOpening(HerdrOutcome.OPENED, "w1:p1", "Claude")) },
+                openAgent = { _, multirepo -> opened += multirepo.folder; Result.success(HerdrOpening(HerdrOutcome.OPENED, "w1:p1", "Claude").toRunnerOpening()) },
             ),
         )
         board.syncMultirepos(multirepoMemberships(listOf(product.copy(approved = false)), board.projects))
@@ -1935,7 +1960,7 @@ class WorktreeBoardTest {
         val board = board(
             multirepoActions = MultirepoActions(
                 createGroup = { _, _, _, _, _ -> Result.failure(UnsupportedOperationException()) },
-                openAgent = { Result.failure(UnsupportedOperationException()) },
+                openAgent = { _, _ -> Result.failure(UnsupportedOperationException()) },
                 trust = { multirepo -> trusted += multirepo.folder; Result.success(multirepo.copy(approved = true)) },
             ),
         )

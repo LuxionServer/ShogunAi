@@ -10,6 +10,7 @@ import app.luxion.shogunai.domain.FakeGradleDaemonSource
 import app.luxion.shogunai.domain.FakeHerdrClient
 import app.luxion.shogunai.domain.FakeHerdrConfigSource
 import app.luxion.shogunai.domain.FakeOrcaClient
+import app.luxion.shogunai.domain.FakeToolPreferenceRepository
 import app.luxion.shogunai.domain.FakeKmpTestWiring
 import app.luxion.shogunai.domain.FakeMachineCapacity
 import app.luxion.shogunai.domain.FakePortProbe
@@ -27,6 +28,7 @@ import app.luxion.shogunai.domain.model.RepositoryProvisioning
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.ResourceSettings
+import app.luxion.shogunai.domain.model.RunnerId
 import app.luxion.shogunai.domain.model.WorkflowRules
 import app.luxion.shogunai.domain.usecase.AgentInstructionsBlock
 import kotlinx.serialization.json.Json
@@ -87,6 +89,8 @@ class GuideCommandsTest {
         herdr: FakeHerdrClient = FakeHerdrClient(agentsFailure = IllegalStateException("herdr isn't running")),
         environment: Map<String, String> = emptyMap(),
         registered: Boolean = true,
+        runner: FakeToolPreferenceRepository = FakeToolPreferenceRepository(),
+        orca: FakeOrcaClient = FakeOrcaClient(installed = false),
     ) = ShogunCli(
         executor = executor,
         fileManager = files,
@@ -103,7 +107,7 @@ class GuideCommandsTest {
         machineCapacity = FakeMachineCapacity(),
         derivedDataSource = FakeDerivedDataSource(),
         herdrConfig = FakeHerdrConfigSource(),
-        orca = FakeOrcaClient(installed = false),
+        orca = orca,
         workingDirectory = workingDirectory,
         out = out,
         err = err,
@@ -112,6 +116,7 @@ class GuideCommandsTest {
         environmentVariable = { environment[it] },
         userHome = home,
         herdr = herdr,
+        toolPreferences = runner,
         readAnswer = { answer },
     )
 
@@ -188,6 +193,41 @@ class GuideCommandsTest {
         val applicable = out.lines().takeWhile { !it.startsWith("Not applicable") }
         assertTrue(applicable.any { it.contains("shogun open <id> --herdr") }, out.toString())
         assertTrue(applicable.any { it.contains("never by typing into its terminal") }, out.toString())
+    }
+
+    @Test
+    fun `guide parallel with Orca in use names --orca while Orca is installed`() {
+        assertEquals(0, cli(orca = FakeOrcaClient(running = false), runner = FakeToolPreferenceRepository(runner = RunnerId.ORCA)).run(listOf("guide", "parallel")))
+
+        val applicable = out.lines().takeWhile { !it.startsWith("Not applicable") }
+        assertTrue(applicable.any { it.contains("shogun open <id> --orca") }, out.toString())
+        assertFalse(out.contains("--herdr"), out.toString())
+    }
+
+    @Test
+    fun `guide parallel with Orca chosen but not installed falls back to Herdr`() {
+        assertEquals(0, cli(herdr = fakeHerdr(), runner = FakeToolPreferenceRepository(runner = RunnerId.ORCA)).run(listOf("guide", "parallel")))
+
+        assertTrue(out.contains("shogun open <id> --herdr"), out.toString())
+        assertFalse(out.contains("--orca"), out.toString())
+    }
+
+    @Test
+    fun `the plain guide names the runner in use`() {
+        assertEquals(0, cli(orca = FakeOrcaClient(), runner = FakeToolPreferenceRepository(runner = RunnerId.ORCA)).run(listOf("guide", "--plain")))
+
+        assertTrue(out.contains("shogun open <id> --orca"), out.toString())
+        assertFalse(out.contains("--herdr"), out.toString())
+    }
+
+    @Test
+    fun `session start with Orca in use names --orca`() {
+        val exitCode = cli(everything(), input = """{"cwd": "$linked"}""", orca = FakeOrcaClient(), runner = FakeToolPreferenceRepository(runner = RunnerId.ORCA))
+            .run(listOf("hook", "session-start"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertTrue(out.contains("Open another session with `shogun open <id> --orca`."), out.toString())
+        assertFalse(out.contains("--herdr"), out.toString())
     }
 
     @Test

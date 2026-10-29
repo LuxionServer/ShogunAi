@@ -157,11 +157,21 @@ The main worktree, worktrees Orca doesn't list and folder workspaces are left al
 
 **Multirepos.** In a multirepo folder, `shogun open <id> --orca` and the group header's "Open all in Orca" open every worktree of the group under its own Orca repository, and `shogun open --orca` and "Open multirepo agent in Orca" run the multirepo agent in Orca's workspace for the multirepo folder. A folder that isn't a Git repository needs a one-time setup in Orca's app first; see [Multirepos and groups](guide/multirepo.md#groups). While Orca reports an agent in that workspace, the multirepo view shows its state as for a worktree's agent.
 
+## Choosing the runner
+
+Herdr and Orca are both first-class runners. Choose the one you use in the desktop app's Settings, under **Tools** → **Default runner**; it's saved in `~/.shogunai/settings.json`, so `shogun` uses it too. The runner in use is the one you chose while it's installed; otherwise it's the first installed of Herdr and Orca, and Herdr when neither is. It decides:
+
+- what a worktree's main open action, the Worktree menu's open item and its shortcut (Cmd+O on macOS, Ctrl+O elsewhere) open in, and what the guided tour offers;
+- which runner comes first in a worktree's detail, its row's context menu, a group's header and the multirepo agent's menu (the other stays available);
+- where the "New change" selector starts;
+- where `shogun open <target>` opens when you pass neither `--herdr` nor `--orca`;
+- which runner the workflow rules below name: `shogun open <id> --orca` when Orca is in use.
+
 ## ShogunAi's workflow rules
 
 Agents that work in ShogunAi's worktrees tend to break its flow: they switch the branch of the worktree a session starts in, create worktrees outside `shogun`, type into another session's terminal or clean worktrees without asking. The rules that follow from how `shogun` works are kept in one catalog, versioned with the binary, in four topics: `worktrees`, `parallel`, `resources` and `cleanup`. They are defaults: every output says that the project's `AGENTS.md` and your own instructions take precedence. Personal or team preferences (code style, commits, pull request format or reviewers) are not part of it; the one rule about pull requests points to a fact ShogunAi records: open them against the branch [`shogun base`](guide/cli.md#base) prints.
 
-- **Claude Code** gets the short subset, adapted to the session, from the [`SessionStart` hook](#claude-code) (at most eleven lines, ending with a pointer to the rest): the rule about the main checkout or the worktree, branching with `--from`, opening sessions with `shogun open --herdr` and messaging them only when Herdr is available, the emulator and simulator rules only when the repository declares those providers, taking the desktop turn before computer use, and asking before `shogun clean --yes`.
+- **Claude Code** gets the short subset, adapted to the session, from the [`SessionStart` hook](#claude-code) (at most eleven lines, ending with a pointer to the rest): the rule about the main checkout or the worktree, branching with `--from`, opening sessions with `shogun open --herdr` or `--orca`, after the [runner in use](#choosing-the-runner), and messaging them only when that runner is available (Herdr answering, or Orca installed, since opening starts it), the emulator and simulator rules only when the repository declares those providers, taking the desktop turn before computer use, and asking before `shogun clean --yes`.
 - **Any agent** can read all of it with `shogun guide [<topic>]`: the rules that apply where it runs first, then the ones that don't, each marked with what it needs. `shogun guide --plain` prints every rule without looking at the directory, so it also works outside a repository.
 - **Agents without hooks** (Codex, Gemini CLI, Cursor) get a minimal block in the `AGENTS.md`-style file they read, which only says to run `shogun guide`, so the rules always come from the installed binary:
 

@@ -2,6 +2,7 @@ package app.luxion.shogunai.cli
 
 import app.luxion.shogunai.domain.model.BranchType
 import app.luxion.shogunai.domain.model.DEFAULT_DEVICE_WAIT_MINUTES
+import app.luxion.shogunai.domain.model.RunnerId
 import app.luxion.shogunai.domain.model.WorkflowTopic
 import app.luxion.shogunai.domain.usecase.EnvironmentFormat
 import java.time.Duration
@@ -41,10 +42,9 @@ sealed interface CliCommand {
     data class Repair(val json: Boolean = false) : CliCommand
     data class Open(
         val target: String?,
-        val herdr: Boolean = false,
+        val runner: RunnerId? = null,
         val agent: String? = null,
         val json: Boolean = false,
-        val orca: Boolean = false,
     ) : CliCommand
     data class Status(val json: Boolean = false) : CliCommand
     data class Base(val target: String? = null, val set: String? = null, val json: Boolean = false) : CliCommand
@@ -333,8 +333,12 @@ private fun parseOpen(rest: List<String>): CliCommand.Open {
         }
     }
     if (herdr && orca) throw UsageException("'open' opens in one place at a time: pass either --herdr or --orca")
-    if (!herdr && !orca) throw UsageException("'open' needs where to open the worktree: --herdr or --orca")
-    return CliCommand.Open(target, herdr, agent, orca = orca)
+    val runner = when {
+        herdr -> RunnerId.HERDR
+        orca -> RunnerId.ORCA
+        else -> null
+    }
+    return CliCommand.Open(target, runner, agent)
 }
 
 private fun parseStatus(rest: List<String>): CliCommand.Status {

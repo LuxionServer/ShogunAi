@@ -28,6 +28,7 @@ import app.luxion.shogunai.ui.i18n.Strings
 import app.luxion.shogunai.ui.components.TextInputFocus
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.AgentState
+import app.luxion.shogunai.domain.model.RunnerOpening
 import app.luxion.shogunai.domain.model.RunningAgent
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.usecase.Activity
@@ -47,12 +48,10 @@ import app.luxion.shogunai.domain.usecase.GroupWorktree
 import app.luxion.shogunai.domain.usecase.GroupWorktreeState
 import app.luxion.shogunai.domain.usecase.MultirepoMember
 import app.luxion.shogunai.domain.usecase.selectGroupCleanup
-import app.luxion.shogunai.ui.multirepo.ChangeRunner
 import app.luxion.shogunai.ui.multirepo.MultirepoActions
 import app.luxion.shogunai.ui.multirepo.MultirepoMembership
 import app.luxion.shogunai.ui.multirepo.MultirepoNotice
 import app.luxion.shogunai.ui.multirepo.NewChange
-import app.luxion.shogunai.ui.multirepo.RunnerOutcome
 import app.luxion.shogunai.ui.multirepo.branchTypeOf
 import app.luxion.shogunai.domain.usecase.GroupState as BranchGroupState
 import app.luxion.shogunai.domain.usecase.WorktreeGroup as BranchGroup
@@ -87,6 +86,7 @@ class WorktreeBoard(
     private val onWorktreeUsed: (WorktreeRef) -> Unit = {},
     val inactivity: InactivityPreferences = InactivityPreferences(preferences),
     private val multirepoActions: MultirepoActions = MultirepoActions.NONE,
+    private val runnerInUse: () -> RunnerId = { RunnerId.HERDR },
     val desktopTurn: DesktopTurnWatch = DesktopTurnWatch.NONE,
 ) : ViewModel() {
     private val deviceRefreshes = mutableMapOf<String, Instant>()
@@ -595,7 +595,7 @@ class WorktreeBoard(
         val members = group.members
         viewModelScope.launch {
             try {
-                withContext(ioDispatcher) { multirepoActions.openGroupInOrca(branchGroupOf(group)) }
+                withContext(ioDispatcher) { multirepoActions.openGroup(RunnerId.ORCA, branchGroupOf(group)) }
                     .onSuccess { openings ->
                         openings.forEach { opening ->
                             members.firstOrNull { it.entry.worktree.path == opening.path }?.entry?.holder?.showOpenResult(opening.path, opening.result)
@@ -688,8 +688,8 @@ class WorktreeBoard(
         isOpeningMultirepoAgent = true
         viewModelScope.launch {
             try {
-                withContext(ioDispatcher) { multirepoActions.openAgent(multirepo) }
-                    .onSuccess { multirepoNotice = MultirepoNotice.AgentOpened(it.outcome) }
+                withContext(ioDispatcher) { multirepoActions.openAgent(RunnerId.HERDR, multirepo) }
+                    .onSuccess { multirepoNotice = MultirepoNotice.AgentOpened(it.runner, it.outcome) }
                     .onFailure { multirepoNotice = MultirepoNotice.Failed(it) }
             } finally {
                 isOpeningMultirepoAgent = false
@@ -703,8 +703,8 @@ class WorktreeBoard(
         isOpeningMultirepoAgent = true
         viewModelScope.launch {
             try {
-                withContext(ioDispatcher) { multirepoActions.openAgentInOrca(multirepo) }
-                    .onSuccess { multirepoNotice = MultirepoNotice.AgentOpenedInOrca(it.outcome) }
+                withContext(ioDispatcher) { multirepoActions.openAgent(RunnerId.ORCA, multirepo) }
+                    .onSuccess { multirepoNotice = MultirepoNotice.AgentOpened(it.runner, it.outcome) }
                     .onFailure { multirepoNotice = MultirepoNotice.Failed(it) }
             } finally {
                 isOpeningMultirepoAgent = false
@@ -718,7 +718,7 @@ class WorktreeBoard(
 
     fun openNewChange() {
         val membership = shownMultirepo?.takeIf { it.multirepo.approved } ?: return
-        if (newChange == null) newChange = NewChange(membership, multirepoActions.herdrInstalled, multirepoActions.orcaInstalled)
+        if (newChange == null) newChange = NewChange(membership, multirepoActions.installedRunners, runnerInUse())
     }
 
     fun trustShownMultirepo(onTrusted: () -> Unit) {
@@ -756,8 +756,9 @@ class WorktreeBoard(
                 }.onSuccess { creation ->
                     change.results = creation.repositories
                     members.forEach { member -> change.membership.projectIdOf(member.alias)?.let(::holder)?.refresh() }
-                    if (change.runner != ChangeRunner.NONE) {
-                        change.openings = withContext(ioDispatcher) { openCreated(change.runner, members, creation) }
+                    val runner = change.runner
+                    if (runner != null) {
+                        change.openings = withContext(ioDispatcher) { openCreated(runner, members, creation) }
                     } else if (!creation.failed) {
                         multirepoNotice = MultirepoNotice.ChangeCreated(changeTitle(creation.branch), members.map { it.alias })
                         if (newChange === change) newChange = null
@@ -769,23 +770,17 @@ class WorktreeBoard(
         }
     }
 
-    private suspend fun openCreated(runner: ChangeRunner, members: List<MultirepoMember>, creation: GroupCreation): Map<String, Result<RunnerOutcome>> {
+    private suspend fun openCreated(runner: RunnerId, members: List<MultirepoMember>, creation: GroupCreation): Map<String, Result<RunnerOpening>> {
         val worktrees = creation.repositories.mapNotNull { result ->
             val path = result.path ?: return@mapNotNull null
             val member = members.firstOrNull { it.alias == result.alias } ?: return@mapNotNull null
             GroupWorktree(result.alias, member.config, Worktree(path = path, branch = creation.branch))
         }
         val group = BranchGroup(creation.branch, worktrees)
-        return when (runner) {
-            ChangeRunner.NONE -> emptyMap()
-            ChangeRunner.HERDR -> multirepoActions.openGroupInHerdr(group).associate { opening ->
-                opening.alias to opening.result.map { RunnerOutcome.Herdr(it.outcome) }
-            }
-            ChangeRunner.ORCA -> multirepoActions.openGroupInOrca(group).fold(
-                onSuccess = { openings -> openings.associate { opening -> opening.alias to opening.result.map { RunnerOutcome.Orca(it.outcome) } } },
-                onFailure = { error -> worktrees.associate { it.alias to Result.failure(error) } },
-            )
-        }
+        return multirepoActions.openGroup(runner, group).fold(
+            onSuccess = { openings -> openings.associate { opening -> opening.alias to opening.result } },
+            onFailure = { error -> worktrees.associate { it.alias to Result.failure(error) } },
+        )
     }
 
     fun show(projectFilter: String?, mode: GroupedView = GroupedView.ALL) {

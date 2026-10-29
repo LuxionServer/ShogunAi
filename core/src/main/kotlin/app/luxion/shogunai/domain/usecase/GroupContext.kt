@@ -2,6 +2,8 @@ package app.luxion.shogunai.domain.usecase
 
 import app.luxion.shogunai.domain.io.FileManager
 import app.luxion.shogunai.domain.model.Multirepo
+import app.luxion.shogunai.domain.model.RunnerId
+import app.luxion.shogunai.domain.model.flag
 import app.luxion.shogunai.domain.model.joinPath
 
 class GroupContext(private val fileManager: FileManager) {
@@ -20,13 +22,13 @@ class GroupContext(private val fileManager: FileManager) {
         )
     }
 
-    fun multirepoLines(multirepo: Multirepo): List<String> = listOfNotNull(
+    fun multirepoLines(multirepo: Multirepo, runner: RunnerId = RunnerId.HERDR): List<String> = listOfNotNull(
         "ShogunAi multirepo ${multirepo.name} at ${multirepo.folder}, with the repositories " +
             multirepo.repositories.joinToString { "${it.alias} (${it.path})" }.ifEmpty { "none yet" } + ".",
         joinPath(multirepo.folder, AGENTS_FILE).takeIf(fileManager::exists)?.let { "Read $it for what all the repositories share." },
         "Run `shogun status` to list the groups, `shogun new <id>` to create one" +
             (multirepo.defaultRepos.takeIf { it.isNotEmpty() }?.let { " in ${it.joinToString()}" } ?: " with --repos") +
-            " and `shogun open <id> --herdr` to open its worktrees, each with its own agent.",
+            " and `shogun open <id> --${runner.flag}` to open its worktrees, each with its own agent.",
     )
 
     private fun addHint(multirepo: Multirepo, group: WorktreeGroup, alias: String): String = when {
