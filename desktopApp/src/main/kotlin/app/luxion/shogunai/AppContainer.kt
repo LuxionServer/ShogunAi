@@ -81,6 +81,7 @@ import app.luxion.shogunai.infrastructure.NioLauncherFiles
 import app.luxion.shogunai.infrastructure.PowerShellUserPath
 import app.luxion.shogunai.infrastructure.FileAgentSessionStore
 import app.luxion.shogunai.infrastructure.FileClaudeSessionRegistry
+import app.luxion.shogunai.infrastructure.SystemProcessEnvironmentReader
 import app.luxion.shogunai.ui.shell.openInBrowser
 import java.nio.file.Files
 import java.nio.file.Path
@@ -458,6 +459,9 @@ class AppContainer {
         ClaudeCodeHooks.claudeSessionsDirectory(System.getenv("CLAUDE_CONFIG_DIR"), System.getProperty("user.home")),
     )
     private val herdrLauncher = HerdrAgentLauncher(herdrClient, registry = claudeSessions)
+    private val processEnvironment = SystemProcessEnvironmentReader(shellCommandExecutor)
+
+    private fun orcaSessionNaming() = ClaudeSessionNaming(claudeSessions, processEnvironment = processEnvironment)
     private val readPool = ReadResourcePoolUseCase(
         resolveEnvironment,
         environmentStateStore,
@@ -629,8 +633,8 @@ class AppContainer {
         openAgent = { multirepo -> OpenMultirepoAgentInHerdrUseCase(herdrClient, herdrLauncher)(multirepo) },
         trust = { multirepo -> configureMultirepo.trust(multirepo) },
         openGroupInHerdr = { group -> OpenGroupInHerdrUseCase(herdrClient, resolveEnvironment, herdrLauncher)(group) },
-        openGroupInOrca = { group -> OpenGroupInOrcaUseCase(orcaClient, resolveEnvironment, ClaudeSessionNaming(claudeSessions))(group) },
-        openAgentInOrca = { multirepo -> OpenMultirepoAgentInOrcaUseCase(orcaClient, ClaudeSessionNaming(claudeSessions))(multirepo) },
+        openGroupInOrca = { group -> OpenGroupInOrcaUseCase(orcaClient, resolveEnvironment, orcaSessionNaming())(group) },
+        openAgentInOrca = { multirepo -> OpenMultirepoAgentInOrcaUseCase(orcaClient, orcaSessionNaming())(multirepo) },
         herdrInstalled = herdrClient.isInstalled(),
         orcaInstalled = orcaClient.isInstalled(),
     )
@@ -843,7 +847,7 @@ class AppContainer {
             focusAgent = { paneId -> runCatching { herdrClient.focusAgent(paneId) } },
         ),
         orca = OrcaUseCases(
-            open = OpenWorktreeInOrcaUseCase(config, orcaClient, resolveEnvironment, ClaudeSessionNaming(claudeSessions))::invoke,
+            open = OpenWorktreeInOrcaUseCase(config, orcaClient, resolveEnvironment, orcaSessionNaming())::invoke,
             withTerminals = { paths -> withContext(Dispatchers.IO) { CloseOrcaTerminalsUseCase(orcaClient).withTerminals(paths) } },
             origins = orcaReader::origins,
         ),

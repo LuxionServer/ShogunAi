@@ -39,7 +39,6 @@ Numerados en el orden en que se abordarán: el número es la prioridad.
 - Comprobar:
   - En Windows y en Linux (`orca-ide`), la ubicación de la CLI y la shell que ejecutan las terminales de Orca, que solo cubren pruebas con dobles.
   - Que Orca detecta un agente envuelto por Headroom.
-  - Abrir en Orca con los hooks de agente de Orca desactivados: Orca solo ve a Claude mientras hay un aviso en pantalla, así que la apertura puede informar de que el agente no arrancó; un respaldo con el registro de sesiones de Claude Code lo cubriría.
   - Que los avisos de Orca y su app móvil siguen a los agentes que ShogunAi arranca en Orca.
 - Fuera a propósito: los worktrees remotos y por SSH de Orca, porque ShogunAi prepara worktrees en esta máquina; y las ejecuciones de orquestación de Orca, porque el agente del multirepo ya coordina un grupo.
 

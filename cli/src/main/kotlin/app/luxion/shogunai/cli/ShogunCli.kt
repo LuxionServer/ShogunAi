@@ -206,6 +206,7 @@ import app.luxion.shogunai.infrastructure.CliHerdrClient
 import app.luxion.shogunai.infrastructure.CliOrcaClient
 import app.luxion.shogunai.infrastructure.JsonOrcaWorkspaceStore
 import app.luxion.shogunai.infrastructure.FileClaudeSessionRegistry
+import app.luxion.shogunai.infrastructure.SystemProcessEnvironmentReader
 import app.luxion.shogunai.infrastructure.DockerComposeProjectSource
 import app.luxion.shogunai.infrastructure.NioDesktopTurnStore
 import app.luxion.shogunai.infrastructure.ProcessMavenDaemonSource
@@ -1380,7 +1381,7 @@ class ShogunCli(
     }
 
     private fun claudeSessionNaming(timeout: kotlin.time.Duration) =
-        ClaudeSessionNaming(claudeSessions, isClaudeProcessAlive, timeout)
+        ClaudeSessionNaming(claudeSessions, isClaudeProcessAlive, timeout, processEnvironment = SystemProcessEnvironmentReader(executor))
 
     private fun orcaOpeningLine(path: String, opening: OrcaOpening): String {
         val line = when (opening.outcome) {
