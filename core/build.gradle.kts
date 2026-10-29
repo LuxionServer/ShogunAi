@@ -1,5 +1,8 @@
+import kotlinx.kover.gradle.plugin.dsl.CoverageUnit
+
 plugins {
     alias(libs.plugins.kotlinJvm)
+    alias(libs.plugins.kover)
     alias(libs.plugins.kotlinSerialization)
     `java-test-fixtures`
 }
@@ -43,6 +46,19 @@ sourceSets {
 
 tasks.named("compileKotlin") {
     dependsOn(generateBuildInfo)
+}
+
+kover {
+    reports {
+        verify {
+            rule("core lines") {
+                minBound(100, CoverageUnit.LINE)
+            }
+            rule("core branches") {
+                minBound(79, CoverageUnit.BRANCH)
+            }
+        }
+    }
 }
 
 tasks.named<Test>("test") {

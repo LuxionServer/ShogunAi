@@ -79,6 +79,16 @@ class WorktreeHeadlessAppUseCasesTest {
     }
 
     @Test
+    fun `by default the window is awaited with real pauses`() = runTest {
+        appWithWindow()
+        windows.windowAfterPolls = 2
+
+        val started = StartHeadlessAppUseCase(worktrees(), launcher, windows, files)(worktree).getOrThrow()
+
+        assertTrue(started.hidden)
+    }
+
+    @Test
     fun `the pid printed by the launch is used before the pid file is written`() = runTest {
         launcher.writesPidFile = false
         appWithWindow()
@@ -141,6 +151,17 @@ class WorktreeHeadlessAppUseCasesTest {
         assertIs<WorktreeError.HeadlessAppLaunchFailed>(error)
         assertEquals("$state/launch.log", error.logPath)
         assertTrue("Unresolved reference" in error.lastLogLines)
+    }
+
+    @Test
+    fun `a launch that leaves no process behind reports the end of its log`() = runTest {
+        launcher.startsApp = false
+        files.writeText("$state/launch.log", "BUILD SUCCESSFUL\n")
+
+        val error = start()(worktree).exceptionOrNull()
+
+        assertIs<WorktreeError.HeadlessAppLaunchFailed>(error)
+        assertEquals("BUILD SUCCESSFUL", error.lastLogLines)
     }
 
     @Test

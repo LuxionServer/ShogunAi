@@ -46,6 +46,12 @@ class ExecutableLocatorTest {
     }
 
     @Test
+    fun `user bin folders are the usual ones outside Windows and none on Windows`() {
+        assertEquals(listOf("/opt/homebrew/bin", "/usr/local/bin", "/home/dev/.local/bin", "/home/dev/.cargo/bin"), ExecutableLocator(HostOs.MACOS, "/home/dev", { emptyList() }).userBinFolders())
+        assertEquals(emptyList(), ExecutableLocator(HostOs.WINDOWS, "C:\\Users\\dev", { emptyList() }).userBinFolders())
+    }
+
+    @Test
     fun `built from the host environment, looks in its PATH before the usual install folders`() {
         if (HostOs.current() == HostOs.WINDOWS) return
         val root = createTempDirectory("executable-locator").toRealPath()

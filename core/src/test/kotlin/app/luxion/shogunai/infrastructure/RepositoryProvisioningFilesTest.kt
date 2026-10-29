@@ -166,6 +166,15 @@ class RepositoryProvisioningFilesTest {
     }
 
     @Test
+    fun `fails with InvalidRepositoryConfig when the env file or the providers have the wrong shape`() {
+        configFile.writeText("""{ "envFile": { "path": ".env" } }""")
+        assertFailsWith<WorktreeError.InvalidRepositoryConfig> { files.read(repository.toString()) }
+
+        configFile.writeText("""{ "providers": [] }""")
+        assertFailsWith<WorktreeError.InvalidRepositoryConfig> { files.preview(repository.toString(), RepositoryConfigEdit()) }
+    }
+
+    @Test
     fun `fails with InvalidRepositoryConfig when copy is not a list of strings`() {
         configFile.writeText("""{ "copy": ".env" }""")
         assertFailsWith<WorktreeError.InvalidRepositoryConfig> { files.read(repository.toString()) }

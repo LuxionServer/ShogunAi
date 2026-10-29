@@ -90,7 +90,7 @@ class DoctorCommandTest {
             out = out,
             err = err,
             environment = environment,
-            locator = locator,
+            findExecutable = locator::find,
             herdr = FakeHerdrClient(),
             orca = FakeOrcaClient(installed = false),
             commandLineTool = CommandLineTool(

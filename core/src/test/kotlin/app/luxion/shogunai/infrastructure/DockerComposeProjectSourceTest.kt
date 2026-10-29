@@ -10,6 +10,7 @@ import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 class DockerComposeProjectSourceTest {
@@ -160,5 +161,21 @@ class DockerComposeProjectSourceTest {
         assertEquals(listOf("docker", "volume", "rm", "v"), executor.executedCommands[1])
         assertEquals(listOf("docker", "image", "rm", "sha256:aa"), executor.executedCommands[2])
         assertEquals("image is being used by running container", image.exceptionOrNull()?.message)
+    }
+
+    @Test
+    fun `output that isn't a JSON list is reported as unavailable`() = runTest {
+        val executor = FakeShellCommandExecutor { FakeShellCommandExecutor.success(it, "not json") }
+
+        assertFailsWith<WorktreeError.DockerUnavailable> { DockerComposeProjectSource(executor).list() }
+    }
+
+    @Test
+    fun `running or listing resources without a docker binary is reported as unavailable`() = runTest {
+        val executor = FakeShellCommandExecutor { throw CommandExecutionException(it, RuntimeException("no such file")) }
+        val source = DockerComposeProjectSource(executor)
+
+        assertIs<WorktreeError.DockerUnavailable>(source.run("p", ComposeAction.Up(), "/w", emptyMap()).exceptionOrNull())
+        assertFailsWith<WorktreeError.DockerUnavailable> { source.listResources() }
     }
 }

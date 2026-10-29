@@ -13,6 +13,7 @@ import kotlin.io.path.createTempDirectory
 import kotlin.io.path.exists
 import kotlin.io.path.readText
 import kotlin.io.path.writeText
+import org.junit.Assume.assumeTrue
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -251,4 +252,17 @@ class JsonMultirepoSourceTest {
     }
 
     private fun jsonString(value: String) = JsonPrimitive(value).toString()
+
+    @Test
+    fun `a declaration that can't be read is invalid`() {
+        assumeTrue(home.fileSystem.supportedFileAttributeViews().contains("posix"))
+        source.write(folder.toString(), MultirepoDeclaration(worktreesRoot = "../product-worktrees"))
+        val file = folder.resolve(".shogunai-multirepo.json")
+        Files.setPosixFilePermissions(file, emptySet())
+        try {
+            assertFailsWith<WorktreeError.InvalidMultirepo> { source.read(folder.toString()) }
+        } finally {
+            Files.setPosixFilePermissions(file, PosixFilePermissions.fromString("rw-------"))
+        }
+    }
 }

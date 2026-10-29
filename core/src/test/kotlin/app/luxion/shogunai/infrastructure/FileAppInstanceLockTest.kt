@@ -1,5 +1,6 @@
 package app.luxion.shogunai.infrastructure
 
+import java.io.IOException
 import kotlin.io.path.createTempDirectory
 import kotlin.test.Test
 import kotlin.test.assertFalse
@@ -42,5 +43,13 @@ class FileAppInstanceLockTest {
 
         assertFalse(FileAppInstanceLock(lockFile).isHeldByAnyInstance())
         assertTrue(FileAppInstanceLock(lockFile).acquire())
+    }
+
+    @Test
+    fun `a lock the file system refuses is neither acquired nor held`() {
+        val refusing = FileAppInstanceLock(lockFile) { throw IOException("locks unsupported") }
+
+        assertFalse(refusing.acquire())
+        assertFalse(refusing.isHeldByAnyInstance())
     }
 }

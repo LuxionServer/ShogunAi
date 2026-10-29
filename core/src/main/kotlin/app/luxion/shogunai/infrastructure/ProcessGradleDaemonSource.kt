@@ -82,9 +82,9 @@ class ProcessGradleDaemonSource(
         Path.of(gradleUserHome, "daemon", version, "daemon-$pid.out.log")
 
     private companion object {
-        val PS_COMMAND = listOf("ps", "-A", "-ww", "-o", "pid=,rss=,command=")
-        val PROCESS_TABLE_COMMAND = listOf("ps", "-A", "-ww", "-o", "pid=,ppid=,command=")
-        fun lsofCommand(port: Int) = listOf("lsof", "-nP", "-iTCP:$port", "-sTCP:ESTABLISHED", "-Fpc")
+        private val PS_COMMAND = listOf("ps", "-A", "-ww", "-o", "pid=,rss=,command=")
+        private val PROCESS_TABLE_COMMAND = listOf("ps", "-A", "-ww", "-o", "pid=,ppid=,command=")
+        private fun lsofCommand(port: Int) = listOf("lsof", "-nP", "-iTCP:$port", "-sTCP:ESTABLISHED", "-Fpc")
         const val LOG_TAIL_BYTES = 1L shl 20
     }
 }

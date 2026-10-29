@@ -91,7 +91,7 @@ class DockerComposeProjectSource(private val executor: ShellCommandExecutor) : C
 
     private companion object {
         const val PROJECT_LABEL = "com.docker.compose.project"
-        val LIST_COMMAND = listOf("docker", "compose", "ls", "--all", "--format", "json")
+        private val LIST_COMMAND = listOf("docker", "compose", "ls", "--all", "--format", "json")
     }
 }
 

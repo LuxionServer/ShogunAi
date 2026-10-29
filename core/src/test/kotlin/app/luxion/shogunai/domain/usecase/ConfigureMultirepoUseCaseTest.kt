@@ -169,6 +169,14 @@ class ConfigureMultirepoUseCaseTest {
     }
 
     @Test
+    fun `the worktrees root is stored relative to the multirepo folder`() = runTest {
+        val moved = configure.setWorktreesRoot(world.multirepo, "${world.folder}/../elsewhere").getOrThrow()
+
+        assertEquals("../elsewhere", moved.declaration.worktreesRoot)
+        assertEquals("../elsewhere", world.source.declarations[world.folder]?.worktreesRoot)
+    }
+
+    @Test
     fun `delete forgets the multirepo and leaves the projects`() = runTest {
         configure.delete(world.multirepo).getOrThrow()
 

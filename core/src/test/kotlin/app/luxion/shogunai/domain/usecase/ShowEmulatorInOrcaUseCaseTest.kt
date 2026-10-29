@@ -4,6 +4,9 @@ import app.luxion.shogunai.domain.FakeOrcaClient
 import app.luxion.shogunai.domain.model.OrcaEmulatorView
 import app.luxion.shogunai.domain.model.OrcaWorktree
 import app.luxion.shogunai.domain.model.WorktreeError
+import app.luxion.shogunai.domain.io.OrcaClient
+import app.luxion.shogunai.domain.model.OrcaWorkspace
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -115,6 +118,15 @@ class ShowEmulatorInOrcaUseCaseTest {
 
         assertEquals(OrcaEmulatorView.Shown, view)
         assertEquals(listOf("/tmp/worktrees/TASK-8" to "emulator-5556"), orca.attachedEmulators)
+    }
+
+    @Test
+    fun `an Orca that doesn't answer in time fails naming the wait`() = runTest {
+        val silent = object : OrcaClient by FakeOrcaClient(psRows = listed) {
+            override suspend fun attachEmulator(workspace: OrcaWorkspace, device: String) = awaitCancellation()
+        }
+
+        assertEquals(OrcaEmulatorView.Failed("Orca didn't answer within 30 seconds"), ShowEmulatorInOrcaUseCase(silent)(worktree, "emulator-5556"))
     }
 }
 

@@ -12,6 +12,7 @@ import kotlinx.serialization.json.jsonObject
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.SimulatorSettings
 import java.nio.file.Files
+import kotlin.io.path.createDirectories
 import kotlin.io.path.createTempDirectory
 import kotlin.io.path.deleteExisting
 import kotlin.io.path.deleteIfExists
@@ -350,5 +351,12 @@ class JsonProjectRepositoryTest {
         assertEquals(listOf(existing), repository.list())
         val written = Json.parseToJsonElement(Files.readString(storagePath)).jsonArray.single().jsonObject
         assertEquals(setOf("id", "name", "config"), written.keys)
+    }
+
+    @Test
+    fun `a projects path that can't be read as text is reported as unreadable`() {
+        storagePath.createDirectories()
+
+        assertFailsWith<WorktreeError.LocalFileUnreadable> { repository.list() }
     }
 }

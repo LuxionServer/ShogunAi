@@ -6,6 +6,7 @@ import app.luxion.shogunai.domain.model.GradleClient
 import app.luxion.shogunai.domain.model.HoldingBuild
 import app.luxion.shogunai.domain.model.DaemonKind
 import app.luxion.shogunai.domain.model.DaemonState
+import app.luxion.shogunai.domain.model.HostOs
 import app.luxion.shogunai.domain.model.WorktreeError
 import kotlinx.coroutines.test.runTest
 import java.io.IOException
@@ -101,6 +102,15 @@ class ProcessGradleDaemonSourceTest {
         val source = ProcessGradleDaemonSource(FakeShellCommandExecutor { FakeShellCommandExecutor.failure(it) }, "/home/dev/.gradle")
 
         assertFailsWith<WorktreeError.ProcessListingFailed> { source.list() }
+    }
+
+    @Test
+    fun `the Gradle user home is GRADLE_USER_HOME when set and the home's gradle folder otherwise`() {
+        fun environment(variables: Map<String, String>) = SystemHostEnvironment(HostOs.MACOS, variables, "/home/dev", loginShell = null)
+
+        assertEquals("/projects/gradle-home", defaultGradleUserHome(environment(mapOf("GRADLE_USER_HOME" to "/projects/gradle-home"))))
+        assertEquals(Path.of("/home/dev", ".gradle").toString(), defaultGradleUserHome(environment(mapOf("GRADLE_USER_HOME" to " "))))
+        assertEquals(Path.of("/home/dev", ".gradle").toString(), defaultGradleUserHome(environment(emptyMap())))
     }
 
     @Test
