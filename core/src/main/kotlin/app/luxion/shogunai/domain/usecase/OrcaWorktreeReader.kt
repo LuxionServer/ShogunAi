@@ -52,6 +52,8 @@ class OrcaWorktreeReader(
         return worktrees
     }
 
+    fun lastRows(): List<OrcaWorktree>? = lastRead
+
     fun ports(worktrees: List<Worktree>): Map<String, List<ObservedPort>>? {
         val byWorktree = lastPorts?.groupBy { canonical(it.worktreePath) } ?: return null
         return worktrees.associate { worktree ->

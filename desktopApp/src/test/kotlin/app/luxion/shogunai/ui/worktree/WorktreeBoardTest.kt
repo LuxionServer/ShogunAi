@@ -74,6 +74,7 @@ import app.luxion.shogunai.domain.model.HerdrOpening
 import app.luxion.shogunai.domain.model.HerdrOutcome
 import app.luxion.shogunai.domain.model.RecentWorktree
 import app.luxion.shogunai.domain.usecase.Activity
+import app.luxion.shogunai.domain.usecase.OrcaSyncItem
 import app.luxion.shogunai.ui.i18n.EnglishStrings
 import app.luxion.shogunai.ui.i18n.describe
 import app.luxion.shogunai.ui.tray.trayWorktreeLabel
@@ -273,6 +274,7 @@ class WorktreeBoardTest {
         onWorktreeUsed: (WorktreeRef) -> Unit = {},
         multirepoActions: MultirepoActions = MultirepoActions.NONE,
         runnerInUse: RunnerId = RunnerId.HERDR,
+        syncOrca: suspend (List<OrcaSyncItem>) -> Unit = {},
     ): WorktreeBoard = WorktreeBoard(
         useCasesFor = { config -> repositories.first { it.base == config.baseRepositoryPath }.useCases() },
         detectAgents = { searches ->
@@ -280,6 +282,7 @@ class WorktreeBoardTest {
             agentGate?.await()
             agentResult
         },
+        syncOrca = syncOrca,
         preferences = preferences,
         clock = clock,
         ioDispatcher = dispatcher,
@@ -448,6 +451,24 @@ class WorktreeBoardTest {
         board.stopWatching()
         assertEquals(Activity.NeedsYou, listed.single().activity)
         assertEquals("! feature/TASK-12 — api", trayWorktreeLabel(listed.single()))
+    }
+
+    @Test
+    fun `each check hands the loaded worktrees' states to the Orca sync`() = runTest(dispatcher) {
+        agentResult = Result.success(
+            mapOf("/home/dev/projects/api-TASK-12" to listOf(RunningAgent("codex", state = AgentState.WORKING))),
+        )
+        val synced = mutableListOf<List<OrcaSyncItem>>()
+        val board = board(syncOrca = { synced += it })
+        advanceUntilIdle()
+        board.startWatching()
+        tick()
+        board.stopWatching()
+
+        val items = synced.single().associateBy { it.worktree.path }
+        assertEquals(Activity.AgentWorking, items.getValue("/home/dev/projects/api-TASK-12").activity)
+        assertEquals(listOf(RunningAgent("codex", state = AgentState.WORKING)), items.getValue("/home/dev/projects/api-TASK-12").agents)
+        assertTrue(items.values.all { it.status != null })
     }
 
     @Test

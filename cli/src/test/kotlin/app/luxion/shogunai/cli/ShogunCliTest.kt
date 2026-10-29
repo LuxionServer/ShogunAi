@@ -31,6 +31,7 @@ import app.luxion.shogunai.domain.FakeEnvironmentStateStore
 import app.luxion.shogunai.domain.FakeFileManager
 import app.luxion.shogunai.domain.FakeHerdrClient
 import app.luxion.shogunai.domain.FakeHerdrConfigSource
+import app.luxion.shogunai.domain.FakeGitHubClient
 import app.luxion.shogunai.domain.FakeOrcaClient
 import app.luxion.shogunai.domain.FakeToolPreferenceRepository
 import app.luxion.shogunai.domain.io.OrcaWorkspaceStore
@@ -182,6 +183,7 @@ class ShogunCliTest {
         claudeSessions: FakeClaudeSessionRegistry = FakeClaudeSessionRegistry(),
         packageCaches: PackageCacheSizes = PackageCacheSizes(),
         orca: FakeOrcaClient = FakeOrcaClient(installed = false),
+        gitHub: FakeGitHubClient = FakeGitHubClient(),
         orcaWorkspaces: OrcaWorkspaceStore = OrcaWorkspaceStore.NONE,
         runner: FakeToolPreferenceRepository = FakeToolPreferenceRepository(),
     ) = ShogunCli(
@@ -201,6 +203,7 @@ class ShogunCliTest {
         derivedDataSource = derivedDataSource,
         herdrConfig = FakeHerdrConfigSource(herdrWorktreesRoot),
         orca = orca,
+        gitHub = gitHub,
         orcaWorkspaces = orcaWorkspaces,
         workingDirectory = workingDirectory,
         out = out,
@@ -2906,6 +2909,44 @@ class ShogunCliTest {
         assertEquals("opened $merged in Orca with Claude (terminal term_1)\n", out.toString())
         val command = if (HostOs.current() == HostOs.WINDOWS) "\$env:APP = 'app'; claude -n main-repo-task-1" else "env 'APP=app' claude -n main-repo-task-1"
         assertEquals(FakeOrcaClient.Created(merged, "main-repo-task-1", command, true), orca.created.single())
+    }
+
+    @Test
+    fun `open in orca syncs the worktree's status and comment in Orca`() {
+        val orca = FakeOrcaClient(repos = listOf(OrcaRepo("r1", base)), psRows = listOf(OrcaWorktree(merged, false, comment = "", workspaceStatus = "in-progress")))
+
+        val exitCode = cli(repositoryExecutor(), orca = orca).run(listOf("open", "TASK-1", "--orca"))
+
+        assertEquals(0, exitCode, err.toString())
+        val (path, update) = orca.updates.single()
+        assertEquals(merged, path)
+        assertEquals("completed", update.workspaceStatus)
+        assertEquals("ShogunAi: merged into main", update.comment)
+    }
+
+    @Test
+    fun `open in orca warns when Orca rejects the update and still succeeds`() {
+        val failure = WorktreeError.OrcaCommandFailed(listOf("orca"), "selector_not_found")
+        val orca = FakeOrcaClient(
+            repos = listOf(OrcaRepo("r1", base)),
+            psRows = listOf(OrcaWorktree(merged, false, comment = "", workspaceStatus = "in-progress")),
+            updateFailures = mapOf(merged to failure),
+        )
+
+        val exitCode = cli(repositoryExecutor(), orca = orca).run(listOf("open", "TASK-1", "--orca"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals("shogun: couldn't update $merged in Orca: selector_not_found\n", err.toString())
+        assertEquals("opened $merged in Orca with Claude (terminal term_1)\n", out.toString())
+    }
+
+    @Test
+    fun `open in orca leaves a worktree Orca doesn't list alone`() {
+        val orca = FakeOrcaClient(repos = listOf(OrcaRepo("r1", base)))
+
+        assertEquals(0, cli(repositoryExecutor(), orca = orca).run(listOf("open", "TASK-1", "--orca")), err.toString())
+        assertTrue(orca.updates.isEmpty())
+        assertEquals("", err.toString())
     }
 
     @Test

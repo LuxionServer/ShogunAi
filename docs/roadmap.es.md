@@ -45,7 +45,7 @@ ShogunAi tiene que funcionar a la primera en una máquina que no es en la que se
 [Orca](https://www.onorca.dev), la app de escritorio para ejecutar agentes de programación en worktrees, recibe todo lo que ShogunAi hace con Herdr, más lo que Orca ofrece y Herdr no. Un spike comparó los dos: los hooks de repositorio de Orca (`orca.yaml`) pueden provisionar sus worktrees con `shogun`, su CLI puede abrir un worktree de ShogunAi con su entorno y su agente, y informa de estados de agente más ricos que sobreviven a reiniciar la app. Por orden:
 
 - Lo que solo ofrece Orca:
-  - El comentario y el estado del worktree en Orca sincronizados con los de ShogunAi (`orca worktree set`), y su pull request o su issue vinculados en Orca cuando la tarea del worktree los tiene.
+  - El tablero de Orca más allá de lo que ShogunAi ya mantiene al día (el estado, un comentario de resumen y los enlaces a la pull request o la issue de GitHub, mientras la app de escritorio está abierta o al abrir): sincronizar sin la app de escritorio, por ejemplo desde los hooks de Claude Code, estados de tablero personalizados y enlaces de Linear o GitLab.
   - Los worktrees de un grupo mostrados como hijos del espacio del agente del multirepo. Orca 1.4.243 acepta como padre de un worktree existente un espacio Git o de «Abrir como carpeta», pero no un folder workspace.
   - El simulador de iOS de ShogunAi del worktree mostrado en la vista de emuladores de Orca, como ya se muestra su emulador de Android (`orca emulator attach` también acepta el UDID de un simulador).
 - Comprobar:

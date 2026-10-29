@@ -99,6 +99,28 @@ class OrcaWorktreeReaderTest {
     }
 
     @Test
+    fun `the rows last read are kept for the Orca sync`() = runTest {
+        val rows = listOf(OrcaWorktree(shogunai.path, createdByOrca = false, comment = "", workspaceStatus = "in-progress"))
+        val reader = reader(FakeOrcaClient(psRows = rows))
+
+        reader.read()
+
+        assertEquals(rows, reader.lastRows())
+    }
+
+    @Test
+    fun `no rows are kept while Orca isn't running or fails`() = runTest {
+        val notRunning = reader(FakeOrcaClient(running = false, psRows = listOf(OrcaWorktree(shogunai.path, false))))
+        val failing = reader(FakeOrcaClient(psFailure = IllegalStateException("boom")))
+
+        notRunning.read()
+        failing.read()
+
+        assertNull(notRunning.lastRows())
+        assertNull(failing.lastRows())
+    }
+
+    @Test
     fun `ports Orca sees are given per worktree with process and address`() = runTest {
         val orca = FakeOrcaClient(
             listeningPorts = listOf(
