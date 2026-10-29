@@ -8,7 +8,7 @@ import kotlin.test.assertNull
 class ExecutableLocatorTest {
 
     private fun windows(vararg files: String, extensions: List<String> = listOf(".COM", ".EXE", ".BAT", ".CMD")) = ExecutableLocator(
-        HostOs.WINDOWS, "C:\\Users\\dev", listOf("C:\\Tools"), null, emptyList(), extensions,
+        HostOs.WINDOWS, "C:\\Users\\dev", { listOf("C:\\Tools") }, null, emptyList(), extensions,
     ) { it in files }
 
     @Test
@@ -36,7 +36,7 @@ class ExecutableLocatorTest {
 
     @Test
     fun `does not try extensions outside Windows`() {
-        val locator = ExecutableLocator(HostOs.MACOS, "/home/dev", listOf("/usr/bin"), null) { it == "/usr/bin/shogun.CMD" }
+        val locator = ExecutableLocator(HostOs.MACOS, "/home/dev", { listOf("/usr/bin") }, null) { it == "/usr/bin/shogun.CMD" }
 
         assertNull(locator.find("shogun"))
     }
