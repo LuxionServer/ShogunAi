@@ -90,6 +90,7 @@ sealed interface CliCommand {
     data object HookHerdr : CliCommand
     data class HookOrca(val action: OrcaHookAction) : CliCommand
     data object HookAgentState : CliCommand
+    data object HookDesktopTurn : CliCommand
     data class Hooks(
         val action: HooksAction,
         val project: Boolean = false,
@@ -557,12 +558,13 @@ private fun parseHook(rest: List<String>): CliCommand {
         "session-start" -> CliCommand.HookSessionStart
         "herdr" -> CliCommand.HookHerdr
         "agent-state" -> CliCommand.HookAgentState
+        "desktop-turn" -> CliCommand.HookDesktopTurn
         else -> throw UsageException("unknown hook '$event', expected $HOOK_EVENTS")
     }
     return noArguments("hook $event", rest.drop(1), command)
 }
 
-private const val HOOK_EVENTS = "worktree-create, worktree-remove, session-start, agent-state, herdr or orca"
+private const val HOOK_EVENTS = "worktree-create, worktree-remove, session-start, agent-state, desktop-turn, herdr or orca"
 
 enum class OrcaHookAction { SETUP, ARCHIVE }
 

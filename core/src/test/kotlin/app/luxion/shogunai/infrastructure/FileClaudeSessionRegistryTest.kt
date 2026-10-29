@@ -1,6 +1,7 @@
 package app.luxion.shogunai.infrastructure
 
 import app.luxion.shogunai.domain.model.ClaudeSession
+import app.luxion.shogunai.domain.model.ClaudeSessionStatus
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.io.path.listDirectoryEntries
@@ -36,6 +37,34 @@ class FileClaudeSessionRegistryTest {
         )
 
         assertEquals(listOf(ClaudeSession(4242, "/home/dev/projects/main-repo", null, null)), registry.list())
+    }
+
+    @Test
+    fun `each known status and its time are read`() {
+        directory.resolve("1.json").writeText("""{"pid":1,"cwd":"/home/dev/a","status":"busy","startedAt":10,"statusUpdatedAt":20}""")
+        directory.resolve("2.json").writeText("""{"pid":2,"cwd":"/home/dev/b","status":"waiting","waitingFor":"approve Bash"}""")
+        directory.resolve("3.json").writeText("""{"pid":3,"cwd":"/home/dev/c","status":"idle"}""")
+
+        assertEquals(
+            listOf(
+                ClaudeSession(1, "/home/dev/a", null, 10, ClaudeSessionStatus.BUSY, 20),
+                ClaudeSession(2, "/home/dev/b", null, null, ClaudeSessionStatus.WAITING),
+                ClaudeSession(3, "/home/dev/c", null, null, ClaudeSessionStatus.IDLE),
+            ),
+            registry.list().sortedBy { it.pid },
+        )
+    }
+
+    @Test
+    fun `an unknown or missing status leaves the session without a status`() {
+        directory.resolve("1.json").writeText("""{"pid":1,"cwd":"/home/dev/a","name":"a","status":"thinking"}""")
+        directory.resolve("2.json").writeText("""{"pid":2,"cwd":"/home/dev/b","name":"b","status":7}""")
+        directory.resolve("3.json").writeText("""{"pid":3,"cwd":"/home/dev/c","name":"c"}""")
+
+        val sessions = registry.list().sortedBy { it.pid }
+
+        assertEquals(listOf("a", "b", "c"), sessions.map { it.name })
+        assertEquals(listOf<ClaudeSessionStatus?>(null, null, null), sessions.map { it.status })
     }
 
     @Test

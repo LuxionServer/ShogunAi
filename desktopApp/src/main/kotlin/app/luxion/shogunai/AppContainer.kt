@@ -84,6 +84,7 @@ import app.luxion.shogunai.infrastructure.NioLauncherFiles
 import app.luxion.shogunai.infrastructure.PowerShellUserPath
 import app.luxion.shogunai.infrastructure.FileAgentSessionStore
 import app.luxion.shogunai.infrastructure.FileClaudeSessionRegistry
+import app.luxion.shogunai.infrastructure.SystemProcessEnvironmentReader
 import app.luxion.shogunai.ui.shell.openInBrowser
 import java.nio.file.Files
 import java.nio.file.Path
@@ -468,12 +469,16 @@ class AppContainer {
         ClaudeCodeHooks.claudeSessionsDirectory(System.getenv("CLAUDE_CONFIG_DIR"), System.getProperty("user.home")),
     )
     private val herdrLauncher = HerdrAgentLauncher(herdrClient, registry = claudeSessions)
+    private val processEnvironment = SystemProcessEnvironmentReader(shellCommandExecutor)
+
+    private fun orcaSessionNaming() = ClaudeSessionNaming(claudeSessions, processEnvironment = processEnvironment)
+
     private val agentRunners: Map<RunnerId, AgentRunner> = listOf(
         HerdrAgentRunner(herdrClient, resolveEnvironment, herdrLauncher),
         OrcaAgentRunner(
             orcaClient,
             resolveEnvironment,
-            ClaudeSessionNaming(claudeSessions),
+            orcaSessionNaming(),
             runningEmulator = { config, path -> readEmulatorStates.runningSerial(config, path) },
         ),
     ).associateBy { it.id }
@@ -865,7 +870,7 @@ class AppContainer {
                 config,
                 orcaClient,
                 resolveEnvironment,
-                ClaudeSessionNaming(claudeSessions),
+                orcaSessionNaming(),
                 runningEmulator = { path -> readEmulatorStates.runningSerial(config, path) },
             )::invoke,
             withTerminals = { paths -> withContext(Dispatchers.IO) { CloseOrcaTerminalsUseCase(orcaClient).withTerminals(paths) } },
