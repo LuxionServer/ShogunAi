@@ -19,6 +19,9 @@ import app.luxion.shogunai.infrastructure.RepositoryProvisioningFiles
 import app.luxion.shogunai.infrastructure.SimctlAppleSimulators
 import app.luxion.shogunai.infrastructure.SocketPortProbe
 import app.luxion.shogunai.infrastructure.defaultGradleUserHome
+import java.io.FileDescriptor
+import java.io.FileOutputStream
+import java.io.PrintStream
 import java.nio.file.Path
 import kotlin.system.exitProcess
 
@@ -32,6 +35,8 @@ fun runShogun(args: Array<String>): Int {
     val fileManager = NioFileManager()
     val userHome = System.getProperty("user.home")
     val derivedDataSource = MacDerivedDataSource(executor, fileManager, userHome)
+    val out = utf8Stream(FileDescriptor.out)
+    val err = utf8Stream(FileDescriptor.err)
     val exitCode = ShogunCli(
         executor = executor,
         fileManager = fileManager,
@@ -49,8 +54,8 @@ fun runShogun(args: Array<String>): Int {
         derivedDataSource = derivedDataSource,
         herdrConfig = HerdrConfigFile(),
         workingDirectory = System.getProperty("user.dir"),
-        out = System.out,
-        err = System.err,
+        out = out,
+        err = err,
         readInput = { System.`in`.bufferedReader().readText() },
         trust = JsonRepositoryTrust(),
         readAnswer = { System.console()?.readLine() },
@@ -58,7 +63,10 @@ fun runShogun(args: Array<String>): Int {
         derivedDataSizes = JsonDerivedDataSizeStore(Path.of(userHome, ".shogunai", "derived-data-sizes.json")),
         packageCacheSource = MacPackageCacheSource(fileManager, userHome),
     ).run(args.toList())
-    System.out.flush()
-    System.err.flush()
+    out.flush()
+    err.flush()
     return exitCode
 }
+
+private fun utf8Stream(descriptor: FileDescriptor): PrintStream =
+    PrintStream(FileOutputStream(descriptor), true, Charsets.UTF_8)

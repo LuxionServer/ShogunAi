@@ -1,7 +1,6 @@
 package app.luxion.shogunai.cli.e2e
 
 import java.io.File
-import java.nio.charset.Charset
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.TimeUnit
@@ -36,8 +35,8 @@ class Sandbox : AutoCloseable {
         )
     }
 
-    fun shogun(directory: Path, vararg arguments: String): ProcessResult =
-        run(listOf(launcher().toString()) + arguments, directory)
+    fun shogun(directory: Path, vararg arguments: String, environment: Map<String, String> = emptyMap()): ProcessResult =
+        run(listOf(launcher().toString()) + arguments, directory, environment = environment)
 
     fun shogunSucceeds(directory: Path, vararg arguments: String): ProcessResult =
         shogun(directory, *arguments).also { check(it.exitCode == 0) { it.describe() } }
@@ -77,7 +76,12 @@ class Sandbox : AutoCloseable {
             file.writeText(content)
         }
 
-    fun run(command: List<String>, directory: Path, timeoutSeconds: Long = PROCESS_TIMEOUT_SECONDS): ProcessResult {
+    fun run(
+        command: List<String>,
+        directory: Path,
+        timeoutSeconds: Long = PROCESS_TIMEOUT_SECONDS,
+        environment: Map<String, String> = emptyMap(),
+    ): ProcessResult {
         val stdout = root.resolve("process-${System.nanoTime()}.out")
         val stderr = root.resolve("process-${System.nanoTime()}.err")
         val process = ProcessBuilder(command)
@@ -85,7 +89,7 @@ class Sandbox : AutoCloseable {
             .redirectInput(ProcessBuilder.Redirect.from(nullDevice()))
             .redirectOutput(stdout.toFile())
             .redirectError(stderr.toFile())
-            .also { builder -> builder.environment().apply { clear(); putAll(environment()) } }
+            .also { builder -> builder.environment().apply { clear(); putAll(environment() + environment) } }
             .start()
         if (!process.waitFor(timeoutSeconds, TimeUnit.SECONDS)) {
             process.descendants().forEach { it.destroyForcibly() }
@@ -123,7 +127,7 @@ class Sandbox : AutoCloseable {
     private fun pathVariable(environment: Map<String, String>): String =
         environment.keys.firstOrNull { it.equals("PATH", ignoreCase = true) } ?: "PATH"
 
-    private fun read(file: Path): String = if (Files.exists(file)) String(Files.readAllBytes(file), processOutputCharset) else ""
+    private fun read(file: Path): String = if (Files.exists(file)) Files.readString(file) else ""
 
     private fun nullDevice(): File = File(if (isWindows) "NUL" else "/dev/null")
 
@@ -133,8 +137,6 @@ class Sandbox : AutoCloseable {
         val isWindows: Boolean = System.getProperty("os.name").startsWith("Windows", ignoreCase = true)
 
         val isLinux: Boolean = System.getProperty("os.name").startsWith("Linux", ignoreCase = true)
-
-        private val processOutputCharset: Charset = Charset.forName(System.getProperty("native.encoding"))
 
         private val ISOLATED_PREFIXES = listOf(
             "HERDR_", "ORCA_", "CLAUDE", "SHOGUNAI_", "GIT_", "JAVA_OPTS", "SHOGUN_OPTS", "JAVA_TOOL_OPTIONS", "_JAVA_OPTIONS",

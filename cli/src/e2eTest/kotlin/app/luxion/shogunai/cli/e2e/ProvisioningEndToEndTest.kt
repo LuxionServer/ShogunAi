@@ -143,6 +143,22 @@ class ProvisioningEndToEndTest {
         assertEquals(0, sandbox.shogun(worktree, "provision", "--check").exitCode)
     }
 
+    @Test
+    fun `paths with accents are printed in UTF-8 whatever the locale`() {
+        val accented = sandbox.repository("Projects ñ/main repo")
+        sandbox.shogunSucceeds(accented, "project", "add")
+        val asciiLocale = if (Sandbox.isLinux) emptyMap() else mapOf("LC_ALL" to "C", "LANG" to "C")
+
+        val created = sandbox.shogun(accented, "new", "TASK-1", environment = asciiLocale)
+        val described = sandbox.shogun(accented, "new", "TASK-2", "--json", environment = asciiLocale)
+
+        val worktreesRoot = accented.resolveSibling("main repo-worktrees")
+        assertEquals(0, created.exitCode, created.describe())
+        assertEquals(worktreesRoot.resolve("TASK-1"), Path.of(created.output.lines().last()).toRealPath())
+        assertEquals(0, described.exitCode, described.describe())
+        assertTrue(described.stdout.contains("Projects ñ"), described.describe())
+    }
+
     private fun provisionedMark(worktree: Path): String? {
         val result = sandbox.run(listOf("git", "config", "--local", "e2e.provisioned"), worktree)
         return result.output.takeIf { result.exitCode == 0 }

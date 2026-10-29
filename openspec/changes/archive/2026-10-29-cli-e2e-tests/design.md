@@ -51,3 +51,8 @@ Repositories and task ids use generic names (`main-repo`, `TASK-1`); nothing ref
 
 - `host-environment`: if it moves home resolution away from `user.home`, the harness's isolation variables must keep matching what it reads.
 - `worktree-preflight`: once creation checks declared files first, a scenario for a missing declared file belongs to that change or to a follow-up of this one.
+
+## Bugs found
+
+- On Windows, and anywhere the locale isn't UTF-8, the command wrote its output in the system's native encoding when it was redirected, so a path with accents reached Claude Code's hooks and `--json` consumers garbled (the CI's Windows run showed it as invalid UTF-8). `runShogun` now writes standard output and standard error in UTF-8, with a regression test that runs the command with `LC_ALL=C` on macOS and with Windows' default code page. Decided with Ciro to fix it in this change; a Windows console set to another code page may show accents garbled.
+
