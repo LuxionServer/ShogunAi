@@ -15,7 +15,7 @@ import kotlin.io.path.exists
 import kotlin.io.path.readText
 
 class JsonProjectRepository(
-    private val storagePath: Path = Path.of(System.getProperty("user.home"), ".shogunai", "projects.json"),
+    private val storagePath: Path,
 ) : ProjectRepository {
 
     private val json = Json { prettyPrint = true; ignoreUnknownKeys = true }

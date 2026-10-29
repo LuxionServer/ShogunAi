@@ -41,10 +41,10 @@ class CliOrcaClientTest {
 
     private fun client(
         executor: ShellCommandExecutor,
-        files: Set<String> = setOf(orca),
+        files: Set<String> = emptySet(),
         osName: String = "Mac OS X",
-        onPath: Map<String, String> = emptyMap(),
-    ) = CliOrcaClient(executor, userHome = "/home/dev", osName = osName, isFile = { it in files }, findOnPath = { onPath[it] })
+        onPath: Map<String, String> = mapOf("orca" to orca),
+    ) = CliOrcaClient(executor, findExecutable = { onPath[it] }, osName = osName, isFile = { it in files })
 
     private fun answering(name: String) = FakeShellCommandExecutor { FakeShellCommandExecutor.success(it, fixture(name)) }
 
@@ -433,7 +433,7 @@ class CliOrcaClientTest {
     @Test
     fun `a missing binary means Orca isn't installed`() = runTest {
         val executor = FakeShellCommandExecutor()
-        val client = client(executor, files = emptySet())
+        val client = client(executor, onPath = emptyMap())
 
         assertFalse(client.isInstalled())
         assertFailsWith<WorktreeError.OrcaNotInstalled> { client.status() }
@@ -445,16 +445,16 @@ class CliOrcaClientTest {
         val bundle = "/Applications/Orca.app/Contents/Resources/bin/orca"
         val executor = answering("status.json")
 
-        client(executor, files = setOf(bundle)).status()
+        client(executor, files = setOf(bundle), onPath = emptyMap()).status()
 
         assertEquals(bundle, executor.executedCommands.single().first())
     }
 
     @Test
-    fun `the user's local bin comes first`() {
-        val local = "/home/dev/.local/bin/orca"
+    fun `the binary found on the PATH comes before the app bundle`() {
+        val bundle = "/Applications/Orca.app/Contents/Resources/bin/orca"
 
-        assertEquals(local, client(FakeShellCommandExecutor(), files = setOf(local, orca)).executable())
+        assertEquals(orca, client(FakeShellCommandExecutor(), files = setOf(bundle)).executable())
     }
 
     @Test
@@ -463,8 +463,7 @@ class CliOrcaClientTest {
             client(FakeShellCommandExecutor(), files = files, osName = "Linux", onPath = onPath)
         }
 
-        assertFalse(linux(setOf("/usr/local/bin/orca"), mapOf("orca" to "/usr/bin/orca")).isInstalled())
-        assertEquals("/usr/local/bin/orca-ide", linux(setOf("/usr/local/bin/orca-ide"), emptyMap()).executable())
+        assertFalse(linux(setOf("/Applications/Orca.app/Contents/Resources/bin/orca"), mapOf("orca" to "/usr/bin/orca")).isInstalled())
         assertEquals("/usr/bin/orca-ide", linux(emptySet(), mapOf("orca-ide" to "/usr/bin/orca-ide")).executable())
     }
 

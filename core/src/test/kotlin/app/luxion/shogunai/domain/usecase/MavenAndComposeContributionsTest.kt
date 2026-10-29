@@ -56,7 +56,7 @@ class MavenAndComposeContributionsTest {
             ),
             store,
             FakePortProbe(),
-            MachineProviderContributions(FakeAppleSimulators(), { SimulatorSettings() }),
+            MachineProviderContributions(FakeAppleSimulators(), { SimulatorSettings() }, userHome = "/home/dev"),
             trust = FakeRepositoryTrust(approvesEverything = true),
             composeRegistry = registry,
         )

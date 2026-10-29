@@ -18,6 +18,7 @@ import java.io.InputStream
 import kotlin.time.Duration
 
 class ProcessBuilderShellCommandExecutor(
+    private val path: (() -> List<String>)?,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
     private val osName: String = System.getProperty("os.name"),
 ) : ShellCommandExecutor {
@@ -60,7 +61,7 @@ class ProcessBuilderShellCommandExecutor(
             val builder = ProcessBuilder(WindowsArguments.prepare(GitLongPaths.prepare(command, osName), osName))
                 .redirectInput(ProcessBuilder.Redirect.from(File(NULL_DEVICE)))
                 .apply { workingDirectory?.let { directory(File(it)) } }
-            builder.environment()["PATH"] = HomebrewPath.merge(builder.environment()["PATH"])
+            path?.let { builder.environment()["PATH"] = it().joinToString(File.pathSeparator) }
             GitLocale.applyTo(command, builder.environment())
             builder.environment().putAll(environment)
             builder.start()
@@ -101,15 +102,6 @@ class ProcessBuilderShellCommandExecutor(
 
     private companion object {
         val NULL_DEVICE = if (System.getProperty("os.name").startsWith("Windows")) "NUL" else "/dev/null"
-    }
-}
-
-internal object HomebrewPath {
-    private val EXTRA_DIRS = listOf("/opt/homebrew/bin", "/opt/homebrew/sbin", "/usr/local/bin")
-
-    fun merge(currentPath: String?): String {
-        val existingDirs = currentPath.orEmpty().split(File.pathSeparator).filter { it.isNotEmpty() }
-        return (EXTRA_DIRS + existingDirs).distinct().joinToString(File.pathSeparator)
     }
 }
 
