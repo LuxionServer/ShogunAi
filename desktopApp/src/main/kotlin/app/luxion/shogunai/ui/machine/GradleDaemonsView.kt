@@ -91,12 +91,12 @@ private fun LoadedDaemons(daemons: List<MachineDaemon>, machine: MachineResource
     }
     daemons.forEach { daemon ->
         HorizontalDivider()
-        MachineRowLine {
-            MachineDataText(daemonTitle(daemon, strings), Modifier.weight(1f))
-            MachineDataText(formatSize(daemon.process.residentMemoryBytes), Modifier.width(80.dp))
-            MachineStateText(daemonStateText(daemon, strings), Modifier.width(170.dp))
-            OwnerCell(daemon.owner, machine::projectName, onOpenWorktree, Modifier.width(MachineOwnerColumnWidth))
-            Row(Modifier.width(MachineActionColumnWidth), horizontalArrangement = Arrangement.End) {
+        MachineRow(
+            machineCell(MachineMainColumn) { MachineDataText(daemonTitle(daemon, strings)) },
+            machineCell(MachineSizeColumn) { MachineDataText(formatSize(daemon.process.residentMemoryBytes)) },
+            machineCell(MachineDaemonStateColumn) { MachineStateText(daemonStateText(daemon, strings)) },
+            machineCell(MachineOwnerColumn) { OwnerCell(daemon.owner, machine::projectName, onOpenWorktree) },
+            machineActionCell {
                 val stopBlock = daemon.stopBlock(daemons, machine.isStoppingDaemons)
                 DisabledReason(stopBlock?.describe(strings)) {
                     SecondaryButton(
@@ -104,8 +104,8 @@ private fun LoadedDaemons(daemons: List<MachineDaemon>, machine: MachineResource
                         enabled = stopBlock == null,
                     ) { Text(strings.stopDaemon) }
                 }
-            }
-        }
+            },
+        )
     }
 }
 

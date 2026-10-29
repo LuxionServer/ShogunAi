@@ -4,11 +4,9 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
@@ -20,7 +18,12 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import app.luxion.shogunai.domain.usecase.ProjectOwner
+import app.luxion.shogunai.ui.components.ColumnSpec
+import app.luxion.shogunai.ui.components.DataCell
+import app.luxion.shogunai.ui.components.DataHeader
+import app.luxion.shogunai.ui.components.DataRow
 import app.luxion.shogunai.ui.components.GroupedNotice
+import app.luxion.shogunai.ui.components.RowLines
 import app.luxion.shogunai.ui.components.ShogunDialog
 import app.luxion.shogunai.ui.components.DangerButton
 import app.luxion.shogunai.ui.components.InlineProgress
@@ -111,30 +114,37 @@ fun MachineStateText(text: String, modifier: Modifier = Modifier) {
     )
 }
 
+val MachineMainColumn = ColumnSpec()
+val MachineOwnerColumn = ColumnSpec(width = MachineOwnerColumnWidth)
+val MachineStateColumn = ColumnSpec(width = MachineStateColumnWidth)
+val MachineActionColumn = ColumnSpec(width = MachineActionColumnWidth)
+val MachineSizeColumn = ColumnSpec(width = 80.dp)
+val MachineDaemonStateColumn = ColumnSpec(width = 170.dp)
+
+fun machineCell(spec: ColumnSpec, content: @Composable () -> Unit): DataCell = DataCell(spec) { content() }
+
+fun machineActionCell(content: @Composable () -> Unit): DataCell = DataCell(MachineActionColumn) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
+        content()
+    }
+}
+
 @Composable
-fun MachineRowLine(content: @Composable (androidx.compose.foundation.layout.RowScope.() -> Unit)) {
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(vertical = Spacing.xs),
-        horizontalArrangement = Arrangement.spacedBy(Spacing.md),
-        verticalAlignment = Alignment.CenterVertically,
-        content = content,
-    )
+fun MachineRow(vararg cells: DataCell) {
+    DataRow(cells = cells.toList(), lines = RowLines.ONE)
 }
 
 @Composable
 fun MachineColumnHeader() {
     val strings = LocalStrings.current
-    MachineRowLine {
-        MachineHeaderText(strings.machineColumnDevice, Modifier.weight(1f))
-        MachineHeaderText(strings.machineColumnWorktree, Modifier.width(MachineOwnerColumnWidth))
-        MachineHeaderText(strings.machineColumnState, Modifier.width(MachineStateColumnWidth))
-        Spacer(Modifier.width(MachineActionColumnWidth))
-    }
-}
-
-@Composable
-private fun MachineHeaderText(text: String, modifier: Modifier = Modifier) {
-    Text(text, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = modifier)
+    DataHeader(
+        listOf(
+            MachineMainColumn to strings.machineColumnDevice,
+            MachineOwnerColumn to strings.machineColumnWorktree,
+            MachineStateColumn to strings.machineColumnState,
+            MachineActionColumn to "",
+        ),
+    )
 }
 
 @Composable

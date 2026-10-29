@@ -1,5 +1,7 @@
 package app.luxion.shogunai.ui.i18n
 
+import app.luxion.shogunai.domain.model.AgentStateSource
+import app.luxion.shogunai.ui.components.AgentPhase
 import app.luxion.shogunai.domain.model.ComposeResourceKind
 import app.luxion.shogunai.domain.model.ResourceLimits
 import app.luxion.shogunai.domain.model.ResourceKind
@@ -8,7 +10,6 @@ import app.luxion.shogunai.domain.model.DerivedDataQuotaMode
 import app.luxion.shogunai.domain.model.InstallChannel
 import app.luxion.shogunai.domain.model.MobileSecretKind
 import app.luxion.shogunai.domain.model.ProvisionDriftState
-import app.luxion.shogunai.domain.model.AgentState
 import app.luxion.shogunai.domain.model.AppLanguage
 import app.luxion.shogunai.domain.usecase.HookEntry
 import app.luxion.shogunai.domain.usecase.HookReplacement
@@ -250,13 +251,34 @@ object EnglishStrings : Strings {
     override fun claudeHooksRemoved(entry: HookEntry) = "Remove from ${entry.event}: ${entry.command}"
     override val claudeHooksNoticeMessage = "Claude is running without a known state. Install ShogunAi's Claude Code hooks to see when it needs you."
     override val claudeHooksNoticeDismiss = "Dismiss"
-    override fun agentLabel(name: String, state: AgentState?) = when (state) {
-        null -> name
-        AgentState.WORKING -> "$name · working"
-        AgentState.BLOCKED -> "$name · blocked"
-        AgentState.DONE -> "$name · done"
-        AgentState.IDLE -> "$name · idle"
+    override fun agentPhaseName(phase: AgentPhase) = when (phase) {
+        AgentPhase.NEEDS_YOU -> "needs you"
+        AgentPhase.DONE -> "done"
+        AgentPhase.WORKING -> "working"
+        AgentPhase.RUNNING -> "running"
+        AgentPhase.IDLE -> "idle"
     }
+    override fun agentStateSource(source: AgentStateSource?) = when (source) {
+        AgentStateSource.HERDR -> "State from Herdr"
+        AgentStateSource.ORCA -> "State from Orca"
+        AgentStateSource.CLAUDE_CODE -> "State from Claude Code hooks"
+        null -> "Only its process was found"
+    }
+    override fun agentsUpdated(relative: String) = "Updated $relative"
+    override val noAgentRunning = "No agent running"
+    override fun copyValue(key: String) = "Copy $key"
+    override val agentSectionTitle = "Agent"
+    override val resourcesTitle = "Resources"
+    override val expanded = "Expanded"
+    override val collapsed = "Collapsed"
+    override val changesKey = "Changes"
+    override val upstreamKey = "Upstream"
+    override fun versusBranchKey(branch: String) = "vs $branch"
+    override val lastCommitKey = "Last commit"
+    override fun environmentSummary(ports: Int, variables: Int) = listOfNotNull(
+        ports.takeIf { it > 0 }?.let { if (it == 1) "1 port" else "$it ports" },
+        variables.takeIf { it > 0 }?.let { if (it == 1) "1 var" else "$it vars" },
+    ).joinToString(" · ")
     override fun agentsRunning(names: List<String>) = "Agents running: ${names.joinToString(", ")}"
     override val allProjects = "All projects"
     override val projectLabel = "Project"
@@ -281,13 +303,6 @@ object EnglishStrings : Strings {
     override val mergedLabel = "merged"
     override fun commitAgo(relative: String) = "commit $relative"
     override fun createdAgo(relative: String) = "created $relative"
-    override fun agentStateName(state: AgentState?) = when (state) {
-        null -> "state unknown"
-        AgentState.WORKING -> "working"
-        AgentState.BLOCKED -> "blocked"
-        AgentState.DONE -> "done"
-        AgentState.IDLE -> "idle"
-    }
     override val sortLabel = "Sort"
     override val sortByName = "Name"
     override val sortByLastActivity = "Last activity"
@@ -316,11 +331,11 @@ object EnglishStrings : Strings {
     override val provisioningUpToDate = "Files are up to date"
     override val provisionAction = "Provision"
     override val copyAsEnv = "Copy as .env"
-    override fun provisionDriftFile(path: String, state: ProvisionDriftState) = when (state) {
-        ProvisionDriftState.MISSING -> "$path · missing"
-        ProvisionDriftState.DIFFERS -> "$path · differs"
-        ProvisionDriftState.NOT_LINKED -> "$path · not linked"
-        ProvisionDriftState.DELETED_IN_BASE -> "$path · deleted in base"
+    override fun provisionDriftState(state: ProvisionDriftState) = when (state) {
+        ProvisionDriftState.MISSING -> "missing"
+        ProvisionDriftState.DIFFERS -> "differs"
+        ProvisionDriftState.NOT_LINKED -> "not linked"
+        ProvisionDriftState.DELETED_IN_BASE -> "deleted in base"
     }
     override val environmentTitle = "Environment"
     override val devicesTitle = "Devices"

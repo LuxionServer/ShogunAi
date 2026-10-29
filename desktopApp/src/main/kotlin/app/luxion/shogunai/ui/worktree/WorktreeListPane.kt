@@ -1,5 +1,7 @@
 package app.luxion.shogunai.ui.worktree
 
+import app.luxion.shogunai.ui.components.AgentIndicator
+import app.luxion.shogunai.ui.components.AgentIndicatorModel
 import app.luxion.shogunai.ui.components.DisabledReason
 import app.luxion.shogunai.ui.components.GroupTitle
 import app.luxion.shogunai.ui.components.SkeletonRows
@@ -531,6 +533,7 @@ private fun WorktreeRowFor(
             groupTag = groupTag?.label,
             desktopTurn = board.desktopTurn.rowTurn(worktree.path),
             headlessApp = holder.headlessApps[worktree.path]?.takeIf { holder.isHeadlessAppRepository },
+            agentsReadAt = holder.agentsReadAt,
         ),
         selected = board.selected == ref,
         isCopied = holder.copiedWorktreePath == worktree.path,
@@ -563,6 +566,7 @@ private fun ChangeGroupHeader(group: ChangeGroup, board: WorktreeBoard) {
         onOpenAll = { board.openAllInHerdr(group) },
         onAddRepository = { board.addRepositoryToGroup(group, it) },
         onCleanUp = { board.openGroupCleanup(group) },
+        agent = agentIndicator(board.agentsOf(group), board.agentsReadAtOf(group), Instant.now(), strings),
     )
 }
 
@@ -577,6 +581,7 @@ internal fun ChangeGroupHeaderView(
     onOpenAll: () -> Unit,
     onAddRepository: (String) -> Unit,
     onCleanUp: () -> Unit,
+    agent: AgentIndicatorModel? = null,
 ) {
     val strings = LocalStrings.current
     val colors = MaterialTheme.colorScheme
@@ -605,6 +610,7 @@ internal fun ChangeGroupHeaderView(
                 overflow = TextOverflow.Ellipsis,
             )
         }
+        agent?.let { AgentIndicator(it) }
         StatusChip(group.state.status, group.state.label(strings))
         if (isAdding) InlineProgress()
         NeutralTextButton(onClick = onOpenAll) {

@@ -6,11 +6,14 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.v2.runComposeUiTest
 import app.luxion.shogunai.domain.model.Divergence
+import app.luxion.shogunai.domain.model.AgentState
+import app.luxion.shogunai.domain.model.RunningAgent
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.WorktreeStatus
 import app.luxion.shogunai.domain.usecase.GroupRepositoryOutcome
@@ -128,6 +131,29 @@ class MultirepoViewUiTest {
         onNodeWithText("Clean up group").assertIsNotEnabled()
         onNodeWithText("Open all in Herdr").assertIsEnabled()
         assertEquals(0, cleaned)
+    }
+
+    @Test
+    fun `a group header shows the agent of its worktrees`() = runComposeUiTest {
+        val agent = agentIndicator(listOf(RunningAgent("claude", AgentState.BLOCKED)), null, now, EnglishStrings)
+        setContent {
+            MaterialTheme {
+                ChangeGroupHeaderView(
+                    group = group(StateBadgeKind.NEEDS_YOU),
+                    cleanUpBlocker = null,
+                    canCleanUp = true,
+                    addableAliases = emptyList(),
+                    isAdding = false,
+                    onToggle = {},
+                    onOpenAll = {},
+                    onAddRepository = {},
+                    onCleanUp = {},
+                    agent = agent,
+                )
+            }
+        }
+
+        onNodeWithContentDescription("Claude · needs you").assertIsDisplayed()
     }
 
     @Test

@@ -87,7 +87,7 @@ Multirepos and groups by branch are done in the CLI and the desktop app, and the
 - Splitting `ProjectWorktrees.kt` and `ProjectSettingsView.kt` into smaller holders and sections.
 - Checking the guided tour on Windows and Linux with a real installed app: creating the sample with the system's Git, and the tour's agent command, whose prompt is quoted for the shell each terminal runs.
 - A changelog page in the documentation site built from the release notes in `.github/release-notes/`, which the app already shows in its update notice.
-- Finishing the v2 design tokens in the worktree detail, which the Orca integration was changing at the same time: its button labels still shrink with `bodySmall` and it shows the agent state and dates in mono.
+- Finishing the v2 design tokens in the worktree detail's action block, which `ui-v2-action-catalog` replaces: its button labels still shrink with `bodySmall`.
 
 ## Later
 

@@ -10,6 +10,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import app.luxion.shogunai.domain.model.toLocalClockTime
+import app.luxion.shogunai.ui.components.ColumnSpec
 import app.luxion.shogunai.ui.components.GroupTitle
 import app.luxion.shogunai.ui.components.ShogunDialog
 import app.luxion.shogunai.ui.components.DangerButton
@@ -34,31 +35,30 @@ fun DesktopTurnView(machine: MachineResources, onOpenWorktree: (String, String) 
             MachineSecondaryText(strings.desktopTurnFree)
         } else {
             HorizontalDivider()
-            MachineRowLine {
-                OwnerCell(machine.ownerOfPath(holder.worktreePath), machine::projectName, onOpenWorktree, Modifier.weight(1f))
-                MachineDataText(
-                    strings.desktopTurnHeld(clockTime(holder.acquiredAt), clockTime(holder.expiresAt)),
-                    Modifier.width(MachineOwnerColumnWidth),
-                )
-                Row(Modifier.width(MachineActionColumnWidth), horizontalArrangement = Arrangement.End) {
+            MachineRow(
+                machineCell(MachineMainColumn) { OwnerCell(machine.ownerOfPath(holder.worktreePath), machine::projectName, onOpenWorktree) },
+                machineCell(MachineOwnerColumn) {
+                    MachineDataText(strings.desktopTurnHeld(clockTime(holder.acquiredAt), clockTime(holder.expiresAt)))
+                },
+                machineActionCell {
                     if (watch.isReleasing) {
                         InlineProgress(size = ProgressSize.Small)
                     } else {
                         SecondaryButton(onClick = watch::requestRelease) { Text(strings.releaseDesktopTurn) }
                     }
-                }
-            }
+                },
+            )
         }
         val waiting = watch.state.waiting
         if (waiting.isNotEmpty()) {
             GroupTitle(strings.desktopTurnWaitingTitle)
             waiting.forEachIndexed { index, ticket ->
                 HorizontalDivider()
-                MachineRowLine {
-                    MachineDataText("${index + 1}.", Modifier.width(PositionColumnWidth))
-                    OwnerCell(machine.ownerOfPath(ticket.worktreePath), machine::projectName, onOpenWorktree, Modifier.weight(1f))
-                    MachineDataText(strings.desktopTurnWaitingSince(clockTime(ticket.since)), Modifier.width(MachineOwnerColumnWidth))
-                }
+                MachineRow(
+                    machineCell(ColumnSpec(width = PositionColumnWidth)) { MachineDataText("${index + 1}.") },
+                    machineCell(MachineMainColumn) { OwnerCell(machine.ownerOfPath(ticket.worktreePath), machine::projectName, onOpenWorktree) },
+                    machineCell(MachineOwnerColumn) { MachineStateText(strings.desktopTurnWaitingSince(clockTime(ticket.since))) },
+                )
             }
         }
     }

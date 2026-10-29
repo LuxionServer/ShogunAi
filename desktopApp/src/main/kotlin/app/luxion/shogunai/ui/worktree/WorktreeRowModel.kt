@@ -4,7 +4,6 @@ import app.luxion.shogunai.domain.model.Divergence
 import app.luxion.shogunai.domain.model.EmulatorState
 import app.luxion.shogunai.domain.model.HeadlessAppProcess
 import app.luxion.shogunai.domain.model.HeadlessAppState
-import app.luxion.shogunai.domain.model.AgentState
 import app.luxion.shogunai.domain.model.RunningAgent
 import app.luxion.shogunai.domain.model.SimulatorState
 import app.luxion.shogunai.domain.model.Worktree
@@ -18,6 +17,7 @@ import app.luxion.shogunai.domain.usecase.ActivityDate
 import app.luxion.shogunai.domain.usecase.ActivityKind
 import app.luxion.shogunai.domain.usecase.activityDate
 import app.luxion.shogunai.domain.usecase.worktreeActivity
+import app.luxion.shogunai.ui.components.AgentIndicatorModel
 import app.luxion.shogunai.ui.i18n.Strings
 import app.luxion.shogunai.ui.theme.Status
 import java.time.Duration
@@ -46,15 +46,6 @@ enum class StateBadgeKind(val status: Status, val outlined: Boolean = false) {
 
 data class StateBadge(val kind: StateBadgeKind, val label: String)
 
-data class AgentLine(
-    val label: String,
-    val name: String,
-    val state: AgentState?,
-    val status: Status,
-    val moreCount: Int,
-    val tooltip: String,
-)
-
 enum class SecondLineKind { DESKTOP_HOLDER, DESKTOP_WAITING, EMULATOR, SIMULATOR, HEADLESS_APP }
 
 data class DeviceLine(
@@ -74,7 +65,7 @@ sealed interface WorktreeDesktopTurn {
     data class Waiting(val position: Int) : WorktreeDesktopTurn
 }
 
-data class ExecutionCell(val agent: AgentLine?, val device: DeviceLine?)
+data class ExecutionCell(val agent: AgentIndicatorModel?, val device: DeviceLine?)
 
 data class NameCell(val branch: String, val folder: String?, val origin: String?, val project: String?, val groupTag: String? = null)
 
@@ -142,13 +133,14 @@ fun worktreeRowModel(
     groupTag: String? = null,
     desktopTurn: WorktreeDesktopTurn? = null,
     headlessApp: HeadlessAppProcess? = null,
+    agentsReadAt: Instant? = null,
 ): WorktreeRowModel {
     val loaded = (status as? WorktreeStatusState.Loaded)?.status
     val kind = worktreeActivity(worktree, loaded, agents, now, inactiveAfter).badgeKind()
     return WorktreeRowModel(
         badge = StateBadge(kind, kind.label(strings)),
         execution = ExecutionCell(
-            agent = agentLine(agents, strings),
+            agent = agentIndicator(agents, agentsReadAt, now, strings),
             device = secondLine(desktopTurn, emulator, simulator, headlessApp, strings),
         ),
         name = nameCell(worktree, origin, projectName, strings).copy(groupTag = groupTag),
@@ -181,29 +173,6 @@ private fun nameCell(worktree: Worktree, origin: WorktreeOrigin?, projectName: S
         folder = folder.takeIf { it != worktree.branch?.substringAfterLast('/') },
         origin = origin?.let { originLabel(it, strings) },
         project = projectName,
-    )
-}
-
-private val AgentUrgency = listOf(
-    AgentState.BLOCKED,
-    AgentState.DONE,
-    AgentState.WORKING,
-    null,
-    AgentState.IDLE,
-)
-
-private fun agentLine(agents: List<RunningAgent>, strings: Strings): AgentLine? {
-    val urgent = agents.minByOrNull { AgentUrgency.indexOf(it.state) } ?: return null
-    val displayName = urgent.name.replaceFirstChar { it.uppercase() }
-    return AgentLine(
-        label = strings.agentLabel(displayName, urgent.state),
-        name = displayName,
-        state = urgent.state,
-        status = urgent.state.status(),
-        moreCount = agents.size - 1,
-        tooltip = agents.sortedBy { AgentUrgency.indexOf(it.state) }.joinToString("\n") {
-            "${it.name.replaceFirstChar { letter -> letter.uppercase() }}: ${strings.agentStateName(it.state)}"
-        },
     )
 }
 
@@ -270,13 +239,6 @@ private fun gitCell(
         },
         unavailableTooltip = null,
     )
-}
-
-internal fun AgentState?.status(): Status = when (this) {
-    AgentState.BLOCKED -> Status.WARNING
-    AgentState.DONE -> Status.SUCCESS
-    AgentState.IDLE -> Status.NEUTRAL
-    AgentState.WORKING, null -> Status.INFO
 }
 
 private fun activeEmulator(emulator: WorktreeEmulator?): EmulatorState? = when (emulator?.state) {

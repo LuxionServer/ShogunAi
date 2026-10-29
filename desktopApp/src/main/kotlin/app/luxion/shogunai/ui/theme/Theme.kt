@@ -2,12 +2,14 @@ package app.luxion.shogunai.ui.theme
 
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.ColorScheme
+import androidx.compose.material3.LocalMinimumInteractiveComponentSize
 import androidx.compose.material3.LocalRippleConfiguration
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.RippleConfiguration
 import androidx.compose.material3.lightColorScheme
+import androidx.compose.ui.unit.Dp
 import androidx.compose.material.ripple.RippleAlpha
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -160,7 +162,10 @@ fun ShogunAiTheme(themeMode: ThemeMode, content: @Composable () -> Unit) {
             typography = ShogunTypography,
             shapes = ShogunShapes,
         ) {
-            CompositionLocalProvider(LocalRippleConfiguration provides ShogunRippleConfiguration) {
+            CompositionLocalProvider(
+                LocalRippleConfiguration provides ShogunRippleConfiguration,
+                LocalMinimumInteractiveComponentSize provides Dp.Unspecified,
+            ) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background,

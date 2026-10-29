@@ -2,7 +2,8 @@ package app.luxion.shogunai.ui.i18n
 
 import app.luxion.shogunai.domain.executor.CommandExecutionException
 import app.luxion.shogunai.domain.model.AppLanguage
-import app.luxion.shogunai.domain.model.AgentState
+import app.luxion.shogunai.domain.model.AgentStateSource
+import app.luxion.shogunai.ui.components.AgentPhase
 import app.luxion.shogunai.domain.model.InstallChannel
 import app.luxion.shogunai.domain.model.PoolHolder
 import app.luxion.shogunai.domain.model.PoolHolderState
@@ -420,16 +421,26 @@ class StringsTest {
     }
 
     @Test
-    fun `agent labels name the agent and translate each Herdr state`() {
-        AgentState.entries.forEach { state ->
-            val english = EnglishStrings.agentLabel("claude", state)
-            val spanish = SpanishStrings.agentLabel("claude", state)
+    fun `agent labels name the agent and translate each phase`() {
+        AgentPhase.entries.forEach { phase ->
+            val english = EnglishStrings.agentLabel("Claude", phase)
+            val spanish = SpanishStrings.agentLabel("Claude", phase)
 
-            assertTrue(english.startsWith("claude") && spanish.startsWith("claude"))
+            assertTrue(english.startsWith("Claude · ") && spanish.startsWith("Claude · "))
             assertNotEquals(english, spanish)
         }
-        assertEquals("claude", EnglishStrings.agentLabel("claude", null))
-        assertEquals("claude", SpanishStrings.agentLabel("claude", null))
+        assertEquals("Claude · needs you", EnglishStrings.agentLabel("Claude", AgentPhase.NEEDS_YOU))
+        assertEquals("Claude · te necesita", SpanishStrings.agentLabel("Claude", AgentPhase.NEEDS_YOU))
+    }
+
+    @Test
+    fun `the agent's source and the environment summary are translated`() {
+        assertEquals("State from Orca", EnglishStrings.agentStateSource(AgentStateSource.ORCA))
+        assertEquals("Estado de Orca", SpanishStrings.agentStateSource(AgentStateSource.ORCA))
+        assertNotEquals(EnglishStrings.agentStateSource(null), SpanishStrings.agentStateSource(null))
+        assertEquals("2 ports · 5 vars", EnglishStrings.environmentSummary(2, 5))
+        assertEquals("1 puerto · 1 variable", SpanishStrings.environmentSummary(1, 1))
+        assertEquals("", EnglishStrings.environmentSummary(0, 0))
     }
 
     @Test

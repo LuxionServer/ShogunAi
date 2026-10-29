@@ -1,12 +1,16 @@
 package app.luxion.shogunai.ui.components
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertHeightIsEqualTo
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.v2.runComposeUiTest
@@ -47,6 +51,13 @@ class ButtonsUiTest {
     }
 
     @Test
+    fun `a button takes no more height than its size`() = runComposeUiTest {
+        setContent { ShogunAiTheme(ThemeMode.DARK) { Column { Box(Modifier.testTag(CONTAINER)) { SecondaryButton(onClick = {}) { Text(LABEL) } } } } }
+
+        onNodeWithTag(CONTAINER).assertHeightIsEqualTo(ButtonSize.Compact.height)
+    }
+
+    @Test
     fun `an enabled button runs its action and a disabled one doesn't`() = runComposeUiTest {
         buttons.forEach { (name, button) ->
             listOf(true, false).forEach { enabled ->
@@ -69,5 +80,6 @@ class ButtonsUiTest {
 
     private companion object {
         const val LABEL = "Clean up"
+        const val CONTAINER = "button-container"
     }
 }
