@@ -3,6 +3,7 @@ package app.luxion.shogunai.domain.usecase
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.io.FileManager
 import app.luxion.shogunai.domain.io.RepositoryProvisioningSource
+import app.luxion.shogunai.domain.model.GENERATED_FOLDERS
 import app.luxion.shogunai.domain.model.KeystoreReferenceWarning
 import app.luxion.shogunai.domain.model.MobileSecret
 import app.luxion.shogunai.domain.model.MobileSecretKind
@@ -31,8 +32,8 @@ class DetectMobileSecretsUseCase(
         val result = executor.execute(command = command, workingDirectory = repository)
         if (!result.isSuccess) throw WorktreeError.GitCommandFailed(result.command, result.exitCode, result.stderr)
         return result.stdout.split('\u0000')
-            .filter { it.isNotEmpty() && it.split('/').dropLast(1).none { folder -> folder in EXCLUDED_FOLDERS } }
-            .mapNotNull { path -> kindOf(path.substringAfterLast('/'))?.let { MobileSecret(path, it) } }
+            .filter { it.isNotEmpty() && it.split('/').dropLast(1).none { folder -> folder in GENERATED_FOLDERS } }
+            .mapNotNull { path -> MobileSecretKind.of(path.substringAfterLast('/'))?.let { MobileSecret(path, it) } }
     }
 
     private fun isWrittenByFlutter(repository: String, secret: MobileSecret): Boolean =
@@ -81,21 +82,11 @@ class DetectMobileSecretsUseCase(
             "GoogleService-Info.plist",
             "firebase_options.dart",
         )
-        val FIREBASE_CONFIG_FILES = setOf("google-services.json", "GoogleService-Info.plist", "firebase_options.dart")
         private val PROPERTIES_KINDS = setOf(MobileSecretKind.LOCAL_PROPERTIES, MobileSecretKind.SIGNING_PROPERTIES)
-        private val EXCLUDED_FOLDERS = setOf("build", ".gradle", ".dart_tool", "node_modules", "Pods", "DerivedData")
         private val KEY_SEPARATORS = setOf('.', '_', '-')
         const val STORE_FILE_SUFFIX = "storefile"
         const val FLUTTER_SDK_PROPERTY = "flutter.sdk"
         val WINDOWS_DRIVE = Regex("^[A-Za-z]:/")
-
-        fun kindOf(name: String): MobileSecretKind? = when {
-            name == "local.properties" -> MobileSecretKind.LOCAL_PROPERTIES
-            name == "keystore.properties" || name == "key.properties" -> MobileSecretKind.SIGNING_PROPERTIES
-            name.endsWith(".jks") || name.endsWith(".keystore") -> MobileSecretKind.KEYSTORE
-            name in FIREBASE_CONFIG_FILES -> MobileSecretKind.FIREBASE_CONFIG
-            else -> null
-        }
 
         fun isAbsolute(path: String): Boolean = path.startsWith("/") || path.startsWith("~") || WINDOWS_DRIVE.containsMatchIn(path)
 

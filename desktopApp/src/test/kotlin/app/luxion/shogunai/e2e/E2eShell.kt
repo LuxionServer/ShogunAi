@@ -32,10 +32,8 @@ import kotlin.test.fail
 
 const val E2E_TIMEOUT_MILLIS = 30_000L
 
-class AnsweringPathPicker(var folder: File? = null, var files: List<File> = emptyList()) : PathPicker {
-    override fun pickDirectory(initialPath: String, dialogTitle: String): String? = folder?.absolutePath
-
-    override fun pickFiles(initialPath: String, dialogTitle: String): List<String> = files.map { it.absolutePath }
+class AnsweringPathPicker(var folder: File? = null) : PathPicker {
+    override suspend fun pickDirectory(initialPath: String, dialogTitle: String): String? = folder?.absolutePath
 }
 
 @OptIn(ExperimentalTestApi::class)

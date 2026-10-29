@@ -40,7 +40,6 @@ object EnglishStrings : Strings {
     override val collapse = "Collapse"
 
     override val selectFolderDialogTitle = "Select a folder"
-    override val selectLocalFilesDialogTitle = "Select local files or folders"
 
     override val projectsTitle = "Projects"
     override val addProject = "Add project"
@@ -92,6 +91,17 @@ object EnglishStrings : Strings {
     override val localFilesSection = "Local files"
     override val removeLocalFile = "Remove local file or folder"
     override val newLocalFileLabel = "New local file or folder"
+    override val chooseLocalFiles = "Choose…"
+    override val localFilePickerTitle = "Choose local files"
+    override fun localFilePickerDescription(repository: String) = "Files and folders that Git doesn't track in $repository."
+    override val localFileFilterPlaceholder = "Filter, or type a pattern such as *.jks"
+    override fun addLocalPattern(pattern: String) = "Add pattern $pattern"
+    override fun suggestedLocalFile(kind: String) = "Suggested · $kind"
+    override val providedByRepository = "Provided by the repository"
+    override val noLocalFileCandidates = "The repository has no untracked or ignored files."
+    override val noLocalFileMatches = "Nothing matches the filter."
+    override fun selectedLocalFiles(count: Int) = if (count == 1) "1 selected" else "$count selected"
+    override val applyLocalFiles = "Apply"
     override val localFilesDescription =
         "Paths of files or folders, or patterns such as *.jks, copied into each new worktree, or linked when you turn on Link (a linked folder shows the base folder's changes at once, and a linked secret is shared by every worktree). They're stored on this machine only."
     override val repositoryProvisioningSection = "From the repository"
