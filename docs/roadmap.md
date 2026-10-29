@@ -50,7 +50,7 @@ Provisioning and bounded resources for the stacks where a fresh worktree is furt
 
 - Telling the desktop app's user which folders of a new worktree still need `pod install`; today the app clones the pods and only `shogun new`, `shogun provision` and the creation hook report what's missing.
 - The packages of Swift package repositories built with `swift build` (their `.build` folder per worktree), which the Xcode provider doesn't see.
-- Finding out what a Flutter repository needs in a worktree and which of the Android and iOS providers it can reuse.
+- Flutter repositories (planned in the `flutter-provider` change): a `flutter` provider that runs `flutter pub get` in each new worktree and tells agents to pass their device with `-d`, detection of Flutter and of a Gradle build in `android/`, and the Gradle and emulator providers reading that build's files.
 - Waiting for a device from the desktop app, and showing the worktrees waiting for each pool in its machine views; today only `shogun emulator start --wait` and `shogun simulator start --wait` wait, and the app fails a start while others wait.
 
 ### 3. Every agent, not only Claude Code
