@@ -243,9 +243,9 @@ class LocalAndroidSdkTest {
     fun `a detached emulator process writes its output to its log`() {
         val log = logs.resolve("echo.log").toFile()
 
-        val process = launchDetached(echoCommand("emulator booted"), log)
+        val process = launchDetached(echoCommand("booted"), log)
         while (process.isAlive) Thread.sleep(20)
 
-        assertEquals("emulator booted", process.lastLogLines(1).trim())
+        assertEquals("booted", process.lastLogLines(1).trim())
     }
 }
