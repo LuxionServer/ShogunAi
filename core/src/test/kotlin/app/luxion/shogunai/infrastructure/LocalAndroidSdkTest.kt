@@ -30,12 +30,13 @@ class LocalAndroidSdkTest {
         existing: List<String> = emptyList(),
         environment: Map<String, String> = emptyMap(),
         properties: Map<String, Map<String, String>> = emptyMap(),
+        directories: Set<String> = emptySet(),
         osName: String = "Mac OS X",
         executor: FakeShellCommandExecutor = FakeShellCommandExecutor(),
         launches: MutableList<Pair<List<String>, File>> = mutableListOf(),
     ) = LocalAndroidSdk(
         executor = executor,
-        fileManager = FakeFileManager(existing = existing, properties = properties),
+        fileManager = FakeFileManager(existing = existing, properties = properties, directories = directories),
         environmentVariable = { environment[it] },
         userHome = "/home/dev",
         osName = osName,
@@ -66,6 +67,33 @@ class LocalAndroidSdkTest {
 
         val linux = sdk(existing = listOf("/home/dev/Android/Sdk/emulator/emulator"), osName = "Linux")
         assertEquals("/home/dev/Android/Sdk", linux.locate(repository).root)
+    }
+
+    @Test
+    fun `looks for the SDK in a nested build's local properties`() {
+        val nested = sdk(
+            existing = listOf("/opt/android-sdk/emulator/emulator", "$repository/android/settings.gradle.kts"),
+            properties = mapOf("$repository/android/local.properties" to mapOf("sdk.dir" to "/opt/android-sdk")),
+            directories = setOf("$repository/android"),
+        )
+
+        assertEquals("/opt/android-sdk/emulator/emulator", nested.locate(repository).emulator)
+    }
+
+    @Test
+    fun `names a nested build's local properties among the places checked`() {
+        val error = assertFailsWith<WorktreeError.AndroidSdkNotFound> {
+            sdk(
+                existing = listOf("$repository/android/settings.gradle.kts"),
+                properties = mapOf("$repository/android/local.properties" to mapOf("sdk.dir" to "/missing")),
+                directories = setOf("$repository/android"),
+            ).locate(repository)
+        }
+
+        assertEquals(
+            listOf("android/local.properties sdk.dir (/missing)", "default location (/home/dev/Library/Android/sdk)"),
+            error.checked,
+        )
     }
 
     @Test

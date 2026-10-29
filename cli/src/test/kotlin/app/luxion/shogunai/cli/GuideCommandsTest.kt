@@ -1,5 +1,6 @@
 package app.luxion.shogunai.cli
 
+import app.luxion.shogunai.domain.model.FlutterProvider
 import app.luxion.shogunai.domain.FakeAndroidSdk
 import app.luxion.shogunai.domain.FakeAppleSimulators
 import app.luxion.shogunai.domain.FakeDerivedDataSource
@@ -371,5 +372,35 @@ class GuideCommandsTest {
         assertEquals(0, cli().run(listOf("guide", "status")), err.toString())
 
         assertFalse(err.contains("Claude Code gets the rules twice"), err.toString())
+    }
+
+    @Test
+    fun `session-start of a flutter repository tells to pass each declared device with -d`() {
+        val providers = RepositoryProviders(flutter = FlutterProvider, emulator = EmulatorProvider(), iosSimulator = IosSimulatorProvider())
+
+        val exitCode = cli(declaring(providers), input = """{"cwd": "$linked"}""").run(listOf("hook", "session-start"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertTrue(out.contains("`shogun emulator start` and then `flutter run -d \"\$ANDROID_SERIAL\"`"), out.toString())
+        assertTrue(out.contains("`shogun simulator start` and then `flutter run -d \"\$IOS_SIMULATOR_UDID\"`"), out.toString())
+        assertTrue(out.contains("`flutter emulators --launch`"), out.toString())
+    }
+
+    @Test
+    fun `guide resources gives the flutter rule with fvm and only the declared devices`() {
+        files.writeText("$linked/.fvmrc", "{\"flutter\": \"3.27.0\"}")
+
+        assertEquals(0, cli(declaring(RepositoryProviders(flutter = FlutterProvider, emulator = EmulatorProvider()))).run(listOf("guide", "resources")), err.toString())
+
+        val flutterLine = out.lines().takeWhile { !it.startsWith("Not applicable") }.single { it.contains("pub get") }
+        assertTrue(flutterLine.contains("`fvm flutter run -d \"\$ANDROID_SERIAL\"`"), flutterLine)
+        assertFalse(flutterLine.contains("IOS_SIMULATOR_UDID"), flutterLine)
+    }
+
+    @Test
+    fun `session-start without the flutter provider says nothing about flutter`() {
+        assertEquals(0, cli(everything(), input = """{"cwd": "$linked"}""").run(listOf("hook", "session-start")), err.toString())
+
+        assertFalse(out.contains("flutter"), out.toString())
     }
 }

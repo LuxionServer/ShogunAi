@@ -4,6 +4,7 @@ import app.luxion.shogunai.domain.model.DesktopAppProvider
 import app.luxion.shogunai.domain.model.DockerComposeProvider
 import app.luxion.shogunai.domain.model.EmulatorProvider
 import app.luxion.shogunai.domain.model.EnvironmentEntry
+import app.luxion.shogunai.domain.model.FlutterProvider
 import app.luxion.shogunai.domain.model.RepositoryConfigEdit
 import app.luxion.shogunai.domain.model.GradleProvider
 import app.luxion.shogunai.domain.model.IosSimulatorProvider
@@ -396,6 +397,47 @@ class RepositoryProvisioningFilesTest {
         write(edit(providers = RepositoryProviders(gradle = GradleProvider())))
 
         assertEquals(DesktopAppProvider(":desktopApp"), files.read(repository.toString()).providers.desktopApp)
+    }
+
+    @Test
+    fun `reads the flutter provider ignoring unknown options`() {
+        configFile.writeText("""{ "providers": { "flutter": {} } }""")
+        assertEquals(FlutterProvider, files.read(repository.toString()).providers.flutter)
+
+        configFile.writeText("""{ "providers": { "flutter": { "future": true } } }""")
+        assertEquals(FlutterProvider, files.read(repository.toString()).providers.flutter)
+    }
+
+    @Test
+    fun `fails with InvalidRepositoryConfig on a flutter provider that isn't an object`() {
+        configFile.writeText("""{ "providers": { "flutter": true } }""")
+
+        val error = assertFailsWith<WorktreeError.InvalidRepositoryConfig> { files.read(repository.toString()) }
+
+        assertTrue(".shogunai.json" in error.path)
+        assertTrue("providers.flutter" in error.detail.orEmpty())
+    }
+
+    @Test
+    fun `writing other providers keeps the flutter provider and its unknown options`() {
+        configFile.writeText("""{ "providers": { "flutter": { "future": 1 } } }""")
+
+        write(edit(providers = RepositoryProviders(gradle = GradleProvider(), flutter = FlutterProvider)))
+
+        val providers = written().getValue("providers").jsonObject
+        assertEquals(listOf("flutter", "gradle"), providers.keys.toList())
+        assertEquals("1", providers.getValue("flutter").jsonObject.getValue("future").jsonPrimitive.content)
+    }
+
+    @Test
+    fun `turns the flutter provider on and off`() {
+        configFile.writeText("""{ "providers": { "gradle": {} } }""")
+
+        write(edit(providers = RepositoryProviders(gradle = GradleProvider(), flutter = FlutterProvider)))
+        assertEquals(emptySet(), written().getValue("providers").jsonObject.getValue("flutter").jsonObject.keys)
+
+        write(edit(providers = RepositoryProviders(gradle = GradleProvider())))
+        assertEquals(setOf("gradle"), written().getValue("providers").jsonObject.keys)
     }
 
     @Test

@@ -645,6 +645,7 @@ object SpanishStrings : Strings {
     override val xcodeCocoaPodsLabel = "Clonar los pods de CocoaPods de la base"
     override val providerMaven = "Maven"
     override val providerDockerCompose = "Docker Compose"
+    override val providerFlutter = "Flutter"
     override val mavenMaxHeapLabel = "Memoria de las compilaciones"
     override val composePortVariablesLabel = "Variables de puerto"
     override val composePortVariablesHelp = "Nombres separados por comas, por ejemplo DB_PORT, API_PORT. Cada uno recibe su propio puerto libre en cada worktree."

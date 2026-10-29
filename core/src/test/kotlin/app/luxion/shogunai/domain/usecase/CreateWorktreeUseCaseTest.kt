@@ -13,6 +13,10 @@ import app.luxion.shogunai.domain.FakeShellCommandExecutor.Companion.success
 import app.luxion.shogunai.domain.io.ApprovalDecision
 import app.luxion.shogunai.domain.model.BranchType
 import app.luxion.shogunai.domain.model.EnvironmentDeclaration
+import app.luxion.shogunai.domain.model.FlutterProvider
+import app.luxion.shogunai.domain.model.FlutterPubGet
+import app.luxion.shogunai.domain.model.FlutterPubGetFailure
+import app.luxion.shogunai.domain.model.RepositoryProviders
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.RepositoryApprovalSubject
 import app.luxion.shogunai.domain.model.RepositoryProvisioning
@@ -746,5 +750,60 @@ class CreateWorktreeUseCaseTest {
         assertFalse(gitWithDirectories.executed("npm", "install"))
         assertEquals(listOf("PORT"), created.skippedVariables)
         assertEquals(installCommands, created.skippedPostCreateCommands)
+    }
+
+    private val buildRunner = listOf("dart", "run", "build_runner", "build")
+
+    private val flutterProvisioning = FakeRepositoryProvisioningSource(
+        byRepository = mapOf(
+            config.baseRepositoryPath to RepositoryProvisioning(
+                postCreateCommands = listOf(buildRunner),
+                providers = RepositoryProviders(flutter = FlutterProvider),
+            ),
+        ),
+    )
+
+    private fun flutterPreparer(executor: FakeShellCommandExecutor) = WorktreeEnvironmentPreparer { repository, worktree ->
+        PreparedWorktree(flutter = ResolveFlutterPackagesUseCase(executor, FakeFileManager(), flutterProvisioning).prepare(repository, worktree))
+    }
+
+    private suspend fun createFlutterWorktree(executor: FakeShellCommandExecutor, decision: ApprovalDecision) =
+        CreateWorktreeUseCase(
+            config, executor, FakeFileManager(baseWithSecrets), flutterProvisioning,
+            environment = flutterPreparer(executor),
+            approval = FakeRepositoryApproval(decision),
+        )("TASK-123", BranchType.FEATURE)
+
+    @Test
+    fun `resolves the flutter packages before the post-creation commands`() = runTest {
+        val executor = FakeShellCommandExecutor { success(it) }
+
+        val created = createFlutterWorktree(executor, ApprovalDecision.APPROVE).getOrThrow()
+
+        val flutterRuns = executor.executedCommands.zip(executor.workingDirectories).filter { it.first.first() in setOf("flutter", "dart") }
+        assertEquals(listOf(listOf("flutter", "pub", "get") to worktreePath, buildRunner to worktreePath), flutterRuns)
+        assertEquals(FlutterPubGet.Resolved, created.flutter)
+    }
+
+    @Test
+    fun `resolves the flutter packages in a repository that isn't approved`() = runTest {
+        val executor = FakeShellCommandExecutor { success(it) }
+
+        val created = createFlutterWorktree(executor, ApprovalDecision.SKIP).getOrThrow()
+
+        assertTrue(executor.executed("flutter", "pub", "get"))
+        assertFalse(executor.executed(*buildRunner.toTypedArray()))
+        assertEquals(listOf(buildRunner), created.skippedPostCreateCommands)
+    }
+
+    @Test
+    fun `a failed resolution keeps the worktree and still runs the post-creation commands`() = runTest {
+        val executor = FakeShellCommandExecutor { if (it.first() == "flutter") failure(it, exitCode = 1, stderr = "Could not resolve") else success(it) }
+
+        val created = createFlutterWorktree(executor, ApprovalDecision.APPROVE).getOrThrow()
+
+        assertEquals(FlutterPubGet.Needed(FlutterPubGetFailure.Exited(1, listOf("Could not resolve"))), created.flutter)
+        assertTrue(executor.executed(*buildRunner.toTypedArray()))
+        assertFalse(executor.executedCommands.any { it.take(3) == listOf("git", "worktree", "remove") })
     }
 }

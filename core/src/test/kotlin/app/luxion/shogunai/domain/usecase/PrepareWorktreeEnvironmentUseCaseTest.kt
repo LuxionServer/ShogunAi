@@ -9,6 +9,7 @@ import app.luxion.shogunai.domain.FakeShellCommandExecutor
 import app.luxion.shogunai.domain.FakeShellCommandExecutor.Companion.failure
 import app.luxion.shogunai.domain.FakeShellCommandExecutor.Companion.success
 import app.luxion.shogunai.domain.model.EnvironmentDeclaration
+import app.luxion.shogunai.domain.model.FlutterPubGet
 import app.luxion.shogunai.domain.model.PodsPreparation
 import app.luxion.shogunai.domain.model.RepositoryApprovalSubject
 import app.luxion.shogunai.domain.model.RepositoryProvisioning
@@ -148,5 +149,22 @@ class PrepareWorktreeEnvironmentUseCaseTest {
 
         assertEquals(pods, prepared.pods)
         assertTrue(writtenBeforePods)
+    }
+
+    @Test
+    fun `resolves the flutter packages after the pods and returns them`() = runTest {
+        val source = provisioning(null)
+        val resolve = ResolveWorktreeEnvironmentUseCase(git, source, FakeEnvironmentStateStore(), FakePortProbe(), trust = FakeRepositoryTrust())
+        val order = mutableListOf<String>()
+
+        val prepared = PrepareWorktreeEnvironmentUseCase(
+            resolve,
+            WriteEnvironmentFileUseCase(git, FakeFileManager(), source),
+            pods = { _, _ -> order += "pods"; PodsPreparation() },
+            flutterPackages = { _, _ -> order += "flutter"; FlutterPubGet.Resolved },
+        ).prepare(repository, worktree)
+
+        assertEquals(FlutterPubGet.Resolved, prepared.flutter)
+        assertEquals(listOf("pods", "flutter"), order)
     }
 }
