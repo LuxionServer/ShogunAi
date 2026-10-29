@@ -708,7 +708,7 @@ A command run with `--json` SHALL never ask a question. When the repository isn'
 
 #### Scenario: Open without an agent
 - **WHEN** the user runs `shogun open TASK-123 --herdr` and Herdr has the worktree open but no pane of it has a live agent
-- **THEN** the agent is started in a new pane of that workspace, the output says the agent was started in the existing workspace and names the agent and the pane, and the command exits with code 0
+- **THEN** the agent is started in that workspace, in its only pane when that pane is idle in the worktree or in a new pane otherwise, the output says the agent was started in the existing workspace and names the agent and the pane, and the command exits with code 0
 
 #### Scenario: Agent doesn't start
 - **WHEN** Herdr doesn't detect the agent in the pane within the time limit
@@ -740,7 +740,7 @@ A command run with `--json` SHALL never ask a question. When the repository isn'
 
 #### Scenario: Started agent as JSON
 - **WHEN** the user runs `shogun open TASK-123 --herdr --json` and the agent is started in the existing workspace
-- **THEN** the object's `herdr` is `started-agent`, with the new pane's `pane_id` and the agent's name
+- **THEN** the object's `herdr` is `started-agent`, with the `pane_id` of the pane the agent runs in, reused or new, and the agent's name
 
 #### Scenario: Focused as JSON
 - **WHEN** the user runs `shogun open TASK-123 --herdr --json` and a live `claude` agent is focused

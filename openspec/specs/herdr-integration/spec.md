@@ -21,15 +21,31 @@ When Herdr is installed, the worktree's detail, its row's context menu, the comm
 - **THEN** that is the command run in the workspace, the same one the copied launch command uses
 
 ### Requirement: Reuse the worktree's Herdr workspace
-When Herdr already has the worktree open, the "Open in Herdr" action SHALL NOT open another workspace. When a pane of that workspace has a live agent (Herdr reports an agent status other than `unknown`), it SHALL focus that agent's pane and SHALL NOT type anything into any pane. When no pane has a live agent, it SHALL add a pane to that workspace in the worktree, with the same environment and agent launch command as a fresh open, and SHALL leave the other panes as they are.
+When Herdr already has the worktree open, the "Open in Herdr" action SHALL NOT open another workspace. When a pane of that workspace has a live agent (Herdr reports an agent status other than `unknown`), it SHALL focus that agent's pane and SHALL NOT type anything into any pane. When no pane has a live agent and the workspace has a single pane, in the worktree, whose shell Herdr reports at its prompt with no other process in the foreground, it SHALL run the agent launch command in that pane. In any other case without a live agent (several panes, a pane in another folder, a pane running a program, or Herdr unable to report the pane's processes) it SHALL add a pane to that workspace in the worktree, with the same environment and agent launch command as a fresh open. It SHALL NOT close any existing pane.
 
 #### Scenario: Already open
 - **WHEN** the user opens in Herdr a worktree Herdr already has open and one of its panes runs `claude`
 - **THEN** that agent's pane is focused, no workspace or pane is created and nothing is typed into its panes
 
 #### Scenario: Already open without an agent
-- **WHEN** the user opens in Herdr a worktree Herdr already has open, after quitting the agent that ran in it
-- **THEN** no new workspace is created, a new pane opens in that workspace in the worktree with every variable `shogun env` prints for it, the agent launch command runs in that pane, and the existing panes are kept
+- **WHEN** the user opens in Herdr a worktree Herdr already has open with a single pane in the worktree, after quitting the agent that ran in it, and that pane's shell is back at its prompt
+- **THEN** no workspace or pane is created and the agent launch command runs in that pane
+
+#### Scenario: Pane running a program
+- **WHEN** the workspace's only pane has no live agent but runs a program in the foreground, e.g. a dev server
+- **THEN** a new pane opens in that workspace in the worktree with every variable `shogun env` prints for it, the agent launch command runs in the new pane, and the existing pane is kept
+
+#### Scenario: Several panes
+- **WHEN** the workspace has two or more panes and none has a live agent
+- **THEN** a new pane opens in that workspace in the worktree with every variable `shogun env` prints for it, the agent launch command runs in the new pane, and the existing panes are kept
+
+#### Scenario: Pane in another folder
+- **WHEN** the workspace's only pane has no live agent and its shell is in a folder other than the worktree
+- **THEN** a new pane opens in that workspace in the worktree with the worktree's environment and runs the agent launch command, and the existing pane is kept
+
+#### Scenario: Processes unknown
+- **WHEN** Herdr can't report what runs in the workspace's only pane, e.g. because its version lacks that information
+- **THEN** a new pane opens in that workspace as when the pane runs a program, and the open doesn't fail because of it
 
 #### Scenario: Agent finished its turn
 - **WHEN** the only agent of the open workspace reports `done` or `idle`
@@ -210,7 +226,7 @@ Reading agents from Herdr SHALL run at most once per check for all projects, SHA
 - **THEN** ShogunAi runs `herdr` at most once every 30 seconds and shows agents without states meanwhile
 
 ### Requirement: Open a worktree in Herdr from the command line
-`shogun open <target> --herdr`, or `shogun open <target>` without a runner flag when Herdr is the runner in use, SHALL open the worktree in Herdr with the same workspace, environment and agent command as the desktop app's "Open in Herdr", SHALL reuse an existing workspace as that action does (focusing a live agent, or starting one in a new pane when there's none), and SHALL report on standard error, with exit code 1, that Herdr isn't installed, that its command failed, or that the agent didn't start.
+`shogun open <target> --herdr`, or `shogun open <target>` without a runner flag when Herdr is the runner in use, SHALL open the worktree in Herdr with the same workspace, environment and agent command as the desktop app's "Open in Herdr", SHALL reuse an existing workspace as that action does (focusing a live agent, or starting one in the workspace's idle pane or in a new pane when there's none), and SHALL report on standard error, with exit code 1, that Herdr isn't installed, that its command failed, or that the agent didn't start.
 
 #### Scenario: Worktree with an environment
 - **WHEN** the user runs `shogun open TASK-123 --herdr` and the repository declares `env`
@@ -226,7 +242,7 @@ Reading agents from Herdr SHALL run at most once per check for all projects, SHA
 
 #### Scenario: Workspace left without an agent
 - **WHEN** the user runs `shogun new TASK-123`, then `shogun open TASK-123 --herdr`, quits the agent inside its pane, and runs `shogun open TASK-123 --herdr` again
-- **THEN** the second run starts the agent in a new pane of the same workspace instead of only focusing it
+- **THEN** the second run starts the agent again in that same pane, the workspace still has a single pane, and the output names that pane
 
 ### Requirement: Verify the agent started in Herdr
 Every time ShogunAi types an agent launch command into a Herdr pane, it SHALL wait up to 10 seconds for Herdr to report an agent status other than `unknown` in that pane. When the time runs out, the open SHALL fail with an error naming the pane and the command, and the pane SHALL be left open.

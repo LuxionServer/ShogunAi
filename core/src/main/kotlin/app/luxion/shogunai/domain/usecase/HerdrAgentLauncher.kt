@@ -28,6 +28,12 @@ class HerdrAgentLauncher(
         return HerdrOpening(HerdrOutcome.FOCUSED, pane.paneId, pane.agent, sessionName)
     }
 
+    suspend fun reusablePane(workspaceId: String, folder: String): String? {
+        val pane = herdr.listPanes(workspaceId).singleOrNull() ?: return null
+        if (pane.hasLiveAgent || pane.directory == null || !sameDirectory(pane.directory, folder)) return null
+        return pane.paneId.takeIf { herdr.paneProcesses(it)?.atPrompt == true }
+    }
+
     suspend fun launch(
         workspaceId: String,
         paneId: String,

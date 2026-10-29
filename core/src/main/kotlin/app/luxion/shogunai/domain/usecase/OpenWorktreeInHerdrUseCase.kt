@@ -24,6 +24,11 @@ class OpenWorktreeInHerdrUseCase(
         val opening = herdr.openWorktree(config.baseRepositoryPath, worktree.path, label)
         if (opening.alreadyOpen) {
             launcher.focusLiveAgent(opening.workspaceId, worktree.path, sessionName)?.let { return@runCatching it }
+            launcher.reusablePane(opening.workspaceId, worktree.path)?.let { pane ->
+                return@runCatching launcher.launch(
+                    opening.workspaceId, pane, agent.resolvedCommand(), agent.displayName, HerdrOutcome.STARTED_AGENT, sessionName, worktree.path,
+                )
+            }
         }
         val environment = resolveEnvironment(config.baseRepositoryPath, worktree.path).getOrThrow()
         val pane = when {
