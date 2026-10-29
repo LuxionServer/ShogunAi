@@ -33,7 +33,6 @@ fun ClaudeHooksSection(state: ClaudeHooksState, os: HostOs = HostOs.current()) {
         modifier = Modifier.padding(top = Spacing.md),
     )
     state.status?.let { Text(strings.claudeHooksStatus(it.state), style = MaterialTheme.typography.bodyMedium) }
-    CommandLineToolPrerequisite(state, os, showWhenReady = true)
     state.error?.let { ErrorNotice(error = it, onDismiss = state::dismissError) }
     FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.xs)) {
         state.installAction?.let { action -> HooksActionButton(state, action, strings, prominent = true) }
@@ -44,6 +43,7 @@ fun ClaudeHooksSection(state: ClaudeHooksState, os: HostOs = HostOs.current()) {
     if (state.installAction != null && !state.canChangeHooks) {
         Text(strings.claudeHooksNeedsTool, style = MaterialTheme.typography.bodySmall)
     }
+    CommandLineToolPrerequisite(state, os, showWhenReady = true)
     state.pending?.let { ClaudeHooksConfirmDialog(it, state, strings) }
 }
 
