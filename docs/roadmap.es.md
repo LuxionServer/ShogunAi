@@ -29,7 +29,6 @@ Numerados en el orden en que se abordarán: el número es la prioridad.
 ShogunAi tiene que funcionar a la primera en una máquina que no es en la que se desarrolla, y cada regresión tiene que detectarse antes de que una versión llegue a nadie. Una demo en otro Mac mostró por qué: la app, abierta desde el Dock, recibe el `PATH` mínimo de macOS, así que dio por fuera del `PATH` un comando `shogun` instalado con Homebrew, el recorrido guiado se negó a empezar y los hooks de Claude Code aparecieron como inutilizables; y crear un worktree falló al copiar sus archivos locales. Ninguno de los dos fallos apareció en la máquina de desarrollo, cuya propia configuración los tapa. Por orden:
 
 - Comprobar la instalación, como «Comprobar instalación» en la app y `shogun doctor`: la versión de Git, `shogun` en el `PATH` del shell de login (y si ese `PATH` se leyó del shell de login o es el de reserva), los hooks de Claude Code apuntando a un lanzador que existe, Claude Code, Herdr y Orca, y los archivos locales declarados de cada proyecto presentes en su carpeta base, cada uno con el arreglo que aplicar. Su resultado va al informe de diagnóstico, así que un fallo en la máquina de otra persona llega como un informe que dice qué está mal.
-- Comprobar antes de actuar: crear un worktree comprueba todos los archivos que tiene que copiar o enlazar antes de empezar y, si falta alguno, dice cuál, dónde lo buscó y cómo arreglarlo, en vez de fallar a medias.
 - Tests que obligan al producto a cumplirlo:
   - Cobertura de líneas y ramas medida en todos los módulos (Kover) y exigida en CI: el 100% de `core` y `cli`, y de la app de escritorio fuera de sus composables, que cubren los tests end to end. Un cambio que la baje rompe la build.
   - Tests end to end del CLI contra repositorios Git reales en carpetas temporales, sin dobles: crear, provisionar, abrir y limpiar worktrees y grupos, con archivos locales copiados, enlazados y seleccionados por patrones.
@@ -76,6 +75,7 @@ La vista de ShogunAi solo es neutral si ve a todos los agentes:
 
 Los multirepos y los grupos por rama están hechos en el CLI y en la app de escritorio, y son también la forma en que quienes no escriben el código siguen un cambio a través de los repositorios. Quedaron fuera:
 
+- Comprobar todos los repositorios de un grupo antes de crear ninguno de sus worktrees: los archivos locales de cada repositorio se comprueban antes de crear su propio worktree, así que un grupo cuyo segundo repositorio tiene un archivo no disponible conserva el worktree ya creado en el primero.
 - Llevarse el agente del multirepo fijado en este equipo cuando su carpeta se mueve: `shogun multirepo init` (o "Añadir multirepo") en la carpeta nueva la registra tras revisarla y olvida la entrada antigua, pero el agente local se queda con ella y hay que volver a fijarlo.
 - Asociar worktrees cuyas ramas no coinciden, por ejemplo `shogun group add <id> <worktree>`. Necesita un diseño propio: hoy los grupos no tienen estado, y la asociación llegaría a la detección de grupos, a los puertos contra los que se resuelven las variables compartidas, a la limpieza y a todas las vistas de grupo.
 - Mostrar en las vistas de la app de escritorio los nombres de las sesiones de Claude de los worktrees de un grupo y del agente del multirepo; hoy los informan `shogun open --herdr` y `shogun status`, y la app solo nombra las sesiones que abre.
@@ -130,7 +130,3 @@ Enviar errores y cuelgues anónimos a un servicio remoto, al estilo de los repor
 ### Ejecutar agentes dentro de la app
 
 ShogunAi no incrusta terminales ni gestiona sesiones de agentes: los agentes y los terminales ya lo hacen bien. Se centra en los worktrees en los que trabajan.
-
-### Firma y notarización en macOS
-
-Queda fuera por ahora: requiere el programa de desarrollador de Apple, que es de pago. Mientras tanto, el README explica cómo abrir la app sin notarizar.

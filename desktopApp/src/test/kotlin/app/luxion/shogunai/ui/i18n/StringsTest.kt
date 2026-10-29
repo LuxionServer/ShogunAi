@@ -11,6 +11,9 @@ import app.luxion.shogunai.domain.model.RepositoryConfigIssue
 import app.luxion.shogunai.domain.model.RepositoryConfigRules
 import app.luxion.shogunai.domain.model.ResourceKind
 import app.luxion.shogunai.domain.model.WorktreeError
+import app.luxion.shogunai.domain.model.LocalFileOrigin
+import app.luxion.shogunai.domain.model.UnavailableLocalFile
+import app.luxion.shogunai.domain.model.UnavailableReason
 import app.luxion.shogunai.ui.worktree.StateGroupKind
 import app.luxion.shogunai.ui.worktree.criterion
 import app.luxion.shogunai.ui.worktree.hint
@@ -155,11 +158,16 @@ class StringsTest {
 
     private val gitOutput = "fatal: 'TASK-123' is not a working tree"
 
+    private val missingLocalFile = WorktreeError.LocalFilesUnavailable(
+        "~/projects/main-repo",
+        listOf(UnavailableLocalFile("local.properties", "~/projects/main-repo/local.properties", LocalFileOrigin.PROJECT, UnavailableReason.Missing)),
+    )
+
     private val everyError: List<Throwable> = listOf(
         WorktreeError.BaseRepositoryNotFound("~/projects/main-repo"),
         WorktreeError.WorktreeAlreadyExists("~/projects/TASK-123"),
         WorktreeError.InvalidTaskId("bad..id"),
-        WorktreeError.SecretFileNotFound(listOf("local.properties"), "~/projects/main-repo"),
+        missingLocalFile,
         WorktreeError.InvalidRepositoryConfig("~/projects/main-repo/.shogunai.json", "unexpected token"),
         WorktreeError.RepositoryNotFound("~/projects/main-repo"),
         WorktreeError.NotAWorktree("~/projects/TASK-123"),
@@ -272,7 +280,7 @@ class StringsTest {
             WorktreeError.BaseRepositoryNotFound("~/projects/main-repo") to "~/projects/main-repo",
             WorktreeError.WorktreeAlreadyExists("~/projects/TASK-123") to "~/projects/TASK-123",
             WorktreeError.InvalidTaskId("bad..id") to "bad..id",
-            WorktreeError.SecretFileNotFound(listOf("local.properties"), "~/projects/main-repo") to "local.properties",
+            missingLocalFile to "local.properties",
             WorktreeError.InvalidRepositoryConfig("~/projects/main-repo/.shogunai.json", "x") to "~/projects/main-repo/.shogunai.json",
             WorktreeError.RepositoryConfigChanged("~/projects/main-repo/.shogunai.json") to "~/projects/main-repo/.shogunai.json",
             WorktreeError.BranchNotFound("feature/TASK-123") to "feature/TASK-123",
@@ -415,6 +423,57 @@ class StringsTest {
 
         assertEquals("Something unexpected went wrong.", description.summary)
         assertEquals("boom", description.details?.output)
+    }
+
+    @Test
+    fun `unavailable local files are named with a fix built from their reasons`() {
+        val base = "~/projects/main-repo"
+        val error = WorktreeError.LocalFilesUnavailable(
+            base,
+            listOf(
+                UnavailableLocalFile("local.properties", "$base/local.properties", LocalFileOrigin.PROJECT, UnavailableReason.Missing),
+                UnavailableLocalFile("keys.properties", "$base/keys.properties", LocalFileOrigin.REPOSITORY, UnavailableReason.BrokenLink("/missing/keys.properties")),
+            ),
+        )
+
+        val english = EnglishStrings.describe(error)
+        assertEquals(
+            "These local files can't be copied or linked from $base: local.properties, keys.properties. Nothing was changed.",
+            english.summary,
+        )
+        assertEquals(
+            "Create the missing ones there, restore the targets of the broken links, or remove them from the project's local files and .shogunai.json or .worktreeinclude.",
+            english.nextStep,
+        )
+        val spanish = SpanishStrings.describe(error)
+        assertEquals(
+            "No se pueden copiar ni enlazar estos archivos locales desde $base: local.properties, keys.properties. No se ha cambiado nada.",
+            spanish.summary,
+        )
+        assertEquals(
+            "Crea los que faltan ahí, restaura los destinos de los enlaces rotos, o quítalos de los archivos locales del proyecto y .shogunai.json o .worktreeinclude.",
+            spanish.nextStep,
+        )
+        assertEquals(
+            listOf(
+                "local.properties: not found at $base/local.properties. Create it there, or remove it from the project's local files",
+                "keys.properties: $base/keys.properties is a link to /missing/keys.properties, which doesn't exist. " +
+                    "Restore /missing/keys.properties or replace the link with the file, or stop matching it in .shogunai.json or .worktreeinclude",
+            ),
+            english.details?.output?.lines(),
+        )
+        assertEquals(ErrorFix.OpenProjectSettings, english.fix)
+    }
+
+    @Test
+    fun `an unreadable local file asks to make it readable`() {
+        val error = WorktreeError.LocalFilesUnavailable(
+            "~/projects/main-repo",
+            listOf(UnavailableLocalFile("local.properties", "~/projects/main-repo/local.properties", LocalFileOrigin.PROJECT, UnavailableReason.Unreadable(null))),
+        )
+
+        assertEquals("Make the unreadable ones readable for your user, or remove them from the project's local files.", EnglishStrings.describe(error).nextStep)
+        assertEquals("Da permiso de lectura a tu usuario sobre los que no se pueden leer, o quítalos de los archivos locales del proyecto.", SpanishStrings.describe(error).nextStep)
     }
 
     @Test

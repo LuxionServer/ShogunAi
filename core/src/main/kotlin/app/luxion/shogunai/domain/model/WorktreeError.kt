@@ -14,8 +14,8 @@ sealed class WorktreeError(message: String, cause: Throwable? = null) : Exceptio
     class InvalidTaskId(val rawInput: String) :
         WorktreeError("Invalid task id: \"$rawInput\"")
 
-    class SecretFileNotFound(val files: List<String>, val basePath: String) :
-        WorktreeError("Secret files not found in $basePath: ${files.joinToString()}")
+    class LocalFilesUnavailable(val basePath: String, val files: List<UnavailableLocalFile>) :
+        WorktreeError(localFilesUnavailableMessage(basePath, files))
 
     class GitCommandFailed(
         val command: List<String>,

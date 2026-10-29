@@ -14,10 +14,4 @@ cask "shogunai" do
 
   app "ShogunAi.app"
   binary "#{appdir}/ShogunAi.app/Contents/MacOS/ShogunAi", target: "shogun"
-
-  caveats <<~EOS
-    ShogunAi is not notarized by Apple. If macOS blocks it on first launch
-    ("cannot verify developer"), right-click the app and choose Open, or run:
-      xattr -dr com.apple.quarantine "/Applications/ShogunAi.app"
-  EOS
 end

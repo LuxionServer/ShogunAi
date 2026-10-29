@@ -9,14 +9,7 @@ brew tap LuxionServer/shogunai
 brew install --cask shogunai
 ```
 
-Homebrew elige automáticamente el instalador para la arquitectura de tu Mac (Apple Silicon o Intel) y enlaza el comando `shogun`.
-
-!!! note "Aviso de desarrollador no verificado"
-    La app no está notarizada por Apple. Si macOS avisa de que "no se puede verificar el desarrollador" la primera vez que la abres, ábrela con clic derecho → Abrir, o ejecuta:
-
-    ```bash
-    xattr -dr com.apple.quarantine "/Applications/ShogunAi.app"
-    ```
+Homebrew elige automáticamente el instalador para la arquitectura de tu Mac (Apple Silicon o Intel) y enlaza el comando `shogun`. La app está firmada y notarizada por Apple, así que macOS la abre sin avisos.
 
 ## Windows (winget)
 

@@ -9,14 +9,7 @@ brew tap LuxionServer/shogunai
 brew install --cask shogunai
 ```
 
-Homebrew picks the installer for your Mac's architecture (Apple Silicon or Intel) automatically, and links the `shogun` command.
-
-!!! note "Unverified developer warning"
-    The app isn't notarized by Apple. If macOS warns that "the developer cannot be verified" the first time you open it, open it with right click → Open, or run:
-
-    ```bash
-    xattr -dr com.apple.quarantine "/Applications/ShogunAi.app"
-    ```
+Homebrew picks the installer for your Mac's architecture (Apple Silicon or Intel) automatically, and links the `shogun` command. The app is signed and notarized by Apple, so macOS opens it without warnings.
 
 ## Windows (winget)
 

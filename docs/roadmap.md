@@ -29,7 +29,6 @@ Numbered in the order they will be picked up: the number is the priority.
 ShogunAi has to work the first time on a machine that isn't the one it's developed on, and every regression has to be caught before a release reaches anyone. A demo on another Mac showed why: the app, opened from the Dock, gets macOS's minimal `PATH`, so it reported a `shogun` command installed by Homebrew as not on the `PATH`, the guided tour refused to start and Claude Code's hooks read as unusable; and creating a worktree failed while copying its local files. Neither showed up on the developer's machine, whose own setup hides them. In order:
 
 - Checking the installation, as "Check installation" in the app and `shogun doctor`: Git's version, `shogun` on the login shell's `PATH` (and whether that `PATH` was read from the login shell or is the fallback), Claude Code's hooks pointing at a launcher that exists, Claude Code, Herdr and Orca, and each project's declared local files present in its base folder, each with the fix to apply. Its result goes into the diagnostic report, so a failure on someone else's machine arrives as a report that says what is wrong.
-- Checking before acting: creating a worktree checks every file it has to copy or link before it starts, and if one is missing says which, where it looked and how to fix it, instead of failing half-way.
 - Tests that hold the product to it:
   - Line and branch coverage measured on every module (Kover) and enforced in CI: 100% of `core` and `cli`, and of the desktop app outside its composables, which the end-to-end tests cover. A change that lowers it fails the build.
   - End-to-end tests of the CLI against real Git repositories in temporary folders, without fakes: creating, provisioning, opening and cleaning worktrees and groups, with local files copied, linked and matched by patterns.
@@ -76,6 +75,7 @@ ShogunAi's view is only neutral if it sees every agent:
 
 Multirepos and groups by branch are done in the CLI and the desktop app, and they're also how people who don't write the code follow a change across repositories. Left out:
 
+- Checking every repository of a group before creating any of its worktrees: each repository's local files are checked before its own worktree is created, so a group whose second repository has an unavailable file keeps the worktree already created in the first.
 - Carrying the multirepo agent set on this machine over when its folder moves: `shogun multirepo init` (or "Add multirepo") in the new folder registers it after reviewing it and forgets the old entry, but the local agent goes with that entry and has to be set again.
 - Associating worktrees whose branches don't match, e.g. `shogun group add <id> <worktree>`. It needs a design of its own: groups have no state today, and the association would reach group detection, the ports shared variables resolve against, cleanup and every group view.
 - Showing the Claude session names of a group's worktrees and of the multirepo agent in the desktop app's views; today `shogun open --herdr` and `shogun status` report them, and the app only names the sessions it opens.
@@ -130,7 +130,3 @@ Sending anonymous errors and crashes to a remote service, in the style of the cr
 ### Running agents inside the app
 
 ShogunAi doesn't embed terminals or manage agent sessions: agents and terminals already do that well. It focuses on the worktrees they work in.
-
-### macOS signing and notarization
-
-Left out for now: it requires a paid Apple developer program. Until then, the README explains how to open the unnotarized app.

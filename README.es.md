@@ -40,7 +40,7 @@ brew install --cask shogunai
 > Las versiones recientes de Homebrew solo cargan casks de taps no oficiales en los que confías. Ejecuta `brew trust --tap LuxionServer/shogunai` después de `brew tap` y antes de `brew install`, o Homebrew se negará a cargar el cask.
 
 > [!NOTE]
-> Homebrew elige automáticamente el instalador para la arquitectura de tu Mac (Apple Silicon o Intel). La app no está notarizada por Apple: si al abrirla por primera vez macOS avisa que "no se puede verificar el desarrollador", hazlo con clic derecho → Abrir, o ejecuta `xattr -dr com.apple.quarantine "/Applications/ShogunAi.app"`.
+> Homebrew elige automáticamente el instalador para la arquitectura de tu Mac (Apple Silicon o Intel). La app está firmada y notarizada por Apple, así que macOS la abre sin avisos.
 
 ### Windows (winget o Scoop)
 
