@@ -131,7 +131,3 @@ Sending anonymous errors and crashes to a remote service, in the style of the cr
 ### Running agents inside the app
 
 ShogunAi doesn't embed terminals or manage agent sessions: agents and terminals already do that well. It focuses on the worktrees they work in.
-
-### macOS signing and notarization
-
-Left out for now: it requires a paid Apple developer program. Until then, the README explains how to open the unnotarized app.

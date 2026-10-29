@@ -54,6 +54,23 @@ compose.desktop {
             macOS {
                 packageVersion = macBundleVersion(appVersion)
                 iconFile.set(project.file("icons/icon.icns"))
+                bundleID = "app.luxion.shogunai"
+                entitlementsFile.set(project.file("macos/entitlements.plist"))
+                runtimeEntitlementsFile.set(project.file("macos/entitlements.plist"))
+                infoPlist {
+                    extraKeysRawXml = """
+                        <key>NSAppleEventsUsageDescription</key>
+                        <string>ShogunAi opens worktrees in your terminal and brings app windows forward.</string>
+                    """.trimIndent()
+                }
+                val signingIdentity = findProperty("macSigningIdentity") as String?
+                if (signingIdentity != null) {
+                    signing {
+                        sign.set(true)
+                        identity.set(signingIdentity)
+                        (findProperty("macSigningKeychain") as String?)?.let { keychain.set(it) }
+                    }
+                }
             }
             windows {
                 iconFile.set(project.file("icons/icon.ico"))

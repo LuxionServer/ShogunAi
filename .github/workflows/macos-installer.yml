@@ -1,0 +1,178 @@
+name: macOS installer
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        type: string
+        required: true
+      ref:
+        type: string
+        required: true
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version to build, X.Y.Z
+        type: string
+        required: true
+
+permissions: {}
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  dmg:
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, macos-26-intel]
+
+    runs-on: ${{ matrix.os }}
+
+    env:
+      VERSION: ${{ inputs.version }}
+      DMG_DIR: desktopApp/build/compose/binaries/main-release/dmg
+
+    steps:
+      - name: Check version
+        run: |
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Version must match X.Y.Z (digits only), got: $VERSION" >&2
+            exit 1
+          fi
+
+      - name: Check signing secrets
+        env:
+          MACOS_CERTIFICATE_P12: ${{ secrets.MACOS_CERTIFICATE_P12 }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          MACOS_NOTARY_KEY: ${{ secrets.MACOS_NOTARY_KEY }}
+          MACOS_NOTARY_KEY_ID: ${{ secrets.MACOS_NOTARY_KEY_ID }}
+          MACOS_NOTARY_ISSUER_ID: ${{ secrets.MACOS_NOTARY_ISSUER_ID }}
+        run: |
+          MISSING=0
+          for NAME in MACOS_CERTIFICATE_P12 MACOS_CERTIFICATE_PASSWORD MACOS_NOTARY_KEY MACOS_NOTARY_KEY_ID MACOS_NOTARY_ISSUER_ID; do
+            if [ -z "${!NAME}" ]; then
+              echo "::error::Missing secret ${NAME}; macOS installers can't be signed and notarized without it."
+              MISSING=1
+            fi
+          done
+          exit "$MISSING"
+
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+          persist-credentials: false
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: corretto
+          java-version: "21"
+
+      - uses: gradle/actions/setup-gradle@v6
+
+      - name: Import signing certificate
+        env:
+          MACOS_CERTIFICATE_P12: ${{ secrets.MACOS_CERTIFICATE_P12 }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+        run: |
+          KEYCHAIN="${RUNNER_TEMP}/signing.keychain-db"
+          CERTIFICATE="${RUNNER_TEMP}/certificate.p12"
+          INTERMEDIATE="${RUNNER_TEMP}/DeveloperIDG2CA.cer"
+          KEYCHAIN_PASSWORD="$(openssl rand -base64 32)"
+          echo "::add-mask::${KEYCHAIN_PASSWORD}"
+
+          printf '%s' "$MACOS_CERTIFICATE_P12" | base64 --decode > "$CERTIFICATE"
+          curl -sSL -f -o "$INTERMEDIATE" https://www.apple.com/certificateauthority/DeveloperIDG2CA.cer
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security import "$INTERMEDIATE" -k "$KEYCHAIN"
+          security import "$CERTIFICATE" -k "$KEYCHAIN" -f pkcs12 -P "$MACOS_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" > /dev/null
+          read -r -a SEARCH_LIST <<< "$(security list-keychains -d user | tr -d '"' | tr '\n' ' ')"
+          security list-keychains -d user -s "$KEYCHAIN" "${SEARCH_LIST[@]}"
+          rm -f "$CERTIFICATE" "$INTERMEDIATE"
+
+          IDENTITY="$(security find-identity -v -p codesigning "$KEYCHAIN" | sed -n -E 's/.*"Developer ID Application: (.*)"/\1/p' | head -n 1)"
+          if [ -z "$IDENTITY" ]; then
+            echo "::error::MACOS_CERTIFICATE_P12 holds no valid Developer ID Application identity."
+            exit 1
+          fi
+          echo "SIGNING_KEYCHAIN=${KEYCHAIN}" >> "$GITHUB_ENV"
+          echo "SIGNING_IDENTITY=${IDENTITY}" >> "$GITHUB_ENV"
+
+      - name: Build signed installer
+        run: |
+          ./gradlew :desktopApp:packageReleaseDmg \
+            "-PappVersion=${VERSION}" \
+            "-PmacSigningIdentity=${SIGNING_IDENTITY}" \
+            "-PmacSigningKeychain=${SIGNING_KEYCHAIN}"
+
+      - name: Name and sign dmg
+        run: |
+          ARCH="$(echo "$RUNNER_ARCH" | tr '[:upper:]' '[:lower:]')"
+          shopt -s nullglob
+          DMGS=("${DMG_DIR}"/*.dmg)
+          if [ "${#DMGS[@]}" -ne 1 ]; then
+            echo "Expected exactly one dmg, found ${#DMGS[@]}." >&2
+            exit 1
+          fi
+          DMG="${DMG_DIR}/ShogunAi-${VERSION}-${ARCH}.dmg"
+          mv "${DMGS[0]}" "$DMG"
+          codesign --force --timestamp \
+            --keychain "$SIGNING_KEYCHAIN" \
+            --sign "Developer ID Application: ${SIGNING_IDENTITY}" \
+            "$DMG"
+          echo "DMG=${DMG}" >> "$GITHUB_ENV"
+
+      - name: Notarize dmg
+        env:
+          MACOS_NOTARY_KEY: ${{ secrets.MACOS_NOTARY_KEY }}
+          MACOS_NOTARY_KEY_ID: ${{ secrets.MACOS_NOTARY_KEY_ID }}
+          MACOS_NOTARY_ISSUER_ID: ${{ secrets.MACOS_NOTARY_ISSUER_ID }}
+        run: |
+          KEY_FILE="${RUNNER_TEMP}/notary-key.p8"
+          printf '%s\n' "$MACOS_NOTARY_KEY" > "$KEY_FILE"
+          NOTARY_AUTH=(--key "$KEY_FILE" --key-id "$MACOS_NOTARY_KEY_ID" --issuer "$MACOS_NOTARY_ISSUER_ID")
+
+          RESULT="$(xcrun notarytool submit "$DMG" "${NOTARY_AUTH[@]}" --wait --timeout 1h --output-format json)" || true
+          echo "$RESULT"
+          SUBMISSION_ID="$(jq -r '.id // empty' <<< "$RESULT" 2>/dev/null || true)"
+          STATUS="$(jq -r '.status // empty' <<< "$RESULT" 2>/dev/null || true)"
+          if [ "$STATUS" != "Accepted" ]; then
+            if [ -n "$SUBMISSION_ID" ]; then
+              xcrun notarytool log "$SUBMISSION_ID" "${NOTARY_AUTH[@]}" || true
+            fi
+            echo "::error::Notarization of $(basename "$DMG") ended with status '${STATUS:-unknown}'."
+            exit 1
+          fi
+
+      - name: Staple and verify
+        run: |
+          xcrun stapler staple "$DMG"
+          xcrun stapler validate "$DMG"
+          spctl -a -t open --context context:primary-signature -vv "$DMG"
+
+          MOUNT="$(hdiutil attach -nobrowse -readonly "$DMG" | tail -n 1 | cut -f 3)"
+          trap 'hdiutil detach -quiet "$MOUNT"' EXIT
+          codesign --verify --deep --strict --verbose=2 "${MOUNT}/ShogunAi.app"
+          spctl -a -t exec -vv "${MOUNT}/ShogunAi.app"
+
+      - name: Remove signing material
+        if: always()
+        run: |
+          if [ -n "${SIGNING_KEYCHAIN:-}" ]; then
+            security delete-keychain "$SIGNING_KEYCHAIN" || true
+          fi
+          rm -f "${RUNNER_TEMP}/signing.keychain-db" "${RUNNER_TEMP}/certificate.p12" "${RUNNER_TEMP}/DeveloperIDG2CA.cer" "${RUNNER_TEMP}/notary-key.p8"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: installer-${{ matrix.os }}
+          path: ${{ env.DMG }}
+          if-no-files-found: error

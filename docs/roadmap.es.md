@@ -131,7 +131,3 @@ Enviar errores y cuelgues anónimos a un servicio remoto, al estilo de los repor
 ### Ejecutar agentes dentro de la app
 
 ShogunAi no incrusta terminales ni gestiona sesiones de agentes: los agentes y los terminales ya lo hacen bien. Se centra en los worktrees en los que trabajan.
-
-### Firma y notarización en macOS
-
-Queda fuera por ahora: requiere el programa de desarrollador de Apple, que es de pago. Mientras tanto, el README explica cómo abrir la app sin notarizar.
