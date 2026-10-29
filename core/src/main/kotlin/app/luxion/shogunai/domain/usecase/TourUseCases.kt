@@ -25,7 +25,7 @@ class CreateTourUseCase(
     private val executor: ShellCommandExecutor,
     private val fileManager: FileManager,
     private val projects: ProjectRepository,
-    private val location: TourLocation = TourLocation(),
+    private val location: TourLocation,
     private val now: () -> Long = System::currentTimeMillis,
     private val newId: () -> String = { UUID.randomUUID().toString() },
 ) {
@@ -169,7 +169,7 @@ class CreateTourUseCase(
 class EndTourUseCase(
     private val fileManager: FileManager,
     private val projects: ProjectRepository,
-    private val location: TourLocation = TourLocation(),
+    private val location: TourLocation,
 ) {
     operator fun invoke(): Result<Unit> = runCatching {
         projects.list().filter(location::isTour).forEach { projects.delete(it.id) }

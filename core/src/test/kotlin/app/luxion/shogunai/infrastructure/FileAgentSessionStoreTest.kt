@@ -16,7 +16,7 @@ class FileAgentSessionStoreTest {
     private val root: Path = Files.createTempDirectory("agent-sessions")
     private val main: Path = root.resolve("main-repo")
     private val linked: Path = root.resolve("TASK-1")
-    private val store = FileAgentSessionStore()
+    private val store = FileAgentSessionStore(root.resolve("folder-sessions"))
 
     init {
         Files.createDirectories(main)

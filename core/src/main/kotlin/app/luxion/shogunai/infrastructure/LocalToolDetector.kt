@@ -13,9 +13,9 @@ import java.io.File
 
 class LocalToolDetector(
     private val executor: ShellCommandExecutor,
-    private val os: HostOs = HostOs.current(),
-    private val home: String = System.getProperty("user.home"),
-    private val locator: ExecutableLocator = ExecutableLocator(os, home),
+    private val os: HostOs,
+    private val home: String,
+    private val locator: ExecutableLocator,
     private val editorResolver: EditorExecutableResolver = EditorExecutableResolver(os, locator),
     private val isDirectory: (String) -> Boolean = { File(it).isDirectory },
     private val isRunnerInstalled: (RunnerId) -> Boolean = { false },

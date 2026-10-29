@@ -11,7 +11,7 @@ import kotlin.io.path.exists
 import kotlin.io.path.readText
 
 class JsonOrcaWorkspaceStore(
-    private val storagePath: Path = Path.of(System.getProperty("user.home"), ".shogunai", "orca.json"),
+    private val storagePath: Path,
 ) : OrcaWorkspaceStore {
     private val json = Json {
         prettyPrint = true
