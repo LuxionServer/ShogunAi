@@ -22,7 +22,7 @@ subprojects {
     }
     plugins.withId("org.jetbrains.kotlinx.kover") {
         extensions.configure<KoverProjectExtension> {
-            currentProject.sources.excludedSourceSets.add("testFixtures")
+            currentProject.sources.excludedSourceSets.addAll("testFixtures", "e2eTest")
             reports.filters.excludes.classes("*\$DefaultImpls")
         }
     }

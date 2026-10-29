@@ -49,6 +49,7 @@ Rules:
 ./gradlew test                       # run tests for all modules
 ./gradlew koverVerify                # check every module's coverage rules
 ./gradlew koverHtmlReport            # coverage report per module in <module>/build/reports/kover/html
+./gradlew :cli:e2eTest               # run only the CLI's end-to-end tests
 mkdocs serve                         # serve the docs locally
 ```
 
