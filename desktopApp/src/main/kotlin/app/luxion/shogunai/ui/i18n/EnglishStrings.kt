@@ -571,6 +571,7 @@ object EnglishStrings : Strings {
     override val overLimit = "over the limit"
     override val overLimitChip = "Over the limit"
     override val overLimitBuildsRunningChip = "Over the limit: builds running"
+    override val overLimitBuildsRunning = "over the limit: builds running"
     override fun overLimitNothingIdle(busy: Int, unknown: Int): String {
         val reasons = listOfNotNull(
             busy.takeIf { it > 0 }?.let { if (it == 1) "1 is running a build" else "$it are running a build" },

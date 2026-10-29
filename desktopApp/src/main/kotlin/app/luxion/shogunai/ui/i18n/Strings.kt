@@ -462,6 +462,7 @@ interface Strings {
     val overLimit: String
     val overLimitChip: String
     val overLimitBuildsRunningChip: String
+    val overLimitBuildsRunning: String
     fun overLimitNothingIdle(busy: Int, unknown: Int): String
     val changeInPreferences: String
     fun releasedNotice(kind: ResourceKind, released: String, forWorktree: String): String

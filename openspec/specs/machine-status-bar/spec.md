@@ -47,7 +47,7 @@ Each item SHALL have a tooltip with the resource's full name and its full summar
 - **THEN** the Gradle item's tooltip reads "Gradle daemons", the 10 daemons and 1.2 GB, `9/3` in use and "over the limit"
 
 ### Requirement: Attention color only when needed
-An item SHALL use a status color, always through the theme's status mapping, only when it needs attention: the warning color when its pool is over the limit or DerivedData is over its quota, and the danger color when its last read failed. Otherwise it SHALL use the neutral text colors.
+An item SHALL use a status color, always through the theme's status mapping, only when it needs attention: the warning color when its pool is over the limit or DerivedData is over its quota, and the danger color when its last read failed. Otherwise it SHALL use the neutral text colors. A Gradle pool over its limit with no idle daemon needs no attention: its item SHALL use the neutral colors and its tooltip SHALL say it is over the limit because builds are running.
 
 #### Scenario: Pool over the limit
 - **WHEN** 9 Gradle daemons are in use and the limit is 3
@@ -56,6 +56,10 @@ An item SHALL use a status color, always through the theme's status mapping, onl
 #### Scenario: Within the limit
 - **WHEN** 1 emulator is in use and the limit is 2
 - **THEN** the Android emulators item uses the neutral colors
+
+#### Scenario: Gradle pool held by running builds
+- **WHEN** 9 Gradle daemons are in use, none of them idle, and the limit is 3
+- **THEN** the Gradle item uses the neutral colors and its tooltip says over the limit because builds are running
 
 ### Requirement: Not yet measured and failed items
 An item whose resource hasn't been measured yet SHALL show a dash as its figure instead of a "Calculating…" text, with a tooltip saying it isn't measured yet. An item whose last read failed SHALL show its icon in the danger color and the reason in its tooltip, and SHALL keep the last known figure when there is one.
