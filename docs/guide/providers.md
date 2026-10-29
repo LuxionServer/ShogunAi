@@ -198,6 +198,7 @@ tasks.withType<org.jetbrains.kotlin.gradle.targets.native.tasks.KotlinNativeSimu
 If you'd rather not touch the repository, `shogun simulator gradle-init install` (or the button in the project configuration) installs a Gradle init script that does the same for every project on this machine, after asking. Once installed, the project configuration offers to uninstall it, like `shogun simulator gradle-init uninstall`.
 
 - The project configuration also chooses the device type and runtime per machine.
+- When the worktree is open in Orca, starting its simulator also shows it in Orca's emulator view, unless the worktree's emulator is running too; see [Orca](../agents.md#orca).
 - "Clean up" (or `shogun clean --delete-simulators`) deletes the simulators of removed worktrees and ShogunAi simulators whose worktree is gone.
 
 ## Capacity

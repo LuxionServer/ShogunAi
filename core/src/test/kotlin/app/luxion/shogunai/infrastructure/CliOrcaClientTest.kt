@@ -384,6 +384,18 @@ class CliOrcaClientTest {
     }
 
     @Test
+    fun `a simulator is attached to a worktree by UDID and focused`() = runTest {
+        val executor = answering("emulator-attach-ios.json")
+
+        client(executor).attachEmulator(OrcaWorkspace.Worktree(shogunai), SIMULATOR_UDID)
+
+        assertEquals(
+            listOf(orca, "emulator", "attach", SIMULATOR_UDID, "--worktree", "path:$shogunai", "--focus", "--json"),
+            executor.executedCommands.single(),
+        )
+    }
+
+    @Test
     fun `attaching an emulator that isn't running fails with Orca's message`() = runTest {
         val executor = FakeShellCommandExecutor { CommandResult(it, 1, fixture("emulator-attach-not-found.json"), "") }
 
@@ -527,3 +539,5 @@ class CliOrcaClientTest {
         const val COUNT_PROMPT = "Count slowly from 1 to 30, one number per line, then reply with the word done."
     }
 }
+
+private const val SIMULATOR_UDID = "8D2C51A4-3F0B-4C6E-9A1D-5B7E2F90C3A1"

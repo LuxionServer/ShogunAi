@@ -429,7 +429,14 @@ class AppContainer {
     )
 
     private suspend fun startEmulatorShownInOrca(config: ProjectConfig, worktreePath: String): Result<DeviceStart<WorktreeEmulator>> =
-        startEmulator(config, worktreePath).onSuccess { showEmulatorInOrca(worktreePath, it.device.serial) }
+        startEmulator(config, worktreePath).onSuccess {
+            showEmulatorInOrca(worktreePath, it.device.serial) { readSimulatorStates.runningUdid(config, worktreePath) != null }
+        }
+
+    private suspend fun startSimulatorShownInOrca(config: ProjectConfig, worktreePath: String): Result<DeviceStart<WorktreeSimulator>> =
+        startSimulator(config, worktreePath).onSuccess {
+            showEmulatorInOrca(worktreePath, it.device.udid) { readEmulatorStates.runningSerial(config, worktreePath) != null }
+        }
 
     private fun simulatorSettingsFor(repositoryPath: String): SimulatorSettings =
         runCatching { projectRepository.list() }.getOrDefault(emptyList())
@@ -490,6 +497,7 @@ class AppContainer {
             resolveEnvironment,
             orcaSessionNaming(),
             runningEmulator = { config, path -> readEmulatorStates.runningSerial(config, path) },
+            runningSimulator = { config, path -> readSimulatorStates.runningUdid(config, path) },
         ),
     ).associateBy { it.id }
     private val readPool = ReadResourcePoolUseCase(
@@ -614,7 +622,7 @@ class AppContainer {
         stopEmulator = { config, worktreePath -> stopEmulator(config, worktreePath) },
         stopEmulatorSerials = { config, serials -> runCatching { stopEmulator.stopSerials(config, serials) } },
         readSimulatorStates = { config, worktrees -> readSimulatorStates(config, worktrees) },
-        startSimulator = { config, worktreePath -> startSimulator(config, worktreePath) },
+        startSimulator = { config, worktreePath -> startSimulatorShownInOrca(config, worktreePath) },
         stopSimulator = { config, worktreePath -> stopSimulator(config, worktreePath) },
         readSimulatorOrphans = { config -> deleteSimulators.orphans(config) },
         deleteSimulators = { udids -> deleteSimulators(udids) },
@@ -829,7 +837,7 @@ class AppContainer {
         simulator = SimulatorUseCases(
             declared = { withContext(Dispatchers.IO) { simulatorSetup.isAvailable(config.baseRepositoryPath) } },
             readStates = { worktrees -> readSimulatorStates(config, worktrees) },
-            start = { worktreePath -> startSimulator(config, worktreePath) },
+            start = { worktreePath -> startSimulatorShownInOrca(config, worktreePath) },
             stop = { worktreePath -> stopSimulator(config, worktreePath) },
             orphans = { deleteSimulators.orphans(config) },
             delete = { udids -> deleteSimulators(udids) },
@@ -887,6 +895,7 @@ class AppContainer {
                 resolveEnvironment,
                 orcaSessionNaming(),
                 runningEmulator = { path -> readEmulatorStates.runningSerial(config, path) },
+                runningSimulator = { path -> readSimulatorStates.runningUdid(config, path) },
             )::invoke,
             withTerminals = { paths -> withContext(Dispatchers.IO) { CloseOrcaTerminalsUseCase(orcaClient).withTerminals(paths) } },
             origins = orcaReader::origins,

@@ -7,6 +7,7 @@ import app.luxion.shogunai.domain.model.WorktreeError
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class ShowEmulatorInOrcaUseCaseTest {
@@ -23,6 +24,46 @@ class ShowEmulatorInOrcaUseCaseTest {
 
         assertEquals(OrcaEmulatorView.Shown, useCase(orca)(worktree, "emulator-5556"))
         assertEquals(listOf(worktree to "emulator-5556"), orca.attachedEmulators)
+    }
+
+    @Test
+    fun `a worktree open in Orca shows its simulator by UDID`() = runTest {
+        val orca = FakeOrcaClient(psRows = listed)
+
+        assertEquals(OrcaEmulatorView.Shown, useCase(orca)(worktree, SIMULATOR_UDID) { false })
+        assertEquals(listOf(worktree to SIMULATOR_UDID), orca.attachedEmulators)
+    }
+
+    @Test
+    fun `a device is skipped while the worktree's other device runs`() = runTest {
+        val orca = FakeOrcaClient(psRows = listed)
+
+        assertEquals(OrcaEmulatorView.Skipped, useCase(orca)(worktree, "emulator-5556") { true })
+        assertTrue(orca.attachedEmulators.isEmpty())
+    }
+
+    @Test
+    fun `a worktree Orca doesn't list is not open even when the other device runs`() = runTest {
+        val orca = FakeOrcaClient(psRows = emptyList())
+        var looked = false
+
+        val view = useCase(orca)(worktree, "emulator-5556") {
+            looked = true
+            true
+        }
+
+        assertEquals(OrcaEmulatorView.NotOpen, view)
+        assertFalse(looked)
+    }
+
+    @Test
+    fun `an other device lookup that fails counts as not running`() = runTest {
+        val orca = FakeOrcaClient(psRows = listed)
+
+        val view = useCase(orca)(worktree, SIMULATOR_UDID) { throw IllegalStateException("adb is gone") }
+
+        assertEquals(OrcaEmulatorView.Shown, view)
+        assertEquals(listOf(worktree to SIMULATOR_UDID), orca.attachedEmulators)
     }
 
     @Test
@@ -76,3 +117,5 @@ class ShowEmulatorInOrcaUseCaseTest {
         assertEquals(listOf("/tmp/worktrees/TASK-8" to "emulator-5556"), orca.attachedEmulators)
     }
 }
+
+private const val SIMULATOR_UDID = "8D2C51A4-3F0B-4C6E-9A1D-5B7E2F90C3A1"

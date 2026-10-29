@@ -25,14 +25,24 @@ class OpenGroupInOrcaUseCase(
     private val timeout: Duration = AGENT_START_SECONDS.seconds,
     private val pollInterval: Duration = 500.milliseconds,
     private val runningEmulator: suspend (ProjectConfig, String) -> String? = { _, _ -> null },
+    private val runningSimulator: suspend (ProjectConfig, String) -> String? = { _, _ -> null },
 ) {
     suspend operator fun invoke(group: WorktreeGroup): Result<List<GroupOrcaOpening>> {
         if (!orca.isInstalled()) return Result.failure(WorktreeError.OrcaNotInstalled)
         return Result.success(
             group.worktrees.map { member ->
-                val open = OpenWorktreeInOrcaUseCase(member.config, orca, resolveEnvironment, naming, usesPowerShell, samePath, timeout, pollInterval) { path ->
-                    runningEmulator(member.config, path)
-                }
+                val open = OpenWorktreeInOrcaUseCase(
+                    member.config,
+                    orca,
+                    resolveEnvironment,
+                    naming,
+                    usesPowerShell,
+                    samePath,
+                    timeout,
+                    pollInterval,
+                    runningEmulator = { path -> runningEmulator(member.config, path) },
+                    runningSimulator = { path -> runningSimulator(member.config, path) },
+                )
                 val opening = open(member.worktree, member.config.agentLaunchConfig, groupMemberSessionName(member.alias, group.title))
                 GroupOrcaOpening(member.alias, member.worktree.path, opening)
             },

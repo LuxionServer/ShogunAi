@@ -226,7 +226,11 @@ fun groupOpenJson(branch: String, runner: RunnerId, openings: List<GroupRunnerOp
                 put(runner.handleKey, opened?.handle)
                 put("agent", opened?.agent)
                 put("session_name", opened?.sessionName)
-                if (runner == RunnerId.ORCA) put("emulator", opened?.emulator)
+                if (runner == RunnerId.ORCA) {
+                    put("emulator", opened?.emulator)
+                    put("simulator", opened?.simulator)
+                    put("devicesSkipped", opened?.devicesSkipped ?: false)
+                }
                 put("error", opening.result.exceptionOrNull()?.message?.let(::JsonPrimitive) ?: JsonNull)
             })
         }

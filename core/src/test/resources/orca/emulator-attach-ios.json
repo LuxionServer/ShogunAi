@@ -1,0 +1,19 @@
+{
+  "id": "b43d598d-cc4b-403b-9761-78e02175a263",
+  "ok": true,
+  "result": {
+    "attached": true,
+    "info": {
+      "deviceUdid": "8D2C51A4-3F0B-4C6E-9A1D-5B7E2F90C3A1",
+      "wsUrl": "ws://127.0.0.1:3100/helper/8D2C51A4-3F0B-4C6E-9A1D-5B7E2F90C3A1/ws",
+      "streamUrl": "http://127.0.0.1:3100/helper/8D2C51A4-3F0B-4C6E-9A1D-5B7E2F90C3A1/stream.mjpeg",
+      "axUrl": "http://127.0.0.1:3100/helper/8D2C51A4-3F0B-4C6E-9A1D-5B7E2F90C3A1/ax",
+      "helperPid": 90496,
+      "streamCodec": "mjpeg",
+      "backend": "ios"
+    }
+  },
+  "_meta": {
+    "runtimeId": "a416b11c-b8b9-4a8a-857d-9fd122ea237f"
+  }
+}

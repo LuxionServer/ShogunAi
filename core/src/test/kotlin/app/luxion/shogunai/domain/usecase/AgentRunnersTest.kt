@@ -22,6 +22,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
+import kotlin.test.assertTrue
 
 class AgentRunnersTest {
 
@@ -70,6 +71,36 @@ class AgentRunnersTest {
         assertEquals(RunnerId.ORCA, opening.runner)
         assertEquals(RunnerOutcome.STARTED_AGENT, opening.outcome)
         assertEquals("term_1", opening.handle)
+    }
+
+    @Test
+    fun `a worktree opened in Orca reports the simulator it shows`() = runTest {
+        val client = FakeOrcaClient()
+        val runner = OrcaAgentRunner(client, resolveEnvironment, usesPowerShell = false, samePath = samePath, runningSimulator = { _, _ -> "SIM-UDID-1" })
+
+        val opening = runner.openWorktree(world.appProject.config, Worktree(appTask, "feature/TASK-1")).getOrThrow()
+
+        assertEquals("SIM-UDID-1", opening.simulator)
+        assertFalse(opening.devicesSkipped)
+        assertEquals(listOf(appTask to "SIM-UDID-1"), client.attachedEmulators)
+    }
+
+    @Test
+    fun `a worktree opened in Orca with both devices running reports them skipped`() = runTest {
+        val client = FakeOrcaClient()
+        val runner = OrcaAgentRunner(
+            client,
+            resolveEnvironment,
+            usesPowerShell = false,
+            samePath = samePath,
+            runningEmulator = { _, _ -> "emulator-5556" },
+            runningSimulator = { _, _ -> "SIM-UDID-1" },
+        )
+
+        val opening = runner.openWorktree(world.appProject.config, Worktree(appTask, "feature/TASK-1")).getOrThrow()
+
+        assertTrue(opening.devicesSkipped)
+        assertTrue(client.attachedEmulators.isEmpty())
     }
 
     @Test

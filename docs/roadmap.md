@@ -46,7 +46,7 @@ ShogunAi has to work the first time on a machine that isn't the one it's develop
 - What only Orca offers:
   - Orca's board beyond what ShogunAi already keeps in step (status, a summary comment and GitHub pull request or issue links, while the desktop app runs or on an open): syncing without the desktop app, e.g. from Claude Code's hooks, custom board statuses, and Linear or GitLab links.
   - A group's worktrees shown as children of the multirepo agent's workspace. Orca 1.4.243 accepts a Git or "Open as Folder" workspace as the parent of an existing worktree, but not a folder workspace.
-  - The worktree's ShogunAi iOS simulator shown in Orca's emulator view, as its Android emulator already is (`orca emulator attach` takes a simulator's UDID too).
+  - A worktree running both its emulator and its simulator shown in Orca's emulator view. Orca 1.4.243 shows one device per worktree and shuts down the simulator it replaces, so ShogunAi shows neither for now.
 - Checking:
   - On Windows and Linux (`orca-ide`), the CLI's location and the shell Orca's terminals run, which only tests with fakes cover.
   - That Orca detects an agent wrapped by Headroom.

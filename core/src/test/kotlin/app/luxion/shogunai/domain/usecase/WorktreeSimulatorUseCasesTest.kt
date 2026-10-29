@@ -235,6 +235,20 @@ class WorktreeSimulatorUseCasesTest {
     }
 
     @Test
+    fun `the running UDID is the worktree's simulator unless it is shut down`() = runTest {
+        val read = ReadSimulatorStatesUseCase(provisioning(), simulators, resolve())
+
+        assertNull(read.runningUdid(config, task), "not acquired yet")
+        start()(config, task).getOrThrow()
+        assertEquals("UDID-1", read.runningUdid(config, task))
+        simulators.devicesByUdid["UDID-1"] = simulators.devicesByUdid.getValue("UDID-1").copy(state = SimulatorState.BOOTING)
+        assertEquals("UDID-1", read.runningUdid(config, task), "booting")
+        StopWorktreeSimulatorUseCase(provisioning(), simulators, resolve())(config, task).getOrThrow()
+        assertNull(read.runningUdid(config, task), "shut down")
+        assertNull(ReadSimulatorStatesUseCase(provisioning(null), simulators, resolve(provisioning(null))).runningUdid(config, task))
+    }
+
+    @Test
     fun `orphans are ShogunAi simulators no worktree has recorded, and they can be deleted`() = runTest {
         acquire(task)
         simulators.addExisting("GONE", "ShogunAi · main-repo · TASK-9", SimulatorState.BOOTED)
