@@ -13,7 +13,7 @@ import kotlin.io.path.name
 import kotlin.io.path.readText
 
 class FileAppRequestChannel(
-    private val directory: Path = Path.of(System.getProperty("user.home"), ".shogunai", "app-requests"),
+    private val directory: Path,
 ) : AppRequestChannel {
 
     override fun send(request: AppRequest) {

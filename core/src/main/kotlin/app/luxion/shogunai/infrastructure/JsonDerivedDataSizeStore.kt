@@ -13,7 +13,7 @@ import kotlin.io.path.exists
 import kotlin.io.path.readText
 
 class JsonDerivedDataSizeStore(
-    private val storagePath: Path = Path.of(System.getProperty("user.home"), ".shogunai", "derived-data-sizes.json"),
+    private val storagePath: Path,
 ) : DerivedDataSizeStore {
     private val json = Json {
         ignoreUnknownKeys = true
