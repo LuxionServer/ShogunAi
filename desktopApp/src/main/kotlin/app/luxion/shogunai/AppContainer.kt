@@ -76,6 +76,7 @@ import app.luxion.shogunai.domain.usecase.TourLocation
 import app.luxion.shogunai.ui.shell.UpdateState
 import app.luxion.shogunai.domain.usecase.ClaudeCodeHooks
 import app.luxion.shogunai.infrastructure.ExecutableLocator
+import app.luxion.shogunai.infrastructure.ShellLoginShellPath
 import app.luxion.shogunai.domain.usecase.CommandLineTool
 import app.luxion.shogunai.infrastructure.NioLauncherFiles
 import app.luxion.shogunai.infrastructure.PowerShellUserPath
@@ -347,12 +348,15 @@ class AppContainer {
     val agentChoices = AgentChoices(settingsFile.read().worktreeAgents) { transform ->
         settingsFile.update { it.copy(worktreeAgents = transform(it.worktreeAgents)) }
     }
-    private val commandLineTool = ExecutableLocator().let { locator ->
+    private val loginShellPath = ShellLoginShellPath(shellCommandExecutor).also { path ->
+        Thread({ path.folders() }, "login-shell-path").apply { isDaemon = true }.start()
+    }
+    private val commandLineTool = ExecutableLocator(pathFolders = loginShellPath::folders).let { locator ->
         CommandLineTool(
             os = HostOs.current(),
             appLauncher = System.getProperty("jpackage.app-path"),
             home = System.getProperty("user.home"),
-            pathFolders = System.getenv("PATH").orEmpty().split(java.io.File.pathSeparator).filter { it.isNotBlank() },
+            pathFolders = loginShellPath::folders,
             userBinFolders = locator.userBinFolders(),
             findShogun = { locator.find("shogun") },
             files = NioLauncherFiles(),
@@ -383,7 +387,7 @@ class AppContainer {
     )
     private val editorResolver = EditorExecutableResolver(
         HostOs.current(),
-        ExecutableLocator(),
+        ExecutableLocator(pathFolders = loginShellPath::folders),
         RegistryUninstallLocations(shellCommandExecutor),
     )
     val tools = ToolsPreferences(

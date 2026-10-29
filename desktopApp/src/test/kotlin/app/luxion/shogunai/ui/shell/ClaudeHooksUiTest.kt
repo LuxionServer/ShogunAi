@@ -40,7 +40,7 @@ class ClaudeHooksUiTest {
         os = HostOs.MACOS,
         appLauncher = appLauncher,
         home = "/home/dev",
-        pathFolders = listOf("/usr/bin", "/usr/local/bin"),
+        pathFolders = { listOf("/usr/bin", "/usr/local/bin") },
         userBinFolders = listOf("/usr/local/bin", "/home/dev/.local/bin"),
         findShogun = { found ?: launcherFiles.links.keys.firstOrNull() },
         files = launcherFiles,

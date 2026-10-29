@@ -31,7 +31,7 @@ class LocalToolDetectorTest {
             }
         }
         val locator = ExecutableLocator(
-            os, "/home/dev", listOf("/usr/bin"), "C:\\Users\\dev\\AppData\\Local",
+            os, "/home/dev", { listOf("/usr/bin") }, "C:\\Users\\dev\\AppData\\Local",
             programFolders, listOf(".EXE", ".CMD"), { emptyList() }, { it in files },
         )
         return LocalToolDetector(
@@ -134,7 +134,7 @@ class LocalToolDetectorTest {
             executor = executor,
             os = HostOs.MACOS,
             home = "/home/dev",
-            locator = ExecutableLocator(HostOs.MACOS, "/home/dev", listOf("/usr/bin"), null) { it == "/usr/bin/tmux" },
+            locator = ExecutableLocator(HostOs.MACOS, "/home/dev", { listOf("/usr/bin") }, null) { it == "/usr/bin/tmux" },
             isDirectory = { false },
         )
 
