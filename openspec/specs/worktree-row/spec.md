@@ -69,7 +69,7 @@ When the list is too narrow to show the execution cell's labels, the cell SHALL 
 - **THEN** every row shows only the agent's dot and the device icon, Claude's dot still in the warning color, and hovering it says Claude needs you
 
 ### Requirement: Name cell
-The name cell's first line SHALL show the branch, or that the HEAD is detached. Its second line SHALL show, in this order, the worktree's group tag when it belongs to a group and the view isn't the multirepo view, the worktree's folder name only when it differs from the last segment of the branch, the worktree's origin, and the project's name in views that span several projects and aren't grouped by project. The project's name SHALL be truncated last.
+The name cell's first line SHALL show the branch, or that the HEAD is detached, with the origin in its tooltip. Its second line SHALL only identify the row, separated by " · ": the group tag outside the multirepo view, the folder when it differs from the branch's last segment, and the project's name in views spanning several projects not grouped by project, truncated last. It SHALL NOT show the origin.
 
 #### Scenario: Folder matches the branch
 - **WHEN** the branch is `feature/TASK-123` and the folder is `TASK-123`
@@ -77,11 +77,19 @@ The name cell's first line SHALL show the branch, or that the HEAD is detached. 
 
 #### Scenario: Folder differs from the branch
 - **WHEN** the branch is `feature/TASK-123` and the folder is `task-123-wt`
-- **THEN** the second line shows `task-123-wt` before the origin
+- **THEN** the second line shows `task-123-wt`
+
+#### Scenario: Origin in the tooltip
+- **WHEN** a worktree was created by ShogunAi
+- **THEN** its second line doesn't name the origin, and the branch's tooltip does
 
 #### Scenario: Worktree in a group
 - **WHEN** the worktree belongs to the group `TASK-12` with `api`, and the view is `app`'s
 - **THEN** the second line starts with the tag `TASK-12 · +api`
+
+#### Scenario: Group tag and project
+- **WHEN** a worktree of the group `TASK-7` with `app` is listed in "Active" grouped by state
+- **THEN** its second line reads `TASK-7 · +app · <project>`, with a separator between the tag and the project
 
 #### Scenario: Grouped by state across projects
 - **WHEN** "Active" is grouped by state and lists worktrees of `api` and `main-repo`
@@ -93,7 +101,7 @@ The name cell's first line SHALL show the branch, or that the HEAD is detached. 
 
 #### Scenario: Narrow row across projects
 - **WHEN** a row in "Active" grouped by state doesn't fit its second line
-- **THEN** the folder and the origin are truncated before the project's name
+- **THEN** the group tag and the folder are truncated before the project's name
 
 ### Requirement: Git cell
 The Git cell's first line SHALL show the number of uncommitted changes, and its second line the commits ahead of and behind the worktree's base, or that the branch is merged. The base's name, or the name of the branch it is merged into, SHALL be shown in the tooltip. While the status is loading, the cell SHALL show a loading indicator; when the status can't be read, a muted dash with the reason in its tooltip.
@@ -119,15 +127,23 @@ The Git cell's first line SHALL show the number of uncommitted changes, and its 
 - **THEN** the second line shows it as merged, with `epic/redesign` on hover
 
 ### Requirement: Time cell
-The time cell's first line SHALL show the worktree's activity date relative to now, saying what it measures. Its second line SHALL show the worktree's fixed marks: main worktree and locked.
+The time cell's first line SHALL show the worktree's activity date relative to now, saying what it measures. When the list is narrow it SHALL show the compact form of the elapsed time ("12 h", "2 d"), with the full text in a tooltip. Its second line SHALL show the worktree's fixed marks: main worktree and locked.
 
 #### Scenario: Branch with commits
 - **WHEN** a worktree's branch has a commit of its own made 3 hours ago
-- **THEN** the first line reads "commit 3 h ago" (or its translation)
+- **THEN** the first line reads "commit 3 hours ago" (or its translation)
 
 #### Scenario: New worktree
 - **WHEN** a worktree was created 2 hours ago from `develop` and has no commits of its own
-- **THEN** the first line reads "created 2 h ago" (or its translation), not the date of `develop`'s last commit
+- **THEN** the first line reads "created 2 hours ago" (or its translation), not the date of `develop`'s last commit
+
+#### Scenario: Narrow list
+- **WHEN** the list is narrow and a worktree's last commit was 12 hours ago
+- **THEN** the first line reads "12 h" and its tooltip reads "commit 12 hours ago"
+
+#### Scenario: Compact units
+- **WHEN** the list is narrow and the activity was 30 seconds, 5 minutes, 2 days, 3 months or 1 year ago
+- **THEN** the first line reads "now", "5 min", "2 d", "3 mo" or "1 y" (or their translations)
 
 #### Scenario: Locked main worktree
 - **WHEN** the row is the main worktree and it is locked

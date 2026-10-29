@@ -1,7 +1,7 @@
 ## MODIFIED Requirements
 
 ### Requirement: Name cell
-The name cell's first line SHALL show the branch, or that the HEAD is detached, with the branch and the worktree's origin in its tooltip. Its second line SHALL only identify the row and show, in this order and separated by " · ", the worktree's group tag when it belongs to a group and the view isn't the multirepo view, the worktree's folder name only when it differs from the last segment of the branch, and the project's name in views that span several projects and aren't grouped by project. The second line SHALL NOT show the origin. The project's name SHALL be truncated last.
+The name cell's first line SHALL show the branch, or that the HEAD is detached, with the origin in its tooltip. Its second line SHALL only identify the row, separated by " · ": the group tag outside the multirepo view, the folder when it differs from the branch's last segment, and the project's name in views spanning several projects not grouped by project, truncated last. It SHALL NOT show the origin.
 
 #### Scenario: Folder matches the branch
 - **WHEN** the branch is `feature/TASK-123` and the folder is `TASK-123`

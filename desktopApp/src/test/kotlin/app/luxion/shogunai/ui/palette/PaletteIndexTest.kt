@@ -84,6 +84,15 @@ class PaletteIndexTest {
     }
 
     @Test
+    fun `preferences is a setting, not a view`() {
+        val preferences = index().single { it.id == "view:preferences" }
+
+        assertEquals(PaletteKind.SETTING, preferences.kind)
+        assertEquals("Setting", preferences.context)
+        assertEquals(PaletteAction.Run(PaletteCommand.OPEN_PREFERENCES), preferences.primary)
+    }
+
+    @Test
     fun `a worktree selects it and copies its launch command with the secondary action`() {
         val worktree = index().first { it.kind == PaletteKind.WORKTREE }
         val ref = WorktreeRef("api", task9.path)

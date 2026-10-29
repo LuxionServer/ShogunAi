@@ -1,7 +1,7 @@
 ## MODIFIED Requirements
 
 ### Requirement: Group header actions
-Each change group's header SHALL offer "Open all in <default runner>" as its button and, in its ⋯ menu, the other runner under "Open all with…", "Add repository" and "Clean up group". Opening all in Herdr SHALL open every worktree of the group as `shogun open <id> --herdr` does, and in Orca as `shogun open <id> --orca` does. "Add repository" SHALL create a worktree on the group's branch in a repository of the multirepo not yet in it, as `shogun new <id> --repos <alias>` does. "Clean up group" SHALL be enabled only when the group is a cleanup candidate and confirmed before removing it as `shogun clean --yes` would.
+Each change group's header SHALL offer "Open all in <default runner>" as its button and, in its ⋯ menu, "Open all with…", "Add repository" and "Clean up group". Opening all SHALL work as `shogun open <id> --herdr` or `--orca`, "Add repository" as `shogun new <id> --repos <alias>`, and "Clean up group", enabled only for a cleanup candidate, SHALL be confirmed before removing the group as `shogun clean --yes` would.
 
 #### Scenario: Open all
 - **WHEN** Herdr is the default runner and the user activates "Open all in Herdr" on `feature/TASK-1`

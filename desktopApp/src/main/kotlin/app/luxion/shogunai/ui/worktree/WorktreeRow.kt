@@ -34,6 +34,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import app.luxion.shogunai.ui.components.ActionSlot
 import app.luxion.shogunai.ui.components.AgentIndicator
@@ -59,6 +63,7 @@ fun WorktreeRow(
     selected: Boolean,
     isCopied: Boolean,
     compact: Boolean = false,
+    aliasWidth: Dp = DefaultAliasColumnWidth,
     onSelect: () -> Unit,
     onCopyLaunchCommand: () -> Unit,
     contextMenu: () -> List<MenuEntry> = { emptyList() },
@@ -68,12 +73,12 @@ fun WorktreeRow(
     WorktreeContextMenu(entries = contextMenu) {
         DataRow(
             cells = listOfNotNull(
-                model.alias?.let { alias -> DataCell(AliasColumn) { AliasCellView(alias) } },
+                model.alias?.let { alias -> DataCell(ColumnSpec(width = aliasWidth)) { AliasCellView(alias) } },
                 DataCell(BadgeColumn) { StateBadgeCell(model.badge) },
                 DataCell(ExecutionColumn, Modifier.testTag(ExecutionTag)) { compact -> ExecutionCellView(model.execution, compact) },
                 DataCell(NameColumn) { NameCellView(model.name, onOpenGroupTag) },
                 DataCell(GitColumn, Modifier.testTag(GitTag)) { GitCellView(model.git) },
-                DataCell(TimeColumn, Modifier.testTag(TimeTag)) { TimeCellView(model.time) },
+                DataCell(TimeColumn, Modifier.testTag(TimeTag)) { compact -> TimeCellView(model.time, compact) },
             ),
             compact = compact,
             selected = selected,
@@ -103,7 +108,26 @@ private val RowActionIconSize = 16.dp
 private val LineHeight = 18.dp
 private val CellIconSize = 14.dp
 
-private val AliasColumn = ColumnSpec(width = 72.dp, compact = CompactBehavior.Shrink(48.dp))
+val DefaultAliasColumnWidth = 72.dp
+private val MinAliasColumnWidth = 48.dp
+private val MaxAliasColumnWidth = 128.dp
+
+fun fitAliasColumnWidth(longest: Dp): Dp = longest.coerceIn(MinAliasColumnWidth, MaxAliasColumnWidth)
+
+@Composable
+fun aliasColumnWidth(aliases: List<String>): Dp {
+    val measurer = rememberTextMeasurer()
+    val style = ShogunTheme.typography.data
+    val density = LocalDensity.current
+    val distinct = aliases.distinct()
+    if (distinct.isEmpty()) return DefaultAliasColumnWidth
+    val longest = remember(distinct, style, density) {
+        distinct.maxOf { measurer.measure(it, style, maxLines = 1).size.width }
+    }
+    return fitAliasColumnWidth(with(density) { longest.toDp() } + AliasColumnSlack)
+}
+
+private val AliasColumnSlack = 2.dp
 private val BadgeColumn = ColumnSpec(width = BadgeSize)
 private val ExecutionColumn = ColumnSpec(width = 176.dp, compact = CompactBehavior.Shrink(44.dp))
 private val NameColumn = ColumnSpec()
@@ -116,6 +140,7 @@ internal const val TimeTag = "row-time"
 internal const val ExecutionTag = "row-execution"
 internal const val AliasTag = "row-alias"
 internal const val GroupTagTag = "row-group-tag"
+internal const val SecondLineTag = "row-second-line"
 
 @Composable
 private fun AliasCellView(alias: String) {
@@ -232,7 +257,7 @@ private val SecondLineKind.icon: ImageVector
 private fun NameCellView(name: NameCell, onOpenGroupTag: () -> Unit) {
     val secondary = MaterialTheme.colorScheme.onSurfaceVariant
     Column {
-        WithTooltip(label = name.branch) {
+        WithTooltip(label = name.branchTooltip) {
             CellLine {
                 Text(
                     name.branch,
@@ -243,23 +268,24 @@ private fun NameCellView(name: NameCell, onOpenGroupTag: () -> Unit) {
                 )
             }
         }
-        CellLine {
+        CellLine(Modifier.testTag(SecondLineTag)) {
             name.groupTag?.let { tag ->
                 Text(
                     tag,
                     style = ShogunTheme.typography.dataSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = secondary,
                     maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                     modifier = Modifier
+                        .weight(1f, fill = false)
                         .testTag(GroupTagTag)
                         .interactive(shape = MaterialTheme.shapes.extraSmall, onClick = onOpenGroupTag)
                         .padding(horizontal = Spacing.xxs),
                 )
             }
-            val context = listOfNotNull(name.folder, name.origin).joinToString(" · ")
-            if (context.isNotEmpty()) {
+            name.folder?.let { folder ->
                 Text(
-                    context,
+                    separated(folder, after = name.groupTag),
                     style = ShogunTheme.typography.dataSmall,
                     color = secondary,
                     maxLines = 1,
@@ -269,7 +295,7 @@ private fun NameCellView(name: NameCell, onOpenGroupTag: () -> Unit) {
             }
             name.project?.let { project ->
                 Text(
-                    if (context.isNotEmpty()) "· $project" else project,
+                    separated(project, after = name.folder ?: name.groupTag),
                     style = MaterialTheme.typography.bodySmall,
                     color = secondary,
                     maxLines = 1,
@@ -279,6 +305,10 @@ private fun NameCellView(name: NameCell, onOpenGroupTag: () -> Unit) {
         }
     }
 }
+
+private fun separated(text: String, after: String?): String = if (after != null) "$SecondLineSeparator$text" else text
+
+private const val SecondLineSeparator = "· "
 
 @Composable
 private fun GitCellView(git: GitCell) {
@@ -313,17 +343,22 @@ private fun TooltipText(text: String, tooltip: String?, status: Status?) {
 }
 
 @Composable
-private fun TimeCellView(time: TimeCell) {
+private fun TimeCellView(time: TimeCell, compact: Boolean) {
     val secondary = MaterialTheme.colorScheme.onSurfaceVariant
     Column {
         CellLine {
-            Text(
-                time.activity.orEmpty(),
-                style = MaterialTheme.typography.bodySmall,
-                color = secondary,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            val activity = time.activity
+            val shown = if (compact) time.compactActivity else activity
+            val text: @Composable () -> Unit = {
+                Text(
+                    shown.orEmpty(),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = secondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            if (compact && activity != null) WithTooltip(label = activity, content = text) else text()
         }
         CellLine {
             Text(

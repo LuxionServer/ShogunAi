@@ -17,12 +17,16 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboard
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.luxion.shogunai.ui.i18n.LocalStrings
@@ -57,11 +61,9 @@ private fun PropertyValueRow(property: Property, onCopy: (String) -> Unit) {
     val confirm = key(property.value) { rememberInlineConfirm() }
     PropertyRow(property.key, Modifier.hoverable(interactionSource)) {
         SelectionContainer(Modifier.weight(1f)) {
-            Text(
+            OverflowTooltipText(
                 property.value,
                 style = if (property.isData) ShogunTheme.typography.dataSmall else MaterialTheme.typography.bodySmall,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
             )
         }
         if (property.copyable) {
@@ -85,14 +87,13 @@ fun PropertyRow(key: String, modifier: Modifier = Modifier, content: @Composable
         horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(
-            key,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.width(PropertyKeyWidth),
-        )
+        Box(Modifier.width(PropertyKeyWidth)) {
+            OverflowTooltipText(
+                key,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
         Row(
             modifier = Modifier.weight(1f),
             horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
@@ -100,4 +101,20 @@ fun PropertyRow(key: String, modifier: Modifier = Modifier, content: @Composable
             content = content,
         )
     }
+}
+
+@Composable
+private fun OverflowTooltipText(text: String, style: TextStyle, color: Color = Color.Unspecified) {
+    var truncated by remember(text) { mutableStateOf(false) }
+    val label: @Composable () -> Unit = {
+        Text(
+            text,
+            style = style,
+            color = color,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            onTextLayout = { truncated = it.multiParagraph.maxIntrinsicWidth > it.size.width },
+        )
+    }
+    if (truncated) WithTooltip(label = text, content = label) else label()
 }

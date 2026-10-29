@@ -66,7 +66,7 @@ private fun WorktreeEmulatorRow(entry: MachineEmulator, machine: MachineResource
     val current = entry.emulator?.state ?: EmulatorState.STOPPED
     val state = if (isBusy && current != EmulatorState.RUNNING) EmulatorState.BOOTING else current
     MachineRow(
-        machineCell(MachineMainColumn) { MachineDataText(emulatorDeviceLabel(entry, machine.project(entry.projectId), strings)) },
+        machineCell(MachineMainColumn) { DeviceLabelText(emulatorDeviceLabel(entry, machine.project(entry.projectId), strings)) },
         machineCell(MachineOwnerColumn) {
             OwnerCell(ProjectOwner.Owned(entry.projectId, entry.worktreePath), machine::projectName, onOpenWorktree)
         },

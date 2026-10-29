@@ -65,6 +65,9 @@ fun PreferencesWindow(
         icon = rememberAppIconPainter(),
         resizable = false,
         state = rememberWindowState(size = PreferencesWindowSize, position = WindowPosition(Alignment.Center)),
+        onPreviewKeyEvent = { event ->
+            isCloseWindowShortcut(event.toKeyPress()).also { if (it) onClose() }
+        },
     ) {
         LaunchedEffect(bringToFrontRequests) { window.toFront() }
         LaunchedEffect(Unit) { tools.refresh() }

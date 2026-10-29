@@ -88,6 +88,7 @@ Multirepos and groups by branch are done in the CLI and the desktop app, and the
 - Checking the guided tour on Windows and Linux with a real installed app: creating the sample with the system's Git, and the tour's agent command, whose prompt is quoted for the shell each terminal runs.
 - A changelog page in the documentation site built from the release notes in `.github/release-notes/`, which the app already shows in its update notice.
 - Removing Cmd/Ctrl+E, kept for one release as an alias of Cmd/Ctrl+O when the shortcut moved to the default runner.
+- Writing the remaining state texts of the Machine views in the interface font: the Compose view still writes its leftovers title and a removed worktree as its owner in the data font.
 
 ## Later
 

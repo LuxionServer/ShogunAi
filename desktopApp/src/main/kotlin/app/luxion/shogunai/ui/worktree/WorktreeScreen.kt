@@ -162,6 +162,7 @@ fun WorktreeScreen(
                     isOpeningMultirepoAgent = board.isOpeningMultirepoAgent,
                     multirepoNeedsReview = reviewReason,
                     orcaInstalled = board.isOrcaInstalled,
+                    defaultRunner = board.defaultRunner,
                 ),
                 strings,
             )
@@ -175,7 +176,7 @@ fun WorktreeScreen(
                     else -> Unit
                 }
             }
-            MoreMenuButton(label = strings.moreActions, entries = viewOverflow(catalog).toMenu(strings, performView))
+            MoreMenuButton(label = strings.moreActions, entries = viewOverflow(catalog, strings).toMenu(strings, performView))
             catalog.primary?.let { spec ->
                 DisabledReason(spec.disabledReason) {
                     PrimaryButton(onClick = { performView(spec, null) }, enabled = spec.isAvailable) {
@@ -476,8 +477,6 @@ private fun ViewSummary(board: WorktreeBoard, modifier: Modifier) {
         worktreeCount = holders.sumOf { it.worktrees.size },
         totalSize = holders.sumOf { it.totalSize },
         cleanupCandidateCount = holders.sumOf { it.cleanupCandidates.size },
-        canCleanUp = board.canCleanUp(),
-        onCleanUp = { board.openCleanup() },
         modifier = modifier,
         isLoading = holders.any { it.loadState == ProjectLoadState.Loading },
     )

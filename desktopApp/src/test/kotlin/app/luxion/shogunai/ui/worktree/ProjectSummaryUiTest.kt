@@ -20,8 +20,6 @@ class ProjectSummaryUiTest {
                     worktreeCount = 0,
                     totalSize = 0,
                     cleanupCandidateCount = 0,
-                    canCleanUp = false,
-                    onCleanUp = {},
                     isLoading = true,
                 )
             }
@@ -30,5 +28,17 @@ class ProjectSummaryUiTest {
         onNodeWithText(EnglishStrings.worktreesTitle).assertIsDisplayed()
         onNodeWithContentDescription(EnglishStrings.loadingWorktrees).assertExists()
         onNodeWithText(EnglishStrings.worktreesSummary(0, "0 B"), substring = true).assertDoesNotExist()
+    }
+
+    @Test
+    fun `the summary only informs and offers no clean up`() = runComposeUiTest {
+        setContent {
+            MaterialTheme {
+                ProjectSummary(worktreeCount = 5, totalSize = 2048, cleanupCandidateCount = 2)
+            }
+        }
+
+        onNodeWithText(EnglishStrings.cleanupCandidatesSummary(2)).assertIsDisplayed()
+        onNodeWithText(EnglishStrings.cleanUp).assertDoesNotExist()
     }
 }

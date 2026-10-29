@@ -200,6 +200,12 @@ class WorktreeRowModelTest {
     }
 
     @Test
+    fun `the origin is named in the branch's tooltip`() {
+        assertEquals("feature/TASK-123\nShogunAi", model().name.branchTooltip)
+        assertEquals("feature/TASK-123", model(origin = null).name.branchTooltip)
+    }
+
+    @Test
     fun `the name cell shows the folder when it differs from the branch`() {
         val name = model(worktree = worktree(path = "/home/dev/projects/main-repo-worktrees/task-123-wt")).name
 
@@ -306,6 +312,16 @@ class WorktreeRowModelTest {
     @Test
     fun `the time cell has no date while the status is loading`() {
         assertNull(model(status = WorktreeStatusState.Loading).time.activity)
+        assertNull(model(status = WorktreeStatusState.Loading).time.compactActivity)
+    }
+
+    @Test
+    fun `the time cell has a compact activity for narrow lists`() {
+        val loaded = status().copy(lastCommitAt = now.minus(Duration.ofHours(12)))
+        val time = model(status = WorktreeStatusState.Loaded(loaded)).time
+
+        assertEquals("12 h", time.compactActivity)
+        assertEquals("commit 12 hours ago", time.activity)
     }
 
     @Test

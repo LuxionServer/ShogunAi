@@ -9,6 +9,7 @@ The final review of the app against the v2 design's rules found seven places tha
 - A change group's header shows only "Open all in <default runner>" as a button; the other runner, "Add repository" and, after a separator in danger text, "Clean up group" (disabled with its reason) move to the group's ⋯ menu, all built from the group catalog.
 - The multirepo view's ⋯ menu shows "Open multirepo agent in <default runner>" and puts the other runner in an "Open multirepo agent with…" submenu.
 - The summary shown with nothing selected becomes informative only; "Clean up" stays in the view's ⋯ menu.
+- A project group's header moves "Clean up" from a danger button to its ⋯ menu.
 - The second line of a row's name cell shows only the group tag, the folder and the project, separated by " · "; the origin stays in the inspector's chip and is added to the branch's tooltip.
 - Machine views write modes ("Automatic", the capacity profile) and states ("Not acquired", "Not created") in the interface font, and every state chip in sentence case ("Stopped", "Running", "Shut down", "Over the limit").
 - The command palette lists Preferences as a setting, with its own kind and icon, not as a view.
@@ -29,6 +30,7 @@ None.
 - `multirepo-desktop`: group header actions and the multirepo agent entries move as above.
 - `worktree-row`: the name cell's second line drops the origin and is separated; the time cell gets a compact format.
 - `worktree-detail`: the summary with nothing selected has no "Clean up" action.
+- `worktree-views`: a project group header offers "Clean up" in its ⋯ menu instead of a button.
 - `machine-resources`: modes and states in the interface font, state chips in sentence case.
 - `command-palette`: Preferences is a setting item; Escape closes the palette on every platform.
 - `inspector-sections`: truncated keys and values show their full text in a tooltip.
