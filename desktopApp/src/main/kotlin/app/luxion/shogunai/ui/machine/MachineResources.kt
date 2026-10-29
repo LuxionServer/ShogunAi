@@ -75,6 +75,7 @@ data class MachineSummary(
     val bytes: Long? = null,
     val poolInUse: Int? = null,
     val poolLimit: Int? = null,
+    val poolHeldByBuilds: Boolean = false,
     val calculating: Boolean = false,
     val quotaBytes: Long? = null,
     val quotaAutomatic: Boolean = false,
@@ -415,7 +416,13 @@ class MachineResources(
             if (daemons.isSuccess) loadPool(ResourceKind.GRADLE_DAEMON)
             record(MachineResource.GRADLE_DAEMONS, daemons) { listed ->
                 val pool = pools[ResourceKind.GRADLE_DAEMON]
-                MachineSummary(listed.size, listed.sumOf { it.residentMemoryBytes }, pool?.inUse, pool?.effectiveLimit)
+                MachineSummary(
+                    listed.size,
+                    listed.sumOf { it.residentMemoryBytes },
+                    pool?.inUse,
+                    pool?.effectiveLimit,
+                    poolHeldByBuilds = pool?.let(::buildsHoldingPool) != null,
+                )
             }
         }
         if (MachineResource.MAVEN_DAEMONS in resources) {

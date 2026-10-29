@@ -14,8 +14,12 @@
 
 - [x] 3.1 Count Gradle and Kotlin daemons apart in the Gradle daemons view's footer, English and Spanish. Verify: string tests for both languages with and without Kotlin daemons.
 
-## 4. Validation
+## 4. Status bar
 
-- [x] 4.1 `./gradlew test` passes.
-- [x] 4.2 Check in the real app (`shogun headless start`): the Gradle daemons view with the pool over the limit and busy daemons shows the explanation, one trim banner and the split footer.
-- [x] 4.3 Update the "Pools" paragraph of `docs/architecture/ui.md` and `ui.es.md`.
+- [x] 4.1 Mark the Gradle summary as held by builds and keep its status bar item neutral, with the reason in its tooltip. Verify: `MachineStatusItemsTest` and `MachineResourcesTest`.
+
+## 5. Validation
+
+- [x] 5.1 `./gradlew test` passes.
+- [x] 5.2 Check in the real app (`shogun headless start`): the Gradle daemons view with the pool over the limit and busy daemons shows the explanation, one trim banner and the split footer.
+- [x] 5.3 Update the "Pools" paragraph of `docs/architecture/ui.md` and `ui.es.md`.

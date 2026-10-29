@@ -645,6 +645,21 @@ class MachineResourcesTest {
     }
 
     @Test
+    fun `a Gradle pool over its limit with no idle daemon is held by builds`() = machineTest {
+        val busy = usage(ResourceKind.GRADLE_DAEMON, 2, 1, 2, 3).let { pool ->
+            pool.copy(holders = pool.holders.map { it.copy(state = PoolHolderState.BUSY) })
+        }
+        val machine = machine(
+            useCases(Calls(), pools = mapOf(ResourceKind.GRADLE_DAEMON to busy)),
+            listOf(machineProject("api", listOf(apiWorktree), MachineResource.GRADLE_DAEMONS)),
+        )
+
+        machine.refreshSummaries()
+
+        assertTrue(machine.summaries.getValue(MachineResource.GRADLE_DAEMONS).poolHeldByBuilds)
+    }
+
+    @Test
     fun `starting an emulator that released another one leaves a notice until dismissed`() = machineTest {
         val release = PoolRelease(ResourceKind.EMULATOR, "/home/dev/projects/api-TASK-1", PoolReleaseReason.MAKE_ROOM, "api · TASK-1")
         val machine = machine(
