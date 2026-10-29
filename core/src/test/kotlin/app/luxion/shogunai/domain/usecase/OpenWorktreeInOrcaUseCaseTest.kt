@@ -63,6 +63,7 @@ class OpenWorktreeInOrcaUseCaseTest {
         environment: FakeProcessEnvironmentReader? = null,
         usesPowerShell: Boolean = false,
         samePath: (String, String) -> Boolean = { first, second -> first == second },
+        runningEmulator: suspend (String) -> String? = { null },
     ) = OpenWorktreeInOrcaUseCase(
         config,
         orca,
@@ -70,6 +71,7 @@ class OpenWorktreeInOrcaUseCaseTest {
         ClaudeSessionNaming(registry, isClaudeProcessAlive = { true }, processEnvironment = environment),
         usesPowerShell = usesPowerShell,
         samePath = samePath,
+        runningEmulator = runningEmulator,
     )
 
     @Test
@@ -84,6 +86,56 @@ class OpenWorktreeInOrcaUseCaseTest {
             orca.created.single(),
         )
         assertEquals(1, orca.raised)
+    }
+
+    @Test
+    fun `a running emulator is shown before the agent's terminal is created`() = runTest {
+        val orca = FakeOrcaClient(repos = listOf(known), visibleWorktrees = visible)
+
+        val opening = useCase(orca, runningEmulator = { path -> "emulator-5556".takeIf { path == task.path } })(task).getOrThrow()
+
+        assertEquals("emulator-5556", opening.emulator)
+        assertEquals(listOf("attach:${task.path}:emulator-5556", "create:${task.path}"), orca.events)
+    }
+
+    @Test
+    fun `a running emulator is shown before the live agent is focused`() = runTest {
+        val orca = FakeOrcaClient(
+            repos = listOf(known),
+            visibleWorktrees = visible,
+            terminals = mapOf(task.path to listOf(OrcaTerminal("term_agent", task.path))),
+            agents = mapOf("term_agent" to "claude"),
+        )
+
+        val opening = useCase(orca, runningEmulator = { "emulator-5556" })(task).getOrThrow()
+
+        assertEquals(OrcaOpening(OrcaOutcome.FOCUSED, "term_agent", "claude", emulator = "emulator-5556"), opening)
+        assertEquals(listOf("attach:${task.path}:emulator-5556", "switch:term_agent"), orca.events)
+    }
+
+    @Test
+    fun `without a running emulator nothing is attached`() = runTest {
+        val orca = FakeOrcaClient(repos = listOf(known), visibleWorktrees = visible)
+
+        val opening = useCase(orca)(task).getOrThrow()
+
+        assertNull(opening.emulator)
+        assertTrue(orca.attachedEmulators.isEmpty())
+    }
+
+    @Test
+    fun `an emulator Orca can't show doesn't fail the open`() = runTest {
+        val orca = FakeOrcaClient(
+            repos = listOf(known),
+            visibleWorktrees = visible,
+            attachFailure = WorktreeError.OrcaCommandFailed(listOf("orca"), "emulator_device_not_found"),
+        )
+
+        val opening = useCase(orca, runningEmulator = { "emulator-5556" })(task).getOrThrow()
+
+        assertEquals(OrcaOutcome.STARTED_AGENT, opening.outcome)
+        assertNull(opening.emulator)
+        assertEquals(1, orca.created.size)
     }
 
     @Test

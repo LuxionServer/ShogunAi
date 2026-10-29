@@ -1,0 +1,11 @@
+{
+  "id": "8da910d1-7d87-4f2a-a9d1-8310dc570731",
+  "ok": false,
+  "error": {
+    "code": "emulator_device_not_found",
+    "message": "Simulator emulator-5590 not found. Create one via Xcode > Window > Devices and Simulators."
+  },
+  "_meta": {
+    "runtimeId": "82367bbd-cceb-4618-970a-a1eac65c406c"
+  }
+}
