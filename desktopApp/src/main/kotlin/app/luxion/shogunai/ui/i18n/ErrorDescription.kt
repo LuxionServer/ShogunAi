@@ -42,7 +42,7 @@ fun Strings.describe(error: Throwable): UserFacingError {
 private fun fixOf(error: Throwable, gitCause: GitFailureCause): ErrorFix? = when (error) {
     is WorktreeError.BaseRepositoryNotFound,
     is WorktreeError.RepositoryNotFound,
-    is WorktreeError.SecretFileNotFound,
+    is WorktreeError.LocalFilesUnavailable,
     WorktreeError.EmulatorProviderNotDeclared,
     WorktreeError.IosSimulatorProviderNotDeclared,
     -> ErrorFix.OpenProjectSettings
@@ -71,6 +71,7 @@ private fun technicalDetailsOf(error: Throwable): TechnicalDetails? = when (erro
     is WorktreeError.InvalidRepositoryConfig -> error.detail?.let { TechnicalDetails(null, null, it) }
     is WorktreeError.AndroidSdkNotFound -> TechnicalDetails(null, null, error.checked.joinToString("\n"))
     is WorktreeError.SecretCopyFailed -> causeDetails(error)
+    is WorktreeError.LocalFilesUnavailable -> TechnicalDetails(null, null, error.message.orEmpty().lines().drop(1).joinToString("\n") { it.trim() })
     is WorktreeError.ClipboardWriteFailed -> causeDetails(error)
     is WorktreeError.EnvironmentFileWriteFailed -> causeDetails(error)
     is CommandExecutionException -> TechnicalDetails(error.command, null, error.cause?.message.orEmpty())

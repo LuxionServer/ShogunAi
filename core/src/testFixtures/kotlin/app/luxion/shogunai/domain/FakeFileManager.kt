@@ -3,6 +3,7 @@ package app.luxion.shogunai.domain
 import app.luxion.shogunai.domain.io.DirectoryListing
 import app.luxion.shogunai.domain.io.FileManager
 import app.luxion.shogunai.domain.io.SymbolicLinksNotSupported
+import app.luxion.shogunai.domain.model.UnavailableReason
 import java.io.IOException
 
 class FakeFileManager(
@@ -64,9 +65,10 @@ class FakeFileManager(
 
     val directoryFiles = mutableMapOf<String, List<String>>()
     val directoryLinks = mutableMapOf<String, List<String>>()
+    val directoryUnreadable = mutableMapOf<String, List<String>>()
 
     override fun listTree(directory: String): DirectoryListing =
-        DirectoryListing(directoryFiles[directory].orEmpty(), directoryLinks[directory].orEmpty())
+        DirectoryListing(directoryFiles[directory].orEmpty(), directoryLinks[directory].orEmpty(), directoryUnreadable[directory].orEmpty())
 
     override fun isSymbolicLink(path: String): Boolean = path in symbolicLinks
 
@@ -108,6 +110,14 @@ class FakeFileManager(
     }
 
     override fun exists(path: String): Boolean = path in paths
+
+    val unavailable = mutableMapOf<String, UnavailableReason>()
+    val availabilityChecks = mutableListOf<String>()
+
+    override fun unavailableReason(path: String): UnavailableReason? {
+        availabilityChecks += path
+        return unavailable[path]
+    }
 
     var outsidePaths: Set<String> = emptySet()
 

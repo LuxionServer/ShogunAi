@@ -1,8 +1,12 @@
 package app.luxion.shogunai.domain.io
 
+import app.luxion.shogunai.domain.model.UnavailableReason
+
 interface FileManager {
 
     fun exists(path: String): Boolean
+
+    fun unavailableReason(path: String): UnavailableReason?
 
     fun isInside(root: String, path: String): Boolean
 
@@ -39,6 +43,10 @@ interface FileManager {
     fun listNames(path: String): List<String>?
 }
 
-data class DirectoryListing(val files: List<String> = emptyList(), val skippedLinks: List<String> = emptyList())
+data class DirectoryListing(
+    val files: List<String> = emptyList(),
+    val skippedLinks: List<String> = emptyList(),
+    val unreadable: List<String> = emptyList(),
+)
 
 class SymbolicLinksNotSupported(cause: Throwable? = null) : Exception("Symbolic links aren't supported here", cause)

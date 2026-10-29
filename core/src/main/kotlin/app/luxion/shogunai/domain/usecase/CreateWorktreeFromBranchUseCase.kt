@@ -35,7 +35,7 @@ class CreateWorktreeFromBranchUseCase(
             val source = resolveSource(branchName) ?: throw WorktreeError.BranchNotFound(branchName)
             val worktreePath = requireFreeWorktreePath(source.localName)
 
-            val provisioned = checkProvisioningAndResolveFiles(config, executor, fileManager, provisioningSource)
+            val provisioned = checkLocalFilesAndResolve(config, executor, fileManager, provisioningSource)
 
             addWorktreeAndCopySecrets(
                 config = config,

@@ -23,6 +23,9 @@ import app.luxion.shogunai.domain.model.RepositoryProvisioning
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.PodsPreparation
 import app.luxion.shogunai.domain.model.WorktreeError
+import app.luxion.shogunai.domain.model.LocalFileOrigin
+import app.luxion.shogunai.domain.model.UnavailableLocalFile
+import app.luxion.shogunai.domain.model.UnavailableReason
 import app.luxion.shogunai.domain.model.parseEnvironmentVariable
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -174,8 +177,8 @@ class CreateWorktreeUseCaseTest {
 
         val error = useCase("TASK-123", BranchType.FEATURE).exceptionOrNull()
 
-        assertIs<WorktreeError.SecretFileNotFound>(error)
-        assertEquals(listOf("app-secrets.properties"), error.files)
+        assertIs<WorktreeError.LocalFilesUnavailable>(error)
+        assertEquals(listOf("app-secrets.properties"), error.files.map { it.path })
         assertTrue(executor.executedCommands.isEmpty(), "should not create the worktree if secrets are missing")
     }
 
@@ -599,8 +602,8 @@ class CreateWorktreeUseCaseTest {
 
         val error = useCase("TASK-123", BranchType.FEATURE).exceptionOrNull()
 
-        assertIs<WorktreeError.SecretFileNotFound>(error)
-        assertEquals(listOf("keys"), error.files)
+        assertIs<WorktreeError.LocalFilesUnavailable>(error)
+        assertEquals(listOf("keys"), error.files.map { it.path })
         assertTrue(executor.executedCommands.isEmpty())
     }
 
@@ -625,9 +628,9 @@ class CreateWorktreeUseCaseTest {
 
         val error = useCase("TASK-123", BranchType.FEATURE).exceptionOrNull()
 
-        assertIs<WorktreeError.SecretFileNotFound>(error)
-        assertEquals(listOf("local.properties"), error.files)
-        assertTrue(executor.executedCommands.isEmpty())
+        assertIs<WorktreeError.LocalFilesUnavailable>(error)
+        assertEquals(listOf("local.properties"), error.files.map { it.path })
+        assertFalse(executor.executedCommands.any { it.take(3) == listOf("git", "worktree", "add") })
     }
 
     @Test
@@ -805,5 +808,99 @@ class CreateWorktreeUseCaseTest {
         assertEquals(FlutterPubGet.Needed(FlutterPubGetFailure.Exited(1, listOf("Could not resolve"))), created.flutter)
         assertTrue(executor.executed(*buildRunner.toTypedArray()))
         assertFalse(executor.executedCommands.any { it.take(3) == listOf("git", "worktree", "remove") })
+    }
+
+    private fun withEnvPattern(): Pair<FakeShellCommandExecutor, FakeRepositoryProvisioningSource> =
+        FakeShellCommandExecutor { if (it.getOrNull(1) == "ls-files") success(it, stdout = ".env\u0000") else success(it) } to
+            FakeRepositoryProvisioningSource(byRepository = mapOf(config.baseRepositoryPath to RepositoryProvisioning(copyPatterns = listOf(".env"))))
+
+    @Test
+    fun `a broken link matched by a repository pattern fails before creating or copying anything`() = runTest {
+        val (executor, provisioning) = withEnvPattern()
+        val fileManager = FakeFileManager(existing = baseWithSecrets)
+        fileManager.unavailable[config.baseSecretPath(".env")] = UnavailableReason.BrokenLink("/missing/.env")
+
+        val error = CreateWorktreeUseCase(config, executor, fileManager, provisioning)("TASK-123", BranchType.FEATURE).exceptionOrNull()
+
+        assertIs<WorktreeError.LocalFilesUnavailable>(error)
+        assertEquals(
+            listOf(UnavailableLocalFile(".env", config.baseSecretPath(".env"), LocalFileOrigin.REPOSITORY, UnavailableReason.BrokenLink("/missing/.env"))),
+            error.files,
+        )
+        assertEquals(config.baseRepositoryPath, error.basePath)
+        assertFalse(executor.executedCommands.any { it.take(3) == listOf("git", "worktree", "add") })
+        assertTrue(fileManager.copied.isEmpty())
+    }
+
+    @Test
+    fun `an unreadable local file fails before creating anything`() = runTest {
+        val executor = FakeShellCommandExecutor { success(it) }
+        val fileManager = FakeFileManager(existing = baseWithSecrets)
+        fileManager.unavailable[config.baseSecretPath("local.properties")] = UnavailableReason.Unreadable("Operation not permitted")
+
+        val error = CreateWorktreeUseCase(config, executor, fileManager, FakeRepositoryProvisioningSource())("TASK-123", BranchType.FEATURE).exceptionOrNull()
+
+        assertIs<WorktreeError.LocalFilesUnavailable>(error)
+        val file = error.files.single()
+        assertEquals("local.properties", file.path)
+        assertEquals(LocalFileOrigin.PROJECT, file.origin)
+        assertEquals(UnavailableReason.Unreadable("Operation not permitted"), file.reason)
+        assertTrue(executor.executedCommands.isEmpty())
+    }
+
+    @Test
+    fun `an unreadable entry of a local folder fails instead of being skipped`() = runTest {
+        val executor = FakeShellCommandExecutor { success(it) }
+        val fileManager = fileManagerWithKeys()
+        fileManager.directoryUnreadable[keysFolder] = listOf("private")
+        fileManager.unavailable["$keysFolder/private"] = UnavailableReason.Unreadable("permission denied")
+
+        val error = CreateWorktreeUseCase(folderConfig(), executor, fileManager, FakeRepositoryProvisioningSource())("TASK-123", BranchType.FEATURE).exceptionOrNull()
+
+        assertIs<WorktreeError.LocalFilesUnavailable>(error)
+        assertEquals(listOf("keys/private"), error.files.map { it.path })
+        assertEquals(UnavailableReason.Unreadable("permission denied"), error.files.single().reason)
+        assertTrue(executor.executedCommands.isEmpty())
+        assertTrue(fileManager.copied.isEmpty())
+    }
+
+    @Test
+    fun `every file of a copied local folder is checked`() = runTest {
+        val fileManager = fileManagerWithKeys()
+        fileManager.unavailable["$keysFolder/ci/b.pem"] = UnavailableReason.Unreadable(null)
+
+        val error = CreateWorktreeUseCase(folderConfig(), FakeShellCommandExecutor { success(it) }, fileManager, FakeRepositoryProvisioningSource())("TASK-123", BranchType.FEATURE).exceptionOrNull()
+
+        assertIs<WorktreeError.LocalFilesUnavailable>(error)
+        assertEquals(listOf("keys/ci/b.pem"), error.files.map { it.path })
+    }
+
+    @Test
+    fun `reports every unavailable file at once`() = runTest {
+        val (executor, provisioning) = withEnvPattern()
+        val fileManager = FakeFileManager(existing = listOf(config.baseRepositoryPath, config.baseSecretPath("local.properties")))
+        fileManager.unavailable[config.baseSecretPath(".env")] = UnavailableReason.BrokenLink("/missing/.env")
+
+        val error = CreateWorktreeUseCase(config, executor, fileManager, provisioning)("TASK-123", BranchType.FEATURE).exceptionOrNull()
+
+        assertIs<WorktreeError.LocalFilesUnavailable>(error)
+        assertEquals(
+            listOf("app-secrets.properties" to UnavailableReason.Missing, ".env" to UnavailableReason.BrokenLink("/missing/.env")),
+            error.files.map { it.path to it.reason },
+        )
+        assertFalse(fileManager.availabilityChecks.contains(config.baseSecretPath("app-secrets.properties")))
+    }
+
+    @Test
+    fun `linked local files are checked too`() = runTest {
+        val linkedConfig = config.copy(linkedSecretFiles = listOf("local.properties"))
+        val fileManager = FakeFileManager(existing = baseWithSecrets)
+        fileManager.unavailable[config.baseSecretPath("local.properties")] = UnavailableReason.BrokenLink("/missing/local.properties")
+
+        val error = CreateWorktreeUseCase(linkedConfig, FakeShellCommandExecutor { success(it) }, fileManager, FakeRepositoryProvisioningSource())("TASK-123", BranchType.FEATURE).exceptionOrNull()
+
+        assertIs<WorktreeError.LocalFilesUnavailable>(error)
+        assertEquals(listOf("local.properties"), error.files.map { it.path })
+        assertTrue(fileManager.symbolicLinks.isEmpty())
     }
 }
