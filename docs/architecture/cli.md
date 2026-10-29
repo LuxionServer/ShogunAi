@@ -50,6 +50,14 @@ Every command starts from a directory (the current one, or the path given to `pr
 
 The module applies Gradle's `application` plugin, so `./gradlew :cli:run --args="status"` runs it during development and `:cli:distZip` builds the standalone zip.
 
+## End-to-end tests
+
+`cli/src/e2eTest` holds tests that run the command as a user does, without fakes: each test runs the `:cli` distribution's launcher (`bin/shogun`, `bin/shogun.bat` on Windows) as a separate process against Git repositories made with the real `git` in a temporary folder, each with a local bare repository as `origin`. They cover creating, provisioning, listing, opening and cleaning worktrees and multirepo groups, with local files copied, linked and matched by patterns from `.shogunai.json`, `.worktreeinclude` and the project.
+
+- **Isolation**: the temporary folder holds the home the command sees (`SHOGUN_OPTS=-Duser.home=…`, since the JVM reads `user.home` from the account rather than from `HOME`, plus `HOME` and `USERPROFILE`), so `~/.shogunai` and Git's global configuration (`GIT_CONFIG_GLOBAL`, `GIT_CONFIG_NOSYSTEM`) are the test's own. Variables that would make the command think it runs inside a runner or an agent (`HERDR_*`, `ORCA_*`, `CLAUDE*`, `SHOGUNAI_*`) aren't inherited.
+- **Runners**: `herdr` and `orca` are a fake written in Kotlin (`FakeRunner.kt`), installed as launcher scripts in the temporary home's `.local/bin`, the first folder both clients look in (on Windows `orca.cmd` on the `PATH`). It records every call and answers like the real tool, so the tests check the commands an opening sends without Herdr or Orca being installed. Herdr's tests are skipped on Windows, where its client only runs `herdr.exe`.
+- **Running them**: `./gradlew :cli:e2eTest`. `./gradlew test` depends on it, so the Tests workflow runs them on Linux, macOS and Windows.
+
 ## Reaching the desktop app
 
 `shogun app` runs in a different process from a running app, so the order travels through two things in `~/.shogunai/`, both new and ignored by versions that don't know them:
