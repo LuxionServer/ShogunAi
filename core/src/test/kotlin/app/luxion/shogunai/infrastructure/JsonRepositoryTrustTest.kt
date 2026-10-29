@@ -153,4 +153,12 @@ class JsonRepositoryTrustTest {
         assertFalse(trust.isApproved(repository, onlyVariables))
         assertTrue(trust.isApproved(repository, RepositoryApprovalSubject()))
     }
+
+    @Test
+    fun `a store that isn't JSON approves nothing`() {
+        storage.parent.createDirectories()
+        storage.writeText("{ not json")
+
+        assertFalse(trust.isApproved(repository, install))
+    }
 }

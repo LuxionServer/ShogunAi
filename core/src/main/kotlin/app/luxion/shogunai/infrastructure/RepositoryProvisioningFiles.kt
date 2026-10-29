@@ -446,7 +446,7 @@ class RepositoryProvisioningFiles : RepositoryProvisioningSource {
         const val ENV_FIELD = "env"
         const val ENV_FILE_FIELD = "envFile"
         const val ABSENT_FINGERPRINT = "absent"
-        val OPTION_FIELDS = mapOf(
+        private val OPTION_FIELDS = mapOf(
             GRADLE_PROVIDER to listOf(DAEMON_MAX_HEAP_FIELD, IDLE_TIMEOUT_MINUTES_FIELD, KOTLIN_DAEMON_MAX_HEAP_FIELD),
             EMULATOR_PROVIDER to listOf(AVD_FIELD),
             IOS_SIMULATOR_PROVIDER to listOf(DEVICE_FIELD, RUNTIME_FIELD),

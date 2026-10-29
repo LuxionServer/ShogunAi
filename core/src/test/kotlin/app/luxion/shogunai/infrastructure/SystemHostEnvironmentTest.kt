@@ -169,4 +169,17 @@ class SystemHostEnvironmentTest {
 
         assertEquals("C:\\Users\\dev\\AppData\\Local", environment.variable("LOCALAPPDATA"))
     }
+
+    @Test
+    fun `reads the running process for the command line and the desktop app`() {
+        val commandLine = SystemHostEnvironment.forCommandLine()
+        val desktopApp = SystemHostEnvironment.forDesktopApp()
+
+        listOf(commandLine, desktopApp).forEach { environment ->
+            assertEquals(HostOs.current(), environment.os)
+            assertEquals(System.getProperty("user.home"), environment.home)
+            assertEquals(System.getenv("PATH"), environment.variable("PATH"))
+        }
+        assertEquals(HostPathSource.PROCESS, commandLine.path.source)
+    }
 }

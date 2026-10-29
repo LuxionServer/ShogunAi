@@ -34,6 +34,6 @@ class ExecutableLocator(
     fun userBinFolders(): List<String> = ToolCatalog.userBinFolders(os, home)
 
     private companion object {
-        val DEFAULT_PATH_EXTENSIONS = listOf(".COM", ".EXE", ".BAT", ".CMD")
+        private val DEFAULT_PATH_EXTENSIONS = listOf(".COM", ".EXE", ".BAT", ".CMD")
     }
 }

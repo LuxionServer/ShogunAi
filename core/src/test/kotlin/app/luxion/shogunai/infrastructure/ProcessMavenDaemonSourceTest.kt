@@ -8,6 +8,7 @@ import java.nio.file.Files
 import java.nio.file.attribute.FileTime
 import java.time.Instant
 import java.time.ZoneOffset
+import kotlin.io.path.createDirectories
 import kotlin.io.path.writeText
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -149,6 +150,7 @@ class ProcessMavenDaemonSourceTest {
         assertEquals(DaemonState.Busy, parseMavenDaemonState("10:00:00.000 I Updating state to: Canceled", at, ZoneOffset.UTC))
         assertEquals(DaemonState.Busy, parseMavenDaemonState("10:00:00.000 I Updating state to: Broken", at, ZoneOffset.UTC))
         assertEquals(DaemonState.Unknown, parseMavenDaemonState("10:00:00.000 I Updating state to: Sleeping", at, ZoneOffset.UTC))
+        assertEquals(DaemonState.Unknown, parseMavenDaemonState("25:00:00.000 I Updating state to: Idle", at, ZoneOffset.UTC))
     }
 
     @Test
@@ -184,6 +186,8 @@ class ProcessMavenDaemonSourceTest {
                   501 4096 /usr/bin/java -Dorg.slf4j.simpleLogger.logFile=$log org.mvndaemon.mvnd.daemon.Server
                   502 2048 /usr/bin/java -Dorg.slf4j.simpleLogger.logFile=${directory.resolve("daemon-missing.log")} org.mvndaemon.mvnd.daemon.Server
                   503 2048 /usr/bin/java org.mvndaemon.mvnd.daemon.Server
+                  504 2048 /usr/bin/java -Dorg.slf4j.simpleLogger.logFile=${directory.resolve("folder.log").createDirectories()} org.mvndaemon.mvnd.daemon.Server
+                  505 2048 /usr/bin/java -Dorg.slf4j.simpleLogger.logFile=${directory.resolve("bad")}${"\u0000"}name.log org.mvndaemon.mvnd.daemon.Server
             """.trimIndent()
             val executor = FakeShellCommandExecutor { command ->
                 if (command.first() == "ps") FakeShellCommandExecutor.success(command, output) else FakeShellCommandExecutor.failure(command)
@@ -192,7 +196,7 @@ class ProcessMavenDaemonSourceTest {
             val daemons = ProcessMavenDaemonSource(executor, ZoneOffset.UTC).list()
 
             assertEquals(
-                listOf(DaemonState.Idle(Instant.parse("2026-10-28T12:57:03.841Z")), DaemonState.Unknown, DaemonState.Unknown),
+                listOf(DaemonState.Idle(Instant.parse("2026-10-28T12:57:03.841Z")), DaemonState.Unknown, DaemonState.Unknown, DaemonState.Unknown, DaemonState.Unknown),
                 daemons.map { it.state },
             )
         } finally {

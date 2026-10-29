@@ -1,6 +1,8 @@
 package app.luxion.shogunai.domain.usecase
 
 import app.luxion.shogunai.domain.FakeHerdrClient
+import app.luxion.shogunai.domain.io.HerdrClient
+import app.luxion.shogunai.domain.model.HerdrPane
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.WorktreeError
 import kotlinx.coroutines.test.runTest
@@ -88,5 +90,25 @@ class CloseHerdrWorkspacesUseCaseTest {
         assertEquals(listOf(first), failures.map { it.path })
         assertEquals("workspace w2 not found", assertIs<WorktreeError.HerdrCommandFailed>(failures.single().error).detail)
         assertEquals(listOf("w3"), herdr.closedWorkspaces)
+    }
+
+    @Test
+    fun `panes that can't be listed leave the holders as they are`() = runTest {
+        val closing = CloseHerdrWorkspacesUseCase(config, FakeHerdrClient(failure = IllegalStateException("herdr is down"))).closeHolders(first, null)
+
+        assertEquals(HolderClosing(), closing)
+    }
+
+    @Test
+    fun `a pane that can't be closed is reported as a Herdr failure`() = runTest {
+        val herdr = object : HerdrClient by FakeHerdrClient(panes = listOf(HerdrPane("p1", "w9", "$first/app"))) {
+            override suspend fun closePane(paneId: String) = throw IllegalStateException("pane is gone")
+        }
+
+        val failure = CloseHerdrWorkspacesUseCase(config, herdr).closeHolders(first, null).failure
+
+        assertIs<WorktreeError.HerdrCommandFailed>(failure)
+        assertEquals("pane is gone", failure.herdrDetail())
+        assertEquals("No multirepo found at /x", WorktreeError.MultirepoNotFound("/x").herdrDetail())
     }
 }

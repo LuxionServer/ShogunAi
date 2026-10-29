@@ -162,6 +162,15 @@ class WorktreeSimulatorUseCasesTest {
     }
 
     @Test
+    fun `by default the boot is polled with real pauses`() = runTest {
+        val harness = harness()
+
+        val simulator = StartWorktreeSimulatorUseCase(provisioning(), simulators, harness.acquire, harness.resolve)(config, task).getOrThrow().device
+
+        assertEquals(SimulatorState.BOOTED, simulator.state)
+    }
+
+    @Test
     fun `start creates if needed, boots and waits`() = runTest {
         val simulator = start()(config, task, SimulatorSettings(device = "iPhone 16", runtime = "iOS 18.5")).getOrThrow().device
 
@@ -217,6 +226,17 @@ class WorktreeSimulatorUseCasesTest {
         assertNull(stop(config, task).getOrThrow())
         start()(config, task).getOrThrow()
         assertEquals(SimulatorState.SHUTDOWN, stop(config, task).getOrThrow()?.state)
+        assertEquals(listOf("UDID-1"), simulators.shutDown)
+    }
+
+    @Test
+    fun `shutting down by UDID skips a simulator that is already shut down`() = runTest {
+        val stop = StopWorktreeSimulatorUseCase(provisioning(), simulators, resolve())
+        start()(config, task).getOrThrow()
+
+        stop.shutDown("UDID-1")
+        stop.shutDown("UDID-1")
+
         assertEquals(listOf("UDID-1"), simulators.shutDown)
     }
 

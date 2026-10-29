@@ -47,9 +47,9 @@ class DetectRepositoryStacksUseCase(private val fileManager: FileManager) {
     }
 
     private companion object {
-        val ANDROID_DECLARING_FILES = setOf("build.gradle", "build.gradle.kts") + GRADLE_SETTINGS_FILES
-        val MAVEN_FILES = setOf("pom.xml", "mvnw")
-        val COMPOSE_FILES = setOf("compose.yaml", "compose.yml", "docker-compose.yaml", "docker-compose.yml")
+        private val ANDROID_DECLARING_FILES = setOf("build.gradle", "build.gradle.kts") + GRADLE_SETTINGS_FILES
+        private val MAVEN_FILES = setOf("pom.xml", "mvnw")
+        private val COMPOSE_FILES = setOf("compose.yaml", "compose.yml", "docker-compose.yaml", "docker-compose.yml")
         const val XCODE_PROJECT_SUFFIX = ".xcodeproj"
         const val PACKAGE_SWIFT = "Package.swift"
         const val ANDROID_PLUGIN_MARKER = "com.android."

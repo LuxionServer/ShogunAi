@@ -8,6 +8,8 @@ import app.luxion.shogunai.domain.model.OrcaWorktree
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.WorktreeOrigin
+import app.luxion.shogunai.domain.io.OrcaClient
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -206,5 +208,14 @@ class OrcaWorktreeReaderTest {
         assertEquals(emptyList(), reader.ports(listOf(shogunai))?.get(shogunai.path))
         assertEquals(2, orca.portReads)
         assertEquals(3, orca.psReads)
+    }
+
+    @Test
+    fun `an Orca that doesn't answer in time keeps no rows`() = runTest {
+        val silent = object : OrcaClient by FakeOrcaClient() {
+            override suspend fun agentsByWorktree(): List<OrcaWorktree> = awaitCancellation()
+        }
+
+        assertNull(OrcaWorktreeReader(silent, userHome = "/home/dev", now = { clock }, canonical = { it }).read())
     }
 }

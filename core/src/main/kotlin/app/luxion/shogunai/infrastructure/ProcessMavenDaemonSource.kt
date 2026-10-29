@@ -43,12 +43,12 @@ class ProcessMavenDaemonSource(
         } catch (error: InvalidPathException) {
             return null
         }
-        val tail = readLogTail(path, LOG_TAIL_BYTES) ?: return null
         val modifiedAt = try {
             Files.getLastModifiedTime(path).toInstant()
         } catch (error: IOException) {
             return null
         }
+        val tail = readLogTail(path, LOG_TAIL_BYTES) ?: return null
         return parseMavenDaemonState(tail, modifiedAt, zone)
     }
 
@@ -59,7 +59,7 @@ class ProcessMavenDaemonSource(
     }
 
     private companion object {
-        val PS_COMMAND = listOf("ps", "-A", "-ww", "-o", "pid=,rss=,command=")
+        private val PS_COMMAND = listOf("ps", "-A", "-ww", "-o", "pid=,rss=,command=")
         const val LOG_TAIL_BYTES = 1L shl 20
     }
 }

@@ -121,6 +121,17 @@ class ResourcePoolUseCasesTest {
     }
 
     @Test
+    fun `a booting simulator is held and the main checkout can hold a device`() = runTest {
+        harness.simulators.addExisting("UDID-B", "ShogunAi · main-repo · main-repo", app.luxion.shogunai.domain.model.SimulatorState.BOOTING)
+        store.writeResources(common, mapOf("ios-simulator" to "UDID-B"))
+
+        val usage = harness.readPool.of(ResourceKind.IOS_SIMULATOR, repository)
+
+        assertEquals(listOf(PoolHolderState.BOOTING), usage.holders.map { it.state })
+        assertEquals(repository, usage.holders.single().worktreePath)
+    }
+
+    @Test
     fun `simulators are held while a UDID is recorded and the pool reads their state`() = runTest {
         harness.simulators.addExisting("UDID-A", "ShogunAi · main-repo · TASK-1", app.luxion.shogunai.domain.model.SimulatorState.BOOTED)
         store.writeResources(admin1, mapOf("ios-simulator" to "UDID-A"))
@@ -224,6 +235,18 @@ class ResourcePoolUseCasesTest {
         val busy = PoolHarness(git, source, store, sdk, files = files, portProbe = FakePortProbe(busy = (5554..5585).toSet()))
 
         assertIs<WorktreeError.NoEmulatorPort>(busy.acquire.emulator(repository, task1).exceptionOrNull())
+    }
+
+    @Test
+    fun `when the only free port pair belongs to a stopped emulator acquiring releases it and takes its port`() = runTest {
+        val busy = PoolHarness(git, source, store, sdk, files = files, portProbe = FakePortProbe(busy = (5556..5585).toSet()))
+        store.writePorts(admin1, mapOf("emulator" to 5554))
+
+        val acquisition = busy.acquire.emulator(repository, task2).getOrThrow()
+
+        assertEquals(listOf(task1), acquisition.releases.map { it.worktreePath })
+        assertEquals(5554, store.readPorts(admin2)["emulator"])
+        assertNull(store.readPorts(admin1)["emulator"])
     }
 
     @Test
@@ -355,5 +378,15 @@ class ResourcePoolUseCasesTest {
         harness.daemons.daemons = (1L..5L).map { FakeGradleDaemonSource.gradleDaemon(it, idleSince10) }
 
         assertTrue(harness.trim(null).getOrThrow().stopped.isEmpty())
+    }
+
+    @Test
+    fun `a Gradle daemon in an unknown state is held as unknown`() = runTest {
+        harness.daemons.daemons = listOf(FakeGradleDaemonSource.gradleDaemon(1, app.luxion.shogunai.domain.model.DaemonState.Unknown))
+
+        val usage = harness.readPool.of(ResourceKind.GRADLE_DAEMON, repository)
+
+        assertEquals(listOf(PoolHolderState.UNKNOWN), usage.holders.map { it.state })
+        assertFalse(usage.holders.single().idle)
     }
 }

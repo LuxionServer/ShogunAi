@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.platform.testTag
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
@@ -37,7 +38,7 @@ import app.luxion.shogunai.ui.components.GhostButton
 import app.luxion.shogunai.ui.components.RowLines
 import app.luxion.shogunai.ui.components.PathField
 import app.luxion.shogunai.ui.components.ShogunDialog
-import app.luxion.shogunai.ui.FilePicker
+import app.luxion.shogunai.ui.LocalPathPicker
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
@@ -61,6 +62,7 @@ import app.luxion.shogunai.ui.projectconfig.AgentFields
 import app.luxion.shogunai.ui.projectconfig.SettingsField
 import app.luxion.shogunai.ui.projectconfig.SettingsSection
 import app.luxion.shogunai.ui.theme.ShogunTheme
+import kotlinx.coroutines.launch
 
 private val ContentMaxWidth = 760.dp
 private val AliasFieldWidth = 160.dp
@@ -75,9 +77,10 @@ fun MultirepoSettingsView(
     state: MultirepoSettingsState,
     onClose: () -> Unit,
     onDeleted: () -> Unit,
-    pickFolder: (String, String) -> String? = FilePicker::pickDirectory,
+    pickFolder: suspend (String, String) -> String? = LocalPathPicker.current::pickDirectory,
 ) {
     val strings = LocalStrings.current
+    val scope = rememberCoroutineScope()
     val multirepo = state.multirepo
     Column(modifier = Modifier.fillMaxSize()) {
         Row(
@@ -160,7 +163,7 @@ fun MultirepoSettingsView(
                 PathField(
                     value = state.worktreesRoot,
                     onValueChange = { state.worktreesRoot = it },
-                    onBrowse = { pickFolder(state.worktreesRoot, strings.multirepoWorktreesRootTitle)?.let { state.worktreesRoot = it } },
+                    onBrowse = { scope.launch { pickFolder(state.worktreesRoot, strings.multirepoWorktreesRootTitle)?.let { state.worktreesRoot = it } } },
                     textStyle = ShogunTheme.typography.data,
                     modifier = Modifier.fillMaxWidth(),
                 )
@@ -344,8 +347,9 @@ private val RepositoryRenameColumn = ColumnSpec(width = 88.dp)
 private val RepositoryActionWidth = 40.dp
 
 @Composable
-private fun AddRepositoryRow(state: MultirepoSettingsState, pickFolder: (String, String) -> String?) {
+private fun AddRepositoryRow(state: MultirepoSettingsState, pickFolder: suspend (String, String) -> String?) {
     val strings = LocalStrings.current
+    val scope = rememberCoroutineScope()
     SettingsField(strings.addRepository) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
             Field(
@@ -358,7 +362,7 @@ private fun AddRepositoryRow(state: MultirepoSettingsState, pickFolder: (String,
             PathField(
                 value = state.newPath,
                 onValueChange = { state.newPath = it },
-                onBrowse = { pickFolder(state.newPath, strings.addRepository)?.let(state::chooseNewPath) },
+                onBrowse = { scope.launch { pickFolder(state.newPath, strings.addRepository)?.let(state::chooseNewPath) } },
                 label = strings.repositoryPathLabel,
                 textStyle = ShogunTheme.typography.data,
                 modifier = Modifier.weight(1f),

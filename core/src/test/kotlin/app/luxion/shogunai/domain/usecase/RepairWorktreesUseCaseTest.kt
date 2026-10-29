@@ -84,4 +84,13 @@ class RepairWorktreesUseCaseTest {
 
         assertIs<WorktreeError.GitCommandFailed>(result.exceptionOrNull())
     }
+
+    @Test
+    fun `fails when the worktrees can't be listed`() = runTest {
+        val executor = FakeShellCommandExecutor { failure(it, exitCode = 128, stderr = "fatal: not a git repository") }
+
+        val error = RepairWorktreesUseCase(config, executor, FakeFileManager(existing = listOf(config.baseRepositoryPath)))().exceptionOrNull()
+
+        assertIs<WorktreeError.GitCommandFailed>(error)
+    }
 }

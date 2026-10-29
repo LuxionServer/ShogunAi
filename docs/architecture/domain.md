@@ -161,7 +161,7 @@ The desktop is one machine-wide resource that agents take turns to drive with co
 
 What the Gradle provider observes on the machine (`GradleDaemon.kt`):
 
-- `DaemonProcess` — a running daemon: `pid`, `kind` (`DaemonKind.GRADLE` or `KOTLIN`), `gradleVersion` (Gradle daemons only), `residentMemoryBytes`, `lastBuildDirectory` (the directory of the last build a Gradle daemon received) and `state`.
+- `DaemonProcess` — a running daemon: `pid`, `kind` (`DaemonKind.GRADLE` or `KOTLIN`), `gradleVersion` (Gradle daemons only), `residentMemoryBytes`, `lastBuildDirectory` (the directory of the last build a Gradle daemon received), `state` and, for a busy Gradle daemon, its `holder`: a `HoldingBuild` with the build's `directory`, `startedAt` and, when it can be traced, a `GradleClient` with the client's `pid`, its `tasks`, its `ancestors` (parent process ids, nearest first) and the `AgentSessionRef` (`sessionId`, `agent`, `worktreePath`) of the agent session it descends from.
 - `DaemonState` — `Busy`, `Idle(since)`, `Unknown` (a Gradle daemon whose state can't be read) or `Untracked` (Kotlin daemons, which don't record one).
 - `GradleDaemon` — a `DaemonProcess` with its `owner` in a repository: `DaemonOwner.Worktree(path)`, `RemovedWorktree` (its last build directory no longer exists) or `OtherProject`; `null` for Kotlin daemons, daemons without a known build directory, or outside a repository.
 - `DaemonStopReport` — the outcome of a stop: `stopped`, `kept` (each with a `DaemonKeptReason`: `BUSY`, `STATE_UNKNOWN` or `BUILD_RUNNING`), `notDaemons` (requested pids that aren't daemons) and `failures`.

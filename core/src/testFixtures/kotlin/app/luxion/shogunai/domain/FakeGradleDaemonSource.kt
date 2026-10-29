@@ -9,6 +9,7 @@ import app.luxion.shogunai.domain.model.WorktreeError
 class FakeGradleDaemonSource(
     var daemons: List<DaemonProcess> = emptyList(),
     var failure: WorktreeError? = null,
+    var laterDaemons: List<DaemonProcess>? = null,
 ) : GradleDaemonSource {
 
     var listings = 0
@@ -17,7 +18,7 @@ class FakeGradleDaemonSource(
     override suspend fun list(): List<DaemonProcess> {
         listings++
         failure?.let { throw it }
-        return daemons
+        return laterDaemons?.takeIf { listings > 1 } ?: daemons
     }
 
     companion object {

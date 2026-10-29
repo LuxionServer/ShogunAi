@@ -9,6 +9,7 @@ import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.test.assertNull
 
 class ResolveStartPointUseCaseTest {
 
@@ -43,5 +44,25 @@ class ResolveStartPointUseCaseTest {
 
         assertEquals("--upload-pack=x", assertIs<WorktreeError.InvalidRef>(error).ref)
         assertTrue(executor.executedCommands.isEmpty())
+    }
+
+    @Test
+    fun `describes a commit by its short hash and subject`() = runTest {
+        val executor = FakeShellCommandExecutor { success(it, stdout = "abc123 Add TASK-123\n") }
+
+        val described = ResolveStartPointUseCase(executor).describe("/home/dev/projects/main-repo", "abc123")
+
+        assertEquals("abc123 Add TASK-123", described)
+        assertEquals(listOf("git", "log", "-1", "--format=%h %s", "abc123"), executor.executedCommands.single())
+        assertEquals("/home/dev/projects/main-repo", executor.workingDirectories.single())
+    }
+
+    @Test
+    fun `describes nothing when git fails or prints nothing`() = runTest {
+        val failing = FakeShellCommandExecutor { failure(it, exitCode = 128, stderr = "") }
+        val silent = FakeShellCommandExecutor { success(it, stdout = "\n") }
+
+        assertNull(ResolveStartPointUseCase(failing).describe("/home/dev/projects/main-repo", "abc123"))
+        assertNull(ResolveStartPointUseCase(silent).describe("/home/dev/projects/main-repo", "abc123"))
     }
 }
