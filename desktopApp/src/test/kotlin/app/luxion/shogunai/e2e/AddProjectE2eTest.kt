@@ -41,7 +41,7 @@ class AddProjectE2eTest {
         awaitText(".env.local")
         onAllNodesWithText(strings.addProject).onLast().performClick()
 
-        awaitCondition { appContainer.projectRepository.list().isNotEmpty() }
+        awaitCondition("the project to be stored") { appContainer.projectRepository.list().isNotEmpty() }
         val project = appContainer.projectRepository.list().single()
         assertEquals("sample-app", project.name)
         assertEquals(repository.canonicalPath, File(project.config.baseRepositoryPath).canonicalPath)

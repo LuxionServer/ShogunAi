@@ -53,7 +53,7 @@ class CreateWorktreeE2eTest {
         onNode(hasClickAction() and hasText(strings.createWorktree)).performClick()
 
         val worktree = worktreesRoot.resolve("TASK-123")
-        awaitCondition { localFiles.keys.all { worktree.resolve(it).exists() } }
+        awaitCondition("the local files in the worktree") { localFiles.keys.all { worktree.resolve(it).exists() } }
         localFiles.forEach { (path, text) -> assertEquals(text, worktree.resolve(path).readText()) }
         assertTrue(environment.git(repository, "worktree", "list").contains(worktree.canonicalPath.replace('\\', '/')))
         assertTrue(environment.git(repository, "branch", "--list").contains("TASK-123"))

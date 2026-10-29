@@ -2,9 +2,14 @@ package app.luxion.shogunai.e2e
 
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.semantics.SemanticsNode
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getOrNull
+import androidx.compose.ui.test.ComposeTimeoutException
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.SemanticsNodeInteractionsProvider
+import androidx.compose.ui.test.isRoot
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -21,6 +26,7 @@ import app.luxion.shogunai.ui.shell.AppearanceScope
 import app.luxion.shogunai.ui.shell.ClaudeHooksSection
 import app.luxion.shogunai.ui.worktree.InactivityPreferences
 import java.io.File
+import kotlin.test.fail
 
 const val E2E_TIMEOUT_MILLIS = 30_000L
 
@@ -63,18 +69,29 @@ fun ComposeUiTest.setHooksSection(appContainer: AppContainer): Strings {
 
 @OptIn(ExperimentalTestApi::class)
 fun ComposeUiTest.awaitText(text: String, substring: Boolean = false) {
-    waitUntil(timeoutMillis = E2E_TIMEOUT_MILLIS) { hasNodeWithText(text, substring) }
+    awaitCondition("the text \"$text\"") { hasNodeWithText(text, substring) }
 }
 
 @OptIn(ExperimentalTestApi::class)
 fun ComposeUiTest.awaitNoText(text: String) {
-    waitUntil(timeoutMillis = E2E_TIMEOUT_MILLIS) { !hasNodeWithText(text, substring = false) }
+    awaitCondition("no text \"$text\"") { !hasNodeWithText(text, substring = false) }
 }
 
 @OptIn(ExperimentalTestApi::class)
-fun ComposeUiTest.awaitCondition(condition: () -> Boolean) {
-    waitUntil(timeoutMillis = E2E_TIMEOUT_MILLIS, condition = condition)
+fun ComposeUiTest.awaitCondition(description: String, condition: () -> Boolean) {
+    try {
+        waitUntil(timeoutMillis = E2E_TIMEOUT_MILLIS, condition = condition)
+    } catch (timeout: ComposeTimeoutException) {
+        fail("Timed out waiting for $description. Texts on screen: ${textsOnScreen()}", timeout)
+    }
 }
+
+@OptIn(ExperimentalTestApi::class)
+private fun ComposeUiTest.textsOnScreen(): List<String> =
+    onAllNodes(isRoot(), useUnmergedTree = true).fetchSemanticsNodes().flatMap { root -> textsOf(root) }
+
+private fun textsOf(node: SemanticsNode): List<String> =
+    node.config.getOrNull(SemanticsProperties.Text).orEmpty().map { it.text } + node.children.flatMap(::textsOf)
 
 private fun SemanticsNodeInteractionsProvider.hasNodeWithText(text: String, substring: Boolean): Boolean =
     onAllNodesWithText(text, substring = substring, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()

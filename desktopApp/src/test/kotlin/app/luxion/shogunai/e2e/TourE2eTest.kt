@@ -25,7 +25,8 @@ class TourE2eTest {
         onNodeWithText(strings.tourTakeTour).performClick()
         awaitText(strings.tourStart)
         onNodeWithText(strings.tourStart).performClick()
-        awaitCondition {
+        awaitCondition("the tour's command step or its open-agent step") {
+            appContainer.tour.error?.let { throw AssertionError("The tour failed", it) }
             listOf(strings.tourSkip, strings.tourLater).any { label ->
                 onAllNodesWithText(label).fetchSemanticsNodes().isNotEmpty()
             }
@@ -33,7 +34,10 @@ class TourE2eTest {
         if (onAllNodesWithText(strings.tourSkip).fetchSemanticsNodes().isNotEmpty()) {
             onNodeWithText(strings.tourSkip).performClick()
         }
-        awaitText(strings.tourLater)
+        awaitCondition("the tour's open-agent step") {
+            appContainer.tour.error?.let { throw AssertionError("The tour failed", it) }
+            onAllNodesWithText(strings.tourLater).fetchSemanticsNodes().isNotEmpty()
+        }
         onNodeWithText(strings.tourLater).performClick()
 
         val tourFolder = environment.shogunaiFolder.resolve("tour")
@@ -43,10 +47,10 @@ class TourE2eTest {
         awaitText("needs-you", substring = true)
 
         onNodeWithText(strings.tourEnd).performClick()
-        awaitCondition { onAllNodesWithText(strings.tourEnd).fetchSemanticsNodes().size > 1 }
+        awaitCondition("the end-tour confirmation") { onAllNodesWithText(strings.tourEnd).fetchSemanticsNodes().size > 1 }
         onAllNodesWithText(strings.tourEnd).onLast().performClick()
 
-        awaitCondition { !tourFolder.exists() }
+        awaitCondition("the sample folder to be removed") { !tourFolder.exists() }
         awaitNoText(TOUR_PROJECT_NAME)
         assertFalse(appContainer.projectRepository.list().any { it.name == TOUR_PROJECT_NAME })
         awaitText(strings.tourTakeTour)
