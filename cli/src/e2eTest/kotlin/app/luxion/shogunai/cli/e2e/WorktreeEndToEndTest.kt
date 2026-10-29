@@ -28,9 +28,11 @@ class WorktreeEndToEndTest {
         sandbox.shogunSucceeds(repository, "project", "add")
 
         val catalog = sandbox.home.resolve(".shogunai/projects.json")
-        assertTrue(catalog.readText().contains(repository.toString().jsonEscaped()), catalog.readText())
+        val project = Json.parseToJsonElement(catalog.readText()).jsonArray.single().jsonObject
+        val baseRepository = project.getValue("config").jsonObject.getValue("baseRepositoryPath").jsonPrimitive.content
+        assertEquals(repository, Path.of(baseRepository).real())
         val realCatalog = Path.of(System.getProperty("user.home"), ".shogunai", "projects.json")
-        assertFalse(realCatalog.exists() && realCatalog.readText().contains(sandbox.root.toString().jsonEscaped()))
+        assertFalse(realCatalog.exists() && realCatalog.readText().contains(sandbox.root.fileName.toString()))
     }
 
     @Test
@@ -148,7 +150,6 @@ class WorktreeEndToEndTest {
             path to lines.first { it.startsWith("branch ") }.removePrefix("branch refs/heads/")
         }
 
-    private fun String.jsonEscaped(): String = replace("\\", "\\\\")
 
     private fun Path.real(): Path = if (Files.exists(this)) toRealPath() else normalize()
 }

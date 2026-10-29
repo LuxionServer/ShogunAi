@@ -1,6 +1,7 @@
 package app.luxion.shogunai.cli.e2e
 
 import java.io.File
+import java.nio.charset.Charset
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.TimeUnit
@@ -122,7 +123,7 @@ class Sandbox : AutoCloseable {
     private fun pathVariable(environment: Map<String, String>): String =
         environment.keys.firstOrNull { it.equals("PATH", ignoreCase = true) } ?: "PATH"
 
-    private fun read(file: Path): String = if (Files.exists(file)) Files.readString(file) else ""
+    private fun read(file: Path): String = if (Files.exists(file)) String(Files.readAllBytes(file), processOutputCharset) else ""
 
     private fun nullDevice(): File = File(if (isWindows) "NUL" else "/dev/null")
 
@@ -130,6 +131,10 @@ class Sandbox : AutoCloseable {
         const val PROCESS_TIMEOUT_SECONDS = 90L
 
         val isWindows: Boolean = System.getProperty("os.name").startsWith("Windows", ignoreCase = true)
+
+        val isLinux: Boolean = System.getProperty("os.name").startsWith("Linux", ignoreCase = true)
+
+        private val processOutputCharset: Charset = Charset.forName(System.getProperty("native.encoding"))
 
         private val ISOLATED_PREFIXES = listOf(
             "HERDR_", "ORCA_", "CLAUDE", "SHOGUNAI_", "GIT_", "JAVA_OPTS", "SHOGUN_OPTS", "JAVA_TOOL_OPTIONS", "_JAVA_OPTIONS",

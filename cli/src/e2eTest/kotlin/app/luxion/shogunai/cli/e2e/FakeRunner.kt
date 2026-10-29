@@ -48,7 +48,8 @@ object FakeRunners {
             writeWindowsLauncher(sandbox.pathFolder.resolve("orca.cmd"), "orca", sandbox.logOf("orca"))
         } else {
             val folder = sandbox.home.resolve(".local/bin").createDirectories()
-            listOf("herdr", "orca").forEach { tool -> writeUnixLauncher(folder.resolve(tool), tool, sandbox.logOf(tool)) }
+            writeUnixLauncher(folder.resolve("herdr"), "herdr", sandbox.logOf("herdr"))
+            writeUnixLauncher(folder.resolve(if (Sandbox.isLinux) "orca-ide" else "orca"), "orca", sandbox.logOf("orca"))
         }
     }
 
