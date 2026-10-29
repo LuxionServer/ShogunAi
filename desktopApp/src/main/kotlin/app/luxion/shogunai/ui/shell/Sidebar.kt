@@ -46,13 +46,16 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.SidebarOrder
+import app.luxion.shogunai.ui.components.AgentIndicator
+import app.luxion.shogunai.ui.components.AgentIndicatorModel
+import app.luxion.shogunai.ui.components.AgentIndicatorSize
+import app.luxion.shogunai.ui.components.AgentPhase
 import app.luxion.shogunai.ui.components.IconAction
 import app.luxion.shogunai.ui.components.Spacing
 import app.luxion.shogunai.ui.components.WithTooltip
 import app.luxion.shogunai.ui.components.interactive
 import app.luxion.shogunai.ui.i18n.LocalStrings
 import app.luxion.shogunai.ui.multirepo.MultirepoMembership
-import app.luxion.shogunai.ui.theme.Status
 import app.luxion.shogunai.ui.theme.ShogunTheme
 import app.luxion.shogunai.ui.theme.ShogunLayout
 
@@ -60,7 +63,6 @@ val ExpandedSidebarWidth: Dp = ShogunLayout.sidebarMaxWidth
 val RailSidebarWidth: Dp = 64.dp
 private val SidebarRowHeight = 32.dp
 private val RailItemSize = 36.dp
-private val AgentDotSize = 8.dp
 private val SidebarIconSize = 16.dp
 
 @Composable
@@ -327,13 +329,12 @@ private fun ActivityMarks(activity: ProjectActivity, selected: Boolean) {
     val strings = LocalStrings.current
     val colors = MaterialTheme.colorScheme
     if (activity.agentNames.isNotEmpty()) {
-        WithTooltip(label = strings.agentsRunning(activity.agentNames)) {
-            Box(
-                Modifier
-                    .size(AgentDotSize)
-                    .background(ShogunTheme.status.of(Status.INFO).color, CircleShape),
-            )
-        }
+        val running = strings.agentsRunning(activity.agentNames)
+        AgentIndicator(
+            AgentIndicatorModel(phase = AgentPhase.RUNNING, label = running, moreCount = 0, tooltip = running),
+            compact = true,
+            size = AgentIndicatorSize.SMALL,
+        )
     }
     if (activity.activeCount > 0) {
         Text(
