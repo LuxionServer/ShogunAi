@@ -1,8 +1,10 @@
 package app.luxion.shogunai.domain.usecase
 
+import app.luxion.shogunai.domain.FakeShellCommandExecutor
 import app.luxion.shogunai.domain.io.LauncherFiles
 import app.luxion.shogunai.domain.io.UserPathEntries
 import app.luxion.shogunai.domain.model.HostOs
+import app.luxion.shogunai.infrastructure.ShellLoginShellPath
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -60,7 +62,7 @@ class CommandLineToolTest {
         os = HostOs.MACOS,
         appLauncher = launcher,
         home = "/home/dev",
-        pathFolders = path,
+        pathFolders = { path },
         userBinFolders = listOf("/opt/homebrew/bin", "/usr/local/bin", "/home/dev/.local/bin", "/home/dev/.cargo/bin"),
         findShogun = { found ?: files.links.keys.firstOrNull { it.endsWith("/shogun") } },
         files = files,
@@ -75,12 +77,47 @@ class CommandLineToolTest {
         os = HostOs.WINDOWS,
         appLauncher = launcher,
         home = "C:\\Users\\dev",
-        pathFolders = path,
+        pathFolders = { path },
         userBinFolders = emptyList(),
         findShogun = { found },
         files = files,
         userPath = userPath,
     )
+
+    private fun openedFromDock(found: String? = null): CommandLineTool {
+        val shell = FakeShellCommandExecutor {
+            FakeShellCommandExecutor.success(it, "__SHOGUNAI_PATH__/opt/homebrew/bin:/usr/bin:/bin__SHOGUNAI_PATH__")
+        }
+        val loginShellPath = ShellLoginShellPath(shell, HostOs.MACOS, "/bin/zsh", "/usr/bin:/bin:/usr/sbin:/sbin", "/home/dev")
+        return CommandLineTool(
+            os = HostOs.MACOS,
+            appLauncher = "/Applications/ShogunAi.app/Contents/MacOS/ShogunAi",
+            home = "/home/dev",
+            pathFolders = loginShellPath::folders,
+            userBinFolders = listOf("/opt/homebrew/bin", "/usr/local/bin", "/home/dev/.local/bin", "/home/dev/.cargo/bin"),
+            findShogun = { found },
+            files = files,
+            userPath = userPath,
+        )
+    }
+
+    @Test
+    fun `is available from the Dock when the login shell PATH has the Homebrew shogun`() = runTest {
+        val status = openedFromDock(found = "/opt/homebrew/bin/shogun").status()
+
+        assertEquals(CommandLineToolState.AVAILABLE, status.state)
+        assertTrue(status.usableByHooks)
+    }
+
+    @Test
+    fun `installs from the Dock into a writable folder on the login shell PATH`() = runTest {
+        files.writable += setOf("/opt/homebrew/bin", "/home/dev/.local/bin")
+
+        val installed = openedFromDock().install().getOrThrow()
+
+        assertEquals("/opt/homebrew/bin/shogun", installed.launcher)
+        assertTrue(installed.folderOnPath)
+    }
 
     @Test
     fun `is missing when nothing provides shogun`() = runTest {
