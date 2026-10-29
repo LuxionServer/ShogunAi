@@ -18,10 +18,10 @@ import java.util.concurrent.ConcurrentHashMap
 class LocalAndroidSdk(
     private val executor: ShellCommandExecutor,
     private val fileManager: FileManager,
-    private val environmentVariable: (String) -> String? = System::getenv,
-    private val userHome: String = System.getProperty("user.home"),
+    private val environmentVariable: (String) -> String?,
+    private val userHome: String,
     private val osName: String = System.getProperty("os.name").orEmpty(),
-    private val logDirectory: Path = Path.of(System.getProperty("user.home"), ".shogunai", "logs"),
+    private val logDirectory: Path,
     private val launch: (command: List<String>, log: File) -> EmulatorProcess = ::launchDetached,
 ) : AndroidSdk {
 

@@ -10,7 +10,7 @@ import java.nio.file.Path
 import java.nio.file.StandardOpenOption
 
 class FileAppInstanceLock(
-    private val lockFile: Path = Path.of(System.getProperty("user.home"), ".shogunai", "app.lock"),
+    private val lockFile: Path,
 ) : AppInstanceLock {
 
     private var channel: FileChannel? = null

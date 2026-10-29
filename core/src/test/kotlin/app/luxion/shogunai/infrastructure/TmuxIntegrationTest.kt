@@ -12,7 +12,7 @@ import kotlin.test.assertEquals
 class TmuxIntegrationTest {
 
     private val socket = "shogunai-test-${System.nanoTime()}"
-    private val processes = ProcessBuilderShellCommandExecutor()
+    private val processes = ProcessBuilderShellCommandExecutor(path = null)
 
     private val isolatedTmux = object : ShellCommandExecutor {
         override suspend fun execute(command: List<String>, workingDirectory: String?): CommandResult {
