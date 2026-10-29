@@ -64,6 +64,7 @@ import app.luxion.shogunai.domain.model.XcodeProvider
 import java.time.Instant
 import kotlinx.coroutines.runBlocking
 import app.luxion.shogunai.domain.model.HerdrPane
+import app.luxion.shogunai.domain.model.HostOs
 import app.luxion.shogunai.domain.model.OrcaAgent
 import app.luxion.shogunai.domain.model.OrcaRepo
 import app.luxion.shogunai.domain.model.OrcaTerminal
@@ -2779,7 +2780,8 @@ class ShogunCliTest {
 
         assertEquals(0, exitCode, err.toString())
         assertEquals("opened $merged in Orca with Claude (terminal term_1)\n", out.toString())
-        assertEquals(FakeOrcaClient.Created(merged, "main-repo-task-1", "env 'APP=app' claude -n main-repo-task-1", true), orca.created.single())
+        val command = if (HostOs.current() == HostOs.WINDOWS) "\$env:APP = 'app'; claude -n main-repo-task-1" else "env 'APP=app' claude -n main-repo-task-1"
+        assertEquals(FakeOrcaClient.Created(merged, "main-repo-task-1", command, true), orca.created.single())
     }
 
     @Test
