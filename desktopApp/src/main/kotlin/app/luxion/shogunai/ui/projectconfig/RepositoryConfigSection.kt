@@ -145,6 +145,7 @@ private fun ProvidersEditor(viewModel: ProjectConfigViewModel, strings: Strings)
                 modifier = Modifier.fillMaxWidth().padding(start = OptionIndent),
             )
         }
+        ProviderSwitch(strings.providerFlutter, draft.flutter, viewModel::setFlutterEnabled)
         if (viewModel.showsApplePlatformProviders) {
             ProviderSwitch(strings.providerIosSimulator, draft.iosSimulator != null, viewModel::setIosSimulatorEnabled)
             draft.iosSimulator?.let { simulator ->
@@ -220,6 +221,7 @@ internal fun SuggestedProvider.label(strings: Strings): String = when (this) {
     SuggestedProvider.XCODE -> strings.providerXcode
     SuggestedProvider.MAVEN -> strings.providerMaven
     SuggestedProvider.DOCKER_COMPOSE -> strings.providerDockerCompose
+    SuggestedProvider.FLUTTER -> strings.providerFlutter
 }
 
 @Composable

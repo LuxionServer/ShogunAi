@@ -60,6 +60,7 @@ import app.luxion.shogunai.domain.model.DerivedDataOwner
 import app.luxion.shogunai.domain.model.EmulatorState
 import app.luxion.shogunai.domain.model.AGENT_START_SECONDS
 import app.luxion.shogunai.domain.model.HerdrOpening
+import app.luxion.shogunai.domain.model.OrcaEmulatorView
 import app.luxion.shogunai.domain.model.OrcaOpening
 import app.luxion.shogunai.domain.model.OrcaOutcome
 import app.luxion.shogunai.domain.model.HerdrOutcome
@@ -144,6 +145,8 @@ import app.luxion.shogunai.domain.usecase.isLiveClaudeProcess
 import app.luxion.shogunai.domain.usecase.OpenWorktreeInHerdrUseCase
 import app.luxion.shogunai.domain.usecase.effectiveGradleJvmArgs
 import app.luxion.shogunai.domain.usecase.PrepareCocoaPodsUseCase
+import app.luxion.shogunai.domain.usecase.ResolveFlutterPackagesUseCase
+import app.luxion.shogunai.domain.usecase.usesFvm
 import app.luxion.shogunai.domain.usecase.PrepareWorktreeEnvironmentUseCase
 import app.luxion.shogunai.domain.usecase.ProviderContributions
 import app.luxion.shogunai.domain.usecase.CheckProvisionedFilesUseCase
@@ -172,6 +175,7 @@ import app.luxion.shogunai.domain.usecase.ResolveResourceLimitsUseCase
 import app.luxion.shogunai.domain.usecase.ResolveStartPointUseCase
 import app.luxion.shogunai.domain.usecase.ResourceAcquisition
 import app.luxion.shogunai.domain.usecase.ResolveWorktreeEnvironmentUseCase
+import app.luxion.shogunai.domain.usecase.ShowEmulatorInOrcaUseCase
 import app.luxion.shogunai.domain.usecase.StartWorktreeEmulatorUseCase
 import app.luxion.shogunai.domain.usecase.StartWorktreeSimulatorUseCase
 import app.luxion.shogunai.domain.usecase.StopGradleDaemonsUseCase
@@ -406,10 +410,12 @@ class ShogunCli(
         resolveEnvironment,
         WriteEnvironmentFileUseCase(executor, fileManager, provisioningSource),
         PrepareCocoaPodsUseCase(executor, fileManager, provisioningSource, isMacOs = derivedDataSource.isSupported()),
+        ResolveFlutterPackagesUseCase(executor, fileManager, provisioningSource),
     )
     private val startEmulator = StartWorktreeEmulatorUseCase(provisioningSource, resolveEnvironment, acquireResource, androidSdk)
     private val stopEmulator = StopWorktreeEmulatorUseCase(provisioningSource, resolveEnvironment, androidSdk)
     private val readEmulatorStates = ReadEmulatorStatesUseCase(provisioningSource, resolveEnvironment, androidSdk)
+    private val showEmulatorInOrca = ShowEmulatorInOrcaUseCase(orca)
     private val headlessWorktrees = HeadlessAppWorktrees(
         provisioningSource,
         { resolveEnvironment.directoriesOf(it).admin },
@@ -569,12 +575,13 @@ class ShogunCli(
         }
         val worktree = created.getOrThrow()
         if (command.json) {
-            printJson(newJson(worktree.path, worktree.branch, worktree.skippedPostCreateCommands, worktree.skippedVariables, null, worktree.skippedLinks, worktree.pods))
+            printJson(newJson(worktree.path, worktree.branch, worktree.skippedPostCreateCommands, worktree.skippedVariables, null, worktree.skippedLinks, worktree.pods, worktree.flutter))
             return EXIT_OK
         }
         out.line(worktree.path)
         noteSkippedLinks(worktree.skippedLinks)
         podsLines(worktree.pods).forEach { err.line("shogun: $it") }
+        worktree.flutter?.let { err.line("shogun: ${flutterPubGetLine(it)}") }
         noteSkipped(config.baseRepositoryPath, worktree.skippedPostCreateCommands, worktree.skippedVariables)
         return EXIT_OK
     }
@@ -960,7 +967,12 @@ class ShogunCli(
     }
 
     private suspend fun openGroupInOrca(group: WorktreeGroup, json: Boolean): Int {
-        val openings = OpenGroupInOrcaUseCase(orca, resolveEnvironment, claudeSessionNaming(herdrAgentStartTimeout))(group).getOrThrow()
+        val openings = OpenGroupInOrcaUseCase(
+            orca,
+            resolveEnvironment,
+            claudeSessionNaming(herdrAgentStartTimeout),
+            runningEmulator = readEmulatorStates::runningSerial,
+        )(group).getOrThrow()
         if (json) {
             printJson(groupOrcaOpenJson(group.branch, openings))
         } else {
@@ -1209,7 +1221,7 @@ class ShogunCli(
             printJson(
                 provisionJson(
                     worktree.path, result.files, result.skippedPostCreateCommands, result.skippedVariables, null,
-                    result.removed, result.skippedLinks, result.pods,
+                    result.removed, result.skippedLinks, result.pods, result.flutter,
                 ),
             )
             return EXIT_OK
@@ -1218,6 +1230,7 @@ class ShogunCli(
         result.removed.forEach { out.line("$it (removed: deleted from the base folder)") }
         result.skippedLinks.forEach { out.line("$it (skipped: symbolic link)") }
         podsLines(result.pods).forEach { out.line(it) }
+        result.flutter?.let { out.line(flutterPubGetLine(it)) }
         noteSkipped(config.baseRepositoryPath, result.skippedPostCreateCommands, result.skippedVariables)
         onProvisioned(worktree, config)
         return EXIT_OK
@@ -1370,7 +1383,13 @@ class ShogunCli(
             }
         }
         if (command.orca) {
-            val opening = OpenWorktreeInOrcaUseCase(config, orca, resolveEnvironment, claudeSessionNaming(herdrAgentStartTimeout))(worktree, agent).getOrThrow()
+            val opening = OpenWorktreeInOrcaUseCase(
+                config,
+                orca,
+                resolveEnvironment,
+                claudeSessionNaming(herdrAgentStartTimeout),
+                runningEmulator = { path -> readEmulatorStates.runningSerial(config, path) },
+            )(worktree, agent).getOrThrow()
             if (command.json) printJson(openJson(worktree.path, worktree.branch, opening)) else out.line(orcaOpeningLine(worktree.path, opening))
             return EXIT_OK
         }
@@ -1387,7 +1406,8 @@ class ShogunCli(
             OrcaOutcome.STARTED_AGENT -> "opened $path in Orca with ${opening.agent} (terminal ${opening.terminalHandle})"
             OrcaOutcome.FOCUSED -> "focused $path's running agent in Orca (terminal ${opening.terminalHandle})"
         }
-        return opening.sessionName?.let { "$line as session $it" } ?: line
+        val named = opening.sessionName?.let { "$line as session $it" } ?: line
+        return opening.emulator?.let { "$named, with $it in its emulator view" } ?: named
     }
 
     private fun herdrLauncher() =
@@ -1729,6 +1749,7 @@ class ShogunCli(
         val target = absolute(command.path ?: workingDirectory)
         val (config, worktree) = configAndWorktreeContaining(target)
         var acquisition: ResourceAcquisition? = null
+        var orcaView: OrcaEmulatorView? = null
         val emulator = when (command.action) {
             EmulatorAction.START -> {
                 val started = startEmulator(
@@ -1739,6 +1760,7 @@ class ShogunCli(
                     command.wait?.let(::deviceWait),
                 ).getOrThrow()
                 acquisition = started.acquisition
+                orcaView = showEmulatorInOrca(worktree.path, started.device.serial)
                 started.device
             }
             EmulatorAction.STOP -> stopEmulator(config, worktree.path).getOrThrow()
@@ -1751,9 +1773,10 @@ class ShogunCli(
         }
         acquisition?.releases?.forEach { err.line("released the emulator of ${releasedName(it)} to make room") }
         reportWaited(acquisition)
+        if (emulator != null) reportOrcaView(emulator.serial, orcaView)
         val released = if (emulator == null) readReleaseRecord(worktree.path, ResourceKind.EMULATOR) else null
         if (command.json) {
-            printJson(emulatorJson(worktree.path, emulator, acquisition, released))
+            printJson(emulatorJson(worktree.path, emulator, acquisition, released, orcaView))
             return EXIT_OK
         }
         if (emulator == null) {
@@ -1763,6 +1786,14 @@ class ShogunCli(
             if (command.action == EmulatorAction.START) out.line("export $ANDROID_SERIAL=${emulator.serial}")
         }
         return EXIT_OK
+    }
+
+    private fun reportOrcaView(serial: String, view: OrcaEmulatorView?) {
+        when (view) {
+            OrcaEmulatorView.Shown -> err.line("shown $serial in Orca's emulator view")
+            is OrcaEmulatorView.Failed -> err.line("shogun: couldn't show the emulator in Orca: ${view.message}")
+            OrcaEmulatorView.NotOpen, null -> Unit
+        }
     }
 
     private fun deviceWait(timeout: Duration): DeviceWait {
@@ -1948,6 +1979,8 @@ class ShogunCli(
             simulatorProvider = providers.iosSimulator != null && appleSimulators.isSupported(),
             composeProvider = providers.dockerCompose != null,
             desktopAppProvider = declaresHeadlessApp(worktree.path),
+            flutterProvider = providers.flutter != null,
+            flutterUsesFvm = usesFvm(fileManager, worktree.path),
         )
     }
 
@@ -2209,6 +2242,7 @@ class ShogunCli(
         app.luxion.shogunai.domain.model.Stack.XCODE -> "Xcode"
         app.luxion.shogunai.domain.model.Stack.MAVEN -> "Maven"
         app.luxion.shogunai.domain.model.Stack.DOCKER_COMPOSE -> "Docker Compose"
+        app.luxion.shogunai.domain.model.Stack.FLUTTER -> "Flutter"
     }
 
     private suspend fun maven(command: CliCommand.Maven): Int {
@@ -2592,6 +2626,7 @@ class ShogunCli(
                 null -> created.getOrThrow().also {
                     noteSkippedLinks(it.skippedLinks, "shogun: hook worktree-create")
                     podsLines(it.pods).forEach { line -> err.line("shogun: hook worktree-create: $line") }
+                    it.flutter?.let { pubGet -> err.line("shogun: hook worktree-create: ${flutterPubGetLine(pubGet)}") }
                     noteSkipped(config.baseRepositoryPath, it.skippedPostCreateCommands, it.skippedVariables, "shogun: hook worktree-create")
                 }.path
                 is WorktreeError.PostCreateCommandFailed -> {

@@ -373,6 +373,9 @@ class ProjectConfigViewModel(
     fun setDockerComposeEnabled(enabled: Boolean) =
         updateRepositoryDraft { it.copy(dockerCompose = if (enabled) it.dockerCompose ?: ComposeDraft() else null) }
 
+    fun setFlutterEnabled(enabled: Boolean) =
+        updateRepositoryDraft { it.copy(flutter = enabled) }
+
     val stackSuggestions: List<ProviderSuggestion>
         get() = if (!repositoryConfigEditable) {
             emptyList()
@@ -388,6 +391,7 @@ class ProjectConfigViewModel(
             SuggestedProvider.XCODE -> setXcodeEnabled(true)
             SuggestedProvider.MAVEN -> setMavenEnabled(true)
             SuggestedProvider.DOCKER_COMPOSE -> setDockerComposeEnabled(true)
+            SuggestedProvider.FLUTTER -> setFlutterEnabled(true)
         }
     }
 

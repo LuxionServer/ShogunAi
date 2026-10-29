@@ -69,4 +69,17 @@ class GradleSettingsContributionTest {
 
         assertNull(effectiveGradleJvmArgs(FakeFileManager(), gradleUserHome, repository))
     }
+
+    @Test
+    fun `reads the nested build's arguments when the main folder isn't a build`() {
+        val fileManager = FakeFileManager(
+            existing = listOf("$repository/android/settings.gradle.kts"),
+            directories = setOf("$repository/android"),
+            properties = mapOf("$repository/android/gradle.properties" to mapOf("org.gradle.jvmargs" to "-Xmx8G -XX:MaxMetaspaceSize=4G")),
+        )
+
+        val effective = effectiveGradleJvmArgs(fileManager, gradleUserHome, repository)
+
+        assertEquals("-Xmx2g -XX:MaxMetaspaceSize=4G", gradleDaemonArguments(effective, "2g"))
+    }
 }

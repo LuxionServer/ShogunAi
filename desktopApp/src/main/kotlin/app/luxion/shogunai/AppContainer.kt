@@ -195,6 +195,7 @@ import app.luxion.shogunai.domain.usecase.MachineProviderContributions
 import app.luxion.shogunai.domain.usecase.effectiveGradleJvmArgs
 import app.luxion.shogunai.domain.usecase.MeasureWorktreeSizeUseCase
 import app.luxion.shogunai.domain.usecase.PrepareCocoaPodsUseCase
+import app.luxion.shogunai.domain.usecase.ResolveFlutterPackagesUseCase
 import app.luxion.shogunai.domain.usecase.PrepareWorktreeEnvironmentUseCase
 import app.luxion.shogunai.domain.usecase.ProviderContributions
 import app.luxion.shogunai.domain.usecase.ReadEmulatorStatesUseCase
@@ -222,6 +223,7 @@ import app.luxion.shogunai.domain.usecase.ResolveBaseBranchUseCase
 import app.luxion.shogunai.ui.projectconfig.RepositoryInspection
 import app.luxion.shogunai.domain.usecase.ResolveWorktreeEnvironmentUseCase
 import app.luxion.shogunai.domain.usecase.WorktreeEnvironmentCache
+import app.luxion.shogunai.domain.usecase.ShowEmulatorInOrcaUseCase
 import app.luxion.shogunai.domain.usecase.StartWorktreeEmulatorUseCase
 import app.luxion.shogunai.domain.usecase.StartWorktreeSimulatorUseCase
 import app.luxion.shogunai.domain.usecase.StopGradleDaemonsUseCase
@@ -418,6 +420,9 @@ class AppContainer {
         { repository, worktree -> MultirepoSharedEnvironment(resolveMultirepo, shellCommandExecutor).forWorktree(repository, worktree) },
     )
 
+    private suspend fun startEmulatorShownInOrca(config: ProjectConfig, worktreePath: String): Result<DeviceStart<WorktreeEmulator>> =
+        startEmulator(config, worktreePath).onSuccess { showEmulatorInOrca(worktreePath, it.device.serial) }
+
     private fun simulatorSettingsFor(repositoryPath: String): SimulatorSettings =
         runCatching { projectRepository.list() }.getOrDefault(emptyList())
             .firstOrNull { it.config.baseRepositoryPath.trimEnd('/') == repositoryPath.trimEnd('/') }
@@ -492,6 +497,7 @@ class AppContainer {
     val resources = ResourcePreferences(resourceLimitsRepository, resolveResourceLimits, showsSimulators = appleSimulators.isSupported(), showsDerivedDataQuota = derivedDataSource.isSupported())
     private val startSimulator = StartWorktreeSimulatorUseCase(repositoryProvisioningSource, appleSimulators, acquireResource, resolveEnvironment)
     private val startEmulator = StartWorktreeEmulatorUseCase(repositoryProvisioningSource, resolveEnvironment, acquireResource, androidSdk)
+    private val showEmulatorInOrca = ShowEmulatorInOrcaUseCase(orcaClient)
     private val stopEmulator = StopWorktreeEmulatorUseCase(repositoryProvisioningSource, resolveEnvironment, androidSdk)
     private val headlessAppLauncher = GradleHeadlessAppLauncher(shellCommandExecutor, Path.of(System.getProperty("user.home"), ".shogunai", "headless").toString())
     private val headlessAppWindows = MacAppWindowService(shellCommandExecutor, Path.of(System.getProperty("user.home"), ".shogunai", "headless").toString())
@@ -544,6 +550,7 @@ class AppContainer {
         resolveEnvironment,
         WriteEnvironmentFileUseCase(shellCommandExecutor, fileManager, repositoryProvisioningSource),
         PrepareCocoaPodsUseCase(shellCommandExecutor, fileManager, repositoryProvisioningSource, isMacOs = derivedDataSource.isSupported()),
+        ResolveFlutterPackagesUseCase(shellCommandExecutor, fileManager, repositoryProvisioningSource),
     )
 
     val machineUseCases = MachineUseCases(
@@ -570,7 +577,7 @@ class AppContainer {
         readRunningEmulators = { config ->
             runCatching { androidSdk.deviceStates(androidSdk.locate(config.baseRepositoryPath)) }
         },
-        startEmulator = { config, worktreePath -> startEmulator(config, worktreePath) },
+        startEmulator = { config, worktreePath -> startEmulatorShownInOrca(config, worktreePath) },
         readPool = { kind, config, worktrees ->
             runCatching { readPool.of(kind, config.baseRepositoryPath, worktrees) }
         },
@@ -635,7 +642,14 @@ class AppContainer {
         openAgent = { multirepo -> OpenMultirepoAgentInHerdrUseCase(herdrClient, herdrLauncher)(multirepo) },
         trust = { multirepo -> configureMultirepo.trust(multirepo) },
         openGroupInHerdr = { group -> OpenGroupInHerdrUseCase(herdrClient, resolveEnvironment, herdrLauncher)(group) },
-        openGroupInOrca = { group -> OpenGroupInOrcaUseCase(orcaClient, resolveEnvironment, ClaudeSessionNaming(claudeSessions))(group) },
+        openGroupInOrca = { group ->
+            OpenGroupInOrcaUseCase(
+                orcaClient,
+                resolveEnvironment,
+                ClaudeSessionNaming(claudeSessions),
+                runningEmulator = readEmulatorStates::runningSerial,
+            )(group)
+        },
         openAgentInOrca = { multirepo -> OpenMultirepoAgentInOrcaUseCase(orcaClient, ClaudeSessionNaming(claudeSessions))(multirepo) },
         herdrInstalled = herdrClient.isInstalled(),
         orcaInstalled = orcaClient.isInstalled(),
@@ -779,7 +793,7 @@ class AppContainer {
                 }
             },
             readStates = { worktrees -> readEmulatorStates(config, worktrees) },
-            start = { worktreePath -> startEmulator(config, worktreePath) },
+            start = { worktreePath -> startEmulatorShownInOrca(config, worktreePath) },
             stop = { worktreePath -> stopEmulator(config, worktreePath) },
             stopSerials = { serials -> runCatching { stopEmulator.stopSerials(config, serials) } },
             readRelease = { worktreePath -> readReleaseRecord(worktreePath, ResourceKind.EMULATOR) },
@@ -849,7 +863,13 @@ class AppContainer {
             focusAgent = { paneId -> runCatching { herdrClient.focusAgent(paneId) } },
         ),
         orca = OrcaUseCases(
-            open = OpenWorktreeInOrcaUseCase(config, orcaClient, resolveEnvironment, ClaudeSessionNaming(claudeSessions))::invoke,
+            open = OpenWorktreeInOrcaUseCase(
+                config,
+                orcaClient,
+                resolveEnvironment,
+                ClaudeSessionNaming(claudeSessions),
+                runningEmulator = { path -> readEmulatorStates.runningSerial(config, path) },
+            )::invoke,
             withTerminals = { paths -> withContext(Dispatchers.IO) { CloseOrcaTerminalsUseCase(orcaClient).withTerminals(paths) } },
             origins = orcaReader::origins,
         ),
