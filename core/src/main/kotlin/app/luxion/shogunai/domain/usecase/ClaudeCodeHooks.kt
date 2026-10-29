@@ -28,6 +28,10 @@ data class HooksPreview(
     val events: List<String> get() = (added.map { it.event } + replaced.map { it.event } + removed.map { it.event }).distinct()
 }
 
+data class DesiredHook(val event: String, val command: String, val matcher: String? = null, val condition: String? = null)
+
+private data class InstalledHook(val command: String, val matcher: String?, val condition: String?)
+
 data class HooksStatus(val path: String, val state: HooksInstallState, val events: List<String>)
 
 class ClaudeCodeHooks(private val fileManager: FileManager) {
@@ -81,22 +85,28 @@ class ClaudeCodeHooks(private val fileManager: FileManager) {
         val added = mutableListOf<HookEntry>()
         val replaced = mutableListOf<HookReplacement>()
         val removed = mutableListOf<HookEntry>()
-        val desired = if (install) DESIRED.toMap() else emptyMap()
-        (DESIRED.map { it.first } + hooks.keys).distinct().forEach { event ->
-            val found = shogunCommands(hooks[event])
+        val desired = if (install) DESIRED.associateBy { it.event } else emptyMap()
+        (DESIRED.map { it.event } + hooks.keys).distinct().forEach { event ->
+            val found = installedHooks(hooks[event])
             val wanted = desired[event]
             when {
-                wanted != null && found == listOf(wanted) -> Unit
-                wanted != null && found.isEmpty() -> added += HookEntry(event, wanted)
-                wanted != null -> replaced += HookReplacement(event, found, wanted)
-                else -> found.forEach { removed += HookEntry(event, it) }
+                wanted != null && isCurrent(found, wanted) -> Unit
+                wanted != null && found.isEmpty() -> added += HookEntry(event, wanted.command)
+                wanted != null -> replaced += HookReplacement(event, found.map { it.command }, wanted.command)
+                else -> found.forEach { removed += HookEntry(event, it.command) }
             }
         }
         return HooksPreview(added, replaced, removed)
     }
 
-    private fun shogunCommands(groups: JsonElement?): List<String> =
-        (groups as? JsonArray).orEmpty().flatMap { group -> shogunHooks(group).map { commandOf(it) } }
+    private fun isCurrent(found: List<InstalledHook>, wanted: DesiredHook): Boolean =
+        found == listOf(InstalledHook(wanted.command, wanted.matcher, wanted.condition))
+
+    private fun installedHooks(groups: JsonElement?): List<InstalledHook> =
+        (groups as? JsonArray).orEmpty().flatMap { group ->
+            val matcher = (group as? JsonObject)?.get(MATCHER)?.string()
+            shogunHooks(group).map { InstalledHook(commandOf(it), matcher, (it as? JsonObject)?.get(IF)?.string()) }
+        }
 
     private fun shogunHooks(group: JsonElement): List<JsonElement> =
         ((group as? JsonObject)?.get(HOOKS) as? JsonArray).orEmpty().filter(::isShogunHook)
@@ -111,12 +121,12 @@ class ClaudeCodeHooks(private val fileManager: FileManager) {
     private fun applyInstall(settings: JsonObject): JsonObject {
         val hooks = hooksOf(settings)
         val rebuilt = LinkedHashMap<String, JsonElement>(hooks)
-        DESIRED.forEach { (event, command) ->
-            if (shogunCommands(hooks[event]) == listOf(command)) return@forEach
-            val kept = stripped(hooks[event])
-            rebuilt[event] = JsonArray(kept + group(command))
+        DESIRED.forEach { wanted ->
+            if (isCurrent(installedHooks(hooks[wanted.event]), wanted)) return@forEach
+            val kept = stripped(hooks[wanted.event])
+            rebuilt[wanted.event] = JsonArray(kept + group(wanted))
         }
-        hooks.keys.filter { event -> DESIRED.none { it.first == event } }.forEach { event -> restoreStripped(rebuilt, hooks, event) }
+        hooks.keys.filter { event -> DESIRED.none { it.event == event } }.forEach { event -> restoreStripped(rebuilt, hooks, event) }
         return withHooks(settings, JsonObject(rebuilt))
     }
 
@@ -128,7 +138,7 @@ class ClaudeCodeHooks(private val fileManager: FileManager) {
     }
 
     private fun restoreStripped(rebuilt: MutableMap<String, JsonElement>, hooks: JsonObject, event: String) {
-        if (shogunCommands(hooks[event]).isEmpty()) return
+        if (installedHooks(hooks[event]).isEmpty()) return
         val kept = stripped(hooks[event])
         if (kept.isEmpty()) rebuilt.remove(event) else rebuilt[event] = JsonArray(kept)
     }
@@ -144,11 +154,13 @@ class ClaudeCodeHooks(private val fileManager: FileManager) {
             }
         }
 
-    private fun group(command: String): JsonElement = buildJsonObject {
+    private fun group(hook: DesiredHook): JsonElement = buildJsonObject {
+        hook.matcher?.let { put(MATCHER, it) }
         putJsonArray(HOOKS) {
             addJsonObject {
                 put("type", "command")
-                put("command", command)
+                put("command", hook.command)
+                hook.condition?.let { put(IF, it) }
             }
         }
     }
@@ -164,19 +176,22 @@ class ClaudeCodeHooks(private val fileManager: FileManager) {
     companion object {
         const val SHOGUN_PREFIX = "shogun hook "
         private const val HOOKS = "hooks"
+        private const val MATCHER = "matcher"
+        private const val IF = "if"
         private val PRETTY = Json {
             prettyPrint = true
             prettyPrintIndent = "  "
         }
 
-        val DESIRED: List<Pair<String, String>> = listOf(
-            "WorktreeCreate" to "shogun hook worktree-create",
-            "WorktreeRemove" to "shogun hook worktree-remove",
-            "SessionStart" to "shogun hook session-start",
-            "UserPromptSubmit" to "shogun hook agent-state",
-            "Notification" to "shogun hook agent-state",
-            "Stop" to "shogun hook agent-state",
-            "SessionEnd" to "shogun hook agent-state",
+        val DESIRED: List<DesiredHook> = listOf(
+            DesiredHook("WorktreeCreate", "shogun hook worktree-create"),
+            DesiredHook("WorktreeRemove", "shogun hook worktree-remove"),
+            DesiredHook("SessionStart", "shogun hook session-start"),
+            DesiredHook("UserPromptSubmit", "shogun hook agent-state"),
+            DesiredHook("Notification", "shogun hook agent-state"),
+            DesiredHook("Stop", "shogun hook agent-state"),
+            DesiredHook("SessionEnd", "shogun hook agent-state"),
+            DesiredHook("PreToolUse", "shogun hook desktop-turn", matcher = "Bash", condition = "Bash(*computer *)"),
         )
 
         val AGENT_STATE_EVENTS: List<String> = listOf("UserPromptSubmit", "Notification", "Stop", "SessionEnd")

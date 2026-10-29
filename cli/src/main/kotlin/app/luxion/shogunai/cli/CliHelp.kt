@@ -187,6 +187,8 @@ internal object CliHelp {
   hook worktree-remove        Claude Code WorktreeRemove hook: remove the worktree, delete its branch if merged
   hook session-start          Claude Code SessionStart hook: export the worktree's environment and give the session ShogunAi's workflow rules
   hook agent-state            Claude Code UserPromptSubmit, Notification, Stop and SessionEnd hook: record the session's state
+  hook desktop-turn           Claude Code PreToolUse hook: take the desktop turn before Orca's orca computer acts on the desktop,
+                              or block the command while another worktree holds it
   hook herdr                  Herdr plugin hook: provision worktrees on worktree.created, delete merged branches on worktree.removed
   hook orca setup|archive     Orca orca.yaml scripts: provision the worktree at ORCA_WORKTREE_PATH on setup,
                               free its emulator, simulator and idle Gradle daemons on archive

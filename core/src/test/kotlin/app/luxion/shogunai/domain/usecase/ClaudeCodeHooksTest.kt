@@ -30,7 +30,7 @@ class ClaudeCodeHooksTest {
             .flatMap { it.jsonObject.getValue("hooks").jsonArray }
             .map { it.jsonObject.getValue("command").jsonPrimitive.content }
 
-    private val allEvents = ClaudeCodeHooks.DESIRED.map { it.first }
+    private val allEvents = ClaudeCodeHooks.DESIRED.map { it.event }
 
     @Test
     fun `installing keeps other settings and hooks and adds ShogunAi's`() {
@@ -95,12 +95,60 @@ class ClaudeCodeHooksTest {
 
     @Test
     fun `a ShogunAi hook on an event no longer used is removed`() {
-        settings("""{"hooks":{"PreToolUse":[{"hooks":[{"type":"command","command":"shogun hook agent-state"}]}]}}""")
+        settings("""{"hooks":{"PostToolUse":[{"hooks":[{"type":"command","command":"shogun hook agent-state"}]}]}}""")
 
         val preview = hooks.install(path).getOrThrow()
 
-        assertEquals(listOf(HookEntry("PreToolUse", "shogun hook agent-state")), preview.removed)
-        assertNull(written().getValue("hooks").jsonObject["PreToolUse"])
+        assertEquals(listOf(HookEntry("PostToolUse", "shogun hook agent-state")), preview.removed)
+        assertNull(written().getValue("hooks").jsonObject["PostToolUse"])
+    }
+
+    @Test
+    fun `the desktop turn hook runs only for shell commands mentioning computer`() {
+        hooks.install(path).getOrThrow()
+
+        val group = written().getValue("hooks").jsonObject.getValue("PreToolUse").jsonArray.single().jsonObject
+        val hook = group.getValue("hooks").jsonArray.single().jsonObject
+        assertEquals("Bash", group.getValue("matcher").jsonPrimitive.content)
+        assertEquals("shogun hook desktop-turn", hook.getValue("command").jsonPrimitive.content)
+        assertEquals("Bash(*computer *)", hook.getValue("if").jsonPrimitive.content)
+    }
+
+    @Test
+    fun `an installation without the desktop turn hook is outdated and gets it`() {
+        hooks.install(path).getOrThrow()
+        val previous = written().let { settings ->
+            JsonObject(mapOf("hooks" to JsonObject(settings.getValue("hooks").jsonObject.filterKeys { it != "PreToolUse" })))
+        }
+        settings(previous.toString())
+
+        val status = hooks.status(path).getOrThrow()
+        val preview = hooks.install(path).getOrThrow()
+
+        assertEquals(HooksInstallState.OUTDATED, status.state)
+        assertEquals(listOf("PreToolUse"), status.events)
+        assertEquals(listOf(HookEntry("PreToolUse", "shogun hook desktop-turn")), preview.added)
+        assertEquals(listOf("shogun hook desktop-turn"), commands(written(), "PreToolUse"))
+    }
+
+    @Test
+    fun `a desktop turn hook without its filter is replaced by the filtered one`() {
+        hooks.install(path).getOrThrow()
+        val hooksObject = written().getValue("hooks").jsonObject
+        val unfiltered = Json.parseToJsonElement(
+            """[{"hooks":[{"type":"command","command":"shogun hook desktop-turn"}]},{"matcher":"Bash","hooks":[{"type":"command","command":"lint-check"}]}]""",
+        )
+        settings(JsonObject(mapOf("hooks" to JsonObject(hooksObject + ("PreToolUse" to unfiltered)))).toString())
+
+        assertEquals(HooksInstallState.OUTDATED, hooks.status(path).getOrThrow().state)
+        val preview = hooks.install(path).getOrThrow()
+
+        assertEquals(listOf(HookReplacement("PreToolUse", listOf("shogun hook desktop-turn"), "shogun hook desktop-turn")), preview.replaced)
+        assertEquals(listOf("lint-check", "shogun hook desktop-turn"), commands(written(), "PreToolUse"))
+        val shogunHook = written().getValue("hooks").jsonObject.getValue("PreToolUse").jsonArray.last().jsonObject
+            .getValue("hooks").jsonArray.single().jsonObject
+        assertEquals("Bash(*computer *)", shogunHook.getValue("if").jsonPrimitive.content)
+        assertEquals(HooksInstallState.INSTALLED, hooks.status(path).getOrThrow().state)
     }
 
     @Test

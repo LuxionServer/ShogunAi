@@ -2182,7 +2182,7 @@ class ShogunCliTest {
         cli(repositoryExecutor()).run(listOf("help"))
 
         val hookLines = out.lines().filter { it.trimStart().startsWith("hook ") }
-        assertEquals(6, hookLines.size)
+        assertEquals(7, hookLines.size)
         assertEquals(1, hookLines.map { it.indexOf("  ", it.indexOf("hook") + 5).let { gap -> it.substring(gap).indexOfFirst { c -> c != ' ' } + gap } }.distinct().size)
     }
 
@@ -4082,7 +4082,7 @@ class ShogunCliTest {
         val exitCode = cli(repositoryExecutor(), fileManager = files).run(listOf("hooks", "status"))
 
         assertEquals(0, exitCode, err.toString())
-        assertTrue(out.lines().any { it.startsWith("user: outdated (WorktreeRemove, SessionStart, UserPromptSubmit, Notification, Stop, SessionEnd)") }, out.toString())
+        assertTrue(out.lines().any { it.startsWith("user: outdated (WorktreeRemove, SessionStart, UserPromptSubmit, Notification, Stop, SessionEnd, PreToolUse)") }, out.toString())
         assertTrue(out.lines().any { it.startsWith("project: missing") }, out.toString())
     }
 

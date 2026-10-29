@@ -46,4 +46,4 @@ gitGraph
 3. **Mantenerla al día**: mergear `develop` en la rama épica con regularidad, y siempre antes de mergear la épica de vuelta. Con merge, no con rebase, porque la rama es compartida y ya está subida.
 4. **Cerrarla** con una pull request de la rama épica a `develop`, cuando el esfuerzo (o una parte estable y autocontenida de él) esté terminado.
 
-El workflow `Tests` corre en cada pull request hacia una rama `epic/**` y en cada push a ella, igual que para `develop`.
+El workflow `Tests` corre en cada pull request hacia una rama `epic/**` y en cada push a ella, igual que para `develop`. Un push a una rama que ya tiene una pull request abierta hacia `develop` o una rama `epic/**` se salta los tests, porque la ejecución de esa pull request ya cubre el mismo commit; así la pull request del epic hacia `develop` no los corre dos veces.
