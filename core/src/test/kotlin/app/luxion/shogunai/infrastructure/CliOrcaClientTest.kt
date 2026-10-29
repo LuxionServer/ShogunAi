@@ -4,13 +4,17 @@ import app.luxion.shogunai.domain.FakeShellCommandExecutor
 import app.luxion.shogunai.domain.executor.CommandExecutionException
 import app.luxion.shogunai.domain.executor.CommandResult
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
+import app.luxion.shogunai.domain.model.AgentActivity
 import app.luxion.shogunai.domain.model.AgentState
+import app.luxion.shogunai.domain.model.AgentTool
 import app.luxion.shogunai.domain.model.OrcaAgent
+import app.luxion.shogunai.domain.model.OrcaPort
 import app.luxion.shogunai.domain.model.OrcaRepo
 import app.luxion.shogunai.domain.model.OrcaStatus
 import app.luxion.shogunai.domain.model.OrcaTerminal
 import app.luxion.shogunai.domain.model.OrcaWorkspace
 import app.luxion.shogunai.domain.model.OrcaWorktree
+import app.luxion.shogunai.domain.model.OrcaWorktreeUpdate
 import app.luxion.shogunai.domain.model.WorktreeError
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -134,7 +138,7 @@ class CliOrcaClientTest {
     fun `worktrees are listed telling Orca's from external ones`() = runTest {
         val executor = answering("worktree-list.json")
 
-        val worktrees = client(executor).worktrees(repoId)
+        val worktrees = client(executor).worktrees(repoId).map { it.withoutMetadata() }
 
         assertEquals(
             listOf(
@@ -149,17 +153,17 @@ class CliOrcaClientTest {
 
     @Test
     fun `hidden external worktrees aren't listed`() = runTest {
-        assertEquals(listOf(OrcaWorktree(repository, false)), client(answering("worktree-list-hidden.json")).worktrees(repoId))
+        assertEquals(listOf(OrcaWorktree(repository, false)), client(answering("worktree-list-hidden.json")).worktrees(repoId).map { it.withoutMetadata() })
     }
 
     @Test
     fun `one ps call reports every worktree's agents and their state`() = runTest {
         val executor = answering("worktree-ps-working.json")
 
-        val worktrees = client(executor).agentsByWorktree().associateBy { it.path }
+        val worktrees = client(executor).agentsByWorktree().map { it.withoutMetadata() }.associateBy { it.path }
 
         assertEquals(listOf(orca, "worktree", "ps", "--limit", "1000", "--json"), executor.executedCommands.single())
-        assertEquals(OrcaWorktree(shogunai, false, listOf(OrcaAgent("claude", AgentState.WORKING))), worktrees[shogunai])
+        assertEquals(OrcaWorktree(shogunai, false, listOf(OrcaAgent("claude", AgentState.WORKING, AgentActivity(prompt = COUNT_PROMPT)))), worktrees[shogunai])
         assertEquals(OrcaWorktree(created, true), worktrees[created])
         assertEquals(OrcaWorktree(repository, false), worktrees[repository])
         assertEquals(OrcaWorktree(external, false), worktrees[external])
@@ -169,7 +173,56 @@ class CliOrcaClientTest {
     fun `a finished turn is reported as done`() = runTest {
         val row = client(answering("worktree-ps-done.json")).agentsByWorktree().single { it.path == shogunai }
 
-        assertEquals(listOf(OrcaAgent("claude", AgentState.DONE)), row.agents)
+        assertEquals(
+            listOf(OrcaAgent("claude", AgentState.DONE, AgentActivity(prompt = COUNT_PROMPT, lastMessage = "9\n20\n21\n22\n23\n24\n25\n26\n27\n28\n29\n30\n\ndone"))),
+            row.agents,
+        )
+    }
+
+    @Test
+    fun `an agent waiting for permission reports the tool and its input`() = runTest {
+        val row = client(answering("worktree-ps-tool.json")).agentsByWorktree().single { it.path == external }
+
+        val waitingOn = AgentTool("Bash", "curl -s https://example.com -o page.html")
+        assertEquals(
+            listOf(OrcaAgent("claude", AgentState.BLOCKED, AgentActivity(waitingOn, "Use the Bash tool to run: curl -s https://example.com -o page.html"))),
+            row.agents,
+        )
+    }
+
+    @Test
+    fun `a finished agent's last tool isn't reported as waited on`() = runTest {
+        val executor = FakeShellCommandExecutor { FakeShellCommandExecutor.success(it, fixture("worktree-ps-tool.json").replace("\"waiting\"", "\"done\"")) }
+
+        val agent = client(executor).agentsByWorktree().single { it.path == external }.agents.single()
+
+        assertEquals(AgentState.DONE, agent.state)
+        assertNull(agent.activity?.waitingOn)
+    }
+
+    @Test
+    fun `an agent with blank details has no activity`() = runTest {
+        val agent = client(answering("worktree-ps.json")).agentsByWorktree().single { it.path == external }.agents.single()
+
+        assertNull(agent.activity)
+    }
+
+    @Test
+    fun `one ports call reports the ports Orca ties to workspaces`() = runTest {
+        val executor = answering("ports-all.json")
+
+        val ports = client(executor).ports()
+
+        assertEquals(listOf(orca, "ports", "--all", "--json"), executor.executedCommands.single())
+        assertEquals(
+            listOf(
+                OrcaPort(8765, external, "Python", "http://127.0.0.1:8765"),
+                OrcaPort(10004, "/projects/other-worktree", "java"),
+                OrcaPort(10011, external, "java"),
+                OrcaPort(61610, "/projects/other-worktree", "java"),
+            ),
+            ports,
+        )
     }
 
     @Test
@@ -239,7 +292,7 @@ class CliOrcaClientTest {
 
     @Test
     fun `ps lists a folder workspace with its folder id and agents`() = runTest {
-        val rows = client(answering("worktree-ps-folder-agent.json")).agentsByWorktree().associateBy { it.path }
+        val rows = client(answering("worktree-ps-folder-agent.json")).agentsByWorktree().map { it.withoutMetadata() }.associateBy { it.path }
 
         val workspace = rows.getValue("/projects/product")
         assertEquals(folderId, workspace.folderId)
@@ -420,6 +473,70 @@ class CliOrcaClientTest {
         val windows = client(FakeShellCommandExecutor(), files = emptySet(), osName = "Windows 11", onPath = mapOf("orca" to "C:\\Orca\\bin\\orca.cmd"))
 
         assertEquals("C:\\Orca\\bin\\orca.cmd", windows.executable())
+    }
+
+    @Test
+    fun `ps reports each worktree's comment, board status and links`() = runTest {
+        val row = client(answering("worktree-ps-linked.json")).agentsByWorktree().single()
+
+        assertEquals(external, row.path)
+        assertEquals("ShogunAi: new, no commits yet", row.comment)
+        assertEquals("todo", row.workspaceStatus)
+        assertEquals(42, row.linkedPullRequest)
+        assertEquals(7, row.linkedIssue)
+    }
+
+    @Test
+    fun `a worktree without links or comment reports them empty`() = runTest {
+        val row = client(answering("worktree-ps.json")).agentsByWorktree().first { it.path == external }
+
+        assertEquals("", row.comment)
+        assertEquals("in-progress", row.workspaceStatus)
+        assertNull(row.linkedPullRequest)
+        assertNull(row.linkedIssue)
+    }
+
+    @Test
+    fun `a worktree's metadata is set with only the fields given`() = runTest {
+        val executor = answering("worktree-set.json")
+
+        client(executor).updateWorktree(external, OrcaWorktreeUpdate(comment = "ShogunAi: new, no commits yet", workspaceStatus = "todo"))
+        client(executor).updateWorktree(external, OrcaWorktreeUpdate(pullRequest = 42, issue = 7))
+
+        assertEquals(
+            listOf(
+                listOf(orca, "worktree", "set", "--worktree", "path:$external", "--comment", "ShogunAi: new, no commits yet", "--workspace-status", "todo", "--json"),
+                listOf(orca, "worktree", "set", "--worktree", "path:$external", "--pr", "42", "--issue", "7", "--json"),
+            ),
+            executor.executedCommands,
+        )
+    }
+
+    @Test
+    fun `an empty update runs nothing`() = runTest {
+        val executor = answering("worktree-set.json")
+
+        client(executor).updateWorktree(external, OrcaWorktreeUpdate())
+
+        assertTrue(executor.executedCommands.isEmpty())
+    }
+
+    @Test
+    fun `an unknown board status is saved with a warning and isn't a failure`() = runTest {
+        client(answering("worktree-set-unknown-status.json")).updateWorktree(external, OrcaWorktreeUpdate(workspaceStatus = "bogus"))
+    }
+
+    @Test
+    fun `a rejected update is a command failure`() = runTest {
+        val executor = FakeShellCommandExecutor { CommandResult(it, 1, fixture("error.json"), "") }
+
+        assertFailsWith<WorktreeError.OrcaCommandFailed> { client(executor).updateWorktree(external, OrcaWorktreeUpdate(comment = "x")) }
+    }
+
+    private fun OrcaWorktree.withoutMetadata() = copy(comment = null, workspaceStatus = null, linkedPullRequest = null, linkedIssue = null)
+
+    private companion object {
+        const val COUNT_PROMPT = "Count slowly from 1 to 30, one number per line, then reply with the word done."
     }
 }
 

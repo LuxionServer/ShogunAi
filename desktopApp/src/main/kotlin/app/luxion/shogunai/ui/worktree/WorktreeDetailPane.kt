@@ -84,7 +84,11 @@ fun WorktreeDetailPane(
         }
         StatusSection(status, viewModel.mainBranch?.name)
         AgentSection(worktree, viewModel.agents, viewModel.agentsReadAt)
-        EnvironmentSection(viewModel.environments[worktree.path], viewModel.ports[worktree.path].orEmpty())
+        EnvironmentSection(
+            viewModel.environments[worktree.path],
+            viewModel.ports[worktree.path].orEmpty(),
+            viewModel.observedPorts[worktree.path].orEmpty(),
+        )
         ResourcesSection(worktree, viewModel, desktopTurn)
         ProvisioningSection(
             worktree = worktree,

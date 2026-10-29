@@ -73,14 +73,18 @@ Opening in Orca SHALL fail with a message, and SHALL NOT change the worktree, wh
 - **THEN** the app shows that the worktree couldn't be opened in Orca, with Orca's error message
 
 ### Requirement: Verify the agent started in Orca
-After starting the agent command in a new Orca terminal, ShogunAi SHALL wait up to 10 seconds for Orca to report an agent in that terminal. When the time runs out, the open SHALL fail with an error naming the terminal and the command, and the terminal SHALL stay open.
+After starting the agent command in a new Orca terminal, ShogunAi SHALL wait up to 10 seconds for Orca to report an agent in that terminal, or for Claude Code's session registry to show a live session in the workspace's folder that runs in that terminal or has the name given to the new session. When the time runs out, the open SHALL fail with an error naming the terminal and the command, and the terminal SHALL stay open.
 
 #### Scenario: Agent detected
 - **WHEN** a new terminal runs `claude` and Orca reports an agent in it two seconds later
 - **THEN** the open succeeds
 
+#### Scenario: Agent only in the registry
+- **WHEN** a new terminal runs `claude -n main-repo-task-123`, Orca reports no agent in it, and a live session named `main-repo-task-123` appears in the worktree's folder
+- **THEN** the open succeeds
+
 #### Scenario: Agent never detected
-- **WHEN** Orca reports no agent in the new terminal 10 seconds after it started
+- **WHEN** neither Orca nor Claude Code's session registry shows the agent 10 seconds after the new terminal started
 - **THEN** the open fails with an error naming the terminal and the command, and the terminal stays open
 
 #### Scenario: Agent only focused
@@ -205,6 +209,151 @@ Reading agents from Orca SHALL run at most once per check for all projects. It S
 #### Scenario: Orca closed
 - **WHEN** Orca isn't running during several consecutive checks
 - **THEN** ShogunAi asks Orca at most once every 30 seconds, never starts it, and shows agents without Orca states meanwhile
+
+### Requirement: Keep Orca's board status in step with the worktree's state
+For each non-main worktree Orca lists, ShogunAi SHALL set Orca's board status from the worktree's state: `todo` when it's new, `in-progress` when an agent is working or it needs you, `in-review` when it's stopped or inactive, and `completed` when it's merged. A folder missing, the main worktree or a state not read yet SHALL leave the status untouched.
+
+#### Scenario: A new worktree goes to "todo"
+- **WHEN** Orca lists a worktree with no commits of its own, no uncommitted changes and no agent running, and its status is `in-progress`
+- **THEN** ShogunAi sets its board status in Orca to `todo`
+
+#### Scenario: A merged worktree goes to "completed"
+- **WHEN** a worktree Orca lists is merged into its base
+- **THEN** ShogunAi sets its board status in Orca to `completed`
+
+#### Scenario: A pushed worktree goes to "in-review"
+- **WHEN** a worktree Orca lists has commits of its own, all pushed, nothing uncommitted, isn't merged and has no agent working
+- **THEN** ShogunAi sets its board status in Orca to `in-review`
+
+#### Scenario: The main worktree is left alone
+- **WHEN** Orca lists the repository's main worktree
+- **THEN** ShogunAi doesn't change its board status, comment or links
+
+### Requirement: Respect a status moved by hand in Orca
+ShogunAi SHALL write a worktree's board status only when the status that matches its state differs from the one ShogunAi last wrote for that worktree, remembered across restarts of the app and the command line. A status moved by hand in Orca SHALL stay until the worktree's state maps to a different status.
+
+#### Scenario: A card moved by hand stays
+- **WHEN** ShogunAi set a worktree to `in-review`, someone moved it to `todo` in Orca and the worktree's state hasn't changed
+- **THEN** the next sync leaves the status at `todo`
+
+#### Scenario: A state change moves the card again
+- **WHEN** that worktree is then merged into its base
+- **THEN** the next sync sets its status to `completed`
+
+### Requirement: Show ShogunAi's summary as the worktree's comment in Orca
+For each non-main worktree Orca lists, ShogunAi SHALL set Orca's comment to a one-line summary of the worktree's state starting with `ShogunAi: `, such as `ShogunAi: needs you · 3 uncommitted changes · 2 commits not pushed`. It SHALL write it only when Orca's comment is empty or starts with `ShogunAi: `, and only when it differs.
+
+#### Scenario: An empty comment gets the summary
+- **WHEN** Orca lists a worktree with an empty comment, 3 uncommitted changes and 2 commits not pushed to its upstream
+- **THEN** ShogunAi sets its comment to a summary that starts with `ShogunAi: needs you` and mentions the 3 uncommitted changes and the 2 commits not pushed
+
+#### Scenario: A comment written in Orca is kept
+- **WHEN** a worktree's comment in Orca is "waiting for design review"
+- **THEN** ShogunAi doesn't change the comment
+
+#### Scenario: An unchanged summary isn't rewritten
+- **WHEN** a worktree's comment in Orca already equals ShogunAi's summary
+- **THEN** ShogunAi doesn't send a comment for it
+
+### Requirement: Link the worktree's pull request in Orca
+When the GitHub CLI (`gh`) is installed and signed in, and a worktree Orca lists has a branch pushed to an upstream and no pull request linked in Orca, ShogunAi SHALL link the most recent pull request whose head is that branch, open, merged or closed. A pull request already linked in Orca SHALL NOT be replaced or cleared.
+
+#### Scenario: A pushed branch with a pull request is linked
+- **WHEN** a worktree's branch `feature/login` is pushed, Orca has no pull request linked to it and `gh` finds pull request 42 for that branch
+- **THEN** ShogunAi links pull request 42 to the worktree in Orca
+
+#### Scenario: An existing link is kept
+- **WHEN** Orca already links pull request 7 to the worktree
+- **THEN** ShogunAi doesn't look the branch up and doesn't change the link
+
+#### Scenario: No GitHub CLI
+- **WHEN** `gh` isn't installed, isn't signed in or the repository isn't on GitHub
+- **THEN** ShogunAi links nothing and still syncs the status and the comment
+
+### Requirement: Link the worktree's issue in Orca
+When the last segment of a worktree's branch starts with an issue number (`123-login`, `123`, `issue-123` or `gh-123`), Orca has no issue linked to it and `gh` finds that issue in the repository, ShogunAi SHALL link the issue in Orca. An issue already linked SHALL NOT be replaced or cleared.
+
+#### Scenario: A branch named after an issue
+- **WHEN** a worktree's branch is `feature/123-login`, Orca has no issue linked and issue 123 exists
+- **THEN** ShogunAi links issue 123 to the worktree in Orca
+
+#### Scenario: A task id that isn't an issue number
+- **WHEN** a worktree's branch is `feature/TASK-123`
+- **THEN** ShogunAi doesn't link any issue
+
+### Requirement: Keep GitHub lookups rare
+The desktop app SHALL look up a worktree's pull request or issue with `gh` at most once every 10 minutes per worktree, and each lookup SHALL have a time limit of 10 seconds per lookup, and SHALL NOT look up a link Orca already has. A failed lookup SHALL be treated as no link.
+
+#### Scenario: Repeated checks
+- **WHEN** the desktop app checks its projects every few seconds and a pushed worktree has no pull request
+- **THEN** `gh` is asked about that worktree's branch at most once every 10 minutes
+
+### Requirement: When ShogunAi syncs a worktree to Orca
+ShogunAi SHALL sync the worktrees Orca lists on the desktop app's periodic check while Orca is running, the worktree it opens with "Open in Orca" or `shogun open --orca`, and the worktree `shogun hook orca setup` provisions. Syncing SHALL NOT start Orca, change a repository's visibility in Orca or act on a worktree Orca doesn't list.
+
+#### Scenario: Orca not running
+- **WHEN** Orca is installed but its desktop app isn't running during the desktop app's periodic check
+- **THEN** ShogunAi doesn't start Orca and doesn't sync anything
+
+#### Scenario: Opening from the command line
+- **WHEN** `shogun open TASK-123 --orca` opens a worktree in Orca
+- **THEN** the worktree's status, comment and links are synced before the command ends
+
+#### Scenario: A worktree created from Orca
+- **WHEN** Orca runs `shogun hook orca setup` for a worktree it has just created
+- **THEN** after provisioning, ShogunAi syncs that worktree's status and comment in Orca
+
+### Requirement: A failed sync never fails the action
+A sync that fails, because Orca's command fails, answers late or doesn't list the worktree, SHALL NOT fail or delay the action that triggered it beyond the sync's own time limit, and SHALL NOT be reported as an error of that action. The command line SHALL print a one-line warning on standard error; the desktop app SHALL ignore it and retry on its next check.
+
+#### Scenario: Orca rejects the update
+- **WHEN** `shogun open TASK-123 --orca` opens the worktree but `orca worktree set` fails
+- **THEN** the command still exits with success and prints a warning naming the worktree on standard error
+
+### Requirement: Read the ports Orca sees each worktree listen on
+When Orca is running, the system SHALL read the listening ports Orca ties to a workspace, matched to ShogunAi's worktrees by path, each with its port number, the process listening and the address a dev server printed in an Orca terminal when Orca saw one. A port Orca reports more than once for the same worktree SHALL count once. Listeners Orca doesn't tie to a workspace SHALL be ignored.
+
+#### Scenario: Dev server in a worktree
+- **WHEN** a Python server listens on 127.0.0.1:8765 from a worktree's folder and printed `http://127.0.0.1:8765` in an Orca terminal
+- **THEN** the worktree's observed ports are 8765, by `Python`, at `http://127.0.0.1:8765`
+
+#### Scenario: Port on IPv4 and IPv6
+- **WHEN** Orca reports port 5580 twice for the same worktree
+- **THEN** the worktree's observed ports list 5580 once
+
+#### Scenario: Worktree shown but not created by Orca
+- **WHEN** a worktree created by ShogunAi is visible in Orca and a process in its folder listens on port 10004
+- **THEN** the worktree's observed ports include 10004
+
+### Requirement: Reading Orca's ports doesn't slow the list
+Reading the ports from Orca SHALL run at most once per check for all worktrees. It SHALL run nothing when Orca isn't installed and SHALL NOT start Orca. After a failed read it SHALL wait at least 30 seconds before trying again, and a failed or slow read SHALL NOT delay showing the rest of the worktrees' state.
+
+#### Scenario: Orca not running
+- **WHEN** Orca is installed but its app isn't running
+- **THEN** no worktree has observed ports, Orca isn't started, and nothing reports an error
+
+#### Scenario: Failed read
+- **WHEN** reading the ports from Orca fails
+- **THEN** no worktree has observed ports, and Orca isn't asked for them again for at least 30 seconds
+
+### Requirement: Find a live Claude that Orca doesn't report
+When none of a workspace's Orca terminals reports an agent, opening it in Orca SHALL look in Claude Code's session registry for a live session in the workspace's folder whose process runs in one of those terminals. It SHALL focus that terminal and report `focused` with the session's name, and SHALL NOT start another agent. It SHALL prefer the session with the expected name, then the most recently started one.
+
+#### Scenario: Orca lost track of the agent
+- **WHEN** the user opens in Orca a worktree whose terminal runs a live Claude session named `main-repo-task-123`, but Orca reports no agent in any of its terminals
+- **THEN** that terminal is focused, the result is `focused` with `session_name` `main-repo-task-123`, and no terminal is created
+
+#### Scenario: Session outside Orca
+- **WHEN** a live Claude session runs in the worktree's folder but not in any of the worktree's Orca terminals, for example in another terminal app
+- **THEN** a new Orca terminal runs the agent command as in a fresh open
+
+#### Scenario: Terminal unknown
+- **WHEN** the terminal a live session runs in can't be determined, for example because the system doesn't expose another process's environment
+- **THEN** a new Orca terminal runs the agent command as in a fresh open
+
+#### Scenario: Multirepo agent
+- **WHEN** the user opens the multirepo agent in Orca and its folder's terminal runs a live Claude session that Orca doesn't report
+- **THEN** that terminal is focused and no other agent is started
 
 ### Requirement: Show a started emulator in Orca's emulator view
 When ShogunAi starts a worktree's emulator, from the command line or the desktop app, and that worktree is open in a running Orca, ShogunAi SHALL show the emulator in the worktree's emulator view in Orca, with that emulator selected, unless the worktree's iOS simulator is running too. It SHALL do so whether the start launched the emulator or found it already running.

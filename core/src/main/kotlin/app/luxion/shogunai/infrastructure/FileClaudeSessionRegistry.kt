@@ -2,8 +2,11 @@ package app.luxion.shogunai.infrastructure
 
 import app.luxion.shogunai.domain.io.ClaudeSessionRegistry
 import app.luxion.shogunai.domain.model.ClaudeSession
+import app.luxion.shogunai.domain.model.ClaudeSessionStatus
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonPrimitive
 import java.nio.file.Path
 import kotlin.io.path.isRegularFile
 import kotlin.io.path.listDirectoryEntries
@@ -23,7 +26,14 @@ class FileClaudeSessionRegistry(private val directory: String) : ClaudeSessionRe
             cwd = entry.cwd?.takeIf { it.isNotBlank() } ?: return null,
             name = entry.name?.takeIf { it.isNotBlank() },
             startedAt = entry.startedAt,
+            status = status(entry.status),
+            statusUpdatedAt = entry.statusUpdatedAt,
         )
+    }
+
+    private fun status(value: JsonElement?): ClaudeSessionStatus? {
+        val text = (value as? JsonPrimitive)?.takeIf { it.isString }?.content ?: return null
+        return ClaudeSessionStatus.entries.firstOrNull { it.name.equals(text, ignoreCase = true) }
     }
 
     @Serializable
@@ -32,6 +42,8 @@ class FileClaudeSessionRegistry(private val directory: String) : ClaudeSessionRe
         val cwd: String? = null,
         val name: String? = null,
         val startedAt: Long? = null,
+        val status: JsonElement? = null,
+        val statusUpdatedAt: Long? = null,
     )
 
     private companion object {

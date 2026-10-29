@@ -30,4 +30,24 @@ class JsonOrcaWorkspaceStoreTest {
 
         assertNull(JsonOrcaWorkspaceStore(file).workspacesRoot())
     }
+
+    @Test
+    fun `board statuses and the workspaces folder survive each other's writes`() {
+        JsonOrcaWorkspaceStore(file).remember("/home/dev/orca/workspaces")
+        JsonOrcaWorkspaceStore(file).rememberBoardStatuses(mapOf("/projects/worktrees/TASK-1" to "in-review"))
+        JsonOrcaWorkspaceStore(file).remember("/home/dev/orca/other")
+
+        val store = JsonOrcaWorkspaceStore(file)
+        assertEquals("/home/dev/orca/other", store.workspacesRoot())
+        assertEquals(mapOf("/projects/worktrees/TASK-1" to "in-review"), store.boardStatuses())
+    }
+
+    @Test
+    fun `a file written before board statuses reads with none`() {
+        Files.createDirectories(file.parent)
+        file.writeText("""{"workspacesRoot": "/home/dev/orca/workspaces"}""")
+
+        assertEquals(emptyMap(), JsonOrcaWorkspaceStore(file).boardStatuses())
+        assertEquals("/home/dev/orca/workspaces", JsonOrcaWorkspaceStore(file).workspacesRoot())
+    }
 }

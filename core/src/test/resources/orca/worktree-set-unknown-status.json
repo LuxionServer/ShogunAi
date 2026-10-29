@@ -1,0 +1,84 @@
+{
+  "id": "1f5a6fd7-0b26-4c41-b03d-278814e7f202",
+  "ok": true,
+  "result": {
+    "worktree": {
+      "id": "0355427a-217f-4a07-9072-67d11e704c23::/projects/worktrees/TASK-1",
+      "identity": {
+        "key": "wt2:local:9c2aacdb-81e1-4fd6-969f-b6f50cebc902",
+        "executionHostId": "local",
+        "instanceId": "9c2aacdb-81e1-4fd6-969f-b6f50cebc902"
+      },
+      "instanceId": "9c2aacdb-81e1-4fd6-969f-b6f50cebc902",
+      "repoId": "0355427a-217f-4a07-9072-67d11e704c23",
+      "projectId": "github:example/main-repo",
+      "hostId": "local",
+      "projectHostSetupId": "0355427a-217f-4a07-9072-67d11e704c23",
+      "path": "/projects/worktrees/TASK-1",
+      "head": "60d021c43b88dd4cb72898d770a2c4db763aa12d",
+      "branch": "refs/heads/feature/TASK-1",
+      "isBare": false,
+      "isMainWorktree": false,
+      "displayName": "feature/TASK-1",
+      "displayNameMode": "automatic",
+      "comment": "ShogunAi: new, no commits yet",
+      "linkedIssue": 7,
+      "linkedPR": 42,
+      "suppressedGitHubPR": null,
+      "linkedLinearIssue": null,
+      "linkedLinearIssueWorkspaceId": null,
+      "linkedLinearIssueOrganizationUrlKey": null,
+      "linkedGitLabMR": null,
+      "linkedGitLabIssue": null,
+      "linkedBitbucketPR": null,
+      "linkedAzureDevOpsPR": null,
+      "linkedGiteaPR": null,
+      "linkedWorkItem": null,
+      "linkedItems": [
+        {
+          "provider": "github",
+          "type": "issue",
+          "number": 7
+        },
+        {
+          "provider": "github",
+          "type": "pr",
+          "number": 42
+        }
+      ],
+      "linkedTaskSourceContext": null,
+      "isArchived": false,
+      "isUnread": false,
+      "isPinned": false,
+      "sortOrder": 1793289855648,
+      "lastActivityAt": 1793286979830,
+      "workspaceStatus": "bogus",
+      "parentWorktreeId": null,
+      "childWorktreeIds": [],
+      "lineage": null,
+      "git": {
+        "path": "/projects/worktrees/TASK-1",
+        "head": "60d021c43b88dd4cb72898d770a2c4db763aa12d",
+        "branch": "refs/heads/feature/TASK-1",
+        "isBare": false,
+        "isMainWorktree": false
+      }
+    },
+    "warnings": [
+      {
+        "code": "UNKNOWN_WORKSPACE_STATUS",
+        "message": "Unknown workspace status \"bogus\". The board will show this workspace under \"In progress\" (in-progress). Valid status ids: todo, in-progress, in-review, completed. The requested value was saved.",
+        "details": {
+          "requestedId": "bogus",
+          "effectiveId": "in-progress",
+          "validIds": [
+            "todo",
+            "in-progress",
+            "in-review",
+            "completed"
+          ]
+        }
+      }
+    ]
+  }
+}

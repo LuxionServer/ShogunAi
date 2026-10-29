@@ -17,6 +17,7 @@ import app.luxion.shogunai.domain.io.GradleDaemonSource
 import app.luxion.shogunai.domain.io.AppWindowService
 import app.luxion.shogunai.domain.io.HeadlessAppLauncher
 import app.luxion.shogunai.domain.io.HerdrClient
+import app.luxion.shogunai.domain.io.GitHubClient
 import app.luxion.shogunai.domain.io.OrcaClient
 import app.luxion.shogunai.domain.io.OrcaWorkspaceStore
 import app.luxion.shogunai.domain.io.HerdrConfigSource
@@ -60,6 +61,7 @@ import app.luxion.shogunai.domain.model.DerivedDataOwner
 import app.luxion.shogunai.domain.model.EmulatorState
 import app.luxion.shogunai.domain.model.AGENT_START_SECONDS
 import app.luxion.shogunai.domain.model.HerdrOpening
+import app.luxion.shogunai.domain.model.OrcaComputerUse
 import app.luxion.shogunai.domain.model.OrcaEmulatorView
 import app.luxion.shogunai.domain.model.OrcaOpening
 import app.luxion.shogunai.domain.model.OrcaOutcome
@@ -168,7 +170,10 @@ import app.luxion.shogunai.domain.usecase.ClaudeSessionNaming
 import app.luxion.shogunai.domain.usecase.CloseOrcaTerminalsUseCase
 import app.luxion.shogunai.domain.usecase.orcaDetail
 import app.luxion.shogunai.domain.usecase.OpenWorktreeInOrcaUseCase
+import app.luxion.shogunai.domain.usecase.OrcaSyncItem
 import app.luxion.shogunai.domain.usecase.OrcaWorktreeReader
+import app.luxion.shogunai.domain.usecase.OrcaWorktreeSync
+import app.luxion.shogunai.domain.usecase.worktreeActivity
 import app.luxion.shogunai.domain.usecase.ResolveMainBranchUseCase
 import app.luxion.shogunai.domain.usecase.ResolveRepositoryUseCase
 import app.luxion.shogunai.domain.usecase.ResolveResourceLimitsUseCase
@@ -207,9 +212,11 @@ import app.luxion.shogunai.domain.model.MavenDaemonStopReport
 import app.luxion.shogunai.domain.model.suggestProviders
 import app.luxion.shogunai.domain.model.SuggestionReport
 import app.luxion.shogunai.infrastructure.CliHerdrClient
+import app.luxion.shogunai.infrastructure.CliGitHubClient
 import app.luxion.shogunai.infrastructure.CliOrcaClient
 import app.luxion.shogunai.infrastructure.JsonOrcaWorkspaceStore
 import app.luxion.shogunai.infrastructure.FileClaudeSessionRegistry
+import app.luxion.shogunai.infrastructure.SystemProcessEnvironmentReader
 import app.luxion.shogunai.infrastructure.DockerComposeProjectSource
 import app.luxion.shogunai.infrastructure.NioDesktopTurnStore
 import app.luxion.shogunai.infrastructure.ProcessMavenDaemonSource
@@ -279,6 +286,8 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 
 class ShogunCli(
     private val executor: ShellCommandExecutor,
@@ -307,6 +316,7 @@ class ShogunCli(
     private val herdr: HerdrClient = CliHerdrClient(executor, userHome = userHome),
     private val herdrAgentStartTimeout: kotlin.time.Duration = AGENT_START_SECONDS.seconds,
     private val orca: OrcaClient = CliOrcaClient(executor, userHome = userHome),
+    private val gitHub: GitHubClient = CliGitHubClient(executor),
     private val orcaWorkspaces: OrcaWorkspaceStore = JsonOrcaWorkspaceStore(Path.of(userHome, ".shogunai", "orca.json")),
     private val trust: RepositoryTrust = RepositoryTrust.NONE,
     private val readAnswer: () -> String? = { null },
@@ -502,6 +512,7 @@ class ShogunCli(
             CliCommand.HookHerdr -> hookHerdr()
             is CliCommand.HookOrca -> hookOrca(command.action)
             CliCommand.HookAgentState -> hookAgentState()
+            CliCommand.HookDesktopTurn -> hookDesktopTurn()
             is CliCommand.Hooks -> hooks(command)
             is CliCommand.Guide -> guide(command)
             is CliCommand.GuideBlock -> guideBlock(command)
@@ -1246,6 +1257,7 @@ class ShogunCli(
         val readStatus = ReadWorktreeStatusUseCase(executor, fileManager)
         val herdrWorktreesRoot = herdrConfig.worktreesRoot()
         val agents = DetectRunningAgentsUseCase(executor, herdr, sessionStore, claudeSessions = claudeSessions, orca = orcaReader)(config, worktrees.filterNot { it.isPrunable }).getOrNull().orEmpty()
+        val listeningPorts = orcaReader.ports(worktrees)
         val desktop = readDesktopTurn().getOrElse { DesktopTurnState(holder = null, waiting = emptyList()) }
         val bases = ReadBaseBranchesUseCase(config, executor)().getOrElse { emptyMap() }
         val resolvedBases = ResolveRecordedBasesUseCase(config, executor)()
@@ -1259,6 +1271,7 @@ class ShogunCli(
                 agents[worktree.path].orEmpty(),
                 desktop,
                 worktree.branch?.let(bases::get),
+                listeningPorts?.get(worktree.path),
             )
         }
         if (command.json) {
@@ -1394,6 +1407,7 @@ class ShogunCli(
                 runningSimulator = { path -> readSimulatorStates.runningUdid(config, path) },
             )(worktree, agent).getOrThrow()
             reportSkippedDevices(worktree.path, opening)
+            syncWithOrca(worktree, config)
             if (command.json) printJson(openJson(worktree.path, worktree.branch, opening)) else out.line(orcaOpeningLine(worktree.path, opening))
             return EXIT_OK
         }
@@ -1403,7 +1417,7 @@ class ShogunCli(
     }
 
     private fun claudeSessionNaming(timeout: kotlin.time.Duration) =
-        ClaudeSessionNaming(claudeSessions, isClaudeProcessAlive, timeout)
+        ClaudeSessionNaming(claudeSessions, isClaudeProcessAlive, timeout, processEnvironment = SystemProcessEnvironmentReader(executor))
 
     private fun orcaOpeningLine(path: String, opening: OrcaOpening): String {
         val line = when (opening.outcome) {
@@ -2785,6 +2799,40 @@ class ShogunCli(
         return EXIT_OK
     }
 
+    private suspend fun hookDesktopTurn(): Int {
+        val input = hookInput("desktop-turn") ?: return EXIT_USAGE
+        if (input.string("tool_name") != BASH_TOOL) return EXIT_OK
+        val command = (input["tool_input"] as? JsonObject)?.string("command") ?: return EXIT_OK
+        if (!OrcaComputerUse.drivesDesktop(command)) return EXIT_OK
+        try {
+            val directory = input.string("cwd") ?: workingDirectory
+            if (ResolveRepositoryUseCase(executor)(directory).isFailure) return EXIT_OK
+            val worktree = worktreeTopLevel(directory)
+            val taken = acquireDesktopTurn(worktree).exceptionOrNull() as? WorktreeError.DesktopTurnTaken ?: return EXIT_OK
+            printJson(desktopTurnDenial(taken))
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            return EXIT_OK
+        }
+        return EXIT_OK
+    }
+
+    private fun desktopTurnDenial(taken: WorktreeError.DesktopTurnTaken): JsonObject = buildJsonObject {
+        put(
+            "hookSpecificOutput",
+            buildJsonObject {
+                put("hookEventName", "PreToolUse")
+                put("permissionDecision", "deny")
+                put(
+                    "permissionDecisionReason",
+                    "${taken.summary}. Take your turn first with `shogun desktop acquire --wait`, run in the background " +
+                        "since it can wait up to 30 minutes, then run this command again.",
+                )
+            },
+        )
+    }
+
     private suspend fun unversionedMultirepoFolder(directory: String): String? {
         if (ResolveRepositoryUseCase(executor)(directory).isSuccess) return null
         return resolveMultirepo.known().firstOrNull { sameDirectory(it.folder, directory) }?.folder
@@ -2883,8 +2931,34 @@ class ShogunCli(
             ?: return hookUsageError("orca", "$ORCA_WORKTREE_PATH isn't set; run it from the scripts of Orca's orca.yaml")
         val repository = repositoryOfOrcaWorktree(path)
         return when (action) {
-            OrcaHookAction.SETUP -> provisionWorktreeAt(path, RepositoryApproval.SKIP, ::noteOutsideWorktreesRoot, configDirectory = repository)
+            OrcaHookAction.SETUP -> provisionWorktreeAt(path, RepositoryApproval.SKIP, ::noteOutsideWorktreesRootAndSyncWithOrca, configDirectory = repository)
             OrcaHookAction.ARCHIVE -> releaseOrcaWorktree(path, repository)
+        }
+    }
+
+    private suspend fun noteOutsideWorktreesRootAndSyncWithOrca(worktree: Worktree, config: ProjectConfig) {
+        noteOutsideWorktreesRoot(worktree, config)
+        syncWithOrca(worktree, config)
+    }
+
+    private suspend fun syncWithOrca(worktree: Worktree, config: ProjectConfig) {
+        val failures = try {
+            val agents = DetectRunningAgentsUseCase(executor, herdr, sessionStore, claudeSessions = claudeSessions, orca = orcaReader)(config, listOf(worktree))
+                .getOrNull().orEmpty()[worktree.path].orEmpty()
+            val rows = orcaReader.lastRows() ?: return
+            val mainBranch = ResolveMainBranchUseCase(config, executor)().getOrNull()
+            val base = worktree.branch?.let(ResolveRecordedBasesUseCase(config, executor)()::get) ?: mainBranch
+            val status = ReadWorktreeStatusUseCase(executor, fileManager)(worktree, mainBranch, base).getOrNull()
+            val item = OrcaSyncItem(worktree, status, agents, worktreeActivity(worktree, status, agents, now()))
+            OrcaWorktreeSync(orca, orcaWorkspaces, gitHub).sync(listOf(item), rows).map { it.error }
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            listOf(error)
+        }
+        failures.forEach { error ->
+            val reason = (error as? WorktreeError)?.orcaDetail() ?: failureReason(error)
+            err.line("shogun: couldn't update ${worktree.path} in Orca: $reason")
         }
     }
 
@@ -2989,6 +3063,7 @@ class ShogunCli(
             entry.base?.let { add("base=$it") }
             if (worktree.isLocked) add("locked")
             entry.agents.takeIf { it.isNotEmpty() }?.let { agents -> add("agents=${agents.joinToString(",") { agentLabel(it) }}") }
+            entry.listeningPorts?.takeIf { it.isNotEmpty() }?.let { ports -> add("listening=${ports.joinToString(",") { it.port.toString() }}") }
             desktopTurnStatusNote(entry.desktop, worktree.path)?.let(::add)
             when {
                 worktree.isPrunable -> add("folder-missing")
@@ -3060,6 +3135,7 @@ class ShogunCli(
         private const val IGNORED_DECLARED_AGENT =
             "The declaration's agent is ignored; set the multirepo agent on this machine with 'shogun multirepo agent'."
         private const val SESSION_END = "SessionEnd"
+        private const val BASH_TOOL = "Bash"
         private val DESKTOP_RELEASING_EVENTS = setOf("Stop", SESSION_END)
         private const val HERDR_PLUGIN_EVENT = "HERDR_PLUGIN_EVENT"
         private const val HERDR_PLUGIN_EVENT_JSON = "HERDR_PLUGIN_EVENT_JSON"

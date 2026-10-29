@@ -81,6 +81,7 @@ import app.luxion.shogunai.infrastructure.NioLauncherFiles
 import app.luxion.shogunai.infrastructure.PowerShellUserPath
 import app.luxion.shogunai.infrastructure.FileAgentSessionStore
 import app.luxion.shogunai.infrastructure.FileClaudeSessionRegistry
+import app.luxion.shogunai.infrastructure.SystemProcessEnvironmentReader
 import app.luxion.shogunai.ui.shell.openInBrowser
 import java.nio.file.Files
 import java.nio.file.Path
@@ -172,8 +173,12 @@ import app.luxion.shogunai.domain.usecase.OpenGroupInOrcaUseCase
 import app.luxion.shogunai.domain.usecase.OpenMultirepoAgentInOrcaUseCase
 import app.luxion.shogunai.domain.usecase.OpenWorktreeInOrcaUseCase
 import app.luxion.shogunai.domain.usecase.OrcaOrigins
+import app.luxion.shogunai.domain.usecase.OrcaSyncItem
 import app.luxion.shogunai.domain.usecase.OrcaWorktreeReader
+import app.luxion.shogunai.domain.usecase.OrcaWorktreeSync
+import app.luxion.shogunai.domain.model.ObservedPort
 import app.luxion.shogunai.domain.model.OrcaOpening
+import app.luxion.shogunai.infrastructure.CliGitHubClient
 import app.luxion.shogunai.infrastructure.CliOrcaClient
 import app.luxion.shogunai.infrastructure.JsonOrcaWorkspaceStore
 import app.luxion.shogunai.domain.usecase.CopyWorktreeLaunchCommandUseCase
@@ -461,12 +466,14 @@ class AppContainer {
     private val herdrConfig = HerdrConfigFile()
     private val herdrClient = CliHerdrClient(shellCommandExecutor)
     private val orcaClient = CliOrcaClient(shellCommandExecutor)
+    private val orcaStore = JsonOrcaWorkspaceStore()
+    private val orcaReader = OrcaWorktreeReader(orcaClient, orcaStore)
+    private val orcaSync = OrcaWorktreeSync(orcaClient, orcaStore, CliGitHubClient(shellCommandExecutor))
 
     private fun isRunnerInstalled(runner: RunnerId): Boolean = when (runner) {
         RunnerId.HERDR -> herdrClient.isInstalled()
         RunnerId.ORCA -> orcaClient.isInstalled()
     }
-    private val orcaReader = OrcaWorktreeReader(orcaClient, JsonOrcaWorkspaceStore())
     private val resourceLimitsRepository: ResourceLimitsRepository = JsonResourceLimitsRepository(settingsFile)
     private val resolveResourceLimits = ResolveResourceLimitsUseCase(resourceLimitsRepository, JvmMachineCapacity())
     private val listGradleDaemons = ListGradleDaemonsUseCase(gradleDaemonSource, fileManager)
@@ -476,6 +483,9 @@ class AppContainer {
         ClaudeCodeHooks.claudeSessionsDirectory(System.getenv("CLAUDE_CONFIG_DIR"), System.getProperty("user.home")),
     )
     private val herdrLauncher = HerdrAgentLauncher(herdrClient, registry = claudeSessions)
+    private val processEnvironment = SystemProcessEnvironmentReader(shellCommandExecutor)
+
+    private fun orcaSessionNaming() = ClaudeSessionNaming(claudeSessions, processEnvironment = processEnvironment)
     private val readPool = ReadResourcePoolUseCase(
         resolveEnvironment,
         environmentStateStore,
@@ -552,6 +562,11 @@ class AppContainer {
 
     val detectRunningAgents =
         DetectRunningAgentsUseCase(shellCommandExecutor, herdrClient, agentSessionStore, claudeSessions = claudeSessions, orca = orcaReader)
+
+    suspend fun syncOrca(items: List<OrcaSyncItem>) {
+        val rows = orcaReader.lastRows() ?: return
+        withContext(Dispatchers.IO) { orcaSync.sync(items, rows, prune = true) }
+    }
 
     private val prepareEnvironment = PrepareWorktreeEnvironmentUseCase(
         resolveEnvironment,
@@ -653,12 +668,12 @@ class AppContainer {
             OpenGroupInOrcaUseCase(
                 orcaClient,
                 resolveEnvironment,
-                ClaudeSessionNaming(claudeSessions),
+                orcaSessionNaming(),
                 runningEmulator = readEmulatorStates::runningSerial,
                 runningSimulator = readSimulatorStates::runningUdid,
             )(group)
         },
-        openAgentInOrca = { multirepo -> OpenMultirepoAgentInOrcaUseCase(orcaClient, ClaudeSessionNaming(claudeSessions))(multirepo) },
+        openAgentInOrca = { multirepo -> OpenMultirepoAgentInOrcaUseCase(orcaClient, orcaSessionNaming())(multirepo) },
         herdrInstalled = herdrClient.isInstalled(),
         orcaInstalled = orcaClient.isInstalled(),
     )
@@ -875,12 +890,13 @@ class AppContainer {
                 config,
                 orcaClient,
                 resolveEnvironment,
-                ClaudeSessionNaming(claudeSessions),
+                orcaSessionNaming(),
                 runningEmulator = { path -> readEmulatorStates.runningSerial(config, path) },
                 runningSimulator = { path -> readSimulatorStates.runningUdid(config, path) },
             )::invoke,
             withTerminals = { paths -> withContext(Dispatchers.IO) { CloseOrcaTerminalsUseCase(orcaClient).withTerminals(paths) } },
             origins = orcaReader::origins,
+            ports = orcaReader::ports,
         ),
         gradle = GradleUseCases(
             provider = {
@@ -1106,6 +1122,7 @@ data class OrcaUseCases(
     val open: suspend (Worktree, AgentLaunchConfig) -> Result<OrcaOpening>,
     val withTerminals: suspend (List<String>) -> Set<String> = { emptySet() },
     val origins: () -> OrcaOrigins? = { null },
+    val ports: (List<Worktree>) -> Map<String, List<ObservedPort>>? = { null },
 ) {
     companion object {
         val NONE = OrcaUseCases(open = { _, _ -> Result.failure(WorktreeError.OrcaNotInstalled) })

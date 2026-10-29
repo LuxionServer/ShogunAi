@@ -107,19 +107,25 @@ class DetectRunningAgentsUseCase(
         exact: Set<String>,
     ): Map<String, List<RunningAgent>> {
         val registry = claudeSessions ?: return agents
-        val refsByPath = runCatching { registry.list() }.getOrDefault(emptyList())
+        val sessionsByPath = runCatching { registry.list() }.getOrDefault(emptyList())
             .filter { it.pid in claudePids }
-            .mapNotNull { session ->
-                val name = session.name ?: return@mapNotNull null
-                attributedWorktree(session.cwd, worktrees, exact)?.let { it.path to ClaudeSessionRef(name, session.pid) }
-            }
+            .mapNotNull { session -> attributedWorktree(session.cwd, worktrees, exact)?.let { it.path to session } }
             .groupBy({ it.first }, { it.second })
-            .mapValues { (_, refs) -> refs.sortedWith(compareBy(ClaudeSessionRef::name, ClaudeSessionRef::pid)) }
-        if (refsByPath.isEmpty()) return agents
+        if (sessionsByPath.isEmpty()) return agents
         return agents.mapValues { (path, running) ->
-            val refs = refsByPath[path] ?: return@mapValues running
-            running.map { agent -> if (agent.name == CLAUDE) agent.copy(sessions = refs) else agent }
+            val sessions = sessionsByPath[path] ?: return@mapValues running
+            val refs = sessions
+                .mapNotNull { session -> session.name?.let { ClaudeSessionRef(it, session.pid) } }
+                .sortedWith(compareBy(ClaudeSessionRef::name, ClaudeSessionRef::pid))
+            val state = sessions.mapNotNull { it.state }.maxByOrNull(::urgency)
+            running.map { agent -> if (agent.name == CLAUDE) withRegistry(agent, refs, state) else agent }
         }
+    }
+
+    private fun withRegistry(agent: RunningAgent, refs: List<ClaudeSessionRef>, state: AgentState?): RunningAgent {
+        val named = if (refs.isEmpty()) agent else agent.copy(sessions = refs)
+        if (named.state != null || state == null) return named
+        return named.copy(state = state, stateSource = AgentStateSource.CLAUDE_CODE)
     }
 
     private fun liveSessions(store: AgentSessionStore, path: String, claudePids: Set<Long>, hasClaudeProcess: Boolean): List<AgentState> =
@@ -189,14 +195,17 @@ class DetectRunningAgentsUseCase(
             val known = agents[path].orEmpty()
             val knownNames = known.map { it.name }.toSet()
             known.map { agent -> orcaByName[agent.name]?.let { withOrcaState(agent, it) } ?: agent } +
-                orcaByName.filterKeys { it !in knownNames }.values.map { RunningAgent(it.agent, it.state, stateSource = it.state?.let { AgentStateSource.ORCA }) }
+                orcaByName.filterKeys { it !in knownNames }.values.map {
+                    RunningAgent(it.agent, it.state, stateSource = it.state?.let { AgentStateSource.ORCA }, activity = it.activity)
+                }
         }
     }
 
     private fun withOrcaState(agent: RunningAgent, orcaAgent: OrcaAgent): RunningAgent {
-        val state = orcaAgent.state ?: return agent
-        if (agent.stateSource == AgentStateSource.HERDR && urgency(agent.state) >= urgency(state)) return agent
-        return agent.copy(state = state, stateSource = AgentStateSource.ORCA)
+        val detailed = agent.copy(activity = orcaAgent.activity)
+        val state = orcaAgent.state ?: return detailed
+        if (agent.stateSource == AgentStateSource.HERDR && urgency(agent.state) >= urgency(state)) return detailed
+        return detailed.copy(state = state, stateSource = AgentStateSource.ORCA)
     }
 
     private fun attributedWorktree(cwd: String, worktrees: List<Worktree>, exact: Set<String>): Worktree? {

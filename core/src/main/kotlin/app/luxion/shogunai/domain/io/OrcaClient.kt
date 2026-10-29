@@ -1,10 +1,12 @@
 package app.luxion.shogunai.domain.io
 
+import app.luxion.shogunai.domain.model.OrcaPort
 import app.luxion.shogunai.domain.model.OrcaRepo
 import app.luxion.shogunai.domain.model.OrcaStatus
 import app.luxion.shogunai.domain.model.OrcaTerminal
 import app.luxion.shogunai.domain.model.OrcaWorkspace
 import app.luxion.shogunai.domain.model.OrcaWorktree
+import app.luxion.shogunai.domain.model.OrcaWorktreeUpdate
 
 interface OrcaClient {
 
@@ -25,6 +27,10 @@ interface OrcaClient {
     suspend fun worktrees(repoId: String): List<OrcaWorktree>
 
     suspend fun agentsByWorktree(): List<OrcaWorktree>
+
+    suspend fun updateWorktree(path: String, update: OrcaWorktreeUpdate)
+
+    suspend fun ports(): List<OrcaPort>
 
     suspend fun terminals(workspace: OrcaWorkspace): List<OrcaTerminal>
 

@@ -46,6 +46,7 @@ jobs:
           echo "ref=$REF" >> "$GITHUB_OUTPUT"
 
   test:
+    name: Tests
     needs: resolve-version
     permissions:
       contents: read

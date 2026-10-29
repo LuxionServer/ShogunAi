@@ -4,6 +4,7 @@ import app.luxion.shogunai.domain.FakeClaudeSessionRegistry
 import app.luxion.shogunai.domain.FakeEnvironmentStateStore
 import app.luxion.shogunai.domain.FakeOrcaClient
 import app.luxion.shogunai.domain.FakePortProbe
+import app.luxion.shogunai.domain.FakeProcessEnvironmentReader
 import app.luxion.shogunai.domain.FakeRepositoryProvisioningSource
 import app.luxion.shogunai.domain.FakeRepositoryTrust
 import app.luxion.shogunai.domain.FakeShellCommandExecutor
@@ -60,6 +61,7 @@ class OpenWorktreeInOrcaUseCaseTest {
         orca: FakeOrcaClient,
         source: FakeRepositoryProvisioningSource = provisioning(),
         registry: FakeClaudeSessionRegistry? = null,
+        environment: FakeProcessEnvironmentReader? = null,
         usesPowerShell: Boolean = false,
         samePath: (String, String) -> Boolean = { first, second -> first == second },
         runningEmulator: suspend (String) -> String? = { null },
@@ -68,7 +70,7 @@ class OpenWorktreeInOrcaUseCaseTest {
         config,
         orca,
         ResolveWorktreeEnvironmentUseCase(gitExecutor, source, FakeEnvironmentStateStore(), FakePortProbe(), trust = FakeRepositoryTrust(approvesEverything = true)),
-        ClaudeSessionNaming(registry, isClaudeProcessAlive = { true }),
+        ClaudeSessionNaming(registry, isClaudeProcessAlive = { true }, processEnvironment = environment),
         usesPowerShell = usesPowerShell,
         samePath = samePath,
         runningEmulator = runningEmulator,
@@ -442,6 +444,100 @@ class OpenWorktreeInOrcaUseCaseTest {
         assertNull(opening.sessionName)
         assertEquals(0, registry.listings)
         assertTrue(orca.created.isEmpty())
+    }
+
+    private fun handles(vararg pairs: Pair<Long, String>) =
+        FakeProcessEnvironmentReader(pairs.associate { (pid, handle) -> pid to mapOf("ORCA_TERMINAL_HANDLE" to handle) })
+
+    private fun withTerminals(vararg handles: String, startsAgents: Boolean = true) = FakeOrcaClient(
+        repos = listOf(known),
+        visibleWorktrees = visible,
+        terminals = mapOf(task.path to handles.map { OrcaTerminal(it, task.path) }),
+        startsAgents = startsAgents,
+    )
+
+    @Test
+    fun `a live Claude Orca doesn't report is focused through its session's terminal`() = runTest {
+        val orca = withTerminals("term_shell", "term_lost")
+        val registry = FakeClaudeSessionRegistry(listOf(ClaudeSession(42, task.path, "main-repo-task-8")))
+
+        val opening = useCase(orca, registry = registry, environment = handles(42L to "term_lost"))(task).getOrThrow()
+
+        assertEquals(OrcaOpening(OrcaOutcome.FOCUSED, "term_lost", "claude", "main-repo-task-8"), opening)
+        assertEquals(listOf("term_lost"), orca.switched)
+        assertTrue(orca.created.isEmpty())
+        assertEquals(1, orca.raised)
+    }
+
+    @Test
+    fun `the session with the expected name wins, then the newest`() = runTest {
+        val sessions = listOf(
+            ClaudeSession(41, task.path, "older", startedAt = 1),
+            ClaudeSession(42, task.path, "main-repo-task-8", startedAt = 0),
+            ClaudeSession(43, task.path, "newer", startedAt = 5),
+        )
+        val environment = handles(41L to "term_a", 42L to "term_b", 43L to "term_c")
+
+        val expected = useCase(withTerminals("term_a", "term_b", "term_c"), registry = FakeClaudeSessionRegistry(sessions), environment = environment)(task)
+        val newest = useCase(withTerminals("term_a", "term_b", "term_c"), registry = FakeClaudeSessionRegistry(sessions.filter { it.pid != 42L }), environment = environment)(task)
+
+        assertEquals("term_b", expected.getOrThrow().terminalHandle)
+        assertEquals(OrcaOpening(OrcaOutcome.FOCUSED, "term_c", "claude", "newer"), newest.getOrThrow())
+    }
+
+    @Test
+    fun `a session running outside the worktree's Orca terminals doesn't stop a new agent`() = runTest {
+        val orca = withTerminals("term_shell")
+        val registry = FakeClaudeSessionRegistry(listOf(ClaudeSession(42, task.path, "main-repo-task-8")))
+
+        val opening = useCase(orca, registry = registry, environment = handles(42L to "term_of_another_worktree"))(task).getOrThrow()
+
+        assertEquals(OrcaOutcome.STARTED_AGENT, opening.outcome)
+        assertTrue(orca.switched.isEmpty())
+        assertEquals(1, orca.created.size)
+    }
+
+    @Test
+    fun `a session whose terminal can't be told doesn't stop a new agent`() = runTest {
+        val registry = FakeClaudeSessionRegistry(listOf(ClaudeSession(42, task.path, "main-repo-task-8")))
+
+        val withoutReader = withTerminals("term_shell")
+        val withoutVariable = withTerminals("term_shell")
+        useCase(withoutReader, registry = registry)(task).getOrThrow()
+        useCase(withoutVariable, registry = registry, environment = FakeProcessEnvironmentReader())(task).getOrThrow()
+
+        assertEquals(1, withoutReader.created.size)
+        assertEquals(1, withoutVariable.created.size)
+    }
+
+    @Test
+    fun `a started agent Orca doesn't report is confirmed by its session's name`() = runTest {
+        val orca = FakeOrcaClient(repos = listOf(known), visibleWorktrees = visible, startsAgents = false)
+
+        val opening = useCase(orca, registry = FakeClaudeSessionRegistry(started = orca::startedClaudeSessions))(task).getOrThrow()
+
+        assertEquals(OrcaOpening(OrcaOutcome.STARTED_AGENT, "term_1", config.agentLaunchConfig.displayName, "main-repo-task-8"), opening)
+    }
+
+    @Test
+    fun `a started agent Orca doesn't report is confirmed by its session's terminal`() = runTest {
+        val orca = FakeOrcaClient(repos = listOf(known), visibleWorktrees = visible, startsAgents = false)
+        val registry = FakeClaudeSessionRegistry(listOf(ClaudeSession(99, task.path, null)))
+
+        val opening = useCase(orca, registry = registry, environment = handles(99L to "term_1"))(task).getOrThrow()
+
+        assertEquals(OrcaOutcome.STARTED_AGENT, opening.outcome)
+        assertEquals("term_1", opening.terminalHandle)
+    }
+
+    @Test
+    fun `an agent neither Orca nor the registry shows still fails`() = runTest {
+        val orca = FakeOrcaClient(repos = listOf(known), visibleWorktrees = visible, startsAgents = false)
+        val registry = FakeClaudeSessionRegistry(listOf(ClaudeSession(99, task.path, "someone-else")))
+
+        val result = useCase(orca, registry = registry, environment = handles(99L to "term_other"))(task)
+
+        assertIs<WorktreeError.OrcaAgentNotStarted>(result.exceptionOrNull())
     }
 }
 

@@ -27,6 +27,15 @@ class JsonOrcaWorkspaceStore(
         }
     }
 
+    override fun boardStatuses(): Map<String, String> = read().boardStatuses
+
+    override fun rememberBoardStatuses(statuses: Map<String, String>) {
+        LocalFileLock.withLock(storagePath) {
+            val current = read()
+            if (current.boardStatuses != statuses) write(current.copy(boardStatuses = statuses))
+        }
+    }
+
     private fun read(): Store {
         if (!storagePath.exists()) return Store()
         val text = runCatching { storagePath.readText() }.getOrDefault("")
@@ -48,5 +57,5 @@ class JsonOrcaWorkspaceStore(
     }
 
     @Serializable
-    private data class Store(val workspacesRoot: String? = null)
+    private data class Store(val workspacesRoot: String? = null, val boardStatuses: Map<String, String> = emptyMap())
 }

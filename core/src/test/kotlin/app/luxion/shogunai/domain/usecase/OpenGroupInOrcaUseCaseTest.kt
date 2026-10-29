@@ -1,12 +1,15 @@
 package app.luxion.shogunai.domain.usecase
 
+import app.luxion.shogunai.domain.FakeClaudeSessionRegistry
 import app.luxion.shogunai.domain.FakeEnvironmentStateStore
 import app.luxion.shogunai.domain.FakeOrcaClient
 import app.luxion.shogunai.domain.FakePortProbe
+import app.luxion.shogunai.domain.FakeProcessEnvironmentReader
 import app.luxion.shogunai.domain.FakeRepositoryProvisioningSource
 import app.luxion.shogunai.domain.FakeRepositoryTrust
 import app.luxion.shogunai.domain.model.AgentLaunchConfig
 import app.luxion.shogunai.domain.model.AgentState
+import app.luxion.shogunai.domain.model.ClaudeSession
 import app.luxion.shogunai.domain.model.Multirepo
 import app.luxion.shogunai.domain.model.OrcaAgent
 import app.luxion.shogunai.domain.model.OrcaOpening
@@ -169,6 +172,26 @@ class OpenGroupInOrcaUseCaseTest {
 
         assertEquals(OrcaOpening(OrcaOutcome.FOCUSED, "term_agent", "claude"), opening)
         assertEquals(listOf("term_agent"), orca.switched)
+        assertTrue(orca.created.isEmpty())
+    }
+
+    @Test
+    fun `a live multirepo agent Orca doesn't report is focused through its session's terminal`() = runTest {
+        val orca = FakeOrcaClient(
+            psRows = listOf(OrcaWorktree(world.folder, false, folderId = "f1")),
+            folderPaths = mapOf("f1" to world.folder),
+            terminals = mapOf(world.folder to listOf(OrcaTerminal("term_shell", ""), OrcaTerminal("term_lost", ""))),
+        )
+        val naming = ClaudeSessionNaming(
+            FakeClaudeSessionRegistry(listOf(ClaudeSession(42, world.folder, "product"))),
+            isClaudeProcessAlive = { true },
+            processEnvironment = FakeProcessEnvironmentReader(mapOf(42L to mapOf("ORCA_TERMINAL_HANDLE" to "term_lost"))),
+        )
+
+        val opening = OpenMultirepoAgentInOrcaUseCase(orca, naming, samePath = samePath)(multirepo).getOrThrow()
+
+        assertEquals(OrcaOpening(OrcaOutcome.FOCUSED, "term_lost", "claude", "product"), opening)
+        assertEquals(listOf("term_lost"), orca.switched)
         assertTrue(orca.created.isEmpty())
     }
 

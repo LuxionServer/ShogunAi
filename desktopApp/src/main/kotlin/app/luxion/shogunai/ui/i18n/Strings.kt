@@ -197,6 +197,11 @@ interface Strings {
     val menuActive: String
     val menuAllWorktrees: String
     fun agentsRunning(names: List<String>): String
+    fun agentWaitingOn(tool: String, input: String?): String
+    fun agentPrompt(prompt: String): String
+    fun agentLastMessage(message: String): String
+    fun portListening(label: String): String
+    val orcaPortsTitle: String
     fun agentLabel(name: String, phase: AgentPhase): String = "$name · ${agentPhaseName(phase)}"
     fun agentPhaseName(phase: AgentPhase): String
     fun agentStateSource(source: AgentStateSource?): String

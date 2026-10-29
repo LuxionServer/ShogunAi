@@ -8,13 +8,19 @@ data class OrcaStatus(val running: Boolean, val version: String? = null)
 
 data class OrcaRepo(val id: String, val path: String, val externalWorktreeVisibility: String? = null)
 
-data class OrcaAgent(val agent: String, val state: AgentState?)
+data class OrcaAgent(val agent: String, val state: AgentState?, val activity: AgentActivity? = null)
+
+data class OrcaPort(val port: Int, val worktreePath: String, val process: String? = null, val url: String? = null)
 
 data class OrcaWorktree(
     val path: String,
     val createdByOrca: Boolean,
     val agents: List<OrcaAgent> = emptyList(),
     val folderId: String? = null,
+    val comment: String? = null,
+    val workspaceStatus: String? = null,
+    val linkedPullRequest: Int? = null,
+    val linkedIssue: Int? = null,
 ) {
     val workspace: OrcaWorkspace get() = folderId?.let(OrcaWorkspace::Folder) ?: OrcaWorkspace.Worktree(path)
 }
@@ -29,6 +35,15 @@ sealed interface OrcaWorkspace {
     data class Folder(val id: String) : OrcaWorkspace {
         override val selector: String get() = "id:folder:$id"
     }
+}
+
+data class OrcaWorktreeUpdate(
+    val comment: String? = null,
+    val workspaceStatus: String? = null,
+    val pullRequest: Int? = null,
+    val issue: Int? = null,
+) {
+    val isEmpty: Boolean get() = comment == null && workspaceStatus == null && pullRequest == null && issue == null
 }
 
 data class OrcaTerminal(val handle: String, val worktreePath: String, val title: String? = null)

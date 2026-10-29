@@ -63,6 +63,7 @@ class WorkflowRulesTest {
             assertTrue("shogun desktop acquire --wait" in rule.text)
             assertTrue("shogun desktop release" in rule.text)
             assertTrue("background" in rule.text)
+            assertTrue("`orca computer`" in rule.text)
         }
     }
 
