@@ -46,8 +46,7 @@ class TourE2eTest {
         awaitText(TOUR_PROJECT_NAME)
         awaitText("needs-you", substring = true)
 
-        onNodeWithText(strings.tourEnd).performClick()
-        awaitCondition("the end-tour confirmation") { onAllNodesWithText(strings.tourEnd).fetchSemanticsNodes().size > 1 }
+        clickUntil(strings.tourEnd, "the end-tour confirmation") { onAllNodesWithText(strings.tourEnd).fetchSemanticsNodes().size > 1 }
         onAllNodesWithText(strings.tourEnd).onLast().performClick()
 
         awaitCondition("the sample folder to be removed") {

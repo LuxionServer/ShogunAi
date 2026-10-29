@@ -11,6 +11,8 @@ import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.SemanticsNodeInteractionsProvider
 import androidx.compose.ui.test.isRoot
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onFirst
+import androidx.compose.ui.test.performClick
 import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import app.luxion.shogunai.AppContainer
@@ -83,6 +85,15 @@ fun ComposeUiTest.awaitCondition(description: String, condition: () -> Boolean) 
         waitUntil(timeoutMillis = E2E_TIMEOUT_MILLIS, condition = condition)
     } catch (timeout: ComposeTimeoutException) {
         fail("Timed out waiting for $description. Texts on screen: ${textsOnScreen()}", timeout)
+    }
+}
+
+@OptIn(ExperimentalTestApi::class)
+fun ComposeUiTest.clickUntil(text: String, description: String, condition: () -> Boolean) {
+    awaitCondition(description) {
+        val targets = onAllNodesWithText(text)
+        if (!condition() && targets.fetchSemanticsNodes().isNotEmpty()) targets.onFirst().performClick()
+        condition()
     }
 }
 

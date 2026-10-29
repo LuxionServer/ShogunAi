@@ -5,7 +5,6 @@ import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onAllNodesWithText
-import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onLast
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
@@ -47,8 +46,9 @@ class CreateWorktreeE2eTest {
         val strings = setShell(appContainer)
 
         awaitText(strings.newWorktree)
-        onAllNodesWithText(strings.newWorktree).onFirst().performClick()
-        awaitText(strings.taskIdLabel)
+        clickUntil(strings.newWorktree, "the new worktree dialog") {
+            onAllNodesWithText(strings.taskIdLabel).fetchSemanticsNodes().isNotEmpty()
+        }
         onAllNodes(hasSetTextAction()).onLast().performTextInput("TASK-123")
         onNode(hasClickAction() and hasText(strings.createWorktree)).performClick()
 
