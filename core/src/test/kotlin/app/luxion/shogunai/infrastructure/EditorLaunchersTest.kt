@@ -24,7 +24,7 @@ class EditorLaunchersTest {
         editor,
         executor,
         os,
-        ExecutableLocator(os, "/home/dev", listOf("/usr/bin"), "C:\\L") { it in files },
+        ExecutableLocator(os, "/home/dev", { listOf("/usr/bin") }, "C:\\L") { it in files },
         XcodeWorkspaceFinder { xcodeTarget },
     )
 
@@ -84,7 +84,7 @@ class EditorLaunchersTest {
         val executor = FakeShellCommandExecutor()
         val studio = "C:\\Program Files\\Android\\Android Studio\\bin\\studio64.exe"
         val locator = ExecutableLocator(
-            HostOs.WINDOWS, "/home/dev", emptyList(), null,
+            HostOs.WINDOWS, "/home/dev", { emptyList() }, null,
             listOf("C:\\Program Files"), listOf(".EXE"), { emptyList() }, { it == studio },
         )
 
