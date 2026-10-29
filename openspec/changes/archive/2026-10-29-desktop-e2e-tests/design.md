@@ -56,6 +56,10 @@ Real Git work runs on `Dispatchers.IO`, outside the test clock. The harness wait
 - [Slower `./gradlew test`] → four flows, each a few seconds of Git work; the task runs after the regular tests.
 - [Developer's Homebrew `shogun` makes the tour skip its command step locally] → accepted; CI covers the other branch.
 
+## Bug found
+
+On Windows CI, about one run in two, ending the tour showed "Something unexpected went wrong" and left the sample half-deleted: `EndTourUseCase` removed the project and deleted its folder at once, while the board's work on those worktrees (folder watching, Git status, size measurement) still held files open, which Windows refuses to delete. `EndTourUseCase` now retries the deletion while it fails with a `FileSystemException`, waiting 100 ms, 250 ms, 500 ms, 1 s and 2 s between attempts before giving up, covered by a regression test that fails the first two attempts.
+
 ## Dependencies and follow-ups
 
 - host-environment: once the home, shell and `PATH` are resolved in one place, the harness can inject them instead of relying on the task's JVM settings, and the tour and hooks tests can force "command missing" and "command installed" deterministically. Left as a follow-up for that change.

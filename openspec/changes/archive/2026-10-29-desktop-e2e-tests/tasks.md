@@ -17,7 +17,7 @@
 - [x] 3.2 Add-project test: add project → choose a real repository → add a local file → save → listed in the sidebar and stored in the isolated `projects.json` with that file. Verify: test passes.
 - [x] 3.3 Create-worktree test: project with local files (a root file and a nested one) → new worktree → task id `TASK-123` → create → branch exists, worktree folder exists, files copied with their content, row shown. Verify: test passes.
 - [x] 3.4 Claude Code hooks test: fake launcher on the `PATH` → hooks section shows missing → install → confirm → isolated `~/.claude/settings.json` has ShogunAi's `shogun` hooks, keeps the existing settings and the section shows installed → remove → confirm → no ShogunAi hooks left. Verify: test passes.
-- [x] 3.5 Fix any bug the tests uncover with its regression test, or record it in design.md and ask Ciro if the fix is large. Verify: the regression test fails before the fix and passes after it. Result: no bug surfaced; the create-worktree test was checked to fail when a declared local folder isn't copied.
+- [x] 3.5 Fix any bug the tests uncover with its regression test, or record it in design.md and ask Ciro if the fix is large. Verify: the regression test fails before the fix and passes after it. Result: on Windows CI the tour test found that ending the tour failed half-way, because the board was still using the sample's worktrees when their folder was deleted; `EndTourUseCase` now retries the deletion, with a regression test in `TourUseCasesTest`. The create-worktree test was also checked to fail when a declared local folder isn't copied.
 
 ## 4. Validation
 
