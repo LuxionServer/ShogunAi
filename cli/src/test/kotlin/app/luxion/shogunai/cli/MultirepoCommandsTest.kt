@@ -409,7 +409,7 @@ class MultirepoCommandsTest {
         assertEquals(0, exitCode, err.toString())
         val repos = json()["repos"]!!.jsonArray.map { it.jsonObject }
         assertEquals(listOf("focused", "started-agent"), repos.map { it["result"]!!.jsonPrimitive.content })
-        assertEquals(listOf("w1:p1", "w2:p2"), repos.map { it["pane_id"]!!.jsonPrimitive.content })
+        assertEquals(listOf("w1:p1", "w2:p1"), repos.map { it["pane_id"]!!.jsonPrimitive.content })
         assertEquals("claude", repos[0]["agent"]!!.jsonPrimitive.content)
     }
 
@@ -532,9 +532,10 @@ class MultirepoCommandsTest {
 
         assertEquals(0, exitCode, err.toString())
         assertEquals("started-agent", json()["herdr"]!!.jsonPrimitive.content)
-        assertEquals("w5:p2", json()["pane_id"]!!.jsonPrimitive.content)
+        assertEquals("w5:p1", json()["pane_id"]!!.jsonPrimitive.content)
         assertTrue(json()["opened"]!!.jsonPrimitive.content.toBoolean())
-        assertEquals(listOf("w5:p2" to "claude -n product"), herdr.ran)
+        assertEquals(listOf("w5:p1" to "claude -n product"), herdr.ran)
+        assertTrue(herdr.splits.isEmpty())
     }
 
     @Test

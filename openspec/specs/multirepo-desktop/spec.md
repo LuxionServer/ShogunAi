@@ -101,7 +101,7 @@ The multirepo view SHALL offer opening the multirepo agent in Herdr in its heade
 
 #### Scenario: Open workspace without an agent
 - **WHEN** the multirepo's Herdr workspace is open but has no live agent
-- **THEN** the agent is started in a new pane of it and the notice says the agent was started, not that it was focused
+- **THEN** the agent is started in that workspace, in its only pane when that pane is idle in the multirepo folder or in a new pane otherwise, and the notice says the agent was started, not that it was focused
 
 #### Scenario: Agent doesn't start
 - **WHEN** Herdr doesn't detect the multirepo agent in time

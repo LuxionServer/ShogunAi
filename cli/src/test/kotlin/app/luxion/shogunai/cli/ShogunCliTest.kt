@@ -3474,11 +3474,12 @@ class ShogunCliTest {
 
         assertEquals(
             "opened $merged in Herdr with Claude (pane w1:p1)\n" +
-                "started Claude in $merged's open Herdr workspace (pane w1:p2)\n" +
-                "focused $merged in Herdr (already open, pane w1:p2)\n",
+                "started Claude in $merged's open Herdr workspace (pane w1:p1)\n" +
+                "focused $merged in Herdr (already open, pane w1:p1)\n",
             out.toString(),
         )
-        assertEquals(listOf("w1:p1" to "claude -n main-repo-task-1", "w1:p2" to "claude -n main-repo-task-1"), herdr.ran)
+        assertEquals(listOf("w1:p1" to "claude -n main-repo-task-1", "w1:p1" to "claude -n main-repo-task-1"), herdr.ran)
+        assertTrue(herdr.splits.isEmpty())
         assertTrue(herdr.closed.isEmpty())
     }
 
@@ -3558,7 +3559,7 @@ class ShogunCliTest {
         cli(repositoryExecutor(), herdr = herdr).run(listOf("open", "TASK-1", "--herdr", "--json"))
 
         assertEquals(
-            Json.parseToJsonElement("""{"path": "$merged", "branch": "feature/TASK-1", "herdr": "started-agent", "pane_id": "w1:p2", "agent": "Claude", "session_name": null}"""),
+            Json.parseToJsonElement("""{"path": "$merged", "branch": "feature/TASK-1", "herdr": "started-agent", "pane_id": "w1:p1", "agent": "Claude", "session_name": null}"""),
             Json.parseToJsonElement(out.toString()),
         )
     }

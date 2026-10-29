@@ -204,19 +204,39 @@ class GroupStateAndContextTest {
 
     @Test
     fun `opening a group focuses live agents and starts the agent where the workspace has none`() = runTest {
-        val herdr = FakeHerdrClient(
-            alreadyOpen = setOf(appTask, apiTask),
-            panes = listOf(HerdrPane("w1:p1", "w1", appTask, agent = "claude", agentStatus = "idle"), HerdrPane("w2:p1", "w2", apiTask)),
-        )
-        val resolveEnvironment = ResolveWorktreeEnvironmentUseCase(world.git, FakeRepositoryProvisioningSource(), FakeEnvironmentStateStore(), FakePortProbe(), trust = FakeRepositoryTrust(approvesEverything = true))
-        val group = DetectGroupsUseCase(world.git)(world.members()).groups.single()
+        val herdr = groupHerdr()
 
-        val openings = OpenGroupInHerdrUseCase(herdr, resolveEnvironment)(group)
+        val openings = openGroup(herdr)
 
         assertEquals(HerdrOpening(HerdrOutcome.FOCUSED, "w1:p1", "claude"), openings[0].result.getOrThrow())
         assertEquals(HerdrOutcome.STARTED_AGENT, openings[1].result.getOrThrow().outcome)
+        assertEquals("w2:p1", openings[1].result.getOrThrow().paneId)
+        assertEquals(listOf("w2:p1"), herdr.ran.map { it.first })
+        assertTrue(herdr.splits.isEmpty())
+    }
+
+    @Test
+    fun `opening a group starts the agent in a new pane where the workspace's pane is busy`() = runTest {
+        val herdr = groupHerdr(busyPanes = setOf("w2:p1"))
+
+        val openings = openGroup(herdr)
+
+        assertEquals(HerdrOutcome.STARTED_AGENT, openings[1].result.getOrThrow().outcome)
         assertEquals("w2:p2", openings[1].result.getOrThrow().paneId)
         assertEquals(listOf("w2:p2"), herdr.ran.map { it.first })
+        assertTrue(herdr.closed.isEmpty())
+    }
+
+    private fun groupHerdr(busyPanes: Set<String> = emptySet()) = FakeHerdrClient(
+        alreadyOpen = setOf(appTask, apiTask),
+        panes = listOf(HerdrPane("w1:p1", "w1", appTask, agent = "claude", agentStatus = "idle"), HerdrPane("w2:p1", "w2", apiTask)),
+        busyPanes = busyPanes,
+    )
+
+    private suspend fun openGroup(herdr: FakeHerdrClient): List<GroupOpening> {
+        val resolveEnvironment = ResolveWorktreeEnvironmentUseCase(world.git, FakeRepositoryProvisioningSource(), FakeEnvironmentStateStore(), FakePortProbe(), trust = FakeRepositoryTrust(approvesEverything = true))
+        val group = DetectGroupsUseCase(world.git)(world.members()).groups.single()
+        return OpenGroupInHerdrUseCase(herdr, resolveEnvironment)(group)
     }
 
     @Test
@@ -265,11 +285,28 @@ class GroupStateAndContextTest {
     }
 
     @Test
-    fun `the multirepo agent starts in a new pane of its open workspace without an agent`() = runTest {
+    fun `the multirepo agent starts in the idle pane of its open workspace without an agent`() = runTest {
         val multirepo = Multirepo(world.folder, world.declaration, approved = true, localAgent = AgentLaunchConfig(agentCommand = "claude", useHeadroom = false))
         val herdr = FakeHerdrClient(
             workspaces = listOf(HerdrWorkspace("w5", "product", null)),
             panes = listOf(HerdrPane("w5:p1", "w5", world.folder)),
+        )
+
+        val opening = OpenMultirepoAgentInHerdrUseCase(herdr)(multirepo).getOrThrow()
+
+        assertEquals(HerdrOpening(HerdrOutcome.STARTED_AGENT, "w5:p1", multirepo.agent.displayName), opening)
+        assertTrue(herdr.splits.isEmpty())
+        assertEquals(listOf("w5:p1" to "claude -n product"), herdr.ran)
+        assertTrue(herdr.createdWorkspaces.isEmpty() && herdr.closed.isEmpty())
+    }
+
+    @Test
+    fun `the multirepo agent starts in a new pane of its open workspace whose pane is busy`() = runTest {
+        val multirepo = Multirepo(world.folder, world.declaration, approved = true, localAgent = AgentLaunchConfig(agentCommand = "claude", useHeadroom = false))
+        val herdr = FakeHerdrClient(
+            workspaces = listOf(HerdrWorkspace("w5", "product", null)),
+            panes = listOf(HerdrPane("w5:p1", "w5", world.folder)),
+            busyPanes = setOf("w5:p1"),
         )
 
         val opening = OpenMultirepoAgentInHerdrUseCase(herdr)(multirepo).getOrThrow()

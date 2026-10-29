@@ -1,0 +1,1 @@
+{"id":"cli:pane:process_info","result":{"process_info":{"foreground_process_group_id":17820,"foreground_processes":[{"argv":["-zsh"],"argv0":"zsh","cmdline":"-zsh","cwd":"/home/dev/projects/worktrees/TASK-9","name":"zsh","pid":17820}],"pane_id":"w2:p1","shell_pid":17820},"type":"pane_process_info"}}

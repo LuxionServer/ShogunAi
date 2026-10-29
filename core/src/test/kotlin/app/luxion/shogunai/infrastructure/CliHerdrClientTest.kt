@@ -6,6 +6,7 @@ import app.luxion.shogunai.domain.executor.CommandResult
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.model.HerdrAgent
 import app.luxion.shogunai.domain.model.HerdrPane
+import app.luxion.shogunai.domain.model.HerdrPaneProcesses
 import app.luxion.shogunai.domain.model.HerdrWorkspace
 import app.luxion.shogunai.domain.model.AgentState
 import app.luxion.shogunai.domain.model.HerdrWorktreeOpening
@@ -160,6 +161,38 @@ class CliHerdrClientTest {
         val executor = FakeShellCommandExecutor { FakeShellCommandExecutor.success(it, fixture("server-not-running.json")) }
 
         assertFailsWith<WorktreeError.HerdrCommandFailed> { client(executor).listAgents() }
+    }
+
+    @Test
+    fun `a shell at its prompt owns the pane's foreground process group`() = runTest {
+        val executor = FakeShellCommandExecutor { FakeShellCommandExecutor.success(it, fixture("pane-process-info-prompt.json")) }
+
+        val processes = client(executor).paneProcesses("w2:p1")
+
+        assertEquals(HerdrPaneProcesses(shellPid = 17820, foregroundProcessGroupId = 17820), processes)
+        assertTrue(processes!!.atPrompt)
+        assertEquals(listOf("herdr", "pane", "process-info", "--pane", "w2:p1"), executor.executedCommands.single())
+    }
+
+    @Test
+    fun `a pane running a program isn't at its prompt`() = runTest {
+        val executor = FakeShellCommandExecutor { FakeShellCommandExecutor.success(it, fixture("pane-process-info-running.json")) }
+
+        assertEquals(false, client(executor).paneProcesses("w2:p1")?.atPrompt)
+    }
+
+    @Test
+    fun `unknown pane processes are reported as null instead of failing`() = runTest {
+        listOf(
+            FakeShellCommandExecutor { FakeShellCommandExecutor.failure(it, stderr = "unknown command") },
+            FakeShellCommandExecutor { FakeShellCommandExecutor.success(it, fixture("pane-close.json")) },
+            FakeShellCommandExecutor {
+                FakeShellCommandExecutor.success(it, """{"result":{"process_info":{"shell_pid":17820}}}""")
+            },
+            FakeShellCommandExecutor { throw CommandExecutionException(it, IOException("not found")) },
+        ).forEach { executor ->
+            assertNull(client(executor).paneProcesses("w2:p1"))
+        }
     }
 
     @Test
