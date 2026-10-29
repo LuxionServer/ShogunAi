@@ -29,7 +29,7 @@ import kotlin.io.path.listDirectoryEntries
 import kotlin.io.path.readText
 
 class NioEnvironmentStateStore(
-    private val machineDirectory: Path = Path.of(System.getProperty("user.home"), ".shogunai"),
+    private val machineDirectory: Path,
 ) : EnvironmentStateStore {
 
     private val json = Json { prettyPrint = true }

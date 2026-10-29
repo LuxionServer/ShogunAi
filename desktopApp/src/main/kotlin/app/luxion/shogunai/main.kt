@@ -192,13 +192,13 @@ private fun openWindow() = application {
     LaunchedEffect(trayPreferences.isIconShown) {
         if (!trayPreferences.isIconShown) windowVisible = true
     }
-    val appInstanceLock = remember { FileAppInstanceLock() }
+    val appInstanceLock = remember { FileAppInstanceLock(appContainer.files.appLock) }
     val servesAppRequests = remember { appInstanceLock.acquire() }
     DisposableEffect(Unit) { onDispose { appInstanceLock.release() } }
     val shellViewModelForRequests = shellViewModelHolder.value
     LaunchedEffect(shellViewModelForRequests, servesAppRequests) {
         if (!servesAppRequests || shellViewModelForRequests == null) return@LaunchedEffect
-        val requests = FileAppRequestChannel()
+        val requests = FileAppRequestChannel(appContainer.files.appRequests)
         val handler = AppRequestHandler(shellViewModelForRequests, showMainWindow)
         while (true) {
             val pending = withContext(Dispatchers.IO) { requests.receive(System.currentTimeMillis()) }

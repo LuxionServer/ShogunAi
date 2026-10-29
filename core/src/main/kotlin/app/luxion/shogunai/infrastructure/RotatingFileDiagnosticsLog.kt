@@ -9,7 +9,7 @@ import java.nio.file.StandardOpenOption
 import java.time.Instant
 
 class RotatingFileDiagnosticsLog(
-    private val directory: Path = Path.of(System.getProperty("user.home"), ".shogunai", "logs"),
+    private val directory: Path,
     private val maxFileBytes: Long = DEFAULT_MAX_FILE_BYTES,
     private val maxFiles: Int = DEFAULT_MAX_FILES,
     private val redact: (String) -> String = { it },
