@@ -700,6 +700,7 @@ private val OrcaEmulatorView.jsonValue: String
     get() = when (this) {
         OrcaEmulatorView.Shown -> "shown"
         OrcaEmulatorView.NotOpen -> "not-open"
+        OrcaEmulatorView.Skipped -> "skipped"
         is OrcaEmulatorView.Failed -> "failed"
     }
 
@@ -711,6 +712,7 @@ fun simulatorJson(
     simulator: WorktreeSimulator?,
     acquisition: ResourceAcquisition? = null,
     releaseRecord: ReleaseRecord? = null,
+    orcaView: OrcaEmulatorView? = null,
 ): JsonObject = buildJsonObject {
     put("worktree", worktree)
     put("udid", simulator?.udid)
@@ -720,6 +722,7 @@ fun simulatorJson(
     acquisition?.let { put("acquiredNow", it.acquiredNow) }
     acquisition?.let { put("released", strings(it.releases.mapNotNull { release -> release.worktreePath })) }
     put("waited", acquisition?.waitedSeconds)
+    orcaView?.let { put("orcaView", it.jsonValue) }
     releaseRecord?.let {
         put(
             "releasedFor",
@@ -857,6 +860,8 @@ fun openJson(path: String, branch: String?, opening: OrcaOpening): JsonObject = 
     put("agent", opening.agent)
     put("session_name", opening.sessionName)
     put("emulator", opening.emulator)
+    put("simulator", opening.simulator)
+    put("devicesSkipped", opening.devicesSkipped)
 }
 
 val OrcaOutcome.jsonValue: String

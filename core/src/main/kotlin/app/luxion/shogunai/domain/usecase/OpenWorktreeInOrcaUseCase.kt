@@ -25,6 +25,7 @@ class OpenWorktreeInOrcaUseCase(
     timeout: Duration = AGENT_START_SECONDS.seconds,
     pollInterval: Duration = 500.milliseconds,
     private val runningEmulator: suspend (String) -> String? = { null },
+    private val runningSimulator: suspend (String) -> String? = { null },
 ) {
     private val launcher = OrcaAgentLauncher(orca, naming, samePath, timeout, pollInterval)
 
@@ -37,17 +38,30 @@ class OpenWorktreeInOrcaUseCase(
         val repo = launcher.registeredRepo(config.baseRepositoryPath)
         if (orca.worktrees(repo.id).none { samePath(it.path, worktree.path) }) orca.showExternalWorktrees(repo.id)
         val workspace = OrcaWorkspace.Worktree(worktree.path)
-        val emulator = showRunningEmulator(workspace, worktree.path)
-        launcher.focusLiveAgent(workspace, worktree.path, sessionName)?.let { return@runCatching it.copy(emulator = emulator) }
+        val devices = showRunningDevice(workspace, worktree.path)
+        launcher.focusLiveAgent(workspace, worktree.path, sessionName)?.let { return@runCatching devices.applyTo(it) }
 
         val variables = resolveEnvironment(config.baseRepositoryPath, worktree.path).getOrThrow().variables
         launcher.start(workspace, worktree.path, agent.resolvedCommand(), agent.displayName, sessionName) { named ->
             if (usesPowerShell) EnvironmentCommand.powershell(variables, named) else EnvironmentCommand.posix(variables, named)
-        }.copy(emulator = emulator)
+        }.let(devices::applyTo)
     }
 
-    private suspend fun showRunningEmulator(workspace: OrcaWorkspace, worktreePath: String): String? {
-        val serial = runCatching { runningEmulator(worktreePath) }.getOrNull() ?: return null
-        return runCatching { orca.attachEmulator(workspace, serial) }.map { serial }.getOrNull()
+    private suspend fun showRunningDevice(workspace: OrcaWorkspace, worktreePath: String): ShownDevices {
+        val serial = runCatching { runningEmulator(worktreePath) }.getOrNull()
+        val udid = runCatching { runningSimulator(worktreePath) }.getOrNull()
+        return when {
+            serial != null && udid != null -> ShownDevices(skipped = true)
+            serial != null -> ShownDevices(emulator = attached(workspace, serial))
+            udid != null -> ShownDevices(simulator = attached(workspace, udid))
+            else -> ShownDevices()
+        }
+    }
+
+    private suspend fun attached(workspace: OrcaWorkspace, device: String): String? =
+        runCatching { orca.attachEmulator(workspace, device) }.map { device }.getOrNull()
+
+    private data class ShownDevices(val emulator: String? = null, val simulator: String? = null, val skipped: Boolean = false) {
+        fun applyTo(opening: OrcaOpening): OrcaOpening = opening.copy(emulator = emulator, simulator = simulator, devicesSkipped = skipped)
     }
 }

@@ -107,7 +107,7 @@ When ShogunAi starts a worktree's emulator, from the command line or the desktop
 - **THEN** the JSON has `"orcaView": "not-open"`
 
 ### Requirement: Show the running emulator when opening a worktree in Orca
-Opening a worktree in Orca, from the command line, the desktop app or a group, SHALL show the worktree's running device in its emulator view, before the agent's terminal is started or focused, so the agent's terminal stays in front: its emulator when the repository declares the emulator provider and the emulator is running, or its simulator when the repository declares the iOS simulator provider and the simulator is booted. When both are running it SHALL show neither. It SHALL NOT start a stopped device. Failing to show it SHALL NOT fail the open.
+Opening a worktree in Orca, from the command line, the desktop app or a group, SHALL show the worktree's running emulator or booted simulator in its emulator view, when its repository declares that device's provider, before the agent's terminal is started or focused. When both run it SHALL show neither. It SHALL NOT start a stopped device, and failing to show one SHALL NOT fail the open.
 
 #### Scenario: Emulator running
 - **WHEN** the user opens in Orca a worktree whose emulator `emulator-5556` is running

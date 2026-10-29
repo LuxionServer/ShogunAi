@@ -245,6 +245,8 @@ fun groupOrcaOpenJson(branch: String, openings: List<GroupOrcaOpening>): JsonObj
                 put("agent", orcaOpening?.agent)
                 put("session_name", orcaOpening?.sessionName)
                 put("emulator", orcaOpening?.emulator)
+                put("simulator", orcaOpening?.simulator)
+                put("devicesSkipped", orcaOpening?.devicesSkipped ?: false)
                 put("error", opening.result.exceptionOrNull()?.message?.let(::JsonPrimitive) ?: JsonNull)
             })
         }

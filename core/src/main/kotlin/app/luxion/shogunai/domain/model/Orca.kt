@@ -41,12 +41,16 @@ data class OrcaOpening(
     val agent: String?,
     val sessionName: String? = null,
     val emulator: String? = null,
+    val simulator: String? = null,
+    val devicesSkipped: Boolean = false,
 )
 
 sealed interface OrcaEmulatorView {
     data object Shown : OrcaEmulatorView
 
     data object NotOpen : OrcaEmulatorView
+
+    data object Skipped : OrcaEmulatorView
 
     data class Failed(val message: String) : OrcaEmulatorView
 }

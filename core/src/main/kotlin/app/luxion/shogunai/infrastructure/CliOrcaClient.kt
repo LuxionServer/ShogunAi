@@ -121,8 +121,8 @@ class CliOrcaClient(
         }
     }
 
-    override suspend fun attachEmulator(workspace: OrcaWorkspace, serial: String) {
-        run(listOf("emulator", "attach", serial, "--worktree", workspace.selector, "--focus"))
+    override suspend fun attachEmulator(workspace: OrcaWorkspace, device: String) {
+        run(listOf("emulator", "attach", device, "--worktree", workspace.selector, "--focus"))
     }
 
     private fun repo(repo: JsonObject): OrcaRepo? {

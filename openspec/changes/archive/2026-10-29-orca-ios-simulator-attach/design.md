@@ -55,6 +55,10 @@ ShogunAi attaches a simulator only after its start reports it booted, or in the 
 - CLI `open --orca`: `OrcaOpening` gains `simulator: String?` and `devicesSkipped: Boolean`. The text line says `, with <udid> in its emulator view` for a simulator, as for an emulator; a skip prints a standard error line. JSON adds `simulator` and `devicesSkipped`.
 - Desktop app: nothing new is shown, as for the emulator.
 
+### Timeout raised to 30 seconds
+
+`ShowEmulatorInOrcaUseCase`'s timeout goes from 10 to 30 seconds. Found in the real check: right after a cold boot, `orca emulator attach <udid>` took 12.2 and 12.7 seconds in two runs (about 4 seconds once Orca's helper had run for that simulator before), so the 10-second limit reported `failed` although Orca went on to show it. 30 seconds covers it with margin and still caps a stuck Orca; the open flow's attach has no timeout of its own, as before.
+
 ### Wiring
 
 CLI and `AppContainer` wire `runningSimulator` to `ReadSimulatorStatesUseCase.runningUdid` and the other-device lookups from each start path. `AppContainer` already wraps the emulator start (`startEmulatorShownInOrca`); the simulator start gets the same wrapper.

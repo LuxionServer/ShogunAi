@@ -36,5 +36,5 @@ interface OrcaClient {
 
     suspend fun closeTerminals(workspace: OrcaWorkspace)
 
-    suspend fun attachEmulator(workspace: OrcaWorkspace, serial: String)
+    suspend fun attachEmulator(workspace: OrcaWorkspace, device: String)
 }

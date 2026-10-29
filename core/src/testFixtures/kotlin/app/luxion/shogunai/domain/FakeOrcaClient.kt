@@ -159,12 +159,12 @@ class FakeOrcaClient(
         terminalsByPath -= worktreePath
     }
 
-    override suspend fun attachEmulator(workspace: OrcaWorkspace, serial: String) {
+    override suspend fun attachEmulator(workspace: OrcaWorkspace, device: String) {
         requireReady()
         attachFailure?.let { throw it }
         val worktreePath = keyOf(workspace)
-        attachedEmulators += worktreePath to serial
-        events += "attach:$worktreePath:$serial"
+        attachedEmulators += worktreePath to device
+        events += "attach:$worktreePath:$device"
     }
 
     private fun keyOf(workspace: OrcaWorkspace): String = when (workspace) {

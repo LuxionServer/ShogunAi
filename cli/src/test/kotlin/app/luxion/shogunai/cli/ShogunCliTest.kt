@@ -2851,6 +2851,46 @@ class ShogunCliTest {
     }
 
     @Test
+    fun `open in orca shows the worktree's booted simulator and reports it`() {
+        environmentStore.resourcesByAdminDirectory["$base/.git/worktrees/TASK-1"] = mapOf("ios-simulator" to "SIM-MERGED")
+        appleSimulators.addExisting("SIM-MERGED", "ShogunAi · main-repo · TASK-1", SimulatorState.BOOTED)
+        val provisioning = FakeRepositoryProvisioningSource(
+            byRepository = mapOf(base to RepositoryProvisioning(providers = RepositoryProviders(iosSimulator = IosSimulatorProvider()))),
+        )
+        val orca = FakeOrcaClient(repos = listOf(OrcaRepo("r1", base)), visibleWorktrees = mapOf("r1" to listOf(OrcaWorktree(merged, false))))
+
+        val exitCode = cli(executorWithAdminDirectories(), provisioning = provisioning, orca = orca).run(listOf("open", "TASK-1", "--orca", "--json"))
+
+        assertEquals(0, exitCode, err.toString())
+        val json = Json.parseToJsonElement(out.toString()).jsonObject
+        assertEquals("SIM-MERGED", json["simulator"]?.jsonPrimitive?.content)
+        assertEquals(JsonNull, json["emulator"])
+        assertEquals("false", json["devicesSkipped"]?.jsonPrimitive?.content)
+        assertEquals(listOf("attach:$merged:SIM-MERGED", "create:$merged"), orca.events)
+    }
+
+    @Test
+    fun `open in orca with the emulator and the simulator both running shows neither and says why`() {
+        environmentStore.portsByAdminDirectory["$base/.git/worktrees/TASK-1"] = mapOf("emulator" to 5556)
+        androidSdk.states["emulator-5556"] = EmulatorState.RUNNING
+        environmentStore.resourcesByAdminDirectory["$base/.git/worktrees/TASK-1"] = mapOf("ios-simulator" to "SIM-MERGED")
+        appleSimulators.addExisting("SIM-MERGED", "ShogunAi · main-repo · TASK-1", SimulatorState.BOOTED)
+        val provisioning = FakeRepositoryProvisioningSource(
+            byRepository = mapOf(
+                base to RepositoryProvisioning(providers = RepositoryProviders(emulator = EmulatorProvider(), iosSimulator = IosSimulatorProvider())),
+            ),
+        )
+        val orca = FakeOrcaClient(repos = listOf(OrcaRepo("r1", base)), visibleWorktrees = mapOf("r1" to listOf(OrcaWorktree(merged, false))))
+
+        val exitCode = cli(executorWithAdminDirectories(), provisioning = provisioning, orca = orca).run(listOf("open", "TASK-1", "--orca"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals("opened $merged in Orca with Claude (terminal term_1)\n", out.toString())
+        assertTrue(err.contains("shogun: didn't show $merged's devices in Orca: its emulator and simulator are both running"), err.toString())
+        assertTrue(orca.attachedEmulators.isEmpty())
+    }
+
+    @Test
     fun `open in orca without a running emulator reports a null emulator`() {
         val orca = FakeOrcaClient(repos = listOf(OrcaRepo("r1", base)))
 

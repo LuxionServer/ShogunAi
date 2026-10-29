@@ -34,7 +34,7 @@ Numerados en el orden en que se abordarán: el número es la prioridad.
   - El comentario y el estado del worktree en Orca sincronizados con los de ShogunAi (`orca worktree set`), y su pull request o su issue vinculados en Orca cuando la tarea del worktree los tiene.
   - Los puertos en los que Orca ve escuchar a un worktree, junto a los que reserva ShogunAi.
   - Los worktrees de un grupo mostrados como hijos del espacio del agente del multirepo. Orca 1.4.243 acepta como padre de un worktree existente un espacio Git o de «Abrir como carpeta», pero no un folder workspace.
-  - El simulador de iOS de ShogunAi del worktree mostrado en la vista de emuladores de Orca, como ya se muestra su emulador de Android (`orca emulator attach` también acepta el UDID de un simulador).
+  - Un worktree con su emulador y su simulador en marcha a la vez mostrado en la vista de emuladores de Orca. Orca 1.4.243 muestra un dispositivo por worktree y apaga el simulador al que sustituye, así que por ahora ShogunAi no muestra ninguno.
   - Los agentes que manejan el escritorio con el computer use de Orca tomando antes el turno de escritorio de ShogunAi, como los demás.
 - Comprobar:
   - En Windows y en Linux (`orca-ide`), la ubicación de la CLI y la shell que ejecutan las terminales de Orca, que solo cubren pruebas con dobles.

@@ -972,7 +972,9 @@ class ShogunCli(
             resolveEnvironment,
             claudeSessionNaming(herdrAgentStartTimeout),
             runningEmulator = readEmulatorStates::runningSerial,
+            runningSimulator = readSimulatorStates::runningUdid,
         )(group).getOrThrow()
+        openings.forEach { opening -> opening.result.onSuccess { reportSkippedDevices(opening.path, it) } }
         if (json) {
             printJson(groupOrcaOpenJson(group.branch, openings))
         } else {
@@ -1389,7 +1391,9 @@ class ShogunCli(
                 resolveEnvironment,
                 claudeSessionNaming(herdrAgentStartTimeout),
                 runningEmulator = { path -> readEmulatorStates.runningSerial(config, path) },
+                runningSimulator = { path -> readSimulatorStates.runningUdid(config, path) },
             )(worktree, agent).getOrThrow()
+            reportSkippedDevices(worktree.path, opening)
             if (command.json) printJson(openJson(worktree.path, worktree.branch, opening)) else out.line(orcaOpeningLine(worktree.path, opening))
             return EXIT_OK
         }
@@ -1407,7 +1411,13 @@ class ShogunCli(
             OrcaOutcome.FOCUSED -> "focused $path's running agent in Orca (terminal ${opening.terminalHandle})"
         }
         val named = opening.sessionName?.let { "$line as session $it" } ?: line
-        return opening.emulator?.let { "$named, with $it in its emulator view" } ?: named
+        return (opening.emulator ?: opening.simulator)?.let { "$named, with $it in its emulator view" } ?: named
+    }
+
+    private fun reportSkippedDevices(path: String, opening: OrcaOpening) {
+        if (opening.devicesSkipped) {
+            err.line("shogun: didn't show $path's devices in Orca: its emulator and simulator are both running, and Orca shows one device per worktree")
+        }
     }
 
     private fun herdrLauncher() =
@@ -1658,6 +1668,7 @@ class ShogunCli(
     private suspend fun simulator(command: CliCommand.Simulator): Int {
         val (config, worktree) = configAndWorktreeContaining(absolute(command.path ?: workingDirectory))
         var acquisition: ResourceAcquisition? = null
+        var orcaView: OrcaEmulatorView? = null
         val simulator = when (command.action) {
             SimulatorAction.START -> {
                 val started = startSimulator(
@@ -1667,6 +1678,9 @@ class ShogunCli(
                     command.wait?.let(::deviceWait),
                 ).getOrThrow()
                 acquisition = started.acquisition
+                orcaView = showEmulatorInOrca(worktree.path, started.device.udid) {
+                    readEmulatorStates.runningSerial(config, worktree.path) != null
+                }
                 started.device
             }
             SimulatorAction.STOP -> stopSimulator(config, worktree.path).getOrThrow()
@@ -1680,9 +1694,10 @@ class ShogunCli(
         }
         acquisition?.releases?.forEach { err.line("released the simulator of ${releasedName(it)} to make room") }
         reportWaited(acquisition)
+        if (simulator != null) reportOrcaView("simulator", simulator.udid, orcaView)
         val released = if (simulator == null) readReleaseRecord(worktree.path, ResourceKind.IOS_SIMULATOR) else null
         if (command.json) {
-            printJson(simulatorJson(worktree.path, simulator, acquisition, released))
+            printJson(simulatorJson(worktree.path, simulator, acquisition, released, orcaView))
             return EXIT_OK
         }
         if (simulator == null) {
@@ -1760,7 +1775,9 @@ class ShogunCli(
                     command.wait?.let(::deviceWait),
                 ).getOrThrow()
                 acquisition = started.acquisition
-                orcaView = showEmulatorInOrca(worktree.path, started.device.serial)
+                orcaView = showEmulatorInOrca(worktree.path, started.device.serial) {
+                    readSimulatorStates.runningUdid(config, worktree.path) != null
+                }
                 started.device
             }
             EmulatorAction.STOP -> stopEmulator(config, worktree.path).getOrThrow()
@@ -1773,7 +1790,7 @@ class ShogunCli(
         }
         acquisition?.releases?.forEach { err.line("released the emulator of ${releasedName(it)} to make room") }
         reportWaited(acquisition)
-        if (emulator != null) reportOrcaView(emulator.serial, orcaView)
+        if (emulator != null) reportOrcaView("emulator", emulator.serial, orcaView)
         val released = if (emulator == null) readReleaseRecord(worktree.path, ResourceKind.EMULATOR) else null
         if (command.json) {
             printJson(emulatorJson(worktree.path, emulator, acquisition, released, orcaView))
@@ -1788,12 +1805,18 @@ class ShogunCli(
         return EXIT_OK
     }
 
-    private fun reportOrcaView(serial: String, view: OrcaEmulatorView?) {
+    private fun reportOrcaView(kind: String, device: String, view: OrcaEmulatorView?) {
         when (view) {
-            OrcaEmulatorView.Shown -> err.line("shown $serial in Orca's emulator view")
-            is OrcaEmulatorView.Failed -> err.line("shogun: couldn't show the emulator in Orca: ${view.message}")
+            OrcaEmulatorView.Shown -> err.line("shown $device in Orca's emulator view")
+            OrcaEmulatorView.Skipped -> err.line("shogun: didn't show the $kind in Orca: ${otherDeviceRunning(kind)}")
+            is OrcaEmulatorView.Failed -> err.line("shogun: couldn't show the $kind in Orca: ${view.message}")
             OrcaEmulatorView.NotOpen, null -> Unit
         }
+    }
+
+    private fun otherDeviceRunning(kind: String): String {
+        val other = if (kind == "emulator") "simulator" else "emulator"
+        return "the worktree's $other is running too, and Orca shows one device per worktree"
     }
 
     private fun deviceWait(timeout: Duration): DeviceWait {
