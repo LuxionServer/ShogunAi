@@ -87,7 +87,7 @@ Multirepos and groups by branch are done in the CLI and the desktop app, and the
 - Splitting `ProjectWorktrees.kt` and `ProjectSettingsView.kt` into smaller holders and sections.
 - Checking the guided tour on Windows and Linux with a real installed app: creating the sample with the system's Git, and the tour's agent command, whose prompt is quoted for the shell each terminal runs.
 - A changelog page in the documentation site built from the release notes in `.github/release-notes/`, which the app already shows in its update notice.
-- Finishing the v2 design tokens where the Orca integration was changing the code at the same time: the worktree detail's button labels still shrink with `bodySmall` and show the agent state and dates in mono, and the removal and cleanup dialogs' buttons have to be checked against the compact and regular sizes once `ShogunDialog` lands.
+- Finishing the v2 design tokens in the worktree detail, which the Orca integration was changing at the same time: its button labels still shrink with `bodySmall` and it shows the agent state and dates in mono.
 
 ## Later
 

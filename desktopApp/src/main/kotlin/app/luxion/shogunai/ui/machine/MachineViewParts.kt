@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -21,12 +20,14 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import app.luxion.shogunai.domain.usecase.ProjectOwner
+import app.luxion.shogunai.ui.components.GroupedNotice
+import app.luxion.shogunai.ui.components.ShogunDialog
 import app.luxion.shogunai.ui.components.DangerButton
 import app.luxion.shogunai.ui.components.InlineProgress
 import app.luxion.shogunai.ui.components.LocalErrorFixActions
-import app.luxion.shogunai.ui.components.Notice
 import app.luxion.shogunai.ui.components.NoticeKind
 import app.luxion.shogunai.ui.components.StatusChip
+import app.luxion.shogunai.ui.components.ViewTitle
 import app.luxion.shogunai.ui.theme.Status
 import app.luxion.shogunai.ui.components.NeutralTextButton
 import app.luxion.shogunai.ui.components.Spacing
@@ -45,7 +46,7 @@ fun MachineViewFrame(title: String, content: @Composable ColumnScope.() -> Unit)
         modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(Spacing.md),
         verticalArrangement = Arrangement.spacedBy(Spacing.sm),
     ) {
-        Text(title, style = ShogunTheme.typography.viewTitle)
+        ViewTitle(title)
         content()
     }
 }
@@ -65,14 +66,12 @@ fun PoolUsageSection(machine: MachineResources, resource: MachineResource) {
             }
         }
     }
-    machine.noticesOf(resource).forEach { notice ->
-        Notice(
+    poolNoticeBanner(machine.noticesOf(resource), strings)?.let { banner ->
+        GroupedNotice(
             kind = NoticeKind.INFO,
-            message = when (val content = notice.content) {
-                is PoolNoticeContent.Released -> strings.releasedNotice(content.kind, content.released, content.forWorktree)
-                is PoolNoticeContent.Trimmed -> strings.trimmedNotice(content.count, content.limit)
-            },
-            onDismiss = { machine.dismissNotice(notice.id) },
+            summary = banner.summary,
+            details = banner.details,
+            onDismiss = { machine.dismissNotices(resource) },
         )
     }
 }
@@ -173,11 +172,12 @@ fun MachineBusy(isBusy: Boolean) {
 @Composable
 fun ConfirmDeleteOrphansDialog(message: String, onConfirm: () -> Unit, onDismiss: () -> Unit) {
     val strings = LocalStrings.current
-    AlertDialog(
+    ShogunDialog(
+        title = strings.confirmDeleteOrphansTitle,
         onDismissRequest = onDismiss,
-        title = { Text(strings.confirmDeleteOrphansTitle) },
-        text = { Text(message) },
-        confirmButton = { DangerButton(onClick = onConfirm) { Text(strings.deleteOrphans) } },
-        dismissButton = { NeutralTextButton(onClick = onDismiss) { Text(strings.cancel) } },
-    )
+        confirm = { DangerButton(onClick = onConfirm) { Text(strings.deleteOrphans) } },
+        dismiss = { NeutralTextButton(onClick = onDismiss) { Text(strings.cancel) } },
+    ) {
+        Text(message)
+    }
 }

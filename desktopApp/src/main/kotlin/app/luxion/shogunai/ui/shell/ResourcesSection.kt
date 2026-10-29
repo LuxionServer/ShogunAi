@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -21,8 +20,8 @@ import androidx.compose.ui.unit.dp
 import app.luxion.shogunai.domain.model.CapacityProfile
 import app.luxion.shogunai.domain.model.DerivedDataQuotaMode
 import app.luxion.shogunai.domain.model.ResourceKind
+import app.luxion.shogunai.ui.components.Field
 import app.luxion.shogunai.ui.components.Spacing
-import app.luxion.shogunai.ui.components.trackTextInputFocus
 import app.luxion.shogunai.ui.i18n.LocalStrings
 
 @Composable
@@ -78,12 +77,11 @@ private fun MinutesRow(label: String, hint: String, draft: CustomLimitDraft, onE
             horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
             modifier = Modifier.padding(start = Spacing.lg),
         ) {
-            OutlinedTextField(
+            Field(
                 value = draft.text,
                 onValueChange = onEdit,
-                singleLine = true,
                 isError = draft.invalid,
-                modifier = Modifier.width(88.dp).trackTextInputFocus(),
+                modifier = Modifier.width(88.dp),
             )
             Text(strings.minutesUnit, style = MaterialTheme.typography.bodySmall)
         }
@@ -128,12 +126,11 @@ private fun DerivedDataQuotaRow(resources: ResourcePreferences) {
                     horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
                     modifier = Modifier.padding(start = Spacing.lg),
                 ) {
-                    OutlinedTextField(
+                    Field(
                         value = draft.text,
                         onValueChange = { resources.editQuota(it) },
-                        singleLine = true,
                         isError = draft.invalid,
-                        modifier = Modifier.width(88.dp).trackTextInputFocus(),
+                        modifier = Modifier.width(88.dp),
                     )
                     Text(strings.gigabytesUnit, style = MaterialTheme.typography.bodySmall)
                 }
@@ -157,13 +154,12 @@ private fun CustomLimitRow(resources: ResourcePreferences, kind: ResourceKind) {
     Column(modifier = Modifier.padding(start = Spacing.lg)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
             Text(strings.resourceKindLabel(kind), style = MaterialTheme.typography.bodySmall, modifier = Modifier.width(140.dp))
-            OutlinedTextField(
+            Field(
                 value = draft.text,
                 onValueChange = { resources.edit(kind, it) },
-                enabled = !draft.unlimited,
-                singleLine = true,
                 isError = draft.invalid,
-                modifier = Modifier.width(88.dp).trackTextInputFocus(),
+                enabled = !draft.unlimited,
+                modifier = Modifier.width(88.dp),
             )
             Row(
                 verticalAlignment = Alignment.CenterVertically,

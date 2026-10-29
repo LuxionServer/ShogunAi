@@ -1,10 +1,12 @@
 package app.luxion.shogunai.ui.worktree
 
+import app.luxion.shogunai.ui.components.DisabledReason
+import app.luxion.shogunai.ui.components.GroupTitle
+import app.luxion.shogunai.ui.components.SkeletonRows
 import app.luxion.shogunai.ui.components.StatusChip
 import app.luxion.shogunai.ui.components.WithTooltip
 import app.luxion.shogunai.ui.machine.MachineResource
 import app.luxion.shogunai.ui.theme.Status
-
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -124,7 +126,14 @@ fun WorktreeListPane(
                         )
                     }
                     is ListItem.StateHeader -> stickyHeader(key = item.key) {
-                        StateGroupHeader(item.group.kind, item.group.items.size, board.canCleanUp(), { board.openCleanup() }, board.inactivity.days)
+                        StateGroupHeader(
+                            item.group.kind,
+                            item.group.items.size,
+                            board.canCleanUp(),
+                            { board.openCleanup() },
+                            board.inactivity.days,
+                            board.cleanUpBlock()?.describe(LocalStrings.current),
+                        )
                     }
                     is ListItem.StateRow -> item(key = item.key) {
                         val entry = item.entry
@@ -313,11 +322,8 @@ private fun ProjectGroupHeader(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
         ) {
-            Text(
+            GroupTitle(
                 board.multirepoNameOf(projectId)?.let { "$it / ${group.project.name}" } ?: group.project.name,
-                style = MaterialTheme.typography.titleSmall,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f, fill = false),
             )
             Text(
@@ -337,10 +343,12 @@ private fun ProjectGroupHeader(
                 }
             }
         }
-        DangerTextButton(
-            onClick = { board.openCleanup(projectId) },
-            enabled = board.canCleanUp(projectId),
-        ) { Text(strings.cleanUp) }
+        DisabledReason(board.cleanUpBlock(projectId)?.describe(strings)) {
+            DangerTextButton(
+                onClick = { board.openCleanup(projectId) },
+                enabled = board.canCleanUp(projectId),
+            ) { Text(strings.cleanUp) }
+        }
         IconAction(icon = Icons.Default.Settings, label = strings.projectConfigTitle, onClick = onOpenProjectSettings)
         IconAction(icon = Icons.Default.Add, label = strings.newWorktree, onClick = { board.openCreateDialog(projectId) })
     }
@@ -358,14 +366,7 @@ private fun GroupState(holder: ProjectWorktrees, projectId: String, projectName:
         )
     }
     when (val state = holder.loadState) {
-        ProjectLoadState.Loading -> Row(
-            modifier = noticeModifier,
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
-        ) {
-            InlineProgress()
-            Text(strings.loadingWorktrees, style = MaterialTheme.typography.bodySmall)
-        }
+        ProjectLoadState.Loading -> SkeletonRows(description = strings.loadingWorktrees)
         is ProjectLoadState.Failed -> ErrorNotice(
             error = state.error,
             onDismiss = null,
@@ -418,6 +419,7 @@ internal fun StateGroupHeader(
     canCleanUp: Boolean,
     onCleanUp: () -> Unit,
     inactiveDays: Int = DEFAULT_INACTIVE_AFTER_DAYS,
+    cleanUpBlockedReason: String? = null,
 ) {
     val strings = LocalStrings.current
     val colors = MaterialTheme.colorScheme
@@ -439,7 +441,7 @@ internal fun StateGroupHeader(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
                 ) {
-                    Text(kind.label(strings), style = MaterialTheme.typography.titleSmall, maxLines = 1)
+                    GroupTitle(kind.label(strings))
                     Text(
                         kind.hint(strings, inactiveDays),
                         style = MaterialTheme.typography.bodySmall,
@@ -453,10 +455,12 @@ internal fun StateGroupHeader(
             Text(strings.worktreeCount(count), style = ShogunTheme.typography.dataSmall, color = colors.onSurfaceVariant, maxLines = 1)
         }
         if (kind == StateGroupKind.MERGED) {
-            DangerTextButton(
-                onClick = onCleanUp,
-                enabled = canCleanUp,
-            ) { Text(strings.cleanUp) }
+            DisabledReason(cleanUpBlockedReason.takeUnless { canCleanUp }) {
+                DangerTextButton(
+                    onClick = onCleanUp,
+                    enabled = canCleanUp,
+                ) { Text(strings.cleanUp) }
+            }
         }
     }
 }
@@ -551,7 +555,7 @@ private fun ChangeGroupHeader(group: ChangeGroup, board: WorktreeBoard) {
     val strings = LocalStrings.current
     ChangeGroupHeaderView(
         group = group,
-        cleanUpBlocker = board.groupCleanupBlocker(group)?.describe(strings),
+        cleanUpBlocker = board.groupCleanUpBlock(group)?.describe(strings),
         canCleanUp = board.canCleanUpGroup(group),
         addableAliases = if (board.canAddRepositories(group)) board.missingAliases(group) else emptyList(),
         isAdding = board.addingToGroup.any { it.startsWith("${group.branch}:") },
@@ -592,7 +596,7 @@ internal fun ChangeGroupHeaderView(
             tint = colors.onSurfaceVariant,
         )
         Column(modifier = Modifier.weight(1f)) {
-            Text(group.title, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            GroupTitle(group.title)
             Text(
                 listOf(group.branch, group.aliases.joinToString(", ")).joinToString(" · "),
                 style = ShogunTheme.typography.dataSmall,
@@ -612,7 +616,7 @@ internal fun ChangeGroupHeaderView(
                 Text(strings.cleanUpGroup)
             }
         }
-        cleanUpBlocker?.let { WithTooltip(label = it, content = cleanUp) } ?: cleanUp()
+        DisabledReason(cleanUpBlocker.takeUnless { canCleanUp }, content = cleanUp)
     }
 }
 
@@ -638,6 +642,13 @@ private fun AddRepositoryMenu(aliases: List<String>, onPick: (String) -> Unit) {
     }
 }
 
+internal fun CleanupBlock.describe(strings: Strings): String = when (this) {
+    CleanupBlock.Running -> strings.cleanUpBlockedRunning
+    CleanupBlock.NothingToCleanUp -> strings.cleanUpBlockedNothing
+    CleanupBlock.NeedsReview -> strings.cleanUpBlockedReview
+    is CleanupBlock.Kept -> kept.describe(strings)
+}
+
 internal fun GroupKept.describe(strings: Strings): String = when (reason) {
     GroupKeptReason.NOT_MERGED -> strings.groupKeptNotMerged(alias)
     GroupKeptReason.UNCOMMITTED_CHANGES -> strings.groupKeptUncommitted(alias)
@@ -657,7 +668,7 @@ private fun UngroupedHeader(count: Int) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
     ) {
-        Text(strings.ungrouped, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+        GroupTitle(strings.ungrouped, modifier = Modifier.weight(1f))
         Text(strings.worktreeCount(count), style = ShogunTheme.typography.dataSmall, color = colors.onSurfaceVariant)
     }
 }

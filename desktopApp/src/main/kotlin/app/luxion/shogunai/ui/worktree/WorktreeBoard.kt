@@ -582,9 +582,15 @@ class WorktreeBoard(
         return selectGroupCleanup(listOf(BranchGroupState(branchGroup, states))).kept.firstOrNull()
     }
 
-    fun canCleanUpGroup(group: ChangeGroup): Boolean =
-        !isCleaningUp && groupCleanupBlocker(group) == null &&
-            group.members.all { member -> member.entry.holder.cleanupCandidates.any { it.path == member.entry.worktree.path } }
+    fun groupCleanUpBlock(group: ChangeGroup): CleanupBlock? = when {
+        isCleaningUp -> CleanupBlock.Running
+        else -> groupCleanupBlocker(group)?.let(CleanupBlock::Kept)
+            ?: CleanupBlock.NothingToCleanUp.takeUnless {
+                group.members.all { member -> member.entry.holder.cleanupCandidates.any { it.path == member.entry.worktree.path } }
+            }
+    }
+
+    fun canCleanUpGroup(group: ChangeGroup): Boolean = groupCleanUpBlock(group) == null
 
     fun openGroupCleanup(group: ChangeGroup) {
         if (!canCleanUpGroup(group)) return
@@ -918,8 +924,13 @@ class WorktreeBoard(
         }
     }
 
-    fun canCleanUp(projectId: String? = null): Boolean =
-        !isCleaningUp && cleanupTargets(projectId).isNotEmpty()
+    fun cleanUpBlock(projectId: String? = null): CleanupBlock? = when {
+        isCleaningUp -> CleanupBlock.Running
+        cleanupTargets(projectId).isEmpty() -> CleanupBlock.NothingToCleanUp
+        else -> null
+    }
+
+    fun canCleanUp(projectId: String? = null): Boolean = cleanUpBlock(projectId) == null
 
     private fun cleanupTargets(projectId: String?): List<String> =
         (projectId?.let(::listOf) ?: shownProjects.map { it.id }).filter { holder(it)?.canCleanUp == true }
@@ -1055,3 +1066,10 @@ private const val MAX_PARALLEL_LISTS = 2
 private val AUTO_REFRESH_INTERVAL = 3.seconds
 private val DEVICE_REFRESH_INTERVAL = 10.seconds
 private val FOCUS_REFRESH_MIN_INTERVAL = 5.seconds
+
+sealed interface CleanupBlock {
+    data object Running : CleanupBlock
+    data object NothingToCleanUp : CleanupBlock
+    data object NeedsReview : CleanupBlock
+    data class Kept(val kept: GroupKept) : CleanupBlock
+}

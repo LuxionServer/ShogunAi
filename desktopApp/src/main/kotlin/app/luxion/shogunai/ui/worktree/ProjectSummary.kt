@@ -9,6 +9,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import app.luxion.shogunai.ui.components.DangerTextButton
+import app.luxion.shogunai.ui.components.SectionTitle
+import app.luxion.shogunai.ui.components.SkeletonRows
 import app.luxion.shogunai.ui.components.Spacing
 import app.luxion.shogunai.ui.i18n.LocalStrings
 import app.luxion.shogunai.ui.theme.ShogunTheme
@@ -21,6 +23,7 @@ fun ProjectSummary(
     canCleanUp: Boolean,
     onCleanUp: () -> Unit,
     modifier: Modifier = Modifier,
+    isLoading: Boolean = false,
 ) {
     val strings = LocalStrings.current
     Column(
@@ -29,7 +32,11 @@ fun ProjectSummary(
             .padding(Spacing.lg),
         verticalArrangement = Arrangement.spacedBy(Spacing.sm),
     ) {
-        Text(strings.worktreesTitle, style = MaterialTheme.typography.titleMedium)
+        SectionTitle(strings.worktreesTitle)
+        if (isLoading) {
+            SkeletonRows(count = 1, description = strings.loadingWorktrees)
+            return@Column
+        }
         Text(
             strings.worktreesSummary(worktreeCount, formatSize(totalSize)),
             style = ShogunTheme.typography.dataSmall,

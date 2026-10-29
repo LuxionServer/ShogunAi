@@ -1,9 +1,13 @@
 package app.luxion.shogunai.ui.shell
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.ExperimentalTestApi
@@ -11,10 +15,14 @@ import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.click
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.getBoundsInRoot
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performMouseInput
 import androidx.compose.ui.test.v2.runComposeUiTest
 import app.luxion.shogunai.ui.i18n.EnglishStrings
 import app.luxion.shogunai.ui.machine.MachineResource
@@ -51,6 +59,35 @@ class MachineStatusBarUiTest {
 
         assertEquals(MachineResource.GRADLE_DAEMONS, selected)
         onNodeWithTag("machine-status-GRADLE_DAEMONS").assertIsSelected()
+    }
+
+    @Test
+    fun `at the bottom of the window the tooltip opens above the item and lets the click through`() = runComposeUiTest {
+        var selected by mutableStateOf<MachineResource?>(null)
+        setContent {
+            MaterialTheme {
+                Box(Modifier.fillMaxSize()) {
+                    MachineStatusBar(
+                        items,
+                        selected = selected,
+                        compact = false,
+                        onSelect = { selected = it },
+                        modifier = Modifier.align(Alignment.BottomStart),
+                    )
+                }
+            }
+        }
+
+        val gradle = onNodeWithTag("machine-status-GRADLE_DAEMONS")
+        gradle.performMouseInput { moveTo(center) }
+        mainClock.advanceTimeBy(1000)
+        val tooltip = onNodeWithText("Gradle daemons: 10 · 1.2 GB · 9/3 · over the limit").getBoundsInRoot()
+        assertTrue(tooltip.bottom <= gradle.getBoundsInRoot().top)
+
+        gradle.performMouseInput { click(center) }
+        waitForIdle()
+
+        assertEquals(MachineResource.GRADLE_DAEMONS, selected)
     }
 
     @Test

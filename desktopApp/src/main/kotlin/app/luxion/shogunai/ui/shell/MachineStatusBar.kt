@@ -23,6 +23,7 @@ import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.testTag
 import androidx.compose.ui.unit.dp
 import app.luxion.shogunai.ui.components.Spacing
+import app.luxion.shogunai.ui.components.TooltipSide
 import app.luxion.shogunai.ui.components.WithTooltip
 import app.luxion.shogunai.ui.components.interactive
 import app.luxion.shogunai.ui.machine.MachineResource
@@ -64,7 +65,7 @@ private fun MachineStatusEntry(item: MachineStatusItem, selected: Boolean, compa
     val colors = MaterialTheme.colorScheme
     val attention = item.attention?.let { ShogunTheme.status.of(it).color }
     val neutral = if (selected) colors.onSecondaryContainer else colors.onSurfaceVariant
-    WithTooltip(label = item.tooltip) {
+    WithTooltip(label = item.tooltip, side = TooltipSide.Above) {
         Row(
             modifier = Modifier
                 .height(StatusItemHeight)
