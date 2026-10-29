@@ -123,15 +123,15 @@ The sidebar's views section SHALL list "Active" first, above "All worktrees", wi
 - **THEN** the sidebar shows "Active" with 4
 
 ### Requirement: Activity in the sidebar's projects
-Each project in the sidebar SHALL show its number of active worktrees, and an indicator in the info color when an agent is running in any of its worktrees. Projects with no active worktree SHALL show no count. A multirepo's folder SHALL show the sum of its projects' counts and the indicator when any of them has it.
+Each project in the sidebar SHALL show its number of active worktrees, and the agent icon in the info color, next to the count, when an agent is running in any of its worktrees, with the running agents in its tooltip and accessible name. Projects with no active worktree SHALL show no count. A multirepo's folder SHALL show the sum of its projects' counts and the agent icon when any of them has it.
 
 #### Scenario: Project with an agent
 - **WHEN** `api` has two active worktrees and an agent running in one of them
-- **THEN** its sidebar entry shows 2 and the agent indicator
+- **THEN** its sidebar entry shows 2 and the agent icon in the info color
 
 #### Scenario: Multirepo folder
 - **WHEN** `api` and `mobile` belong to `product` and have two and one active worktrees, with an agent in `api`
-- **THEN** `product` shows 3 and the agent indicator
+- **THEN** `product` shows 3 and the agent icon in the info color
 
 ### Requirement: Shortcuts for the views
 Cmd/Ctrl+1 SHALL open "Active" and Cmd/Ctrl+2 SHALL open "All worktrees", from anywhere in the main window, and both SHALL be listed in the View menu.
