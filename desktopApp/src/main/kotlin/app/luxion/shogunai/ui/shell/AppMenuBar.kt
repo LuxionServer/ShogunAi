@@ -31,6 +31,7 @@ fun FrameWindowScope.AppMenuBar(
     onPreferences: () -> Unit,
     onCheckForUpdates: () -> Unit,
     onTour: () -> Unit,
+    onCheckInstallation: () -> Unit,
     onCopyDiagnosticReport: () -> Unit,
     onAbout: () -> Unit,
     onQuit: () -> Unit,
@@ -73,6 +74,7 @@ fun FrameWindowScope.AppMenuBar(
         Menu(strings.menuHelp) {
             Item(strings.tourMenuItem, onClick = onTour)
             Item(strings.menuCheckForUpdates, onClick = onCheckForUpdates)
+            Item(strings.menuCheckInstallation, onClick = onCheckInstallation)
             Item(strings.menuCopyDiagnosticReport, onClick = onCopyDiagnosticReport)
             if (!isMacOs) Item(strings.menuAbout, onClick = onAbout)
         }

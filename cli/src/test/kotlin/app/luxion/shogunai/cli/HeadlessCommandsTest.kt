@@ -103,7 +103,7 @@ class HeadlessCommandsTest {
         err = err,
         readInput = { input },
         canonicalPath = { it.trimEnd('/') },
-        environmentVariable = { null },
+        environment = hostEnvironment(),
         headlessLauncher = launcher,
         appWindows = windows,
         pauseWhileStartingApp = {},

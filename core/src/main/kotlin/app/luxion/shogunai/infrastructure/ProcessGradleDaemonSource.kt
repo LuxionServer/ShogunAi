@@ -3,6 +3,7 @@ package app.luxion.shogunai.infrastructure
 import app.luxion.shogunai.domain.executor.CommandTimeouts
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.io.GradleDaemonSource
+import app.luxion.shogunai.domain.io.HostEnvironment
 import app.luxion.shogunai.domain.model.DaemonKind
 import app.luxion.shogunai.domain.model.DaemonProcess
 import app.luxion.shogunai.domain.model.DaemonState
@@ -18,7 +19,7 @@ import java.time.format.DateTimeParseException
 
 class ProcessGradleDaemonSource(
     private val executor: ShellCommandExecutor,
-    private val gradleUserHome: String = defaultGradleUserHome(),
+    private val gradleUserHome: String,
 ) : GradleDaemonSource {
 
     override suspend fun list(): List<DaemonProcess> {
@@ -58,9 +59,9 @@ internal fun readLogTail(path: Path, bytes: Long): String? = try {
     null
 }
 
-fun defaultGradleUserHome(): String =
-    System.getenv("GRADLE_USER_HOME")?.takeIf { it.isNotBlank() }
-        ?: Path.of(System.getProperty("user.home"), ".gradle").toString()
+fun defaultGradleUserHome(environment: HostEnvironment): String =
+    environment.variable("GRADLE_USER_HOME")?.takeIf { it.isNotBlank() }
+        ?: Path.of(environment.home, ".gradle").toString()
 
 internal data class DaemonLogRecord(val state: DaemonState, val lastBuildDirectory: String?)
 

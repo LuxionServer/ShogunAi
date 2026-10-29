@@ -13,7 +13,7 @@ import kotlin.io.path.name
 import kotlin.io.path.readText
 
 class FileKmpTestWiring(
-    private val gradleUserHome: String = defaultGradleUserHome(),
+    private val gradleUserHome: String,
 ) : KmpTestWiring {
 
     override fun isWiredInRepository(repositoryPath: String): Boolean =

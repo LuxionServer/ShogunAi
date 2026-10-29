@@ -16,6 +16,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class CliHerdrClientTest {
@@ -25,18 +26,25 @@ class CliHerdrClientTest {
 
     private fun client(
         executor: ShellCommandExecutor,
-        files: Set<String> = emptySet(),
+        onPath: Map<String, String> = emptyMap(),
         osName: String = "Mac OS X",
-    ) = CliHerdrClient(executor, userHome = "/home/dev", osName = osName, isFile = { it in files })
+    ) = CliHerdrClient(executor, findExecutable = { onPath[it] }, osName = osName)
 
     private val worktree = "/home/dev/projects/worktrees/TASK-9"
 
     @Test
-    fun `herdr is installed when found in a known folder or on the path`() {
+    fun `herdr is installed when it is found`() {
         val executor = FakeShellCommandExecutor { FakeShellCommandExecutor.failure(it) }
-        assertTrue(client(executor, files = setOf("/home/dev/.local/bin/herdr")).isInstalled())
-        assertTrue(CliHerdrClient(executor, userHome = "/home/dev", osName = "Linux", isFile = { false }, findOnPath = { "/usr/bin/$it" }).isInstalled())
-        assertFalse(CliHerdrClient(executor, userHome = "/home/dev", osName = "Linux", isFile = { false }, findOnPath = { null }).isInstalled())
+        assertTrue(client(executor, onPath = mapOf("herdr" to "/home/dev/tools/bin/herdr")).isInstalled())
+        assertFalse(client(executor).isInstalled())
+    }
+
+    @Test
+    fun `location is the herdr binary that would run`() {
+        val executor = FakeShellCommandExecutor()
+
+        assertEquals("/home/dev/tools/bin/herdr", client(executor, onPath = mapOf("herdr" to "/home/dev/tools/bin/herdr")).location())
+        assertNull(client(executor).location())
     }
 
     @Test
@@ -238,20 +246,11 @@ class CliHerdrClientTest {
     }
 
     @Test
-    fun `the binary is looked up in the user's bin folders before the PATH`() {
+    fun `the binary is run from where it is found, or by name`() {
         val executor = FakeShellCommandExecutor()
 
         assertEquals("herdr", client(executor).executable())
-        assertEquals("/home/dev/.cargo/bin/herdr", client(executor, files = setOf("/home/dev/.cargo/bin/herdr")).executable())
-        assertEquals(
-            "/home/dev/.local/bin/herdr",
-            client(executor, files = setOf("/home/dev/.local/bin/herdr", "/home/dev/.cargo/bin/herdr")).executable(),
-        )
-        assertEquals("/opt/homebrew/bin/herdr", client(executor, files = setOf("/opt/homebrew/bin/herdr")).executable())
-        assertEquals(
-            "/home/dev/.cargo/bin/herdr",
-            client(executor, files = setOf("/opt/homebrew/bin/herdr", "/home/dev/.cargo/bin/herdr")).executable(),
-        )
+        assertEquals("/home/dev/tools/bin/herdr", client(executor, onPath = mapOf("herdr" to "/home/dev/tools/bin/herdr")).executable())
         assertEquals("herdr.exe", client(executor, osName = "Windows 11").executable())
     }
 

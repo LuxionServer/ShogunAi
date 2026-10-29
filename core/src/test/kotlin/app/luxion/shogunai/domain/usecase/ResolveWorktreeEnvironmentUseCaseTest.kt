@@ -346,6 +346,7 @@ class ResolveWorktreeEnvironmentUseCaseTest {
         FakeAppleSimulators(),
         { SimulatorSettings() },
         gradleJvmArgsFor = { "-Xmx6g -Dfile.encoding=UTF-8" },
+        userHome = "/home/dev",
     )
 
     private fun withGradleContributions(source: FakeRepositoryProvisioningSource) =

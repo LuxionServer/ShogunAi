@@ -12,7 +12,7 @@ import kotlin.io.path.exists
 import kotlin.io.path.readText
 
 class NioDesktopTurnStore(
-    private val machineDirectory: Path = Path.of(System.getProperty("user.home"), ".shogunai"),
+    private val machineDirectory: Path,
 ) : DesktopTurnStore {
 
     private val json = Json { prettyPrint = true; ignoreUnknownKeys = true }

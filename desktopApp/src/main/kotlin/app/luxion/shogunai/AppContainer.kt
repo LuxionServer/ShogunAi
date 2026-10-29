@@ -81,7 +81,6 @@ import app.luxion.shogunai.domain.usecase.TourLocation
 import app.luxion.shogunai.ui.shell.UpdateState
 import app.luxion.shogunai.domain.usecase.ClaudeCodeHooks
 import app.luxion.shogunai.infrastructure.ExecutableLocator
-import app.luxion.shogunai.infrastructure.ShellLoginShellPath
 import app.luxion.shogunai.domain.usecase.CommandLineTool
 import app.luxion.shogunai.infrastructure.NioLauncherFiles
 import app.luxion.shogunai.infrastructure.PowerShellUserPath
@@ -191,6 +190,8 @@ import app.luxion.shogunai.domain.usecase.DeleteSimulatorsUseCase
 import app.luxion.shogunai.domain.usecase.DetectRunningAgentsUseCase
 import app.luxion.shogunai.domain.io.DiagnosticsLog
 import app.luxion.shogunai.domain.usecase.DerivedDataMeasure
+import app.luxion.shogunai.domain.usecase.CheckInstallationUseCase
+import app.luxion.shogunai.ui.shell.InstallationCheckState
 import app.luxion.shogunai.domain.usecase.DiagnosticReport
 import app.luxion.shogunai.domain.usecase.Redactor
 import app.luxion.shogunai.domain.usecase.ListDerivedDataUseCase
@@ -264,7 +265,9 @@ import app.luxion.shogunai.infrastructure.NioProvisioningRecordStore
 import app.luxion.shogunai.infrastructure.ProcessHandleLiveness
 import app.luxion.shogunai.infrastructure.RepositoryProvisioningFiles
 import app.luxion.shogunai.infrastructure.SimctlAppleSimulators
+import app.luxion.shogunai.infrastructure.ShogunFiles
 import app.luxion.shogunai.infrastructure.SocketPortProbe
+import app.luxion.shogunai.infrastructure.SystemHostEnvironment
 import app.luxion.shogunai.infrastructure.defaultGradleUserHome
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -272,18 +275,22 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 
 class AppContainer {
-    val projectRepository: ProjectRepository = JsonProjectRepository()
+    private val hostEnvironment = SystemHostEnvironment.forDesktopApp().also { environment ->
+        Thread({ environment.path }, "host-environment-path").apply { isDaemon = true }.start()
+    }
+    val files = ShogunFiles(hostEnvironment.home)
+    val projectRepository: ProjectRepository = JsonProjectRepository(files.projects)
     var loadedBranches: () -> Collection<String> = { emptyList() }
     private val redactor = Redactor(
-        home = System.getProperty("user.home").orEmpty(),
+        home = hostEnvironment.home,
         userName = System.getProperty("user.name").orEmpty(),
         projectNames = { runCatching { projectRepository.list().map { it.name } }.getOrDefault(emptyList()) },
         branchNames = { runCatching { loadedBranches() }.getOrDefault(emptyList()) },
     )
-    val diagnosticsLog: DiagnosticsLog = RotatingFileDiagnosticsLog(redact = redactor::redact)
-    val diagnosticReport = DiagnosticReport(BuildInfo.VERSION, diagnosticsLog)
+    val diagnosticsLog: DiagnosticsLog = RotatingFileDiagnosticsLog(files.logs, redact = redactor::redact)
+    val diagnosticReport = DiagnosticReport(BuildInfo.VERSION, diagnosticsLog, installation = { checkInstallation() }, redact = redactor::redact)
     val shownErrorLog = ShownErrorLog(diagnosticsLog)
-    private val settingsFile = JsonSettingsFile()
+    private val settingsFile = JsonSettingsFile(files.settings)
     fun settingsProblem() = settingsFile.lastReadProblem
 
     fun acknowledgeSettingsProblem() = settingsFile.acknowledgeReadProblem()
@@ -292,7 +299,7 @@ class AppContainer {
     val languagePreferenceRepository: LanguagePreferenceRepository = JsonLanguagePreferenceRepository(settingsFile)
     val shellPreferenceRepository: ShellPreferenceRepository = JsonShellPreferenceRepository(settingsFile)
     private val fileManager: FileManager = NioFileManager()
-    private val shellCommandExecutor: ShellCommandExecutor = ProcessBuilderShellCommandExecutor()
+    private val shellCommandExecutor: ShellCommandExecutor = ProcessBuilderShellCommandExecutor(path = { hostEnvironment.path.folders })
     private val clipboardWriter: ClipboardWriter = AwtClipboardWriter()
     private val updatePreferences = JsonUpdatePreferenceRepository(settingsFile)
     val updates = UpdateState(
@@ -300,7 +307,7 @@ class AppContainer {
             source = GitHubReleaseSource(BuildInfo.VERSION),
             preferences = updatePreferences,
             detectChannel = DetectInstallChannelUseCase(
-                os = HostOs.current(),
+                os = hostEnvironment.os,
                 appLocation = System.getProperty("java.home").orEmpty(),
                 pathExists = { Files.exists(Path.of(it)) },
                 executor = shellCommandExecutor,
@@ -314,11 +321,11 @@ class AppContainer {
     )
     val repositoryProvisioningSource: RepositoryProvisioningSource = RepositoryProvisioningFiles()
     private val provisioningRecords: ProvisioningRecordStore = NioProvisioningRecordStore()
-    private val gradleUserHome = defaultGradleUserHome()
+    private val gradleUserHome = defaultGradleUserHome(hostEnvironment)
     private val gradleDaemonSource = ProcessGradleDaemonSource(shellCommandExecutor, gradleUserHome)
     private val mavenDaemonSource = ProcessMavenDaemonSource(shellCommandExecutor)
     private val composeProjectSource = DockerComposeProjectSource(shellCommandExecutor)
-    private val composeProjectRegistry = JsonComposeProjectRegistry()
+    private val composeProjectRegistry = JsonComposeProjectRegistry(files.composeProjects)
 
     private suspend fun composeProjectNameOf(config: ProjectConfig, worktreePath: String): String =
         resolveEnvironment(config.baseRepositoryPath, worktreePath, reserve = false).getOrNull()
@@ -335,15 +342,15 @@ class AppContainer {
                 }
             }
         }
-    private val packageCacheSource = MacPackageCacheSource(fileManager, System.getProperty("user.home"))
+    private val packageCacheSource = MacPackageCacheSource(fileManager, hostEnvironment.home)
     private val derivedDataSource = MacDerivedDataSource(
         shellCommandExecutor,
         fileManager,
-        home = System.getProperty("user.home"),
+        home = hostEnvironment.home,
     )
-    private val derivedDataSizes = JsonDerivedDataSizeStore()
+    private val derivedDataSizes = JsonDerivedDataSizeStore(files.derivedDataSizes)
     private val measureDerivedDataSizes = MeasureDerivedDataUseCase(derivedDataSource, derivedDataSizes)
-    private val environmentStateStore = NioEnvironmentStateStore()
+    private val environmentStateStore = NioEnvironmentStateStore(files.folder)
     private val portProbe = SocketPortProbe()
     private val appleSimulators = SimctlAppleSimulators(shellCommandExecutor)
     private val kmpTestWiring = FileKmpTestWiring(gradleUserHome)
@@ -352,35 +359,31 @@ class AppContainer {
         ::simulatorSettingsFor,
         gradleJvmArgsFor = { repository -> effectiveGradleJvmArgs(fileManager, gradleUserHome, repository) },
         fileManager = fileManager,
-        userHome = System.getProperty("user.home"),
+        userHome = hostEnvironment.home,
         isMac = derivedDataSource.isSupported(),
     )
     val agentChoices = AgentChoices(settingsFile.read().worktreeAgents) { transform ->
         settingsFile.update { it.copy(worktreeAgents = transform(it.worktreeAgents)) }
     }
-    private val loginShellPath = ShellLoginShellPath(shellCommandExecutor).also { path ->
-        Thread({ path.folders() }, "login-shell-path").apply { isDaemon = true }.start()
-    }
-    private val commandLineTool = ExecutableLocator(pathFolders = loginShellPath::folders).let { locator ->
-        CommandLineTool(
-            os = HostOs.current(),
-            appLauncher = System.getProperty("jpackage.app-path"),
-            home = System.getProperty("user.home"),
-            pathFolders = loginShellPath::folders,
-            userBinFolders = locator.userBinFolders(),
-            findShogun = { locator.find("shogun") },
-            files = NioLauncherFiles(),
-            userPath = PowerShellUserPath(shellCommandExecutor),
-        )
-    }
+    private val locator = ExecutableLocator(hostEnvironment)
+    private val commandLineTool = CommandLineTool(
+        os = hostEnvironment.os,
+        appLauncher = System.getProperty("jpackage.app-path"),
+        home = hostEnvironment.home,
+        pathFolders = { hostEnvironment.path.folders },
+        userBinFolders = locator.userBinFolders(),
+        findShogun = { locator.find("shogun") },
+        files = NioLauncherFiles(),
+        userPath = PowerShellUserPath(shellCommandExecutor),
+    )
     val claudeHooks = ClaudeHooksState(
         hooks = ClaudeCodeHooks(fileManager),
-        settingsPath = { ClaudeCodeHooks.userSettingsPath(System.getenv("CLAUDE_CONFIG_DIR"), System.getProperty("user.home")) },
+        settingsPath = { ClaudeCodeHooks.userSettingsPath(hostEnvironment.variable("CLAUDE_CONFIG_DIR"), hostEnvironment.home) },
         tool = commandLineTool,
         noticeDismissedStore = { settingsFile.read().claudeHooksNoticeDismissed },
         rememberNoticeDismissed = { settingsFile.update { it.copy(claudeHooksNoticeDismissed = true) } },
     )
-    val tourLocation = TourLocation()
+    val tourLocation = TourLocation(hostEnvironment.home)
     val tour = TourState(
         TourActions(
             create = { CreateTourUseCase(shellCommandExecutor, fileManager, projectRepository, tourLocation)(languagePreferenceRepository.load()) },
@@ -396,13 +399,13 @@ class AppContainer {
         ),
     )
     private val editorResolver = EditorExecutableResolver(
-        HostOs.current(),
-        ExecutableLocator(pathFolders = loginShellPath::folders),
+        hostEnvironment.os,
+        locator,
         RegistryUninstallLocations(shellCommandExecutor),
     )
     val tools = ToolsPreferences(
         JsonToolPreferenceRepository(settingsFile),
-        LocalToolDetector(shellCommandExecutor, editorResolver = editorResolver, isRunnerInstalled = ::isRunnerInstalled),
+        LocalToolDetector(shellCommandExecutor, hostEnvironment.os, hostEnvironment.home, locator, editorResolver = editorResolver, isRunnerInstalled = ::isRunnerInstalled),
     )
     private val terminalLaunchers = listOf(
         MacTerminalLauncher(TerminalId.TERMINAL, shellCommandExecutor),
@@ -411,11 +414,11 @@ class AppContainer {
         TmuxTerminalLauncher(shellCommandExecutor),
         ZellijTerminalLauncher(shellCommandExecutor),
     )
-    private val editorLaunchers = EditorId.entries.map { CommandEditorLauncher(it, shellCommandExecutor, editorResolver = editorResolver) }
+    private val editorLaunchers = EditorId.entries.map { CommandEditorLauncher(it, shellCommandExecutor, hostEnvironment.os, locator, editorResolver = editorResolver) }
     private val folderLauncher = SystemFolderLauncher(shellCommandExecutor)
     private val claudeDesktopLauncher = MacClaudeDesktopLauncher(shellCommandExecutor)
     private val environmentCache = WorktreeEnvironmentCache()
-    val repositoryTrust: RepositoryTrust = JsonRepositoryTrust()
+    val repositoryTrust: RepositoryTrust = JsonRepositoryTrust(files.trust)
     private val resolveEnvironment = resolverWith(contributions)
     private val stopSimulator = StopWorktreeSimulatorUseCase(repositoryProvisioningSource, appleSimulators, resolveEnvironment)
     private val readSimulatorStates = ReadSimulatorStatesUseCase(repositoryProvisioningSource, appleSimulators, resolveEnvironment)
@@ -470,13 +473,28 @@ class AppContainer {
 
         override val initScriptPath: String get() = kmpTestWiring.initScriptPath()
     }
-    private val androidSdk = SharedDeviceStatesAndroidSdk(LocalAndroidSdk(shellCommandExecutor, fileManager))
-    private val herdrConfig = HerdrConfigFile()
-    private val herdrClient = CliHerdrClient(shellCommandExecutor)
-    private val orcaClient = CliOrcaClient(shellCommandExecutor)
-    private val orcaStore = JsonOrcaWorkspaceStore()
-    private val orcaReader = OrcaWorktreeReader(orcaClient, orcaStore)
-    private val orcaSync = OrcaWorktreeSync(orcaClient, orcaStore, CliGitHubClient(shellCommandExecutor))
+    private val androidSdk = SharedDeviceStatesAndroidSdk(LocalAndroidSdk(shellCommandExecutor, fileManager, hostEnvironment::variable, hostEnvironment.home, logDirectory = files.logs))
+    private val herdrConfig = HerdrConfigFile(hostEnvironment::variable, hostEnvironment.home)
+    private val herdrClient = CliHerdrClient(shellCommandExecutor, locator::find)
+    private val orcaClient = CliOrcaClient(shellCommandExecutor, locator::find)
+    val checkInstallation = CheckInstallationUseCase(
+        executor = shellCommandExecutor,
+        findExecutable = locator::find,
+        path = { hostEnvironment.path },
+        shell = hostEnvironment.shell,
+        commandLineTool = commandLineTool::status,
+        hooks = ClaudeCodeHooks(fileManager),
+        hooksSettingsPath = ClaudeCodeHooks.userSettingsPath(hostEnvironment.variable("CLAUDE_CONFIG_DIR"), hostEnvironment.home),
+        herdrLocation = herdrClient::location,
+        orcaLocation = orcaClient::location,
+        projects = projectRepository,
+        fileManager = fileManager,
+        provisioningSource = repositoryProvisioningSource,
+    )
+    val installationCheck = InstallationCheckState { withContext(Dispatchers.IO) { checkInstallation() } }
+    private val orcaStore = JsonOrcaWorkspaceStore(files.orcaWorkspaces)
+    private val orcaReader = OrcaWorktreeReader(orcaClient, orcaStore, hostEnvironment.home)
+    private val orcaSync = OrcaWorktreeSync(orcaClient, orcaStore, CliGitHubClient(shellCommandExecutor, locator::find))
 
     private fun isRunnerInstalled(runner: RunnerId): Boolean = when (runner) {
         RunnerId.HERDR -> herdrClient.isInstalled()
@@ -493,9 +511,9 @@ class AppContainer {
     suspend fun refreshCadence(): RefreshCadence = withContext(Dispatchers.IO) { resolveRefreshCadence() }
     private val listGradleDaemons = ListGradleDaemonsUseCase(gradleDaemonSource, fileManager)
     private val stopGradleDaemons = StopGradleDaemonsUseCase(gradleDaemonSource, shellCommandExecutor)
-    private val agentSessionStore = FileAgentSessionStore()
+    private val agentSessionStore = FileAgentSessionStore(files.agentSessions)
     private val claudeSessions = FileClaudeSessionRegistry(
-        ClaudeCodeHooks.claudeSessionsDirectory(System.getenv("CLAUDE_CONFIG_DIR"), System.getProperty("user.home")),
+        ClaudeCodeHooks.claudeSessionsDirectory(hostEnvironment.variable("CLAUDE_CONFIG_DIR"), hostEnvironment.home),
     )
     private val herdrLauncher = HerdrAgentLauncher(herdrClient, registry = claudeSessions)
     private val processEnvironment = SystemProcessEnvironmentReader(shellCommandExecutor)
@@ -522,7 +540,7 @@ class AppContainer {
         listGradleDaemons,
         agentActivity = ReadAgentActivityUseCase(agentSessionStore)::invoke,
     )
-    private val deviceWaitQueue = NioDeviceWaitQueue()
+    private val deviceWaitQueue = NioDeviceWaitQueue(files.folder)
     private val acquireResource = AcquireWorktreeResourceUseCase(
         repositoryProvisioningSource,
         resolveEnvironment,
@@ -542,8 +560,8 @@ class AppContainer {
     private val startEmulator = StartWorktreeEmulatorUseCase(repositoryProvisioningSource, resolveEnvironment, acquireResource, androidSdk)
     private val showEmulatorInOrca = ShowEmulatorInOrcaUseCase(orcaClient)
     private val stopEmulator = StopWorktreeEmulatorUseCase(repositoryProvisioningSource, resolveEnvironment, androidSdk)
-    private val headlessAppLauncher = GradleHeadlessAppLauncher(shellCommandExecutor, Path.of(System.getProperty("user.home"), ".shogunai", "headless").toString())
-    private val headlessAppWindows = MacAppWindowService(shellCommandExecutor, Path.of(System.getProperty("user.home"), ".shogunai", "headless").toString())
+    private val headlessAppLauncher = GradleHeadlessAppLauncher(shellCommandExecutor, files.headless.toString())
+    private val headlessAppWindows = MacAppWindowService(shellCommandExecutor, files.headless.toString())
     private val headlessAppWorktrees = HeadlessAppWorktrees(
         repositoryProvisioningSource,
         { resolveEnvironment.directoriesOf(it).admin },
@@ -554,7 +572,7 @@ class AppContainer {
     private val stopHeadlessApp = StopHeadlessAppUseCase(headlessAppWorktrees, headlessAppLauncher)
     private val readHeadlessApp = ReadHeadlessAppUseCase(headlessAppWorktrees, headlessAppWindows)
     private val desktopTurnLedger = DesktopTurnLedger(
-        NioDesktopTurnStore(),
+        NioDesktopTurnStore(files.folder),
         environmentStateStore,
         deviceWaitQueue,
         ProcessHandleLiveness(),
@@ -659,7 +677,7 @@ class AppContainer {
 
     val repositoryApproval = DialogRepositoryApproval()
 
-    private val multirepoSource = JsonMultirepoSource()
+    private val multirepoSource = JsonMultirepoSource(files.multirepos)
     private val resolveMultirepo = ResolveMultirepoUseCase(multirepoSource, shellCommandExecutor, fileManager)
     private val configureMultirepo = ConfigureMultirepoUseCase(multirepoSource, resolveMultirepo, projectRepository, shellCommandExecutor)
 

@@ -65,6 +65,7 @@ plugins:
             Command-line tool: Línea de comandos
             Development process: Proceso de desarrollo
             Branches: Ramas
+            Clean account rehearsal: Ensayo en una cuenta limpia
             Design decisions: Decisiones de diseño
             Roadmap: Roadmap
             Using with agents: Uso con agentes
@@ -102,5 +103,6 @@ nav:
       - OpenSpec: process/openspec.md
       - Release: process/release.md
       - Idle cost benchmark: process/benchmark.md
+      - Clean account rehearsal: process/clean-account-rehearsal.md
   - Design decisions: decisions/index.md
   - Roadmap: roadmap.md

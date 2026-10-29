@@ -1125,3 +1125,10 @@ With `--yes`, `shogun clean --stop-maven-daemons` SHALL also stop the idle Maven
 #### Scenario: One worktree fails
 - **WHEN** one worktree's status can't be read while the others can
 - **THEN** its line reports the failure as before, and the other lines are unaffected
+
+### Requirement: Output is UTF-8
+The command SHALL write standard output and standard error in UTF-8 whatever the system's locale or code page, including when they are redirected to a file or a pipe.
+
+#### Scenario: A path with accents reaches a script intact
+- **WHEN** `shogun new` runs in a repository whose path contains `ñ`, with its output redirected and a locale or code page that isn't UTF-8
+- **THEN** the printed path is the worktree's path encoded in UTF-8

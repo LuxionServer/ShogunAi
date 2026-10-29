@@ -13,7 +13,7 @@ import kotlinx.serialization.json.intOrNull
 
 class CliGitHubClient(
     private val executor: ShellCommandExecutor,
-    private val findExecutable: (String) -> String? = { ExecutableLocator().find(it) },
+    private val findExecutable: (String) -> String?,
 ) : GitHubClient {
 
     override suspend fun pullRequestFor(directory: String, branch: String): Int? {

@@ -271,6 +271,24 @@ El comando se pasa como **argv** (lista de strings), nunca como una cadena para 
 
 `executeWithin` acota la ejecución de un comando: si no termina a tiempo se detiene y lanza `CommandExecutionException.TimedOut`. Los comandos de solo lectura pasan un límite de `CommandTimeouts` (`GIT_READ`, 30 s, para las lecturas de Git; `LISTING`, 10 s, para los listados de dispositivos, procesos y herramientas; `NETWORK`, 60 s, para `git fetch`); los comandos que pueden tardar con motivo (crear un worktree, los comandos post-creación, las builds) usan `execute`, sin límite. Su implementación por defecto ignora el límite, así que los dobles de test no tienen que implementarlo. Una corrutina cancelada siempre detiene el comando, y ningún comando espera nunca entrada.
 
+### `HostEnvironment`
+
+```kotlin
+interface HostEnvironment {
+    val os: HostOs
+    val home: String
+    val shell: String?
+    val path: HostPath
+    fun variable(name: String): String?
+}
+
+data class HostPath(val folders: List<String>, val source: HostPathSource)
+
+enum class HostPathSource { LOGIN_SHELL, PROCESS, FALLBACK }
+```
+
+El entorno del equipo tal como lo ve ShogunAi, resuelto una vez por proceso: la carpeta personal, el shell del usuario (`SHELL`; vacía cuenta como ninguno), las carpetas del `PATH` y cualquier otra variable. Cada comando que ejecuta ShogunAi recibe `path.folders` como `PATH`, y cada herramienta que busca se busca ahí, así que la app de escritorio abierta desde el Dock se comporta como desde un terminal. `path` se resuelve en el primer acceso y puede esperar al shell de login, como mucho su límite de tiempo; `source` dice de dónde salió: `LOGIN_SHELL` (la app de escritorio leyó el shell de login del usuario), `PROCESS` (el CLI, y Windows, cuyo `PATH` propio ya es el del usuario) o `FALLBACK` (la app de escritorio no pudo leer el shell de login y añadió las carpetas de instalación habituales a su propio `PATH`). Las raíces de composición lo crean una vez (`SystemHostEnvironment`) y pasan sus valores hacia abajo; nada más lee el entorno del proceso.
+
 ### `FileManager`
 
 ```kotlin

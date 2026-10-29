@@ -12,8 +12,8 @@ import java.net.URLEncoder
 class CommandEditorLauncher(
     override val editor: EditorId,
     private val executor: ShellCommandExecutor,
-    private val os: HostOs = HostOs.current(),
-    private val locator: ExecutableLocator = ExecutableLocator(os),
+    private val os: HostOs,
+    private val locator: ExecutableLocator,
     private val xcodeWorkspaceFinder: XcodeWorkspaceFinder = FileSystemXcodeWorkspaceFinder(),
     private val editorResolver: EditorExecutableResolver = EditorExecutableResolver(os, locator),
 ) : EditorLauncher {

@@ -15,7 +15,7 @@ import kotlin.io.path.exists
 import kotlin.io.path.readText
 
 class NioDeviceWaitQueue(
-    private val machineDirectory: Path = Path.of(System.getProperty("user.home"), ".shogunai"),
+    private val machineDirectory: Path,
 ) : DeviceWaitQueue {
 
     private val json = Json { prettyPrint = true; ignoreUnknownKeys = true }
