@@ -44,7 +44,7 @@ fun ProjectSummary(
         }
         if (canCleanUp) {
             DangerTextButton(onClick = onCleanUp) {
-                Text(strings.cleanUp, style = MaterialTheme.typography.bodySmall)
+                Text(strings.cleanUp)
             }
         }
     }

@@ -54,8 +54,9 @@ import app.luxion.shogunai.ui.i18n.LocalStrings
 import app.luxion.shogunai.ui.multirepo.MultirepoMembership
 import app.luxion.shogunai.ui.theme.Status
 import app.luxion.shogunai.ui.theme.ShogunTheme
+import app.luxion.shogunai.ui.theme.ShogunLayout
 
-val ExpandedSidebarWidth: Dp = 240.dp
+val ExpandedSidebarWidth: Dp = ShogunLayout.sidebarMaxWidth
 val RailSidebarWidth: Dp = 64.dp
 private val SidebarRowHeight = 32.dp
 private val RailItemSize = 36.dp

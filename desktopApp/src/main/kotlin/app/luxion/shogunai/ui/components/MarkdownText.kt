@@ -134,7 +134,7 @@ private fun headingStyle(level: Int): TextStyle = when (level) {
 
 @Composable
 private fun MarkdownLine(spans: List<MarkdownSpan>, style: TextStyle, onOpenUrl: (String) -> Unit, modifier: Modifier = Modifier) {
-    val linkColor = MaterialTheme.colorScheme.primary
+    val linkColor = ShogunTheme.colors.accent
     val codeStyle = ShogunTheme.typography.dataSmall
     val codeBackground = MaterialTheme.colorScheme.surfaceVariant
     val annotated = remember(spans, linkColor, codeStyle, codeBackground, onOpenUrl) {

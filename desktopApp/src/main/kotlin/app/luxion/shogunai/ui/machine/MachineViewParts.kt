@@ -45,7 +45,7 @@ fun MachineViewFrame(title: String, content: @Composable ColumnScope.() -> Unit)
         modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(Spacing.md),
         verticalArrangement = Arrangement.spacedBy(Spacing.sm),
     ) {
-        Text(title, style = MaterialTheme.typography.titleLarge)
+        Text(title, style = ShogunTheme.typography.viewTitle)
         content()
     }
 }
@@ -60,7 +60,7 @@ fun PoolUsageSection(machine: MachineResources, resource: MachineResource) {
             if (usage.isOverLimit) StatusChip(Status.WARNING, strings.overLimit)
             LocalErrorFixActions.current?.let { actions ->
                 NeutralTextButton(onClick = actions.openPreferences) {
-                    Text(strings.changeInPreferences, style = MaterialTheme.typography.bodySmall)
+                    Text(strings.changeInPreferences)
                 }
             }
         }
@@ -94,6 +94,18 @@ fun MachineDataText(text: String, modifier: Modifier = Modifier, color: androidx
         text,
         style = ShogunTheme.typography.dataSmall,
         color = color,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        modifier = modifier,
+    )
+}
+
+@Composable
+fun MachineStateText(text: String, modifier: Modifier = Modifier) {
+    Text(
+        text,
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
         modifier = modifier,
@@ -143,7 +155,7 @@ fun OwnerCell(
         Text(
             label,
             style = ShogunTheme.typography.dataSmall,
-            color = MaterialTheme.colorScheme.primary,
+            color = ShogunTheme.colors.accent,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = modifier.interactive { onOpenWorktree(owner.projectId, owner.worktreePath) },
