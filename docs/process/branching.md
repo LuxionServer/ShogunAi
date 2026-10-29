@@ -46,4 +46,4 @@ gitGraph
 3. **Keep it up to date**: merge `develop` into the epic branch regularly, and always before merging the epic back. Use a merge, not a rebase, because the branch is shared and already pushed.
 4. **Close it** with a pull request from the epic branch to `develop`, once the effort (or a stable, self-contained part of it) is done.
 
-The `Tests` workflow runs on every pull request targeting an `epic/**` branch and on every push to it, the same as for `develop`. A push to a branch that already has an open pull request to `develop` or an `epic/**` branch skips the tests, since that pull request's run already covers the same commit; this keeps the epic's pull request to `develop` from running them twice.
+The `Tests` workflow runs on every pull request targeting an `epic/**` branch, the same as for `develop`, and again on the epic's pull request to `develop` while it's open. Pushes to the epic branch don't trigger it, so each commit is tested once, by its pull request. To test the epic branch on its own, for example after merging `develop` into it before its pull request exists, run the workflow by hand from the Actions tab (`workflow_dispatch`).
