@@ -17,6 +17,7 @@ Don't load all of `docs/` into context by default: search for the specific page 
 
 Kover measures line and branch coverage of every module, and `./gradlew koverVerify` (run by the macOS job of the Tests workflow) fails below a module's rules, set in its `build.gradle.kts`.
 
+- Before considering a change done, run `./gradlew test koverVerify`, not only `test`. When a rule fails, find the missed lines and branches with `./gradlew koverXmlReport` (or `koverHtmlReport`) and cover them with tests. Do the same after merging the base branch: code it brings in can break a rule.
 - `core` and `cli` must keep 100% of their lines: every production line you add needs a unit test. Their branches, and the lines and branches of the desktop app outside its composables, have floors.
 - When your change raises a figure past a whole percentage, raise that floor in the same change. Never lower a floor.
 - Don't exclude code to meet a rule. The exclusions and their reasons are listed in the archived `coverage-kover` change's `design.md` (`openspec/changes/archive/*-coverage-kover/`); a new one needs its own reason in your change's design.
