@@ -3,13 +3,17 @@ package app.luxion.shogunai.ui.shell
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.assertHeightIsEqualTo
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertWidthIsEqualTo
 import androidx.compose.ui.test.getBoundsInRoot
+import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.v2.runComposeUiTest
+import androidx.compose.ui.unit.dp
 import app.luxion.shogunai.domain.FakeProjectRepository
 import app.luxion.shogunai.domain.FakeShellPreferenceRepository
 import app.luxion.shogunai.domain.model.Multirepo
@@ -162,6 +166,39 @@ class MultirepoShellTest {
         assertEquals(folder, selected)
         onNodeWithContentDescription("Collapse").performClick()
         assertEquals(folder, toggled)
+    }
+
+    @Test
+    fun `a project with a running agent shows the agent icon next to its count`() = runComposeUiTest {
+        setContent {
+            MaterialTheme {
+                Sidebar(
+                    projects = listOf(api, tools),
+                    selectedProjectId = null,
+                    isActiveSelected = false,
+                    isAllSelected = false,
+                    activeCount = 3,
+                    totalWorktreeCount = 3,
+                    activityOf = { if (it.id == api.id) ProjectActivity(2, listOf("claude")) else ProjectActivity(1, emptyList()) },
+                    rail = false,
+                    onSelectActive = {},
+                    onSelectAll = {},
+                    onSelectProject = {},
+                    onEditProject = {},
+                    onRemoveProject = {},
+                    onAddProject = {},
+                    onToggle = {},
+                )
+            }
+        }
+
+        val agent = onNodeWithContentDescription("Agents running: claude", useUnmergedTree = true)
+            .assertWidthIsEqualTo(12.dp)
+            .assertHeightIsEqualTo(12.dp)
+            .getBoundsInRoot()
+        val count = onNodeWithText("2", useUnmergedTree = true).getBoundsInRoot()
+        assertTrue(agent.right <= count.left)
+        assertEquals(1, onAllNodesWithContentDescription("Agents running", substring = true, useUnmergedTree = true).fetchSemanticsNodes().size)
     }
 
     @Test

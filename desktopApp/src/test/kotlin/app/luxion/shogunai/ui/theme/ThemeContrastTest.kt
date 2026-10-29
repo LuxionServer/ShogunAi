@@ -128,6 +128,24 @@ class ThemeContrastTest {
     }
 
     @Test
+    fun `agent icon colors reach indicator contrast where the indicator is shown`() {
+        schemes.zip(tokens).forEach { (scheme, token) ->
+            val (name, colorScheme, status) = scheme
+            mapOf(
+                "surfaceContainerLow" to colorScheme.surfaceContainerLow,
+                "surfaceContainer" to colorScheme.surfaceContainer,
+                "accentContainer" to token.third.accentContainer,
+                "secondaryContainer" to colorScheme.secondaryContainer,
+                "surface" to colorScheme.surface,
+            ).forEach { (surfaceName, surface) ->
+                status.all().forEach { (statusName, colors) ->
+                    assertContrast("$name agent icon $statusName on $surfaceName", colors.color, surface, INDICATOR_CONTRAST)
+                }
+            }
+        }
+    }
+
+    @Test
     fun `disabled content stays legible on every surface and on the disabled container`() {
         tokens.forEach { (name, scheme, colors) ->
             (scheme.surfaces() + ("disabledContainer" to colors.disabledContainer)).forEach { (surfaceName, surface) ->
