@@ -21,7 +21,7 @@ dependencies {
     implementation(libs.kotlinx.coroutinesCore)
     implementation(libs.androidx.lifecycle.viewmodelCompose)
     implementation(libs.androidx.lifecycle.runtimeCompose)
-
+    implementation(libs.filekit.dialogs)
 
     testImplementation(testFixtures(project(":core")))
     testImplementation(libs.kotlin.testJunit)
@@ -96,7 +96,7 @@ compose.desktop {
             val appVersion = (findProperty("appVersion") as String?) ?: "0.0.0"
             packageVersion = appVersion
 
-            modules("java.net.http", "java.management", "jdk.management")
+            modules("java.net.http", "java.management", "jdk.management", "jdk.net", "jdk.security.auth")
 
             macOS {
                 packageVersion = macBundleVersion(appVersion)

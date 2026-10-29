@@ -3,6 +3,7 @@ package app.luxion.shogunai.e2e
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onLast
@@ -47,5 +48,30 @@ class AddProjectE2eTest {
         assertEquals(repository.canonicalPath, File(project.config.baseRepositoryPath).canonicalPath)
         assertEquals(listOf(".env.local"), project.config.secretFiles)
         awaitText("sample-app")
+    }
+
+    @Test
+    fun `choosing a local file from the repository's ignored files stores it`() = runComposeUiTest {
+        val environment = E2eEnvironment.prepare()
+        val repository = environment.repository("sample-app", ignored = mapOf(".env.local" to "API_URL=http://localhost\n"))
+        val appContainer = AppContainer()
+        val strings = setShell(appContainer, AnsweringPathPicker(folder = repository))
+
+        awaitText(strings.addProject)
+        onAllNodesWithText(strings.addProject).onLast().performClick()
+        awaitText(strings.chooseRepositoryFolder)
+        onNodeWithText(strings.chooseRepositoryFolder).performClick()
+        awaitText(strings.chooseLocalFiles)
+
+        onNodeWithText(strings.chooseLocalFiles).performScrollTo().performClick()
+        awaitText(strings.localFilePickerTitle)
+        awaitCondition("the ignored file to be listed") { onAllNodes(hasTestTag("local-file-.env.local")).fetchSemanticsNodes().isNotEmpty() }
+        onNode(hasTestTag("local-file-.env.local")).performClick()
+        onNodeWithText(strings.applyLocalFiles).performClick()
+        awaitNoText(strings.localFilePickerTitle)
+        onAllNodesWithText(strings.addProject).onLast().performClick()
+
+        awaitCondition("the project to be stored") { appContainer.projectRepository.list().isNotEmpty() }
+        assertEquals(listOf(".env.local"), appContainer.projectRepository.list().single().config.secretFiles)
     }
 }

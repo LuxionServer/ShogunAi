@@ -37,7 +37,6 @@ object SpanishStrings : Strings {
     override val collapse = "Contraer"
 
     override val selectFolderDialogTitle = "Selecciona una carpeta"
-    override val selectLocalFilesDialogTitle = "Selecciona archivos o carpetas locales"
 
     override val projectsTitle = "Proyectos"
     override val addProject = "Añadir proyecto"
@@ -89,6 +88,17 @@ object SpanishStrings : Strings {
     override val localFilesSection = "Archivos locales"
     override val removeLocalFile = "Eliminar archivo o carpeta local"
     override val newLocalFileLabel = "Nuevo archivo o carpeta local"
+    override val chooseLocalFiles = "Elegir…"
+    override val localFilePickerTitle = "Elegir archivos locales"
+    override fun localFilePickerDescription(repository: String) = "Archivos y carpetas que Git no sigue en $repository."
+    override val localFileFilterPlaceholder = "Filtra, o escribe un patrón como *.jks"
+    override fun addLocalPattern(pattern: String) = "Añadir el patrón $pattern"
+    override fun suggestedLocalFile(kind: String) = "Sugerido · $kind"
+    override val providedByRepository = "Ya lo aporta el repositorio"
+    override val noLocalFileCandidates = "El repositorio no tiene archivos sin seguir ni ignorados."
+    override val noLocalFileMatches = "Nada coincide con el filtro."
+    override fun selectedLocalFiles(count: Int) = if (count == 1) "1 seleccionado" else "$count seleccionados"
+    override val applyLocalFiles = "Aplicar"
     override val localFilesDescription =
         "Rutas de archivos o carpetas, o patrones como *.jks, que se copian a cada nuevo worktree, o se enlazan si activas Enlazar (una carpeta enlazada muestra al momento los cambios de la carpeta base, y un secreto enlazado lo comparten todos los worktrees). Solo se guardan en esta máquina."
     override val repositoryProvisioningSection = "Del repositorio"

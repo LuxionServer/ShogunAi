@@ -133,7 +133,7 @@ internal suspend fun resolveProvisionedFiles(
     )
 }
 
-private suspend fun listUntrackedFiles(
+internal suspend fun listUntrackedFiles(
     config: ProjectConfig,
     executor: ShellCommandExecutor,
     patterns: List<String>,

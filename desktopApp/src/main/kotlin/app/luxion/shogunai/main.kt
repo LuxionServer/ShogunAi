@@ -21,6 +21,8 @@ import androidx.compose.ui.input.key.isMetaPressed
 import androidx.compose.ui.input.key.isShiftPressed
 import androidx.compose.ui.input.key.type
 import app.luxion.shogunai.ui.actions.ActionId
+import app.luxion.shogunai.ui.LocalPathPicker
+import app.luxion.shogunai.ui.NativeFolderPicker
 import app.luxion.shogunai.ui.isMacOs
 import androidx.compose.ui.platform.LocalClipboard
 import app.luxion.shogunai.diagnostics.SecondaryWindowErrorHandler
@@ -339,7 +341,8 @@ private fun openWindow() = application {
             onAbout = { aboutOpen = true },
             onQuit = requestQuit,
         )
-        CompositionLocalProvider(LocalShownErrorLog provides appContainer.shownErrorLog) {
+        val pathPicker = remember(window) { NativeFolderPicker(owner = { window }) }
+        CompositionLocalProvider(LocalShownErrorLog provides appContainer.shownErrorLog, LocalPathPicker provides pathPicker) {
             AppearanceScope(appearance) {
                 AppShell(
                     appContainer,

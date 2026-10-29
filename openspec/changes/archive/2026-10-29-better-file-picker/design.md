@@ -35,7 +35,7 @@ Alternatives considered:
 Fit with the packaged app:
 - macOS: no sandbox, so no `com.apple.security.files.user-selected.*` entitlement is needed. JNA extracts and loads `libjnidispatch`, which the existing `disable-library-validation` and `allow-unsigned-executable-memory` entitlements already allow, and the Compose plugin signs native libraries inside jars when signing is on, as notarization requires.
 - Linux: dbus-java's native Unix socket transport uses `java.net.UnixDomainSocketAddress` from `java.base`; the portal works on Wayland and X11 and gives the GNOME or KDE dialog.
-- The jlink modules are re-checked with the plugin's `suggestRuntimeModules` task, adding whatever FileKit's dependencies need.
+- The jlink image adds `jdk.security.auth` (dbus-java's Unix login to the session bus) and `jdk.net` (its native Unix socket transport). `jdeps` on dbus-java found both; the plugin's `suggestRuntimeModules` only reports the first, and without them the portal would fail at runtime and the picker would silently fall back to Swing.
 - ProGuard: FileKit ships no consumer rules, so `proguard-rules.pro` keeps JNA (`com.sun.jna.**` and implementors of its interfaces), FileKit's platform bindings and dbus-java (`org.freedesktop.dbus.**`), which are reached by reflection.
 
 ### A suspending `PathPicker` with only folders

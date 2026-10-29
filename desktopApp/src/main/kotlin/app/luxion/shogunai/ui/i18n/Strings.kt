@@ -39,7 +39,6 @@ interface Strings {
     val collapse: String
 
     val selectFolderDialogTitle: String
-    val selectLocalFilesDialogTitle: String
 
     val projectsTitle: String
     val addProject: String
@@ -88,6 +87,17 @@ interface Strings {
     val localFilesSection: String
     val removeLocalFile: String
     val newLocalFileLabel: String
+    val chooseLocalFiles: String
+    val localFilePickerTitle: String
+    fun localFilePickerDescription(repository: String): String
+    val localFileFilterPlaceholder: String
+    fun addLocalPattern(pattern: String): String
+    fun suggestedLocalFile(kind: String): String
+    val providedByRepository: String
+    val noLocalFileCandidates: String
+    val noLocalFileMatches: String
+    fun selectedLocalFiles(count: Int): String
+    val applyLocalFiles: String
     val localFilesDescription: String
     val repositoryProvisioningSection: String
     val repositoryProvisioningDescription: String
