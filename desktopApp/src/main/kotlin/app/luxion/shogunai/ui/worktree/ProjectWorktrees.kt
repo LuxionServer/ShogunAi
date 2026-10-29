@@ -112,6 +112,8 @@ class ProjectWorktrees(
 
     var agents by mutableStateOf<Map<String, List<RunningAgent>>?>(null)
         private set
+    var agentsReadAt by mutableStateOf<Instant?>(null)
+        private set
     var sizes by mutableStateOf<Map<String, Long>>(emptyMap())
         private set
     var ports by mutableStateOf<Map<String, Map<String, Int>>>(emptyMap())
@@ -343,6 +345,7 @@ class ProjectWorktrees(
     fun applyAgents(detected: Map<String, List<RunningAgent>>?) {
         val paths = worktrees.map { it.path }.toSet()
         agents = detected?.filterKeys { it in paths }
+        agentsReadAt = clock()
         orcaOrigins = useCases.orca.origins()
     }
 
@@ -437,6 +440,7 @@ class ProjectWorktrees(
             val detected = useCases.detectAgents(listed).getOrNull()
             if (generation == listGeneration) {
                 agents = detected
+                agentsReadAt = clock()
                 orcaOrigins = useCases.orca.origins()
             }
         }

@@ -26,6 +26,7 @@ import app.luxion.shogunai.ui.components.InlineProgress
 import app.luxion.shogunai.ui.components.Notice
 import app.luxion.shogunai.ui.components.NoticeKind
 import app.luxion.shogunai.ui.components.SecondaryButton
+import app.luxion.shogunai.ui.components.ColumnSpec
 import app.luxion.shogunai.ui.components.Spacing
 import app.luxion.shogunai.ui.i18n.LocalStrings
 
@@ -55,11 +56,11 @@ fun ComposeProjectsView(machine: MachineResources, onOpenWorktree: (String, Stri
                     }
                     projects.forEach { project ->
                         HorizontalDivider()
-                        MachineRowLine {
-                            MachineDataText(project.entry.project.name, Modifier.weight(1f))
-                            MachineStateText(project.entry.project.status, Modifier.width(150.dp))
-                            ComposeOwnerCell(machine, project, onOpenWorktree)
-                        }
+                        MachineRow(
+                            machineCell(MachineMainColumn) { MachineDataText(project.entry.project.name) },
+                            machineCell(ComposeKindColumn) { MachineStateText(project.entry.project.status) },
+                            machineCell(MachineOwnerColumn) { ComposeOwnerCell(machine, project, onOpenWorktree) },
+                        )
                     }
                     MachineSecondaryText(strings.composeVolumesKept)
                 }
@@ -95,11 +96,11 @@ private fun ComposeLeftovers(machine: MachineResources) {
     }
     leftovers.forEach { leftover ->
         HorizontalDivider()
-        MachineRowLine {
-            MachineDataText(leftover.resource.name, Modifier.weight(1f))
-            MachineDataText(strings.composeResourceKind(leftover.resource.kind), Modifier.width(150.dp))
-            MachineDataText(leftover.resource.project, Modifier.width(MachineOwnerColumnWidth))
-        }
+        MachineRow(
+            machineCell(MachineMainColumn) { MachineDataText(leftover.resource.name) },
+            machineCell(ComposeKindColumn) { MachineStateText(strings.composeResourceKind(leftover.resource.kind)) },
+            machineCell(MachineOwnerColumn) { MachineDataText(leftover.resource.project) },
+        )
     }
     if (confirmingVolumes) {
         ShogunDialog(
@@ -153,3 +154,5 @@ private fun ComposeDownMessage(report: ComposeDownReport, onDismiss: () -> Unit)
         onDismiss = onDismiss,
     )
 }
+
+private val ComposeKindColumn = ColumnSpec(width = 150.dp)

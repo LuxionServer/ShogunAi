@@ -42,18 +42,18 @@ fun AndroidEmulatorsView(machine: MachineResources, onOpenWorktree: (String, Str
             GroupTitle(strings.unownedEmulatorsTitle)
             unowned.forEach { emulator ->
                 HorizontalDivider()
-                MachineRowLine {
-                    MachineDataText(emulator.serial, Modifier.weight(1f))
-                    MachineDataText(strings.notOwnedByWorktree, Modifier.width(MachineOwnerColumnWidth))
-                    Box(Modifier.width(MachineStateColumnWidth)) { StatusChip(emulator.state.status(), emulatorStateLabel(emulator.state, strings)) }
-                    Row(Modifier.width(MachineActionColumnWidth), horizontalArrangement = Arrangement.End) {
+                MachineRow(
+                    machineCell(MachineMainColumn) { MachineDataText(emulator.serial) },
+                    machineCell(MachineOwnerColumn) { MachineStateText(strings.notOwnedByWorktree) },
+                    machineCell(MachineStateColumn) { StatusChip(emulator.state.status(), emulatorStateLabel(emulator.state, strings)) },
+                    machineActionCell {
                         if (emulator.serial in machine.startingDevices) {
                             InlineProgress(size = ProgressSize.Small)
                         } else {
                             SecondaryButton(onClick = { machine.stopUnownedEmulator(emulator.serial) }) { Text(strings.stopEmulator) }
                         }
-                    }
-                }
+                    },
+                )
             }
         }
     }
@@ -65,17 +65,19 @@ private fun WorktreeEmulatorRow(entry: MachineEmulator, machine: MachineResource
     val isBusy = machine.isBusy(entry.projectId, entry.worktreePath)
     val current = entry.emulator?.state ?: EmulatorState.STOPPED
     val state = if (isBusy && current != EmulatorState.RUNNING) EmulatorState.BOOTING else current
-    MachineRowLine {
-        MachineDataText(emulatorDeviceLabel(entry, machine.project(entry.projectId), strings), Modifier.weight(1f))
-        OwnerCell(ProjectOwner.Owned(entry.projectId, entry.worktreePath), machine::projectName, onOpenWorktree, Modifier.width(MachineOwnerColumnWidth))
-        Box(Modifier.width(MachineStateColumnWidth)) {
+    MachineRow(
+        machineCell(MachineMainColumn) { MachineDataText(emulatorDeviceLabel(entry, machine.project(entry.projectId), strings)) },
+        machineCell(MachineOwnerColumn) {
+            OwnerCell(ProjectOwner.Owned(entry.projectId, entry.worktreePath), machine::projectName, onOpenWorktree)
+        },
+        machineCell(MachineStateColumn) {
             if (entry.emulator == null && !isBusy) {
                 StatusChip(Status.NEUTRAL, strings.notAcquired)
             } else {
                 StatusChip(state.status(), emulatorStateLabel(state, strings))
             }
-        }
-        Row(Modifier.width(MachineActionColumnWidth), horizontalArrangement = Arrangement.End) {
+        },
+        machineActionCell {
             when {
                 isBusy -> InlineProgress(size = ProgressSize.Small)
                 state == EmulatorState.STOPPED ->
@@ -83,6 +85,6 @@ private fun WorktreeEmulatorRow(entry: MachineEmulator, machine: MachineResource
                 else ->
                     SecondaryButton(onClick = { machine.stopEmulator(entry.projectId, entry.worktreePath) }) { Text(strings.stopEmulator) }
             }
-        }
-    }
+        },
+    )
 }

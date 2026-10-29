@@ -66,10 +66,10 @@ fun IosSimulatorsView(machine: MachineResources, onOpenWorktree: (String, String
             }
             orphans.forEach { orphan ->
                 HorizontalDivider()
-                MachineRowLine {
-                    MachineDataText(orphan.name, Modifier.weight(1f))
-                    StatusChip(orphan.state.status(), simulatorStateLabel(orphan.state, strings))
-                }
+                MachineRow(
+                    machineCell(MachineMainColumn) { MachineDataText(orphan.name) },
+                    machineCell(MachineStateColumn) { StatusChip(orphan.state.status(), simulatorStateLabel(orphan.state, strings)) },
+                )
             }
         }
         machine.simulatorsDeleted?.let { count ->
@@ -94,17 +94,19 @@ private fun WorktreeSimulatorRow(entry: MachineSimulator, machine: MachineResour
     val isBusy = machine.isBusy(entry.projectId, entry.worktreePath)
     val current = entry.simulator?.state ?: SimulatorState.SHUTDOWN
     val state = if (isBusy && current != SimulatorState.BOOTED) SimulatorState.BOOTING else current
-    MachineRowLine {
-        MachineDataText(simulatorDeviceLabel(entry, machine.project(entry.projectId), strings), Modifier.weight(1f))
-        OwnerCell(ProjectOwner.Owned(entry.projectId, entry.worktreePath), machine::projectName, onOpenWorktree, Modifier.width(MachineOwnerColumnWidth))
-        Box(Modifier.width(MachineStateColumnWidth)) {
+    MachineRow(
+        machineCell(MachineMainColumn) { MachineDataText(simulatorDeviceLabel(entry, machine.project(entry.projectId), strings)) },
+        machineCell(MachineOwnerColumn) {
+            OwnerCell(ProjectOwner.Owned(entry.projectId, entry.worktreePath), machine::projectName, onOpenWorktree)
+        },
+        machineCell(MachineStateColumn) {
             if (entry.simulator == null && !isBusy) {
                 StatusChip(Status.NEUTRAL, strings.notAcquired)
             } else {
                 StatusChip(state.status(), simulatorStateLabel(state, strings))
             }
-        }
-        Row(Modifier.width(MachineActionColumnWidth), horizontalArrangement = Arrangement.End) {
+        },
+        machineActionCell {
             when {
                 isBusy -> InlineProgress(size = ProgressSize.Small)
                 state == SimulatorState.SHUTDOWN ->
@@ -112,6 +114,6 @@ private fun WorktreeSimulatorRow(entry: MachineSimulator, machine: MachineResour
                 else ->
                     SecondaryButton(onClick = { machine.stopSimulator(entry.projectId, entry.worktreePath) }) { Text(strings.stopSimulator) }
             }
-        }
-    }
+        },
+    )
 }

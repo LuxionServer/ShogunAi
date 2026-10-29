@@ -94,11 +94,11 @@ While the main window is minimized, in the tray or the app is hidden, neither th
 - **THEN** no daemon, emulator or other machine state is read during that minute except to trim idle Gradle daemons beyond the limit, and the view and the summaries refresh when the window is shown again
 
 ### Requirement: Column labels in device views
-The Android emulators and iOS simulators views SHALL show a header row labeling their columns (device, worktree and state), aligned with the rows below it.
+The Android emulators and iOS simulators views SHALL show a header row labeling their columns (device, worktree and state) in the section label style, using the same columns as the rows below it so each label sits above its column.
 
 #### Scenario: Emulators listed
 - **WHEN** the Android emulators view lists at least one emulator
-- **THEN** a header row labels the device, worktree and state columns above the rows
+- **THEN** a header row labels the device, worktree and state columns, each starting where its column starts in the rows below
 
 ### Requirement: Pool usage in the machine views
 The Android emulators, iOS simulators and Gradle daemons views SHALL show their pool's usage against its effective limit and the active profile, with a link to Preferences' "Resources" section, and the status bar item SHALL include the usage against the limit. When a resource was released or stopped to make room or to stay within the limit, the view SHALL say which one and why until the user dismisses it.
@@ -271,3 +271,10 @@ When Docker isn't available, the Compose projects view SHALL show an error state
 #### Scenario: Socket unreachable
 - **WHEN** listing Compose projects fails because Docker's socket can't be reached
 - **THEN** the view shows the error state, and the socket path appears only in its technical details
+
+### Requirement: Machine lists share the list row
+Every list of the Machine views (Gradle and Maven daemons, Android emulators, iOS simulators, Xcode DerivedData, Compose projects and the desktop turn) SHALL be drawn with the shared list row, one line high, with its values in the data font and its states in the interface font.
+
+#### Scenario: Gradle daemon row
+- **WHEN** the Gradle daemons view lists an idle daemon owned by a worktree
+- **THEN** its row is one line high, its PID and memory are in the data font, its state "idle 5 min" is in the interface font, and its "Stop" action sits at the row's end
