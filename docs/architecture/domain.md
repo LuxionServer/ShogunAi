@@ -155,7 +155,7 @@ The desktop is one machine-wide resource that agents take turns to drive with co
 
 ### Orca
 
-`Orca.kt` holds what the [Orca port](#orcaclient) reports: `OrcaStatus` (whether Orca's runtime is reachable and its version), `OrcaRepo` (a registered repository: id, path and its external-worktree visibility), `OrcaWorktree` (a workspace's path, whether Orca created it, its `OrcaAgent`s, each an agent name and its `AgentState`: Orca's `working`, `waiting` and `done` become `WORKING`, `BLOCKED` and `DONE`, and, for a folder workspace, its `folderId`) and `OrcaTerminal` (a terminal's handle, worktree path, empty for a folder workspace, and title), `OrcaWorkspace`, the target of the terminal operations: `Worktree(path)`, selected as `path:<path>`, or `Folder(id)`, a folder workspace that only Orca's app can create and that no path selects, as `id:folder:<id>` (`OrcaWorktree.workspace` gives a row's target), plus `OrcaOpening`, the outcome of opening a worktree in Orca: its `OrcaOutcome` (`STARTED_AGENT`, `FOCUSED`), the terminal handle, the agent and the confirmed session name. `ORCA_START_SECONDS` (30) is how long an open waits for Orca to start and `ORCA_MINIMUM_VERSION` (1.4.243) the oldest Orca ShogunAi accepts.
+`Orca.kt` holds what the [Orca port](#orcaclient) reports: `OrcaStatus` (whether Orca's runtime is reachable and its version), `OrcaRepo` (a registered repository: id, path and its external-worktree visibility), `OrcaWorktree` (a workspace's path, whether Orca created it, its `OrcaAgent`s, each an agent name and its `AgentState`: Orca's `working`, `waiting` and `done` become `WORKING`, `BLOCKED` and `DONE`, and, for a folder workspace, its `folderId`, plus its `comment`, `workspaceStatus` and linked pull request and issue numbers) and `OrcaTerminal` (a terminal's handle, worktree path, empty for a folder workspace, and title), `OrcaWorkspace`, the target of the terminal operations: `Worktree(path)`, selected as `path:<path>`, or `Folder(id)`, a folder workspace that only Orca's app can create and that no path selects, as `id:folder:<id>` (`OrcaWorktree.workspace` gives a row's target), `OrcaWorktreeUpdate`, the fields to set with `orca worktree set` (only the non-null ones are sent), plus `OrcaOpening`, the outcome of opening a worktree in Orca: its `OrcaOutcome` (`STARTED_AGENT`, `FOCUSED`), the terminal handle, the agent and the confirmed session name. `ORCA_START_SECONDS` (30) is how long an open waits for Orca to start and `ORCA_MINIMUM_VERSION` (1.4.243) the oldest Orca ShogunAi accepts.
 
 ### Gradle daemons
 
@@ -444,6 +444,7 @@ interface OrcaClient {
     suspend fun showExternalWorktrees(repoId: String)
     suspend fun worktrees(repoId: String): List<OrcaWorktree>
     suspend fun agentsByWorktree(): List<OrcaWorktree>
+    suspend fun updateWorktree(path: String, update: OrcaWorktreeUpdate)
     suspend fun terminals(workspace: OrcaWorkspace): List<OrcaTerminal>
     suspend fun terminalAgent(handle: String): String?
     suspend fun createTerminal(workspace: OrcaWorkspace, title: String, command: String, focus: Boolean): OrcaTerminal
@@ -453,11 +454,22 @@ interface OrcaClient {
 }
 ```
 
-The [Orca](https://onorca.dev) operations ShogunAi uses, in Orca's own vocabulary (a repository with worktrees and terminals, not Herdr's workspaces and panes): whether Orca is installed and its runtime reachable, starting the desktop app or bringing its window to the front, registering a repository and showing its non-Orca worktrees, listing a repository's visible worktrees, every workspace's agents in one call (folder workspaces included), a workspace's terminals and the agent Orca identifies in one, creating a focused terminal that runs a command, switching to a terminal, closing every terminal of a workspace and showing a running emulator in a workspace's emulator view. The terminal operations take an `OrcaWorkspace`, so the same calls serve a worktree and a multirepo's folder workspace. There's no generic runner port yet: it's extracted when the runner becomes a choice. Errors are the `Orca*` cases of `WorktreeError`.
+The [Orca](https://onorca.dev) operations ShogunAi uses, in Orca's own vocabulary (a repository with worktrees and terminals, not Herdr's workspaces and panes): whether Orca is installed and its runtime reachable, starting the desktop app or bringing its window to the front, registering a repository and showing its non-Orca worktrees, listing a repository's visible worktrees, every workspace's agents in one call (folder workspaces included), a workspace's terminals and the agent Orca identifies in one, setting a worktree's Orca metadata (comment, board status, linked pull request and issue), creating a focused terminal that runs a command, switching to a terminal, closing every terminal of a workspace and showing a running emulator in a workspace's emulator view. The terminal operations take an `OrcaWorkspace`, so the same calls serve a worktree and a multirepo's folder workspace. There's no generic runner port yet: it's extracted when the runner becomes a choice. Errors are the `Orca*` cases of `WorktreeError`.
 
 ### `OrcaWorkspaceStore`
 
-Remembers the folder where Orca last created a worktree (`workspacesRoot`, `remember`), so Orca's worktrees can be recognized while Orca isn't running. `NONE` remembers nothing.
+Remembers the folder where Orca last created a worktree (`workspacesRoot`, `remember`), so Orca's worktrees can be recognized while Orca isn't running, and the board status ShogunAi last wrote for each worktree (`boardStatuses`, `rememberBoardStatuses`), so a status moved by hand in Orca is respected. `NONE` remembers nothing.
+
+### `GitHubClient`
+
+```kotlin
+interface GitHubClient {
+    suspend fun pullRequestFor(directory: String, branch: String): Int?
+    suspend fun issueExists(directory: String, number: Int): Boolean
+}
+```
+
+The GitHub lookups the Orca sync needs: the most recent pull request whose head is a branch, and whether an issue exists, both in the repository of a directory. A missing or failing lookup is `null` or `false`, never an error. `NONE` finds nothing.
 
 ### `GradleDaemonSource`
 
@@ -705,6 +717,16 @@ Opens a worktree in Orca with its environment and an agent. When `status()` says
 `ShowEmulatorInOrcaUseCase(worktreePath, serial)` shows an emulator ShogunAi just started, returning an `OrcaEmulatorView`: `NotOpen` when Orca isn't installed, `status()` isn't running (Orca is never started) or `agentsByWorktree()` has no row for the worktree's canonical path; `Shown` after `attachEmulator`; `Failed(message)` for any error or after 10 seconds. `shogun emulator start` and the desktop app's emulator starts (the worktree's detail and the machine view) call it after a successful start. Nothing calls Orca when an emulator stops: Orca's stream ends with the emulator.
 
 `OpenGroupInOrcaUseCase` fails once with `OrcaNotInstalled` when Orca isn't installed, and otherwise runs `OpenWorktreeInOrcaUseCase` for each worktree of a group, one after another, with its project's agent and `groupMemberSessionName`, returning a `GroupOrcaOpening` (alias, path and result) per worktree. `OpenMultirepoAgentInOrcaUseCase` starts Orca if needed, takes the `agentsByWorktree()` rows whose canonical path is the multirepo folder (a folder workspace, a folder added with "Open as Folder" or a Git main worktree), preferring one with agents and then Orca's order, and focuses its live agent or starts the multirepo agent there with `multirepoSessionName` and no extra variables. With no such row, a folder that is a Git repository is registered and its main worktree used; any other folder fails with `OrcaMultirepoFolderNotOpen` without touching Orca.
+
+### `OrcaWorktreeSync`
+
+Keeps Orca's metadata of the worktrees Orca lists in step with ShogunAi. `sync(items, rows, prune)` takes one `OrcaSyncItem` per worktree (the worktree, its `WorktreeStatus`, agents and `Activity`) and the rows of the last `agentsByWorktree()`, matched by canonical path. The main worktree, folder workspaces, worktrees Orca doesn't list and activities without a column (`Missing`, `Idle`, `Unknown`) are skipped. For the rest it sends one `updateWorktree` with only what changed:
+
+- the board status from `orcaBoardStatus` (`New` → `todo`, `AgentWorking` and `NeedsYou` → `in-progress`, `Stopped` and `Inactive` → `in-review`, `Merged` → `completed`), only when it differs from the one remembered in `OrcaWorkspaceStore` (or, the first time, from Orca's), so a card moved by hand stays until the state changes;
+- the comment from `orcaComment`, a one-line summary starting with `ShogunAi: `, only when Orca's comment is blank or already starts with it;
+- the pull request (`GitHubClient.pullRequestFor`) for a branch with an upstream and the issue named by the branch (`issueNumberOf`: `123-…`, `issue-123`, `gh-123`) when it exists, only when Orca has none, asking GitHub at most once every 10 minutes per worktree.
+
+Failures are returned per worktree instead of thrown. `prune` drops the remembered statuses of paths Orca no longer lists. The desktop app calls it at the end of each periodic check with the reader's last rows (`OrcaWorktreeReader.lastRows()`, `null` while Orca isn't running), and the CLI after `shogun open --orca` and `shogun hook orca setup` for the one worktree.
 
 ### Base branches
 

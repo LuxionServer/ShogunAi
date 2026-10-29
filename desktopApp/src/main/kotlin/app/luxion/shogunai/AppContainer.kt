@@ -173,9 +173,12 @@ import app.luxion.shogunai.domain.usecase.OpenGroupInOrcaUseCase
 import app.luxion.shogunai.domain.usecase.OpenMultirepoAgentInOrcaUseCase
 import app.luxion.shogunai.domain.usecase.OpenWorktreeInOrcaUseCase
 import app.luxion.shogunai.domain.usecase.OrcaOrigins
+import app.luxion.shogunai.domain.usecase.OrcaSyncItem
 import app.luxion.shogunai.domain.usecase.OrcaWorktreeReader
+import app.luxion.shogunai.domain.usecase.OrcaWorktreeSync
 import app.luxion.shogunai.domain.model.ObservedPort
 import app.luxion.shogunai.domain.model.OrcaOpening
+import app.luxion.shogunai.infrastructure.CliGitHubClient
 import app.luxion.shogunai.infrastructure.CliOrcaClient
 import app.luxion.shogunai.infrastructure.JsonOrcaWorkspaceStore
 import app.luxion.shogunai.domain.usecase.CopyWorktreeLaunchCommandUseCase
@@ -456,12 +459,14 @@ class AppContainer {
     private val herdrConfig = HerdrConfigFile()
     private val herdrClient = CliHerdrClient(shellCommandExecutor)
     private val orcaClient = CliOrcaClient(shellCommandExecutor)
+    private val orcaStore = JsonOrcaWorkspaceStore()
+    private val orcaReader = OrcaWorktreeReader(orcaClient, orcaStore)
+    private val orcaSync = OrcaWorktreeSync(orcaClient, orcaStore, CliGitHubClient(shellCommandExecutor))
 
     private fun isRunnerInstalled(runner: RunnerId): Boolean = when (runner) {
         RunnerId.HERDR -> herdrClient.isInstalled()
         RunnerId.ORCA -> orcaClient.isInstalled()
     }
-    private val orcaReader = OrcaWorktreeReader(orcaClient, JsonOrcaWorkspaceStore())
     private val resourceLimitsRepository: ResourceLimitsRepository = JsonResourceLimitsRepository(settingsFile)
     private val resolveResourceLimits = ResolveResourceLimitsUseCase(resourceLimitsRepository, JvmMachineCapacity())
     private val listGradleDaemons = ListGradleDaemonsUseCase(gradleDaemonSource, fileManager)
@@ -550,6 +555,11 @@ class AppContainer {
 
     val detectRunningAgents =
         DetectRunningAgentsUseCase(shellCommandExecutor, herdrClient, agentSessionStore, claudeSessions = claudeSessions, orca = orcaReader)
+
+    suspend fun syncOrca(items: List<OrcaSyncItem>) {
+        val rows = orcaReader.lastRows() ?: return
+        withContext(Dispatchers.IO) { orcaSync.sync(items, rows, prune = true) }
+    }
 
     private val prepareEnvironment = PrepareWorktreeEnvironmentUseCase(
         resolveEnvironment,

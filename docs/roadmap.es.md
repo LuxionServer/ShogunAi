@@ -46,7 +46,7 @@ ShogunAi tiene que funcionar a la primera en una máquina que no es en la que se
 
 - El runner por defecto fuera de la app: la guía de flujo de trabajo y el hook de inicio de sesión nombrando el elegido y, con los dos adaptadores delante, un solo puerto de runner en vez de dos. «Abrir», la barra de menús y el atajo de la app ya lo siguen.
 - Lo que solo ofrece Orca:
-  - El comentario y el estado del worktree en Orca sincronizados con los de ShogunAi (`orca worktree set`), y su pull request o su issue vinculados en Orca cuando la tarea del worktree los tiene.
+  - El tablero de Orca más allá de lo que ShogunAi ya mantiene al día (el estado, un comentario de resumen y los enlaces a la pull request o la issue de GitHub, mientras la app de escritorio está abierta o al abrir): sincronizar sin la app de escritorio, por ejemplo desde los hooks de Claude Code, estados de tablero personalizados y enlaces de Linear o GitLab.
   - Los worktrees de un grupo mostrados como hijos del espacio del agente del multirepo. Orca 1.4.243 acepta como padre de un worktree existente un espacio Git o de «Abrir como carpeta», pero no un folder workspace.
   - El simulador de iOS de ShogunAi del worktree mostrado en la vista de emuladores de Orca, como ya se muestra su emulador de Android (`orca emulator attach` también acepta el UDID de un simulador).
 - Comprobar:

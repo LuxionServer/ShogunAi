@@ -17,6 +17,7 @@ import app.luxion.shogunai.domain.io.GradleDaemonSource
 import app.luxion.shogunai.domain.io.AppWindowService
 import app.luxion.shogunai.domain.io.HeadlessAppLauncher
 import app.luxion.shogunai.domain.io.HerdrClient
+import app.luxion.shogunai.domain.io.GitHubClient
 import app.luxion.shogunai.domain.io.OrcaClient
 import app.luxion.shogunai.domain.io.OrcaWorkspaceStore
 import app.luxion.shogunai.domain.io.HerdrConfigSource
@@ -169,7 +170,10 @@ import app.luxion.shogunai.domain.usecase.ClaudeSessionNaming
 import app.luxion.shogunai.domain.usecase.CloseOrcaTerminalsUseCase
 import app.luxion.shogunai.domain.usecase.orcaDetail
 import app.luxion.shogunai.domain.usecase.OpenWorktreeInOrcaUseCase
+import app.luxion.shogunai.domain.usecase.OrcaSyncItem
 import app.luxion.shogunai.domain.usecase.OrcaWorktreeReader
+import app.luxion.shogunai.domain.usecase.OrcaWorktreeSync
+import app.luxion.shogunai.domain.usecase.worktreeActivity
 import app.luxion.shogunai.domain.usecase.ResolveMainBranchUseCase
 import app.luxion.shogunai.domain.usecase.ResolveRepositoryUseCase
 import app.luxion.shogunai.domain.usecase.ResolveResourceLimitsUseCase
@@ -208,6 +212,7 @@ import app.luxion.shogunai.domain.model.MavenDaemonStopReport
 import app.luxion.shogunai.domain.model.suggestProviders
 import app.luxion.shogunai.domain.model.SuggestionReport
 import app.luxion.shogunai.infrastructure.CliHerdrClient
+import app.luxion.shogunai.infrastructure.CliGitHubClient
 import app.luxion.shogunai.infrastructure.CliOrcaClient
 import app.luxion.shogunai.infrastructure.JsonOrcaWorkspaceStore
 import app.luxion.shogunai.infrastructure.FileClaudeSessionRegistry
@@ -311,6 +316,7 @@ class ShogunCli(
     private val herdr: HerdrClient = CliHerdrClient(executor, userHome = userHome),
     private val herdrAgentStartTimeout: kotlin.time.Duration = AGENT_START_SECONDS.seconds,
     private val orca: OrcaClient = CliOrcaClient(executor, userHome = userHome),
+    private val gitHub: GitHubClient = CliGitHubClient(executor),
     private val orcaWorkspaces: OrcaWorkspaceStore = JsonOrcaWorkspaceStore(Path.of(userHome, ".shogunai", "orca.json")),
     private val trust: RepositoryTrust = RepositoryTrust.NONE,
     private val readAnswer: () -> String? = { null },
@@ -1397,6 +1403,7 @@ class ShogunCli(
                 claudeSessionNaming(herdrAgentStartTimeout),
                 runningEmulator = { path -> readEmulatorStates.runningSerial(config, path) },
             )(worktree, agent).getOrThrow()
+            syncWithOrca(worktree, config)
             if (command.json) printJson(openJson(worktree.path, worktree.branch, opening)) else out.line(orcaOpeningLine(worktree.path, opening))
             return EXIT_OK
         }
@@ -2901,8 +2908,34 @@ class ShogunCli(
             ?: return hookUsageError("orca", "$ORCA_WORKTREE_PATH isn't set; run it from the scripts of Orca's orca.yaml")
         val repository = repositoryOfOrcaWorktree(path)
         return when (action) {
-            OrcaHookAction.SETUP -> provisionWorktreeAt(path, RepositoryApproval.SKIP, ::noteOutsideWorktreesRoot, configDirectory = repository)
+            OrcaHookAction.SETUP -> provisionWorktreeAt(path, RepositoryApproval.SKIP, ::noteOutsideWorktreesRootAndSyncWithOrca, configDirectory = repository)
             OrcaHookAction.ARCHIVE -> releaseOrcaWorktree(path, repository)
+        }
+    }
+
+    private suspend fun noteOutsideWorktreesRootAndSyncWithOrca(worktree: Worktree, config: ProjectConfig) {
+        noteOutsideWorktreesRoot(worktree, config)
+        syncWithOrca(worktree, config)
+    }
+
+    private suspend fun syncWithOrca(worktree: Worktree, config: ProjectConfig) {
+        val failures = try {
+            val agents = DetectRunningAgentsUseCase(executor, herdr, sessionStore, claudeSessions = claudeSessions, orca = orcaReader)(config, listOf(worktree))
+                .getOrNull().orEmpty()[worktree.path].orEmpty()
+            val rows = orcaReader.lastRows() ?: return
+            val mainBranch = ResolveMainBranchUseCase(config, executor)().getOrNull()
+            val base = worktree.branch?.let(ResolveRecordedBasesUseCase(config, executor)()::get) ?: mainBranch
+            val status = ReadWorktreeStatusUseCase(executor, fileManager)(worktree, mainBranch, base).getOrNull()
+            val item = OrcaSyncItem(worktree, status, agents, worktreeActivity(worktree, status, agents, now()))
+            OrcaWorktreeSync(orca, orcaWorkspaces, gitHub).sync(listOf(item), rows).map { it.error }
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            listOf(error)
+        }
+        failures.forEach { error ->
+            val reason = (error as? WorktreeError)?.orcaDetail() ?: failureReason(error)
+            err.line("shogun: couldn't update ${worktree.path} in Orca: $reason")
         }
     }
 
