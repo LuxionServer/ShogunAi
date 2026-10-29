@@ -102,4 +102,4 @@ Additive. With Orca not installed or not running nothing happens. Existing `~/.s
 
 ## Open Questions
 
-None.
+None. Found while implementing: `linkedPR` is a number in `worktree set`, `show` and `list`, but an object (`{"number": 42, "state": "unknown"}`) in `worktree ps`; the adapter reads both. The recorded fixtures (`worktree-set.json`, `worktree-set-unknown-status.json`, `worktree-ps-linked.json`) are real responses with placeholder paths; in `worktree-ps-linked.json` only the board status was changed back to `todo`, from the unknown id set just before recording it.

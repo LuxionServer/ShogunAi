@@ -7,6 +7,7 @@ import app.luxion.shogunai.domain.model.OrcaStatus
 import app.luxion.shogunai.domain.model.OrcaTerminal
 import app.luxion.shogunai.domain.model.OrcaWorkspace
 import app.luxion.shogunai.domain.model.OrcaWorktree
+import app.luxion.shogunai.domain.model.OrcaWorktreeUpdate
 import app.luxion.shogunai.domain.model.WorktreeError
 
 class FakeOrcaClient(
@@ -27,6 +28,7 @@ class FakeOrcaClient(
     private val terminalsFailure: Throwable? = null,
     private val closeFailures: Map<String, Throwable> = emptyMap(),
     private val folderPaths: Map<String, String> = emptyMap(),
+    private val updateFailures: Map<String, Throwable> = emptyMap(),
 ) : OrcaClient {
 
     data class Created(val worktreePath: String, val title: String, val command: String, val focus: Boolean)
@@ -47,6 +49,7 @@ class FakeOrcaClient(
     val created = mutableListOf<Created>()
     val switched = mutableListOf<String>()
     val closedWorktrees = mutableListOf<String>()
+    val updates = mutableListOf<Pair<String, OrcaWorktreeUpdate>>()
     val terminalLookups = mutableListOf<String>()
     var raised = 0
         private set
@@ -105,6 +108,12 @@ class FakeOrcaClient(
         psReads++
         psFailure?.let { throw it }
         return psRows
+    }
+
+    override suspend fun updateWorktree(path: String, update: OrcaWorktreeUpdate) {
+        requireReady()
+        updateFailures[path]?.let { throw it }
+        updates += path to update
     }
 
     override suspend fun terminals(workspace: OrcaWorkspace): List<OrcaTerminal> {

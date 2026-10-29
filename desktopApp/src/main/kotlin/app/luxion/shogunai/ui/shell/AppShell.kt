@@ -92,6 +92,7 @@ fun AppShell(
         WorktreeBoard(
             useCasesFor = appContainer::worktreeUseCases,
             detectAgents = appContainer.detectRunningAgents::invoke,
+            syncOrca = appContainer::syncOrca,
             preferences = appContainer.shellPreferenceRepository,
             approval = appContainer.repositoryApproval,
             rememberFetchBeforeCreate = viewModel::rememberFetchBeforeCreate,

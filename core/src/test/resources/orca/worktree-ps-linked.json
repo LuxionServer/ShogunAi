@@ -1,0 +1,69 @@
+{
+  "id": "e8b4f4c8-f8e6-463e-907c-f8cfe86b0459",
+  "ok": true,
+  "result": {
+    "worktrees": [
+      {
+        "workspaceKind": "git",
+        "worktreeId": "0355427a-217f-4a07-9072-67d11e704c23::/projects/worktrees/TASK-1",
+        "repoId": "0355427a-217f-4a07-9072-67d11e704c23",
+        "hostId": "local",
+        "terminalPlatform": "darwin",
+        "repo": "main-repo",
+        "path": "/projects/worktrees/TASK-1",
+        "branch": "refs/heads/feature/TASK-1",
+        "isArchived": false,
+        "isMainWorktree": false,
+        "hasHostSidebarActivity": false,
+        "defaultBranch": false,
+        "worktreeInstanceId": "9c2aacdb-81e1-4fd6-969f-b6f50cebc902",
+        "parentWorktreeId": null,
+        "childWorktreeIds": [],
+        "displayName": "feature/TASK-1",
+        "workspaceStatus": "todo",
+        "sortOrder": 1793289855648,
+        "lastActivityAt": 1793286979830,
+        "linkedIssue": 7,
+        "linkedPR": {
+          "number": 42,
+          "state": "unknown"
+        },
+        "linkedLinearIssue": null,
+        "linkedGitLabMR": null,
+        "linkedGitLabIssue": null,
+        "linkedItems": [
+          {
+            "provider": "github",
+            "type": "issue",
+            "number": 7
+          },
+          {
+            "provider": "github",
+            "type": "pr",
+            "number": 42
+          }
+        ],
+        "comment": "ShogunAi: new, no commits yet",
+        "isPinned": false,
+        "isActive": false,
+        "unread": false,
+        "liveTerminalCount": 0,
+        "hasAttachedPty": false,
+        "unverifiableTerminalCount": 0,
+        "lastOutputAt": null,
+        "preview": "",
+        "status": "inactive",
+        "agents": [],
+        "sidebarStatus": "inactive",
+        "terminalVerdict": "none"
+      }
+    ],
+    "hostScope": {
+      "hostIds": [
+        "local"
+      ],
+      "omittedHostIds": []
+    },
+    "truncated": false
+  }
+}

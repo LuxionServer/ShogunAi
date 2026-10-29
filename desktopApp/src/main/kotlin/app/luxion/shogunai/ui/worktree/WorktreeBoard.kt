@@ -24,6 +24,7 @@ import app.luxion.shogunai.domain.model.AgentState
 import app.luxion.shogunai.domain.model.RunningAgent
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.usecase.Activity
+import app.luxion.shogunai.domain.usecase.OrcaSyncItem
 import app.luxion.shogunai.ui.machine.DesktopTurnWatch
 import app.luxion.shogunai.ui.machine.MachineProject
 import app.luxion.shogunai.ui.tray.TrayOpenAction
@@ -69,6 +70,7 @@ import kotlin.time.toJavaDuration
 class WorktreeBoard(
     private val useCasesFor: (ProjectConfig) -> WorktreeUseCases,
     private val detectAgents: suspend (List<AgentSearch>) -> Result<Map<String, List<RunningAgent>>>,
+    private val syncOrca: suspend (List<OrcaSyncItem>) -> Unit = {},
     private val preferences: ShellPreferenceRepository,
     private val autoRefreshInterval: Duration = AUTO_REFRESH_INTERVAL,
     private val clock: () -> Instant = Instant::now,
@@ -337,6 +339,12 @@ class WorktreeBoard(
         val status = (holder.statuses[worktree.path] as? WorktreeStatusState.Loaded)?.status
         return worktreeActivity(worktree, status, holder.agents?.get(worktree.path), clock(), inactivity.threshold)
     }
+
+    private fun orcaSyncItems(holder: ProjectWorktrees): List<OrcaSyncItem> =
+        holder.worktrees.mapNotNull { worktree ->
+            val status = (holder.statuses[worktree.path] as? WorktreeStatusState.Loaded)?.status ?: return@mapNotNull null
+            OrcaSyncItem(worktree, status, holder.agents?.get(worktree.path).orEmpty(), activityOf(holder, worktree))
+        }
 
     private fun activityDateOf(holder: ProjectWorktrees, worktree: Worktree): Instant? {
         val status = (holder.statuses[worktree.path] as? WorktreeStatusState.Loaded)?.status
@@ -837,6 +845,7 @@ class WorktreeBoard(
         val detected = detectAgents(searches).getOrNull()
         loaded.forEach { it.holder.applyAgents(detected) }
         applyMultirepoAgents(detected)
+        syncOrca(loaded.flatMap { orcaSyncItems(it.holder) })
         unchanged.forEach { entry ->
             if (isDeviceRefreshDue(entry.project.id)) entry.holder.refreshDevices()
         }

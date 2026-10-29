@@ -37,6 +37,8 @@ class OrcaWorktreeReader(
         return worktrees
     }
 
+    fun lastRows(): List<OrcaWorktree>? = lastRead
+
     fun origins(): OrcaOrigins {
         val workspacesRoot = runCatching { store.workspacesRoot() }.getOrNull() ?: defaultWorkspacesRoot()
         val created = lastRead?.filter { it.createdByOrca }?.map { canonical(it.path) }?.toSet()

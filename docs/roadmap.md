@@ -31,7 +31,7 @@ Numbered in the order they will be picked up: the number is the priority.
 - Choosing the runner: Herdr or Orca as the default for "Open", the menu bar, the shortcut and the guided tour, and the workflow guide and session-start hook naming the chosen one; with both adapters in hand, one runner port instead of two.
 - What only Orca offers:
   - The tool an agent waits on, its prompt and its last message in the worktree's detail.
-  - The worktree's comment and status in Orca kept in step with ShogunAi's (`orca worktree set`), and its pull request or issue linked in Orca when the worktree's task has one.
+  - Orca's board beyond what ShogunAi already keeps in step (status, a summary comment and GitHub pull request or issue links, while the desktop app runs or on an open): syncing without the desktop app, e.g. from Claude Code's hooks, custom board statuses, and Linear or GitLab links.
   - The ports Orca sees a worktree listen on, next to the ones ShogunAi reserves.
   - A group's worktrees shown as children of the multirepo agent's workspace. Orca 1.4.243 accepts a Git or "Open as Folder" workspace as the parent of an existing worktree, but not a folder workspace.
   - The worktree's ShogunAi emulator shown in Orca's emulator view (`orca emulator attach`).

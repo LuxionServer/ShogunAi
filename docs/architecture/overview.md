@@ -28,8 +28,8 @@ core/src/main/kotlin/app/luxion/shogunai/
 │   ├── executor/     # ShellCommandExecutor and ClipboardWriter ports + CommandResult
 │   ├── io/           # ports: FileManager, ProjectRepository, preferences, RepositoryProvisioningSource,
 │   │                 #   EnvironmentStateStore, PortProbe, AndroidSdk, AppleSimulators, KmpTestWiring,
-│   │                 #   HerdrClient, HerdrConfigSource, OrcaClient, OrcaWorkspaceStore, GradleDaemonSource,
-│   │                 #   DerivedDataSource
+│   │                 #   HerdrClient, HerdrConfigSource, OrcaClient, OrcaWorkspaceStore, GitHubClient,
+│   │                 #   GradleDaemonSource, DerivedDataSource
 │   └── usecase/      # worktrees (create, list, provision, remove, repair, clean up, status, overview),
 │                     #   environment and ports, providers (Gradle, emulator, simulator, Xcode), Herdr, Orca
 └── infrastructure/   # concrete implementations of the domain ports

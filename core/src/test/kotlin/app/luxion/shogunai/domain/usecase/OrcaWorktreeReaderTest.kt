@@ -93,4 +93,26 @@ class OrcaWorktreeReaderTest {
         assertEquals(WorktreeOrigin.CLAUDE_CODE, origin(claude, reader))
         assertEquals(WorktreeOrigin.HERDR, origin(inDefault, reader, herdrRoot = "/home/dev/orca"))
     }
+
+    @Test
+    fun `the rows last read are kept for the Orca sync`() = runTest {
+        val rows = listOf(OrcaWorktree(shogunai.path, createdByOrca = false, comment = "", workspaceStatus = "in-progress"))
+        val reader = reader(FakeOrcaClient(psRows = rows))
+
+        reader.read()
+
+        assertEquals(rows, reader.lastRows())
+    }
+
+    @Test
+    fun `no rows are kept while Orca isn't running or fails`() = runTest {
+        val notRunning = reader(FakeOrcaClient(running = false, psRows = listOf(OrcaWorktree(shogunai.path, false))))
+        val failing = reader(FakeOrcaClient(psFailure = IllegalStateException("boom")))
+
+        notRunning.read()
+        failing.read()
+
+        assertNull(notRunning.lastRows())
+        assertNull(failing.lastRows())
+    }
 }

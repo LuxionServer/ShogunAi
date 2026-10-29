@@ -14,7 +14,9 @@ import app.luxion.shogunai.domain.FakeEnvironmentStateStore
 import app.luxion.shogunai.domain.FakeFileManager
 import app.luxion.shogunai.domain.FakeHerdrClient
 import app.luxion.shogunai.domain.FakeHerdrConfigSource
+import app.luxion.shogunai.domain.FakeGitHubClient
 import app.luxion.shogunai.domain.FakeOrcaClient
+import app.luxion.shogunai.domain.model.OrcaWorktree
 import app.luxion.shogunai.domain.model.OrcaTerminal
 import app.luxion.shogunai.domain.FakePortProbe
 import app.luxion.shogunai.domain.FakeGradleDaemonSource
@@ -105,6 +107,7 @@ class HookCommandsTest {
         trust: FakeRepositoryTrust = FakeRepositoryTrust(),
         sessionStore: FakeAgentSessionStore = FakeAgentSessionStore(),
         orca: FakeOrcaClient = FakeOrcaClient(installed = false),
+        gitHub: FakeGitHubClient = FakeGitHubClient(),
     ) = ShogunCli(
         executor = executor,
         fileManager = FakeFileManager(existing = existing),
@@ -124,6 +127,7 @@ class HookCommandsTest {
         derivedDataSource = FakeDerivedDataSource(),
         herdrConfig = FakeHerdrConfigSource(),
         orca = orca,
+        gitHub = gitHub,
         workingDirectory = "/",
         out = out,
         err = err,
@@ -605,6 +609,35 @@ class HookCommandsTest {
             out.toString(),
         )
         assertTrue(executor.calls.any { it.first.getOrNull(1) == "rev-parse" && it.second == orcaWorktree }, "resolves the repository from the worktree")
+    }
+
+    @Test
+    fun `orca setup syncs the new worktree in Orca after provisioning`() {
+        val inside = "$worktreesRoot/TASK-7"
+        val executor = Executor(porcelain(inside to "feature/TASK-7"))
+        val orca = FakeOrcaClient(psRows = listOf(OrcaWorktree(inside, createdByOrca = true, comment = "", workspaceStatus = "in-progress")))
+
+        val exitCode = cli(executor, "", environment = mapOf("ORCA_WORKTREE_PATH" to inside), orca = orca).run(listOf("hook", "orca", "setup"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals(".env\n", out.toString())
+        assertEquals(listOf(inside), orca.updates.map { it.first })
+        assertTrue(orca.updates.single().second.comment.orEmpty().startsWith("ShogunAi: "), orca.updates.toString())
+    }
+
+    @Test
+    fun `orca setup keeps its exit code when the Orca sync fails`() {
+        val inside = "$worktreesRoot/TASK-7"
+        val executor = Executor(porcelain(inside to "feature/TASK-7"))
+        val orca = FakeOrcaClient(
+            psRows = listOf(OrcaWorktree(inside, createdByOrca = true, comment = "", workspaceStatus = "in-progress")),
+            updateFailures = mapOf(inside to WorktreeError.OrcaCommandFailed(listOf("orca"), "runtime_unavailable")),
+        )
+
+        val exitCode = cli(executor, "", environment = mapOf("ORCA_WORKTREE_PATH" to inside), orca = orca).run(listOf("hook", "orca", "setup"))
+
+        assertEquals(0, exitCode)
+        assertTrue(err.contains("couldn't update $inside in Orca: runtime_unavailable"), err.toString())
     }
 
     @Test
