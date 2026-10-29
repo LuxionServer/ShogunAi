@@ -2,7 +2,9 @@ package app.luxion.shogunai.cli
 
 import app.luxion.shogunai.domain.model.DesktopTurnState
 import app.luxion.shogunai.domain.model.AgentStateSource
+import app.luxion.shogunai.domain.model.AgentActivity
 import app.luxion.shogunai.domain.model.Divergence
+import app.luxion.shogunai.domain.model.ObservedPort
 import app.luxion.shogunai.domain.model.RunningAgent
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.WorktreeOrigin
@@ -21,6 +23,7 @@ data class WorktreeEntry(
     val agents: List<RunningAgent> = emptyList(),
     val desktop: DesktopTurnState = DesktopTurnState(holder = null, waiting = emptyList()),
     val base: String? = null,
+    val listeningPorts: List<ObservedPort>? = null,
 )
 
 val WorktreeOrigin.label: String
@@ -52,6 +55,13 @@ private fun worktreeJson(entry: WorktreeEntry): JsonObject = buildJsonObject {
     put("status", entry.status?.let(::statusObject) ?: JsonNull)
     entry.statusProblem?.let { put("statusProblem", it) }
     put("desktop", worktreeDesktopJson(entry.desktop, worktree.path) ?: JsonNull)
+    put("listeningPorts", entry.listeningPorts?.let { ports -> buildJsonArray { ports.forEach { add(portJson(it)) } } } ?: JsonNull)
+}
+
+private fun portJson(port: ObservedPort): JsonObject = buildJsonObject {
+    put("port", port.port)
+    put("process", port.process)
+    put("url", port.url)
 }
 
 internal fun agentJson(agent: RunningAgent): JsonObject = buildJsonObject {
@@ -67,6 +77,18 @@ internal fun agentJson(agent: RunningAgent): JsonObject = buildJsonObject {
             })
         }
     })
+    put("activity", agent.activity?.let(::activityJson) ?: JsonNull)
+}
+
+private fun activityJson(activity: AgentActivity): JsonObject = buildJsonObject {
+    put("waitingOn", activity.waitingOn?.let { tool ->
+        buildJsonObject {
+            put("tool", tool.name)
+            put("input", tool.input)
+        }
+    } ?: JsonNull)
+    put("prompt", activity.prompt)
+    put("lastMessage", activity.lastMessage)
 }
 
 private fun sourceLabel(source: AgentStateSource): String = when (source) {

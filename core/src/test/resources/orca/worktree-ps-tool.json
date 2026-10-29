@@ -1,0 +1,126 @@
+{
+  "id": "04309285-9f21-4266-b926-6c24e0c08dd1",
+  "ok": true,
+  "result": {
+    "worktrees": [
+      {
+        "workspaceKind": "git",
+        "worktreeId": "a9af95a5-5894-4761-8e24-d3a85dbbc64d::/projects/worktrees/TASK-1",
+        "repoId": "a9af95a5-5894-4761-8e24-d3a85dbbc64d",
+        "hostId": "local",
+        "terminalPlatform": "darwin",
+        "repo": "main-repo",
+        "path": "/projects/worktrees/TASK-1",
+        "branch": "refs/heads/feature/TASK-1",
+        "isArchived": false,
+        "isMainWorktree": false,
+        "hasHostSidebarActivity": true,
+        "defaultBranch": false,
+        "worktreeInstanceId": "1ca0ecfd-470a-4fd2-a174-ae17095b15b6",
+        "parentWorktreeId": null,
+        "childWorktreeIds": [],
+        "displayName": "feature/TASK-1",
+        "workspaceStatus": "in-progress",
+        "sortOrder": 1793287993508,
+        "lastActivityAt": 1793288147343,
+        "linkedIssue": null,
+        "linkedPR": null,
+        "linkedLinearIssue": null,
+        "linkedGitLabMR": null,
+        "linkedGitLabIssue": null,
+        "linkedItems": [],
+        "comment": "",
+        "isPinned": false,
+        "isActive": false,
+        "unread": true,
+        "liveTerminalCount": 2,
+        "hasAttachedPty": true,
+        "unverifiableTerminalCount": 0,
+        "lastOutputAt": 1793288213605,
+        "preview": "⏺",
+        "status": "permission",
+        "agents": [
+          {
+            "paneKey": "0f33bfe3-9650-4466-8cc6-d6b490177a8e:4435da16-29d4-4b69-a4fc-e0392aa94bbd",
+            "parentPaneKey": null,
+            "state": "waiting",
+            "agentType": "claude",
+            "prompt": "Use the Bash tool to run: curl -s https://example.com -o page.html",
+            "taskTitle": null,
+            "displayName": null,
+            "lastAssistantMessage": null,
+            "toolName": "Bash",
+            "toolInput": "curl -s https://example.com -o page.html",
+            "interrupted": false,
+            "mainAgent": {
+              "state": "waiting",
+              "stateStartedAt": 1793288196849
+            },
+            "stateStartedAt": 1793288196849,
+            "updatedAt": 1793288196849,
+            "hasLivePty": true,
+            "programStatus": {
+              "state": "blocked",
+              "kind": "permission",
+              "message": "approve Bash: curl -s https://example.com -o page.html",
+              "observedAt": 1793288196824
+            }
+          }
+        ],
+        "sidebarStatus": "permission",
+        "terminalVerdict": "live"
+      },
+      {
+        "workspaceKind": "git",
+        "worktreeId": "a9af95a5-5894-4761-8e24-d3a85dbbc64d::/projects/main-repo",
+        "repoId": "a9af95a5-5894-4761-8e24-d3a85dbbc64d",
+        "hostId": "local",
+        "terminalPlatform": "darwin",
+        "repo": "main-repo",
+        "path": "/projects/main-repo",
+        "branch": "refs/heads/main",
+        "isArchived": false,
+        "isMainWorktree": true,
+        "hasHostSidebarActivity": false,
+        "defaultBranch": true,
+        "worktreeInstanceId": "612c5e99-5852-42ef-90be-bf6926db9469",
+        "parentWorktreeId": null,
+        "childWorktreeIds": [],
+        "displayName": "main",
+        "workspaceStatus": "in-progress",
+        "sortOrder": 1793287983178,
+        "lastActivityAt": 1793287983178,
+        "linkedIssue": null,
+        "linkedPR": null,
+        "linkedLinearIssue": null,
+        "linkedGitLabMR": null,
+        "linkedGitLabIssue": null,
+        "linkedItems": [],
+        "comment": "",
+        "isPinned": false,
+        "isActive": false,
+        "unread": false,
+        "liveTerminalCount": 0,
+        "hasAttachedPty": false,
+        "unverifiableTerminalCount": 0,
+        "lastOutputAt": null,
+        "preview": "",
+        "status": "inactive",
+        "agents": [],
+        "sidebarStatus": "inactive",
+        "terminalVerdict": "none"
+      }
+    ],
+    "hostScope": {
+      "hostIds": [
+        "local"
+      ],
+      "omittedHostIds": []
+    },
+    "totalCount": 2,
+    "truncated": false
+  },
+  "_meta": {
+    "runtimeId": "82367bbd-cceb-4618-970a-a1eac65c406c"
+  }
+}

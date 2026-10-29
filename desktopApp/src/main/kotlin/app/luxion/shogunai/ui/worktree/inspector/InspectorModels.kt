@@ -1,7 +1,9 @@
 package app.luxion.shogunai.ui.worktree.inspector
 
+import app.luxion.shogunai.domain.model.AgentActivity
 import app.luxion.shogunai.domain.model.Divergence
 import app.luxion.shogunai.domain.model.EMULATOR_PORT_KEY
+import app.luxion.shogunai.domain.model.ObservedPort
 import app.luxion.shogunai.domain.model.RunningAgent
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.WorktreeEnvironment
@@ -67,9 +69,17 @@ fun agentSectionState(agents: Map<String, List<RunningAgent>>?, worktree: Worktr
     else -> SectionState.Content
 }
 
-fun environmentProperties(environment: WorktreeEnvironment?, ports: Map<String, Int>): List<Property> =
+fun environmentProperties(
+    environment: WorktreeEnvironment?,
+    ports: Map<String, Int>,
+    listening: Set<Int> = emptySet(),
+    markListening: (String) -> String = { it },
+): List<Property> =
     ports.entries.filterNot { it.key == EMULATOR_PORT_KEY }.sortedBy { it.value }
-        .map { (key, port) -> Property(portKeyLabel(key), port.toString(), copyable = true) } +
+        .map { (key, port) ->
+            val label = portKeyLabel(key)
+            Property(if (port in listening) markListening(label) else label, port.toString(), copyable = true)
+        } +
         environment?.variables.orEmpty().map { (name, value) -> Property(name, value, copyable = true) }
 
 fun environmentSummary(environment: WorktreeEnvironment?, ports: Map<String, Int>, strings: Strings): String? =
@@ -78,8 +88,12 @@ fun environmentSummary(environment: WorktreeEnvironment?, ports: Map<String, Int
         environment?.variables.orEmpty().size,
     ).ifEmpty { null }
 
-fun environmentSectionState(environment: WorktreeEnvironment?, ports: Map<String, Int>): SectionState =
-    if (environment?.variables.isNullOrEmpty() && ports.isEmpty() && environment?.awaitingApproval.isNullOrEmpty()) {
+fun environmentSectionState(
+    environment: WorktreeEnvironment?,
+    ports: Map<String, Int>,
+    observed: List<ObservedPort> = emptyList(),
+): SectionState =
+    if (environment?.variables.isNullOrEmpty() && ports.isEmpty() && environment?.awaitingApproval.isNullOrEmpty() && observed.isEmpty()) {
         SectionState.NotApplicable
     } else {
         SectionState.Content
@@ -98,5 +112,22 @@ fun environmentAsDotenv(environment: WorktreeEnvironment): String =
 fun portsLabel(ports: Map<String, Int>): String =
     ports.entries.filterNot { it.key == EMULATOR_PORT_KEY }.sortedBy { it.value }
         .joinToString(" · ") { (key, port) -> "${portKeyLabel(key)} $port" }
+
+fun observedPortLabel(port: ObservedPort): String =
+    listOfNotNull(port.port.toString(), port.process, port.url).joinToString(" · ")
+
+const val DETAIL_TEXT_MAX_LINES = 3
+
+fun agentActivityLines(activity: AgentActivity, strings: Strings): List<String> =
+    listOfNotNull(
+        activity.waitingOn?.let { strings.agentWaitingOn(it.name, it.input) },
+        activity.prompt?.let(strings::agentPrompt),
+        activity.lastMessage?.let(strings::agentLastMessage),
+    ).map { shortened(it) }
+
+fun shortened(text: String, maxLines: Int = DETAIL_TEXT_MAX_LINES): String {
+    val lines = text.lines()
+    return if (lines.size <= maxLines) text else lines.take(maxLines).joinToString("\n") + "…"
+}
 
 private fun Divergence.bothArrows(): String = "↑$ahead ↓$behind"

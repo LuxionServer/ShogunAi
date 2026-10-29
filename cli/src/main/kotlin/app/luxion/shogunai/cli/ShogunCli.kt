@@ -1227,6 +1227,7 @@ class ShogunCli(
         val readStatus = ReadWorktreeStatusUseCase(executor, fileManager)
         val herdrWorktreesRoot = herdrConfig.worktreesRoot()
         val agents = DetectRunningAgentsUseCase(executor, herdr, sessionStore, claudeSessions = claudeSessions, orca = orcaReader)(config, worktrees.filterNot { it.isPrunable }).getOrNull().orEmpty()
+        val listeningPorts = orcaReader.ports(worktrees)
         val desktop = readDesktopTurn().getOrElse { DesktopTurnState(holder = null, waiting = emptyList()) }
         val bases = ReadBaseBranchesUseCase(config, executor)().getOrElse { emptyMap() }
         val resolvedBases = ResolveRecordedBasesUseCase(config, executor)()
@@ -1240,6 +1241,7 @@ class ShogunCli(
                 agents[worktree.path].orEmpty(),
                 desktop,
                 worktree.branch?.let(bases::get),
+                listeningPorts?.get(worktree.path),
             )
         }
         if (command.json) {
@@ -2997,6 +2999,7 @@ class ShogunCli(
             entry.base?.let { add("base=$it") }
             if (worktree.isLocked) add("locked")
             entry.agents.takeIf { it.isNotEmpty() }?.let { agents -> add("agents=${agents.joinToString(",") { agentLabel(it) }}") }
+            entry.listeningPorts?.takeIf { it.isNotEmpty() }?.let { ports -> add("listening=${ports.joinToString(",") { it.port.toString() }}") }
             desktopTurnStatusNote(entry.desktop, worktree.path)?.let(::add)
             when {
                 worktree.isPrunable -> add("folder-missing")
