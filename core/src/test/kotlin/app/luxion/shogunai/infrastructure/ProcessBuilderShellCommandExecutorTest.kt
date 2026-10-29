@@ -20,34 +20,6 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-class HomebrewPathTest {
-
-    @Test
-    fun `antepone los directorios de Homebrew al PATH heredado`() {
-        val merged = HomebrewPath.merge(listOf("/usr/bin", "/bin").joinToString(File.pathSeparator))
-
-        assertEquals(
-            listOf("/opt/homebrew/bin", "/opt/homebrew/sbin", "/usr/local/bin", "/usr/bin", "/bin").joinToString(File.pathSeparator),
-            merged,
-        )
-    }
-
-    @Test
-    fun `no duplica un directorio de Homebrew ya presente en el PATH heredado`() {
-        val merged = HomebrewPath.merge(listOf("/usr/local/bin", "/usr/bin").joinToString(File.pathSeparator))
-
-        assertEquals(1, merged.split(File.pathSeparator).count { it == "/usr/local/bin" })
-    }
-
-    @Test
-    fun `funciona con un PATH nulo o vacío`() {
-        val expected = listOf("/opt/homebrew/bin", "/opt/homebrew/sbin", "/usr/local/bin").joinToString(File.pathSeparator)
-
-        assertEquals(expected, HomebrewPath.merge(null))
-        assertEquals(expected, HomebrewPath.merge(""))
-    }
-}
-
 class GitLocaleTest {
 
     @Test
@@ -97,7 +69,7 @@ class GitLongPathsTest {
 
 class ProcessBuilderShellCommandExecutorTest {
 
-    private val executor = ProcessBuilderShellCommandExecutor()
+    private val executor = ProcessBuilderShellCommandExecutor(path = null)
 
     @Test
     fun `captura stdout, stderr y el código de salida de un comando exitoso`() = runTest {
@@ -129,6 +101,35 @@ class ProcessBuilderShellCommandExecutorTest {
         val result = executor.execute(listOf("sh", "-c", "printf %s \"\${TOUR_VALUE:-unset}\""))
 
         assertEquals("unset", result.stdout)
+    }
+
+    @Test
+    fun `gives every child the host PATH`() = runTest {
+        if (System.getProperty("os.name").startsWith("Windows")) return@runTest
+        val withHostPath = ProcessBuilderShellCommandExecutor(path = { listOf("/home/dev/tools/bin", "/usr/bin", "/bin") })
+
+        val result = withHostPath.execute(listOf("/bin/sh", "-c", "printf %s \"\$PATH\""))
+
+        assertEquals("/home/dev/tools/bin:/usr/bin:/bin", result.stdout)
+    }
+
+    @Test
+    fun `an explicit PATH wins over the host PATH`() = runTest {
+        if (System.getProperty("os.name").startsWith("Windows")) return@runTest
+        val withHostPath = ProcessBuilderShellCommandExecutor(path = { listOf("/home/dev/tools/bin") })
+
+        val result = withHostPath.executeWithEnvironment(listOf("/bin/sh", "-c", "printf %s \"\$PATH\""), mapOf("PATH" to "/usr/bin:/bin"))
+
+        assertEquals("/usr/bin:/bin", result.stdout)
+    }
+
+    @Test
+    fun `without a host PATH the child inherits the process PATH`() = runTest {
+        if (System.getProperty("os.name").startsWith("Windows")) return@runTest
+
+        val result = executor.execute(listOf("/bin/sh", "-c", "printf %s \"\$PATH\""))
+
+        assertEquals(System.getenv("PATH"), result.stdout)
     }
 
     @Test
@@ -164,17 +165,6 @@ class ProcessBuilderShellCommandExecutorTest {
         val result = executor.execute(listOf("git", "-c", "alias.show-locale=!echo \$LC_ALL", "show-locale"))
 
         assertEquals("C", result.stdout)
-    }
-
-    @Test
-    fun `el proceso lanzado ve el PATH ampliado con los directorios de Homebrew`() = runTest {
-        if (System.getProperty("os.name").startsWith("Windows")) return@runTest
-        val result = executor.execute(listOf("sh", "-c", "echo \$PATH"))
-
-        val path = result.stdout.split(":")
-        assertTrue(path.contains("/opt/homebrew/bin"))
-        assertTrue(path.contains("/opt/homebrew/sbin"))
-        assertTrue(path.contains("/usr/local/bin"))
     }
 
     @Test
@@ -239,11 +229,13 @@ class ProcessBuilderShellCommandExecutorTest {
     }
 
     @Test
-    fun `la ejecución con salida en vivo conserva el PATH ampliado`() = runTest {
+    fun `streaming output keeps the host PATH next to the given variables`() = runTest {
         if (System.getProperty("os.name").startsWith("Windows")) return@runTest
-        val result = executor.executeStreaming(listOf("sh", "-c", "echo ${'$'}PATH"), null, mapOf("OTHER" to "1")) {}
+        val withHostPath = ProcessBuilderShellCommandExecutor(path = { listOf("/home/dev/tools/bin", "/usr/bin", "/bin") })
 
-        assertTrue(result.stdout.split(":").contains("/opt/homebrew/bin"))
+        val result = withHostPath.executeStreaming(listOf("/bin/sh", "-c", "printf %s \"${'$'}PATH ${'$'}OTHER\""), null, mapOf("OTHER" to "1")) {}
+
+        assertEquals("/home/dev/tools/bin:/usr/bin:/bin 1", result.stdout)
     }
 
     private fun isRunning(marker: String): Boolean = ProcessHandle.allProcesses().anyMatch { handle ->

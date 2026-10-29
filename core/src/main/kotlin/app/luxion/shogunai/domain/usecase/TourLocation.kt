@@ -3,7 +3,7 @@ package app.luxion.shogunai.domain.usecase
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.joinPath
 
-class TourLocation(home: String = System.getProperty("user.home")) {
+class TourLocation(home: String) {
     val root: String = joinPath(home, ".shogunai", "tour")
     val repository: String = joinPath(root, REPOSITORY_FOLDER)
     val remote: String = joinPath(root, REMOTE_FOLDER)

@@ -46,11 +46,17 @@ class TourE2eTest {
         awaitText(TOUR_PROJECT_NAME)
         awaitText("needs-you", substring = true)
 
-        onNodeWithText(strings.tourEnd).performClick()
-        awaitCondition("the end-tour confirmation") { onAllNodesWithText(strings.tourEnd).fetchSemanticsNodes().size > 1 }
+        awaitCondition("the end-tour confirmation") {
+            val endButtons = onAllNodesWithText(strings.tourEnd).fetchSemanticsNodes().size
+            if (endButtons == 1) onNodeWithText(strings.tourEnd).performClick()
+            endButtons > 1
+        }
         onAllNodesWithText(strings.tourEnd).onLast().performClick()
 
-        awaitCondition("the sample folder to be removed") { !tourFolder.exists() }
+        awaitCondition("the sample folder to be removed") {
+            appContainer.tour.error?.let { throw AssertionError("Ending the tour failed", it) }
+            !tourFolder.exists()
+        }
         awaitNoText(TOUR_PROJECT_NAME)
         assertFalse(appContainer.projectRepository.list().any { it.name == TOUR_PROJECT_NAME })
         awaitText(strings.tourTakeTour)

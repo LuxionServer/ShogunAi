@@ -94,7 +94,7 @@ class ProcessGradleDaemonSourceTest {
 
     @Test
     fun `fails with ProcessListingFailed when ps fails`() = runTest {
-        val source = ProcessGradleDaemonSource(FakeShellCommandExecutor { FakeShellCommandExecutor.failure(it) })
+        val source = ProcessGradleDaemonSource(FakeShellCommandExecutor { FakeShellCommandExecutor.failure(it) }, "/home/dev/.gradle")
 
         assertFailsWith<WorktreeError.ProcessListingFailed> { source.list() }
     }

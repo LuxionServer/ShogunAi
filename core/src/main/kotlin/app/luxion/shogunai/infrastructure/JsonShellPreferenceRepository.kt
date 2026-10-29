@@ -11,7 +11,7 @@ import app.luxion.shogunai.domain.model.WindowBounds
 import app.luxion.shogunai.domain.model.WorktreeSort
 
 class JsonShellPreferenceRepository(
-    private val settingsFile: JsonSettingsFile = JsonSettingsFile(),
+    private val settingsFile: JsonSettingsFile,
 ) : ShellPreferenceRepository {
 
     override fun loadLastDestination(): String? = settingsFile.read().lastDestination
