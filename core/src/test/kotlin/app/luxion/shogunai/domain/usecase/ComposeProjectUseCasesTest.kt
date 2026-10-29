@@ -307,7 +307,7 @@ class ComposeProjectUseCasesTest {
             ),
             FakeEnvironmentStateStore(),
             FakePortProbe(),
-            MachineProviderContributions(FakeAppleSimulators(), { SimulatorSettings() }),
+            MachineProviderContributions(FakeAppleSimulators(), { SimulatorSettings() }, userHome = "/home/dev"),
         )
         return RunComposeProjectUseCase(source, resolve, registry)
     }

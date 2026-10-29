@@ -21,6 +21,7 @@ import app.luxion.shogunai.domain.io.GitHubClient
 import app.luxion.shogunai.domain.io.OrcaClient
 import app.luxion.shogunai.domain.io.OrcaWorkspaceStore
 import app.luxion.shogunai.domain.io.HerdrConfigSource
+import app.luxion.shogunai.domain.io.HostEnvironment
 import app.luxion.shogunai.domain.io.KmpTestWiring
 import app.luxion.shogunai.domain.io.MachineCapacity
 import app.luxion.shogunai.domain.io.PortProbe
@@ -216,7 +217,9 @@ import app.luxion.shogunai.infrastructure.CliHerdrClient
 import app.luxion.shogunai.infrastructure.CliGitHubClient
 import app.luxion.shogunai.infrastructure.CliOrcaClient
 import app.luxion.shogunai.infrastructure.JsonOrcaWorkspaceStore
+import app.luxion.shogunai.infrastructure.ExecutableLocator
 import app.luxion.shogunai.infrastructure.FileClaudeSessionRegistry
+import app.luxion.shogunai.infrastructure.ShogunFiles
 import app.luxion.shogunai.infrastructure.SystemProcessEnvironmentReader
 import app.luxion.shogunai.infrastructure.DockerComposeProjectSource
 import app.luxion.shogunai.infrastructure.NioDesktopTurnStore
@@ -312,41 +315,46 @@ class ShogunCli(
     private val readInput: () -> String = { "" },
     private val canonicalPath: (String) -> String = { File(it).canonicalPath },
     private val now: () -> Instant = Instant::now,
-    private val environmentVariable: (String) -> String? = System::getenv,
-    private val userHome: String = System.getProperty("user.home"),
-    private val herdr: HerdrClient = CliHerdrClient(executor, userHome = userHome),
-    private val toolPreferences: ToolPreferenceRepository = JsonToolPreferenceRepository(JsonSettingsFile(Path.of(userHome, ".shogunai", "settings.json"))),
+    private val environment: HostEnvironment,
+    private val files: ShogunFiles = ShogunFiles(environment.home),
+    private val locator: ExecutableLocator = ExecutableLocator(environment),
+    private val herdr: HerdrClient = CliHerdrClient(executor, locator::find),
+    private val toolPreferences: ToolPreferenceRepository = JsonToolPreferenceRepository(JsonSettingsFile(files.settings)),
     private val herdrAgentStartTimeout: kotlin.time.Duration = AGENT_START_SECONDS.seconds,
-    private val orca: OrcaClient = CliOrcaClient(executor, userHome = userHome),
-    private val gitHub: GitHubClient = CliGitHubClient(executor),
-    private val orcaWorkspaces: OrcaWorkspaceStore = JsonOrcaWorkspaceStore(Path.of(userHome, ".shogunai", "orca.json")),
+    private val orca: OrcaClient = CliOrcaClient(executor, locator::find),
+    private val gitHub: GitHubClient = CliGitHubClient(executor, locator::find),
+    private val orcaWorkspaces: OrcaWorkspaceStore = JsonOrcaWorkspaceStore(files.orcaWorkspaces),
     private val trust: RepositoryTrust = RepositoryTrust.NONE,
     private val readAnswer: () -> String? = { null },
-    private val sessionStore: AgentSessionStore = FileAgentSessionStore(),
+    private val sessionStore: AgentSessionStore = FileAgentSessionStore(files.agentSessions),
     private val agentProcessId: () -> Long? = ::claudeAncestorPid,
     private val mavenDaemonSource: MavenDaemonSource = ProcessMavenDaemonSource(executor),
     private val composeSource: ComposeProjectSource = DockerComposeProjectSource(executor),
-    private val composeRegistry: ComposeProjectRegistry = JsonComposeProjectRegistry(Path.of(userHome, ".shogunai", "compose-projects.json")),
-    private val multirepoSource: MultirepoSource = JsonMultirepoSource(Path.of(userHome, ".shogunai", "multirepos.json")),
-    private val appRequests: AppRequestChannel = FileAppRequestChannel(Path.of(userHome, ".shogunai", "app-requests")),
-    private val appLock: AppInstanceLock = FileAppInstanceLock(Path.of(userHome, ".shogunai", "app.lock")),
+    private val composeRegistry: ComposeProjectRegistry = JsonComposeProjectRegistry(files.composeProjects),
+    private val multirepoSource: MultirepoSource = JsonMultirepoSource(files.multirepos),
+    private val appRequests: AppRequestChannel = FileAppRequestChannel(files.appRequests),
+    private val appLock: AppInstanceLock = FileAppInstanceLock(files.appLock),
     private val appLauncher: AppLauncher = DesktopAppLauncher(),
     private val provisioningRecords: ProvisioningRecordStore = ProvisioningRecordStore.NONE,
     private val derivedDataSizes: DerivedDataSizeStore = DerivedDataSizeStore.NONE,
     private val packageCacheSource: PackageCacheSource = PackageCacheSource.NONE,
-    private val deviceWaitQueue: DeviceWaitQueue = NioDeviceWaitQueue(Path.of(userHome, ".shogunai")),
+    private val deviceWaitQueue: DeviceWaitQueue = NioDeviceWaitQueue(files.folder),
     private val processLiveness: ProcessLiveness = ProcessHandleLiveness(),
     private val deviceClock: () -> Instant = Instant::now,
     private val pauseWhileWaiting: suspend (Duration) -> Unit = { delay(it.toMillis()) },
-    private val headlessLauncher: HeadlessAppLauncher = GradleHeadlessAppLauncher(executor, Path.of(userHome, ".shogunai", "headless").toString()),
-    private val appWindows: AppWindowService = MacAppWindowService(executor, Path.of(userHome, ".shogunai", "headless").toString()),
+    private val headlessLauncher: HeadlessAppLauncher = GradleHeadlessAppLauncher(executor, files.headless.toString()),
+    private val appWindows: AppWindowService = MacAppWindowService(executor, files.headless.toString()),
     private val pauseWhileStartingApp: suspend (Long) -> Unit = { delay(it) },
-    private val desktopTurnStore: DesktopTurnStore = NioDesktopTurnStore(Path.of(userHome, ".shogunai")),
+    private val desktopTurnStore: DesktopTurnStore = NioDesktopTurnStore(files.folder),
     private val claudeSessions: ClaudeSessionRegistry = FileClaudeSessionRegistry(
-        ClaudeCodeHooks.claudeSessionsDirectory(environmentVariable(CLAUDE_CONFIG_DIR), userHome),
+        ClaudeCodeHooks.claudeSessionsDirectory(environment.variable(CLAUDE_CONFIG_DIR), environment.home),
     ),
     private val isClaudeProcessAlive: (Long) -> Boolean = ::isLiveClaudeProcess,
 ) {
+    private val userHome: String = environment.home
+
+    private fun environmentVariable(name: String): String? = environment.variable(name)
+
     private val orcaReader = OrcaWorktreeReader(orca, orcaWorkspaces, userHome)
 
     private val terminalApproval = RepositoryApproval { repository, subject ->

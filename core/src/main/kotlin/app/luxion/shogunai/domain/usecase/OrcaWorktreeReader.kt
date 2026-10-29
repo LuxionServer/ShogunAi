@@ -17,7 +17,7 @@ import java.nio.file.Path
 class OrcaWorktreeReader(
     private val orca: OrcaClient,
     private val store: OrcaWorkspaceStore = OrcaWorkspaceStore.NONE,
-    private val userHome: String = System.getProperty("user.home"),
+    private val userHome: String,
     private val now: () -> Long = System::currentTimeMillis,
     private val canonical: (String) -> String = ::canonicalDirectory,
 ) {
