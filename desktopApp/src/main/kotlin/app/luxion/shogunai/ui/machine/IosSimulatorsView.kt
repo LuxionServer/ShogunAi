@@ -1,5 +1,6 @@
 package app.luxion.shogunai.ui.machine
 
+import app.luxion.shogunai.ui.components.GroupTitle
 import app.luxion.shogunai.ui.theme.Status
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -7,7 +8,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -56,7 +56,7 @@ fun IosSimulatorsView(machine: MachineResources, onOpenWorktree: (String, String
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(strings.simulatorOrphansTitle(orphans.size), style = MaterialTheme.typography.titleSmall)
+                GroupTitle(strings.simulatorOrphansTitle(orphans.size))
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                     if (machine.isDeletingSimulators) InlineProgress(size = ProgressSize.Small)
                     DangerTextButton(onClick = { confirmingDelete = true }, enabled = !machine.isDeletingSimulators) {
@@ -66,10 +66,10 @@ fun IosSimulatorsView(machine: MachineResources, onOpenWorktree: (String, String
             }
             orphans.forEach { orphan ->
                 HorizontalDivider()
-                MachineRowLine {
-                    MachineDataText(orphan.name, Modifier.weight(1f))
-                    StatusChip(orphan.state.status(), simulatorStateLabel(orphan.state, strings))
-                }
+                MachineRow(
+                    machineCell(MachineMainColumn) { MachineDataText(orphan.name) },
+                    machineCell(MachineStateColumn) { StatusChip(orphan.state.status(), simulatorStateLabel(orphan.state, strings)) },
+                )
             }
         }
         machine.simulatorsDeleted?.let { count ->
@@ -94,17 +94,19 @@ private fun WorktreeSimulatorRow(entry: MachineSimulator, machine: MachineResour
     val isBusy = machine.isBusy(entry.projectId, entry.worktreePath)
     val current = entry.simulator?.state ?: SimulatorState.SHUTDOWN
     val state = if (isBusy && current != SimulatorState.BOOTED) SimulatorState.BOOTING else current
-    MachineRowLine {
-        MachineDataText(simulatorDeviceLabel(entry, machine.project(entry.projectId), strings), Modifier.weight(1f))
-        OwnerCell(ProjectOwner.Owned(entry.projectId, entry.worktreePath), machine::projectName, onOpenWorktree, Modifier.width(MachineOwnerColumnWidth))
-        Box(Modifier.width(MachineStateColumnWidth)) {
+    MachineRow(
+        machineCell(MachineMainColumn) { DeviceLabelText(simulatorDeviceLabel(entry, machine.project(entry.projectId), strings)) },
+        machineCell(MachineOwnerColumn) {
+            OwnerCell(ProjectOwner.Owned(entry.projectId, entry.worktreePath), machine::projectName, onOpenWorktree)
+        },
+        machineCell(MachineStateColumn) {
             if (entry.simulator == null && !isBusy) {
                 StatusChip(Status.NEUTRAL, strings.notAcquired)
             } else {
                 StatusChip(state.status(), simulatorStateLabel(state, strings))
             }
-        }
-        Row(Modifier.width(MachineActionColumnWidth), horizontalArrangement = Arrangement.End) {
+        },
+        machineActionCell {
             when {
                 isBusy -> InlineProgress(size = ProgressSize.Small)
                 state == SimulatorState.SHUTDOWN ->
@@ -112,6 +114,6 @@ private fun WorktreeSimulatorRow(entry: MachineSimulator, machine: MachineResour
                 else ->
                     SecondaryButton(onClick = { machine.stopSimulator(entry.projectId, entry.worktreePath) }) { Text(strings.stopSimulator) }
             }
-        }
-    }
+        },
+    )
 }

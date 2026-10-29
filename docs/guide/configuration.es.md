@@ -88,6 +88,7 @@ Opciones de los providers:
 | `maven` | `mavenMaxHeap`: un tamaño como `512m` o `1g`. |
 | `docker-compose` | `portVariables`: una lista de nombres de variable únicos que siguen las reglas de nombres de `env` y no son reservados. |
 | `desktop-app` | `module` (obligatorio): la ruta Gradle del módulo de la app, como `:desktopApp`. `isolatedHome`: `true` (por defecto) o `false`. |
+| `flutter` | Ninguna: se declara como `{}`. |
 
 Las claves y los providers desconocidos se ignoran. Un fichero que no es JSON válido, o una clave conocida con el tipo equivocado, hace que crear y provisionar worktrees falle con un mensaje que indica el fichero y el problema, sin crear nada.
 

@@ -103,10 +103,11 @@ class PaletteMatcherTest {
     }
 
     @Test
-    fun `an empty query without recent items lists the views`() {
+    fun `an empty query without recent items lists the views and settings`() {
         val view = item("view:active", "Active", kind = PaletteKind.VIEW)
+        val preferences = item("view:preferences", "Preferences", kind = PaletteKind.SETTING)
 
-        assertEquals(listOf(view), rankPaletteItems(listOf(api, view, rapid), "", emptyList()))
+        assertEquals(listOf(view, preferences), rankPaletteItems(listOf(api, view, rapid, preferences), "", emptyList()))
     }
 
     @Test

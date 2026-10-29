@@ -1,6 +1,6 @@
 package app.luxion.shogunai.domain.model
 
-enum class Stack { GRADLE, ANDROID, XCODE, MAVEN, DOCKER_COMPOSE }
+enum class Stack { GRADLE, ANDROID, XCODE, MAVEN, DOCKER_COMPOSE, FLUTTER }
 
 data class DetectedStack(val stack: Stack, val evidence: List<String>)
 
@@ -11,6 +11,7 @@ enum class SuggestedProvider(val id: String) {
     XCODE("xcode"),
     MAVEN("maven"),
     DOCKER_COMPOSE("docker-compose"),
+    FLUTTER("flutter"),
 }
 
 data class ProviderSuggestion(val provider: SuggestedProvider, val stack: Stack, val evidence: List<String>)
@@ -23,6 +24,7 @@ private val PROVIDERS_OF_STACK = mapOf(
     Stack.XCODE to listOf(SuggestedProvider.IOS_SIMULATOR, SuggestedProvider.XCODE),
     Stack.MAVEN to listOf(SuggestedProvider.MAVEN),
     Stack.DOCKER_COMPOSE to listOf(SuggestedProvider.DOCKER_COMPOSE),
+    Stack.FLUTTER to listOf(SuggestedProvider.FLUTTER),
 )
 
 private val MAC_ONLY_PROVIDERS = setOf(SuggestedProvider.IOS_SIMULATOR, SuggestedProvider.XCODE)
@@ -34,6 +36,7 @@ fun RepositoryProviders.declares(provider: SuggestedProvider): Boolean = when (p
     SuggestedProvider.XCODE -> xcode != null
     SuggestedProvider.MAVEN -> maven != null
     SuggestedProvider.DOCKER_COMPOSE -> dockerCompose != null
+    SuggestedProvider.FLUTTER -> flutter != null
 }
 
 fun suggestProviders(stacks: List<DetectedStack>, declared: RepositoryProviders, isMac: Boolean): SuggestionReport {

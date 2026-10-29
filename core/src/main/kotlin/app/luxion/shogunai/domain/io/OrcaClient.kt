@@ -38,4 +38,6 @@ interface OrcaClient {
     suspend fun switchTo(handle: String)
 
     suspend fun closeTerminals(workspace: OrcaWorkspace)
+
+    suspend fun attachEmulator(workspace: OrcaWorkspace, serial: String)
 }

@@ -7,6 +7,7 @@ import app.luxion.shogunai.domain.io.ToolDetector
 import app.luxion.shogunai.domain.io.ToolPreferenceRepository
 import app.luxion.shogunai.domain.model.DetectedTools
 import app.luxion.shogunai.domain.model.EditorId
+import app.luxion.shogunai.domain.model.RunnerId
 import app.luxion.shogunai.domain.model.TerminalId
 import app.luxion.shogunai.domain.model.TerminalLaunch
 
@@ -54,6 +55,7 @@ class FakeToolDetector(var tools: DetectedTools = DetectedTools()) : ToolDetecto
 class FakeToolPreferenceRepository(
     var terminal: TerminalId? = null,
     var editor: EditorId? = null,
+    var runner: RunnerId? = null,
 ) : ToolPreferenceRepository {
 
     override fun loadTerminal(): TerminalId? = terminal
@@ -66,5 +68,11 @@ class FakeToolPreferenceRepository(
 
     override fun saveEditor(editor: EditorId?) {
         this.editor = editor
+    }
+
+    override fun loadRunner(): RunnerId? = runner
+
+    override fun saveRunner(runner: RunnerId?) {
+        this.runner = runner
     }
 }

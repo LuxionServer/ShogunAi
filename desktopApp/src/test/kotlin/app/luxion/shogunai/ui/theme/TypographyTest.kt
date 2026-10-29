@@ -1,7 +1,11 @@
 package app.luxion.shogunai.ui.theme
 
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 class TypographyTest {
 
@@ -25,6 +29,30 @@ class TypographyTest {
             assertEquals(GeistMono, style.fontFamily)
             assertEquals("tnum", style.fontFeatureSettings)
         }
+    }
+
+    @Test
+    fun `title and label roles follow the v2 scale`() {
+        with(ShogunDataTextStyles) {
+            assertStyle(viewTitle, Geist, FontWeight.SemiBold, 16f, 22f)
+            assertStyle(sectionTitle, Geist, FontWeight.SemiBold, 13f, 18f)
+            assertStyle(eyebrow, GeistMono, FontWeight.Medium, 10.5f, 14f)
+            assertEquals(0.06f, eyebrow.letterSpacing.value, 0.001f)
+            assertTrue(eyebrow.letterSpacing.isEm)
+        }
+    }
+
+    @Test
+    fun `body and secondary text keep their sizes`() {
+        assertStyle(ShogunTypography.bodyMedium, Geist, FontWeight.Normal, 13f, 18f)
+        assertStyle(ShogunTypography.bodySmall, Geist, FontWeight.Normal, 12f, 16f)
+    }
+
+    private fun assertStyle(style: TextStyle, family: FontFamily, weight: FontWeight, size: Float, lineHeight: Float) {
+        assertEquals(family, style.fontFamily)
+        assertEquals(weight, style.fontWeight)
+        assertEquals(size, style.fontSize.value, 0.001f)
+        assertEquals(lineHeight, style.lineHeight.value, 0.001f)
     }
 
     @Test

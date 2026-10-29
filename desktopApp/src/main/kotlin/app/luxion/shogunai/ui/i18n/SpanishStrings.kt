@@ -1,5 +1,7 @@
 package app.luxion.shogunai.ui.i18n
 
+import app.luxion.shogunai.domain.model.AgentStateSource
+import app.luxion.shogunai.ui.components.AgentPhase
 import app.luxion.shogunai.domain.model.ComposeResourceKind
 import app.luxion.shogunai.domain.model.ResourceLimits
 import app.luxion.shogunai.domain.model.ResourceKind
@@ -8,7 +10,6 @@ import app.luxion.shogunai.domain.model.DerivedDataQuotaMode
 import app.luxion.shogunai.domain.model.InstallChannel
 import app.luxion.shogunai.domain.model.MobileSecretKind
 import app.luxion.shogunai.domain.model.ProvisionDriftState
-import app.luxion.shogunai.domain.model.AgentState
 import app.luxion.shogunai.domain.model.AppLanguage
 import app.luxion.shogunai.domain.usecase.HookEntry
 import app.luxion.shogunai.domain.usecase.HookReplacement
@@ -250,18 +251,39 @@ object SpanishStrings : Strings {
     override fun claudeHooksRemoved(entry: HookEntry) = "Quitar de ${entry.event}: ${entry.command}"
     override val claudeHooksNoticeMessage = "Claude se está ejecutando sin un estado conocido. Instala los hooks de ShogunAi para Claude Code y verás cuándo te necesita."
     override val claudeHooksNoticeDismiss = "Descartar"
-    override fun agentLabel(name: String, state: AgentState?) = when (state) {
-        null -> name
-        AgentState.WORKING -> "$name · trabajando"
-        AgentState.BLOCKED -> "$name · bloqueado"
-        AgentState.DONE -> "$name · terminado"
-        AgentState.IDLE -> "$name · inactivo"
+    override fun agentPhaseName(phase: AgentPhase) = when (phase) {
+        AgentPhase.NEEDS_YOU -> "te necesita"
+        AgentPhase.DONE -> "terminado"
+        AgentPhase.WORKING -> "trabajando"
+        AgentPhase.RUNNING -> "en ejecución"
+        AgentPhase.IDLE -> "inactivo"
     }
     override fun agentWaitingOn(tool: String, input: String?) = "Esperando a $tool" + (input?.let { ": $it" } ?: "")
     override fun agentPrompt(prompt: String) = "Prompt: $prompt"
     override fun agentLastMessage(message: String) = "Último mensaje: $message"
     override fun portListening(label: String) = "$label (escuchando)"
     override val orcaPortsTitle = "Escuchando, según Orca"
+    override fun agentStateSource(source: AgentStateSource?) = when (source) {
+        AgentStateSource.HERDR -> "Estado de Herdr"
+        AgentStateSource.ORCA -> "Estado de Orca"
+        AgentStateSource.CLAUDE_CODE -> "Estado de los hooks de Claude Code"
+        null -> "Solo se ha encontrado su proceso"
+    }
+    override fun agentsUpdated(relative: String) = "Actualizado $relative"
+    override val noAgentRunning = "No hay ningún agente en ejecución"
+    override fun copyValue(key: String) = "Copiar $key"
+    override val agentSectionTitle = "Agente"
+    override val resourcesTitle = "Recursos"
+    override val expanded = "Desplegada"
+    override val collapsed = "Plegada"
+    override val changesKey = "Cambios"
+    override val upstreamKey = "Upstream"
+    override fun versusBranchKey(branch: String) = "vs $branch"
+    override val lastCommitKey = "Último commit"
+    override fun environmentSummary(ports: Int, variables: Int) = listOfNotNull(
+        ports.takeIf { it > 0 }?.let { if (it == 1) "1 puerto" else "$it puertos" },
+        variables.takeIf { it > 0 }?.let { if (it == 1) "1 variable" else "$it variables" },
+    ).joinToString(" · ")
     override fun agentsRunning(names: List<String>) = "Agentes en ejecución: ${names.joinToString(", ")}"
     override val allProjects = "Todos los proyectos"
     override val projectLabel = "Proyecto"
@@ -285,13 +307,6 @@ object SpanishStrings : Strings {
     override val mergedLabel = "fusionado"
     override fun commitAgo(relative: String) = "commit $relative"
     override fun createdAgo(relative: String) = "creado $relative"
-    override fun agentStateName(state: AgentState?) = when (state) {
-        null -> "estado desconocido"
-        AgentState.WORKING -> "trabajando"
-        AgentState.BLOCKED -> "bloqueado"
-        AgentState.DONE -> "terminado"
-        AgentState.IDLE -> "inactivo"
-    }
     override val sortLabel = "Orden"
     override val sortByName = "Nombre"
     override val sortByLastActivity = "Última actividad"
@@ -321,11 +336,11 @@ object SpanishStrings : Strings {
     override val provisioningUpToDate = "Los archivos están al día"
     override val provisionAction = "Provisionar"
     override val copyAsEnv = "Copiar como .env"
-    override fun provisionDriftFile(path: String, state: ProvisionDriftState) = when (state) {
-        ProvisionDriftState.MISSING -> "$path · falta"
-        ProvisionDriftState.DIFFERS -> "$path · difiere"
-        ProvisionDriftState.NOT_LINKED -> "$path · sin enlazar"
-        ProvisionDriftState.DELETED_IN_BASE -> "$path · borrado en la base"
+    override fun provisionDriftState(state: ProvisionDriftState) = when (state) {
+        ProvisionDriftState.MISSING -> "falta"
+        ProvisionDriftState.DIFFERS -> "difiere"
+        ProvisionDriftState.NOT_LINKED -> "sin enlazar"
+        ProvisionDriftState.DELETED_IN_BASE -> "borrado en la base"
     }
     override val environmentTitle = "Entorno"
     override val devicesTitle = "Dispositivos"
@@ -381,9 +396,9 @@ object SpanishStrings : Strings {
     override val uninstall = "Desinstalar"
     override val install = "Instalar"
     override val simulatorLabel = "Simulador de iOS"
-    override val simulatorShutdown = "apagado"
-    override val simulatorBooting = "arrancando"
-    override val simulatorBooted = "arrancado"
+    override val simulatorShutdown = "Apagado"
+    override val simulatorBooting = "Arrancando"
+    override val simulatorBooted = "Arrancado"
     override val startSimulator = "Arrancar"
     override val stopSimulator = "Apagar"
     override val alsoDeleteSimulators = "Borrar también los simuladores de iOS de los worktrees que se eliminan y los simuladores huérfanos de ShogunAi"
@@ -398,9 +413,9 @@ object SpanishStrings : Strings {
     override fun emulatorMissingAvd(name: String) = "$name (no está en esta máquina)"
     override val emulatorNoWindowLabel = "Ejecutar sin ventana"
     override val emulatorLabel = "Emulador"
-    override val emulatorStopped = "parado"
-    override val emulatorBooting = "arrancando"
-    override val emulatorRunning = "en marcha"
+    override val emulatorStopped = "Parado"
+    override val emulatorBooting = "Arrancando"
+    override val emulatorRunning = "En marcha"
     override val startEmulator = "Arrancar"
     override val stopEmulator = "Parar"
     override val alsoStopEmulators = "Parar también los emuladores de los worktrees que se eliminan"
@@ -529,9 +544,9 @@ object SpanishStrings : Strings {
     override fun headlessStopFailed(path: String, detail: String) = "No se pudo parar la app de escritorio de $path: $detail"
     override fun releasedFor(worktree: String, time: String) = "Liberado para $worktree a las $time"
     override val notAcquired = "Sin adquirir"
-    override fun poolUsage(inUse: Int, limit: Int?, profile: String) =
-        (if (limit == null) "$inUse en uso" else "$inUse de $limit en uso") + " · $profile"
+    override fun poolUsage(inUse: Int, limit: Int?) = if (limit == null) "$inUse en uso" else "$inUse de $limit en uso"
     override val overLimit = "por encima del límite"
+    override val overLimitChip = "Por encima del límite"
     override val changeInPreferences = "Cambiar en Preferencias"
     override fun releasedNotice(kind: ResourceKind, released: String, forWorktree: String) = when (kind) {
         ResourceKind.EMULATOR -> "El emulador de $released se liberó para dejar sitio a $forWorktree"
@@ -543,6 +558,15 @@ object SpanishStrings : Strings {
             (limit?.let { " para mantenerse dentro del límite de $it" } ?: "")
     override fun poolSummary(inUse: Int, limit: Int?) = if (limit == null) "$inUse" else "$inUse/$limit"
     override val machineTitle = "Máquina"
+    override val machineStatusGradle = "Gradle"
+    override val machineStatusEmulators = "Emuladores"
+    override val machineStatusSimulators = "Simuladores"
+    override val machineStatusDerivedData = "DerivedData"
+    override val machineStatusMaven = "Maven"
+    override val machineStatusCompose = "Compose"
+    override val machineStatusDesktop = "Escritorio"
+    override val notMeasuredYet = "aún sin medir"
+    override val overQuota = "por encima de la cuota"
     override val androidEmulatorsTitle = "Emuladores Android"
     override val iosSimulatorsTitle = "Simuladores iOS"
     override fun runningCount(count: Int) = if (count == 1) "1 en marcha" else "$count en marcha"
@@ -555,7 +579,6 @@ object SpanishStrings : Strings {
     override val machineColumnState = "Estado"
     override val automaticAvd = "Automático"
     override val simulatorNotCreated = "Sin crear"
-    override fun simulatorNotCreatedFor(device: String) = "Sin crear · $device"
     override val noMachineEmulators = "No hay emuladores de worktrees en estos proyectos"
     override val unownedEmulatorsTitle = "En marcha fuera de cualquier worktree"
     override val noMachineSimulators = "Aún no hay simuladores de ShogunAi"
@@ -583,6 +606,12 @@ object SpanishStrings : Strings {
     override fun daysAgo(count: Long) = if (count == 1L) "hace 1 día" else "hace $count días"
     override fun monthsAgo(count: Long) = if (count == 1L) "hace 1 mes" else "hace $count meses"
     override fun yearsAgo(count: Long) = if (count == 1L) "hace 1 año" else "hace $count años"
+    override val compactNow = "ahora"
+    override fun compactMinutes(count: Long) = "$count min"
+    override fun compactHours(count: Long) = "$count h"
+    override fun compactDays(count: Long) = "$count d"
+    override fun compactMonths(count: Long) = if (count == 1L) "1 mes" else "$count meses"
+    override fun compactYears(count: Long) = if (count == 1L) "1 año" else "$count años"
     override val copied = "Copiado"
     override val close = "Cerrar"
     override val worktreeCreatedWithError = "El worktree se creó, pero falló su comando posterior a la creación."
@@ -623,6 +652,20 @@ object SpanishStrings : Strings {
     override fun openInTool(name: String) = "Abrir en $name"
     override val claudeDesktopName = "Claude Desktop"
     override val openFolder = "Abrir carpeta"
+    override val openWith = "Abrir con…"
+    override val openWithMenu = "Abrir con"
+    override val withAgent = "Con agente"
+    override fun actionWithAgent(action: String, agent: String) = "$action con $agent"
+    override val defaultRunnerMark = "por defecto"
+    override val setDefaultRunner = "Elegir runner por defecto…"
+    override val defaultRunnerLabel = "Runner por defecto"
+    override val noRunnerFound = "No se ha encontrado Herdr ni Orca"
+    override val deleteWorktreeAction = "Eliminar worktree…"
+    override val moreActions = "Más acciones"
+    override val folderMissingReason = "Falta la carpeta de la worktree"
+    override val openingReason = "Abriendo…"
+    override val addProjectFirst = "Añade un proyecto primero"
+    override val addRepositoryFirst = "Añade primero un repositorio al multirepo"
     override val chooseTerminalTitle = "Elige un terminal"
     override val chooseTerminalMessage = "Los worktrees se abrirán en el terminal que elijas. Puedes cambiarlo después en Preferencias."
     override val projectEditorLabel = "IDE en este equipo"
@@ -650,6 +693,7 @@ object SpanishStrings : Strings {
     override val xcodeCocoaPodsLabel = "Clonar los pods de CocoaPods de la base"
     override val providerMaven = "Maven"
     override val providerDockerCompose = "Docker Compose"
+    override val providerFlutter = "Flutter"
     override val mavenMaxHeapLabel = "Memoria de las compilaciones"
     override val composePortVariablesLabel = "Variables de puerto"
     override val composePortVariablesHelp = "Nombres separados por comas, por ejemplo DB_PORT, API_PORT. Cada uno recibe su propio puerto libre en cada worktree."
@@ -679,8 +723,7 @@ object SpanishStrings : Strings {
     override val composeProjectsTitle = "Proyectos de Compose"
     override fun composeProjectsSummary(count: Int) = if (count == 1) "1 proyecto" else "$count proyectos"
     override val noComposeProjects = "No hay proyectos de Compose de los worktrees"
-    override fun composeProjectsUnavailable(reason: String?) =
-        "Docker no está disponible" + if (reason.isNullOrBlank()) "" else ": $reason"
+    override val composeDockerUnavailableMessage = "Docker no está disponible. Abre Docker Desktop o arranca el daemon de Docker y vuelve a intentarlo."
     override val composeOwnerRemoved = "worktree eliminado"
     override val takeDownRemovedComposeProjects = "Bajar los proyectos de los worktrees eliminados"
     override val composeVolumesKept = "Se eliminan los contenedores y las redes; los volúmenes se conservan."
@@ -743,6 +786,7 @@ object SpanishStrings : Strings {
     override val paletteNoResults = "Sin resultados"
     override val paletteCopyLaunchCommandHint = "Copiar comando de lanzamiento"
     override val paletteKindView = "Vista"
+    override val paletteKindSetting = "Ajuste"
     override val paletteKindProject = "Proyecto"
     override val paletteKindWorktree = "Worktree"
     override val paletteKindAction = "Acción"
@@ -794,6 +838,8 @@ object SpanishStrings : Strings {
     override val openAllInHerdr = "Abrir todo en Herdr"
     override val openAllInOrca = "Abrir todo en Orca"
     override val addRepositoryToGroup = "Añadir repositorio"
+    override val openAllWith = "Abrir todo con…"
+    override val openMultirepoAgentWith = "Abrir agente del multirepo con…"
     override val cleanUpGroup = "Limpiar grupo"
     override val cleanUpGroupTitle = "Limpiar grupo"
     override val openMultirepoAgent = "Abrir agente del multirepo en Herdr"
@@ -801,7 +847,6 @@ object SpanishStrings : Strings {
     override val multirepoAgentFocused = "Agente del multirepo enfocado en Herdr"
     override val multirepoAgentStarted = "Agente del multirepo iniciado en su workspace abierto de Herdr"
     override val openMultirepoAgentInOrca = "Abrir agente del multirepo en Orca"
-    override val openMultirepoAgentMenu = "Abrir agente del multirepo"
     override val multirepoAgentStartedInOrca = "Agente del multirepo iniciado en una terminal nueva de Orca"
     override val multirepoAgentFocusedInOrca = "El agente del multirepo ya estaba en marcha en Orca; se ha cambiado a él"
     override val openNewChangeIn = "Después, abrirlo en"
@@ -911,4 +956,19 @@ object SpanishStrings : Strings {
     override val tourEndTitle = "¿Terminar el recorrido?"
     override fun tourEndMessage(folder: String) =
         "Se eliminan el proyecto \"ShogunAi tour\", sus worktrees y $folder. Cierra antes el agente del recorrido. No se toca ningún otro proyecto."
+    override val loading = "Cargando"
+    override fun noticeDetails(count: Int) = "Detalles ($count)"
+    override fun releasedSummary(kind: ResourceKind, count: Int) = when (kind) {
+        ResourceKind.EMULATOR -> "Se liberaron $count emuladores para dejar sitio a otros worktrees"
+        ResourceKind.IOS_SIMULATOR -> "Se borraron $count simuladores para dejar sitio a otros worktrees"
+        ResourceKind.GRADLE_DAEMON -> "Se pararon $count daemons de Gradle para dejar sitio a otros worktrees"
+    }
+    override val cleanUpBlockedRunning = "Ya hay una limpieza en marcha"
+    override val cleanUpBlockedNothing = "No hay nada que limpiar: ningún worktree está mergeado ni ha perdido su carpeta"
+    override val cleanUpBlockedReview = "Confía en el multirepo antes de limpiarlo"
+    override val daemonStopBlockedBusy = "Solo se pueden parar los daemons inactivos, y este está ocupado"
+    override val daemonStopBlockedUnknown = "No se conoce su estado, así que no se para"
+    override val daemonStopBlockedGradleBusy = "Los daemons de Kotlin solo se paran cuando ningún daemon de Gradle está ocupado"
+    override val stopIdleBlockedStopping = "Se están parando los daemons"
+    override val stopIdleBlockedNoneIdle = "Ningún daemon está inactivo"
 }

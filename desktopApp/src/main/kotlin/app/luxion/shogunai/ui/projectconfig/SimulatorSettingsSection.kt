@@ -3,7 +3,6 @@ package app.luxion.shogunai.ui.projectconfig
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -13,6 +12,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboard
+import app.luxion.shogunai.ui.components.InlineConfirmButton
+import app.luxion.shogunai.ui.components.ShogunDialog
 import app.luxion.shogunai.ui.components.copyText
 import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.launch
@@ -35,7 +36,7 @@ fun SimulatorSettingsSection(viewModel: ProjectConfigViewModel, modifier: Modifi
     if (state == SimulatorSectionState.Hidden) return
     val strings = LocalStrings.current
     SettingsSection(title = strings.simulatorSection, modifier = modifier) {
-        Text(strings.machineOnlyLabel, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+        Text(strings.machineOnlyLabel, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text(
             strings.simulatorSectionDescription,
             style = MaterialTheme.typography.bodySmall,
@@ -88,31 +89,32 @@ private fun KmpWiringPanel(viewModel: ProjectConfigViewModel, modifier: Modifier
     val clipboard = LocalClipboard.current
     val scope = rememberCoroutineScope()
     var confirming by remember { mutableStateOf(false) }
-    var copied by remember { mutableStateOf(false) }
     var installError by remember { mutableStateOf<Throwable?>(null) }
     Text(strings.simulatorTestsNotWired, style = MaterialTheme.typography.bodySmall)
     Text(viewModel.simulatorSnippet, style = ShogunTheme.typography.dataSmall)
     Row {
-        SecondaryButton(
-            onClick = { scope.launch { clipboard.copyText(viewModel.simulatorSnippet) }; copied = true },
+        InlineConfirmButton(
+            label = strings.copySnippet,
+            onClick = { scope.launch { clipboard.copyText(viewModel.simulatorSnippet) } },
             modifier = Modifier.padding(end = Spacing.sm),
-        ) { Text(if (copied) strings.copied else strings.copySnippet) }
+        )
         SecondaryButton(onClick = { confirming = true }) { Text(strings.installInitScript) }
     }
     installError?.let { ErrorNotice(it, onDismiss = { installError = null }) }
     if (confirming) {
-        AlertDialog(
+        ShogunDialog(
+            title = strings.installInitScriptTitle,
             onDismissRequest = { confirming = false },
-            title = { Text(strings.installInitScriptTitle) },
-            text = { Text(strings.installInitScriptMessage(viewModel.simulatorInitScriptPath)) },
-            confirmButton = {
+            confirm = {
                 PrimaryButton(onClick = {
                     confirming = false
                     installError = viewModel.installSimulatorInitScript().exceptionOrNull()
                 }) { Text(strings.install) }
             },
-            dismissButton = { NeutralTextButton(onClick = { confirming = false }) { Text(strings.cancel) } },
-        )
+            dismiss = { NeutralTextButton(onClick = { confirming = false }) { Text(strings.cancel) } },
+        ) {
+            Text(strings.installInitScriptMessage(viewModel.simulatorInitScriptPath))
+        }
     }
 }
 
@@ -124,18 +126,19 @@ private fun UninstallInitScriptPanel(viewModel: ProjectConfigViewModel) {
     SecondaryButton(onClick = { confirming = true }) { Text(strings.uninstallInitScript) }
     uninstallError?.let { ErrorNotice(it, onDismiss = { uninstallError = null }) }
     if (confirming) {
-        AlertDialog(
+        ShogunDialog(
+            title = strings.uninstallInitScriptTitle,
             onDismissRequest = { confirming = false },
-            title = { Text(strings.uninstallInitScriptTitle) },
-            text = { Text(strings.uninstallInitScriptMessage(viewModel.simulatorInitScriptPath)) },
-            confirmButton = {
+            confirm = {
                 PrimaryButton(onClick = {
                     confirming = false
                     uninstallError = viewModel.uninstallSimulatorInitScript().exceptionOrNull()
                 }) { Text(strings.uninstall) }
             },
-            dismissButton = { NeutralTextButton(onClick = { confirming = false }) { Text(strings.cancel) } },
-        )
+            dismiss = { NeutralTextButton(onClick = { confirming = false }) { Text(strings.cancel) } },
+        ) {
+            Text(strings.uninstallInitScriptMessage(viewModel.simulatorInitScriptPath))
+        }
     }
 }
 

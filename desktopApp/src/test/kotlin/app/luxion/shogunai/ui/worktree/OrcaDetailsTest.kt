@@ -3,8 +3,14 @@ package app.luxion.shogunai.ui.worktree
 import app.luxion.shogunai.domain.model.AgentActivity
 import app.luxion.shogunai.domain.model.AgentTool
 import app.luxion.shogunai.domain.model.ObservedPort
+import app.luxion.shogunai.ui.components.SectionState
 import app.luxion.shogunai.ui.i18n.EnglishStrings
 import app.luxion.shogunai.ui.i18n.SpanishStrings
+import app.luxion.shogunai.ui.worktree.inspector.agentActivityLines
+import app.luxion.shogunai.ui.worktree.inspector.environmentProperties
+import app.luxion.shogunai.ui.worktree.inspector.environmentSectionState
+import app.luxion.shogunai.ui.worktree.inspector.observedPortLabel
+import app.luxion.shogunai.ui.worktree.inspector.shortened
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -43,9 +49,14 @@ class OrcaDetailsTest {
 
     @Test
     fun `reserved ports Orca sees listening are marked`() {
-        val label = portsLabel(mapOf("PORT" to 20001, "port:api" to 20002), setOf(20001, 8765), EnglishStrings::portListening)
+        val properties = environmentProperties(null, mapOf("PORT" to 20001, "port:api" to 20002), setOf(20001, 8765), EnglishStrings::portListening)
 
-        assertEquals("PORT 20001 (listening) · api 20002", label)
+        assertEquals(listOf("PORT (listening) 20001", "api 20002"), properties.map { "${it.key} ${it.value}" })
+    }
+
+    @Test
+    fun `observed ports alone show the environment section`() {
+        assertEquals(SectionState.Content, environmentSectionState(null, emptyMap(), listOf(ObservedPort(8765))))
     }
 
     @Test

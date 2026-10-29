@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -19,6 +18,8 @@ import androidx.compose.ui.unit.dp
 import app.luxion.shogunai.domain.model.UpdateAction
 import app.luxion.shogunai.domain.model.UpdateCheck
 import app.luxion.shogunai.domain.model.VersionNotes
+import app.luxion.shogunai.ui.components.DialogSize
+import app.luxion.shogunai.ui.components.ShogunDialog
 import app.luxion.shogunai.ui.components.ErrorNotice
 import app.luxion.shogunai.ui.components.MarkdownText
 import app.luxion.shogunai.ui.components.Notice
@@ -97,14 +98,15 @@ private fun UpdateActionButton(action: UpdateAction, state: UpdateState, strings
 fun UpdateCheckDialog(state: UpdateState) {
     val result = state.manualResult ?: return
     val strings = LocalStrings.current
-    AlertDialog(
+    ShogunDialog(
+        title = strings.updateDialogTitle,
         onDismissRequest = state::closeManualResult,
-        title = { Text(strings.updateDialogTitle) },
-        text = { UpdateCheckDialogContent(result, state) },
-        confirmButton = {
+        confirm = {
             PrimaryButton(onClick = state::closeManualResult) { Text(strings.close) }
         },
-    )
+    ) {
+        UpdateCheckDialogContent(result, state)
+    }
 }
 
 @Composable
@@ -128,17 +130,20 @@ private fun UpdateCheckDialogContent(result: ManualUpdateResult, state: UpdateSt
 fun ReleaseNotesDialog(state: UpdateState) {
     val available = state.notes ?: return
     val strings = LocalStrings.current
-    AlertDialog(
+    ShogunDialog(
+        title = strings.releaseNotesTitle(available.release.version.toString()),
         onDismissRequest = state::closeNotes,
-        title = { Text(strings.releaseNotesTitle(available.release.version.toString())) },
-        text = { ReleaseNotesContent(available.notes, state) },
-        confirmButton = {
+        size = DialogSize.Medium,
+        scrollable = false,
+        confirm = {
             PrimaryButton(onClick = state::closeNotes) { Text(strings.close) }
         },
-        dismissButton = {
+        dismiss = {
             SecondaryButton(onClick = { state.open(available.release.pageUrl) }) { Text(strings.releaseNotesViewOnGitHub) }
         },
-    )
+    ) {
+        ReleaseNotesContent(available.notes, state)
+    }
 }
 
 @Composable

@@ -63,18 +63,18 @@ private fun LoadedMavenDaemons(daemons: List<MachineMavenDaemon>, machine: Machi
     }
     daemons.forEach { daemon ->
         HorizontalDivider()
-        MachineRowLine {
-            MachineDataText("Maven · PID ${daemon.process.pid}", Modifier.weight(1f))
-            MachineDataText(formatSize(daemon.process.residentMemoryBytes), Modifier.width(80.dp))
-            MachineDataText(mavenDaemonStateText(daemon.process.state, strings), Modifier.width(170.dp))
-            OwnerCell(daemon.owner, machine::projectName, onOpenWorktree, Modifier.width(MachineOwnerColumnWidth))
-            Row(Modifier.width(MachineActionColumnWidth), horizontalArrangement = Arrangement.End) {
+        MachineRow(
+            machineCell(MachineMainColumn) { MachineDataText("Maven · PID ${daemon.process.pid}") },
+            machineCell(MachineSizeColumn) { MachineDataText(formatSize(daemon.process.residentMemoryBytes)) },
+            machineCell(MachineDaemonStateColumn) { MachineStateText(mavenDaemonStateText(daemon.process.state, strings)) },
+            machineCell(MachineOwnerColumn) { OwnerCell(daemon.owner, machine::projectName, onOpenWorktree) },
+            machineActionCell {
                 SecondaryButton(
                     onClick = { machine.stopMavenDaemon(daemon.process.pid) },
                     enabled = !machine.isStoppingMavenDaemons && daemon.process.state is DaemonState.Idle,
                 ) { Text(strings.stopDaemon) }
-            }
-        }
+            },
+        )
     }
 }
 

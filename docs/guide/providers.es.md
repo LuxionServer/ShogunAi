@@ -15,22 +15,24 @@ Un provider añade soporte para un tipo de herramienta a los worktrees de un rep
 | [`maven`](#maven) | Compilaciones de Maven: un límite de memoria y los daemons de Maven. | Todas; la lista de daemons necesita `ps` (macOS, Linux) |
 | [`docker-compose`](#docker-compose) | Un proyecto de Docker Compose y puertos por worktree. | Todas, con la CLI de Docker |
 | [`desktop-app`](#app-de-compose-desktop) | Una app de Compose Desktop por worktree, ejecutada en segundo plano sin ocupar el escritorio. | macOS |
+| [`flutter`](#flutter) | Apps Flutter: `flutter pub get` en cada worktree nuevo, y agentes que ejecutan Flutter en los dispositivos de su worktree. | Todas, con Flutter |
 
 ## Detección de stacks
 
-No hace falta saber qué providers existen. ShogunAi mira los archivos de la carpeta principal del repositorio y de sus subcarpetas directas (nunca las ocultas, `build`, `node_modules` ni `Pods`) y reconoce cinco stacks:
+No hace falta saber qué providers existen. ShogunAi mira los archivos de la carpeta principal del repositorio y de sus subcarpetas directas (nunca las ocultas, `build`, `node_modules` ni `Pods`) y reconoce seis stacks:
 
 | Stack | Lo delatan | Sugiere |
 |---|---|---|
-| Gradle | `gradlew`, `settings.gradle` o `settings.gradle.kts` en la carpeta principal | `gradle` |
-| Android | `com.android.` en un `build.gradle(.kts)` de esas carpetas, o en `gradle/libs.versions.toml` | `emulator` |
+| Gradle | `gradlew`, `settings.gradle` o `settings.gradle.kts` en la carpeta principal o, si no, `settings.gradle(.kts)` en una subcarpeta directa como `android/` | `gradle` |
+| Android | `com.android.` en un `build.gradle(.kts)` o `settings.gradle(.kts)` de esas carpetas, o en `gradle/libs.versions.toml` | `emulator` |
 | Xcode | una carpeta `.xcodeproj`, o `Package.swift` en la carpeta principal | `ios-simulator` y `xcode` (solo macOS) |
 | Maven | `pom.xml` o `mvnw` en la carpeta principal | `maven` |
 | Docker Compose | `compose.yaml`, `compose.yml`, `docker-compose.yaml` o `docker-compose.yml` en la carpeta principal | `docker-compose` |
+| Flutter | un `pubspec.yaml` en la carpeta principal que depende del SDK de Flutter (`sdk: flutter`) | `flutter` |
 
 En los ajustes del proyecto, "Configuración del repositorio" lista los providers que el repositorio podría usar y aún no declara, con los archivos que los delataron, y "Activar" enciende el provider como un cambio sin guardar: no se escribe nada hasta que guardas y confirmas la vista previa. `shogun stacks` imprime lo mismo desde un terminal y no cambia nada. Una sugerencia es solo una pista (un `pom.xml` en una carpeta de pruebas también cuenta), por eso siempre se muestra la evidencia.
 
-ShogunAi también busca, a cualquier profundidad fuera de las carpetas de compilación y de herramientas (`build`, `.gradle`, `node_modules`, `Pods`, `DerivedData`), los archivos sin versionar sin los que un worktree móvil recién creado no compila: `local.properties`, `keystore.properties`, `key.properties`, `*.jks`, `*.keystore`, `google-services.json` y `GoogleService-Info.plist`. Cada uno que todavía no provisiona nada (archivos locales, `copy`, `link` o `.worktreeinclude`) se sugiere como un patrón `link` anclado, como `/app/google-services.json`, para que al rotarlo en el repositorio base se actualicen todos los worktrees. También lee las claves `storeFile` de esos ficheros de propiedades (cualquier clave que termine en `storeFile`, como `RELEASE_STORE_FILE`): un keystore que nombren dentro del repositorio también se sugiere, y una ruta relativa que sale del repositorio se avisa, porque no se resolverá desde un worktree que vive en otra carpeta. Los ajustes del proyecto los listan en "Archivos del worktree" y `shogun stacks` los imprime; no se escribe nada hasta que aceptas y guardas.
+ShogunAi también busca, a cualquier profundidad fuera de las carpetas de compilación y de herramientas (`build`, `.gradle`, `.dart_tool`, `node_modules`, `Pods`, `DerivedData`), los archivos sin versionar sin los que un worktree móvil recién creado no compila: `local.properties`, `keystore.properties`, `key.properties`, `*.jks`, `*.keystore`, `google-services.json`, `GoogleService-Info.plist` y el `firebase_options.dart` de FlutterFire. Cada uno que todavía no provisiona nada (archivos locales, `copy`, `link` o `.worktreeinclude`) se sugiere como un patrón `link` anclado, como `/app/google-services.json`, para que al rotarlo en el repositorio base se actualicen todos los worktrees. También lee las claves `storeFile` de esos ficheros de propiedades (cualquier clave que termine en `storeFile`, como `RELEASE_STORE_FILE`): un keystore que nombren dentro del repositorio también se sugiere, y una ruta relativa que sale del repositorio se avisa, porque no se resolverá desde un worktree que vive en otra carpeta. Un `local.properties` que define `flutter.sdk` no se sugiere, porque Flutter lo reescribe en cada worktree y un enlace escribiría en el fichero del repositorio base; sus claves `storeFile` se siguen leyendo. Los ajustes del proyecto los listan en "Archivos del worktree" y `shogun stacks` los imprime; no se escribe nada hasta que aceptas y guardas.
 
 ## Gradle
 
@@ -41,6 +43,8 @@ ShogunAi también busca, a cualquier profundidad fuera de las carpetas de compil
 Cada build en un worktree arranca un daemon de Gradle (y normalmente un daemon de compilación de Kotlin) cuando no hay uno ocioso que reutilizar, y cada daemon conserva su memoria durante horas después de la build. En un repositorio Gradle, la pantalla de worktrees muestra una sección "Daemons de Gradle" con todos los daemons de la máquina: su memoria, si están ocupados u ociosos y el worktree de su última build. Desde ahí puedes parar los ociosos, y "Limpiar" ofrece parar los daemons ociosos de los worktrees que elimina. Un daemon ocupado nunca se para.
 
 Si el repositorio no activa la caché de build de Gradle (`org.gradle.caching=true` en `gradle.properties`), ShogunAi te lo dice: con ella activada, la primera build de un worktree nuevo reutiliza lo que otros worktrees ya compilaron.
+
+Cuando la carpeta principal no es una build de Gradle pero sí lo es una subcarpeta directa, como `android/` en una app Flutter o React Native, ShogunAi también la encuentra: lee su `gradle.properties` para la caché de build y para los argumentos de la JVM que conserva `daemonMaxHeap`.
 
 ```bash
 shogun gradle                      # lista los daemons, su memoria, estado y worktree
@@ -104,7 +108,7 @@ Dos worktrees que ejecutan `docker compose up` comparten nombres de contenedores
 
 Bajar un proyecto conserva sus volúmenes, y Compose nunca elimina las imágenes que construyó, así que los worktrees eliminados dejan volúmenes, redes e imágenes. ShogunAi apunta en `~/.shogunai/compose-projects.json` el nombre de proyecto que da a cada worktree (cuando se resuelve su entorno y en cada `up` o `build`); un volumen, una red o una imagen cuya etiqueta `com.docker.compose.project` es un nombre apuntado cuyo worktree ya no existe es un resto de ese worktree. Solo cuenta un nombre que ahora no usa ningún otro worktree y que ningún otro repositorio ha apuntado, así que los proyectos de otros repositorios, aunque tengan un prefijo parecido, nunca se tocan. Las imágenes descargadas de un registro (como `postgres`) no llevan etiqueta de Compose y nunca se eliminan.
 
-La vista "Proyectos de Compose" de la sección Máquina lista los proyectos que `docker compose ls` informa para los worktrees del repositorio (estado y worktree), los proyectos de worktrees eliminados (los apuntados, y aquellos cuyos archivos de Compose estaban en el repositorio o en su carpeta de worktrees) y, tras ellos, los restos de los worktrees eliminados. "Bajar los proyectos de los worktrees eliminados" ejecuta `docker compose -p <nombre> down`, que elimina contenedores y redes y conserva los volúmenes. "Eliminar redes e imágenes" elimina los restos salvo los volúmenes; "Eliminar también los volúmenes" pregunta antes, porque sus datos se pierden. Nunca se fuerza nada: una imagen o una red que aún usa un contenedor se conserva y se informa.
+La vista "Proyectos de Compose", que se abre desde su elemento en la barra de estado, lista los proyectos que `docker compose ls` informa para los worktrees del repositorio (estado y worktree), los proyectos de worktrees eliminados (los apuntados, y aquellos cuyos archivos de Compose estaban en el repositorio o en su carpeta de worktrees) y, tras ellos, los restos de los worktrees eliminados. "Bajar los proyectos de los worktrees eliminados" ejecuta `docker compose -p <nombre> down`, que elimina contenedores y redes y conserva los volúmenes. "Eliminar redes e imágenes" elimina los restos salvo los volúmenes; "Eliminar también los volúmenes" pregunta antes, porque sus datos se pierden. Nunca se fuerza nada: una imagen o una red que aún usa un contenedor se conserva y se informa.
 
 "Limpiar" tiene una opción marcada para bajar los proyectos de los worktrees que elimina y eliminar sus redes e imágenes construidas, y otra sin marcar para eliminar también sus volúmenes; si Docker no está disponible, los worktrees se eliminan igualmente y el informe dice que los proyectos se conservaron.
 
@@ -142,7 +146,8 @@ shogun emulator stop
 
 - En cada máquina, la configuración del proyecto elige la AVD (o la deja automática) y si arranca sin ventana; `--avd` y `--no-window` las sustituyen en un arranque.
 - La lista de worktrees muestra cada emulador con Arrancar y Parar, y "Limpiar" (o `shogun clean --stop-emulators`) para los emuladores de los worktrees que elimina.
-- El SDK se busca en `ANDROID_HOME`, `ANDROID_SDK_ROOT`, `sdk.dir` de `local.properties` o la ubicación por defecto de Android Studio.
+- Cuando el worktree está abierto en Orca, arrancar su emulador también lo muestra en la vista de emuladores de Orca; ver [Orca](../agents.md#orca).
+- El SDK se busca en `ANDROID_HOME`, `ANDROID_SDK_ROOT`, `sdk.dir` de `local.properties` (el de la carpeta principal o, si no, el de una build de Gradle en una subcarpeta como `android/`) o la ubicación por defecto de Android Studio.
 - Todos los worktrees comparten el servidor de adb: los agentes nunca deben reiniciarlo (`adb kill-server`) ni forzar un dispositivo con `-s`, `-e` o `-d`. El hook `SessionStart` se lo dice a Claude.
 
 ## App de Compose Desktop
@@ -260,3 +265,20 @@ La carpeta `Pods` de un proyecto CocoaPods suele estar ignorada por Git, así qu
 ```
 
 Por cada `Podfile.lock` versionado en Git, a cualquier profundidad, cuyo worktree aún no tenga `Pods`, ShogunAi lo compara con el `Pods/Manifest.lock` de la base, la misma comprobación que hace la fase de build "Check Pods Manifest.lock" de CocoaPods. Si coinciden, el `Pods` de la base se clona en el worktree con copy-on-write de APFS (`cp -c`): es instantáneo y no ocupa disco hasta que cambia un fichero. Si no coinciden, la base nunca ejecutó `pod install` o el volumen no puede clonar, no se copia nada (nunca una copia completa lenta) y `shogun new`, `shogun provision` y el hook de creación de worktrees dicen qué carpetas necesitan `pod install` y por qué (`pods` en su JSON). Los pods se preparan después de copiar los ficheros y antes de los comandos post-creación, así que un `pod install` declarado ahí los encuentra en su sitio; un problema con los pods nunca hace fallar el worktree.
+
+## Flutter
+
+Un worktree recién creado de un repositorio Flutter no compila: `.dart_tool/`, `android/local.properties` (con el `flutter.sdk` que necesita la build de Android), `ios/Flutter/Generated.xcconfig` e `ios/.symlinks` están ignorados por Git y solo aparecen tras `flutter pub get`. Activa el provider de Flutter y ShogunAi lo ejecuta en cada worktree nuevo o provisionado:
+
+```json
+{ "providers": { "flutter": {}, "gradle": {}, "emulator": {}, "ios-simulator": {}, "xcode": { "cocoaPods": true } } }
+```
+
+`flutter pub get` se ejecuta en la carpeta principal del worktree después de copiar los ficheros y preparar los pods, y antes de los comandos post-creación, así que un `dart run build_runner build` declarado ahí encuentra los paquetes resueltos. Se ejecuta tanto si el repositorio está aprobado como si no: el comando lo fija ShogunAi y no ejecuta código del repositorio. Con la caché de pub caliente se resuelve sin red en segundos. `shogun new`, `shogun provision` y el hook de creación de worktrees informan del resultado (`flutter.pubGet` en su JSON). Si falla, porque `flutter` no está en el `PATH`, no se puede descargar un paquete o por cualquier otra cosa, el worktree se conserva y el informe dice que aún hace falta `flutter pub get` y por qué. La app de escritorio abierta desde Finder no hereda el `PATH` de la shell: encuentra Flutter instalado con Homebrew, pero no siempre un SDK descomprimido a mano en otro sitio.
+
+- **FVM.** Cuando el repositorio tiene `.fvmrc`, ShogunAi ejecuta `fvm flutter pub get`, para usar la versión que fija el repositorio. Una versión que no está instalada se informa como `flutter pub get` pendiente.
+- **Los demás providers hacen el resto.** La build de Android de Flutter es una build de Gradle normal en `android/`, así que el provider [`gradle`](#gradle) se encarga de sus daemons, su caché y su memoria, y el provider [`emulator`](#emulador-de-android) de sus dispositivos. `xcodebuild`, que Flutter ejecuta para iOS, escribe DerivedData que el provider [`xcode`](#xcode) atribuye al worktree, y el provider [`ios-simulator`](#simulador-de-ios) le da un simulador. La [detección de stacks](#deteccion-de-stacks) los sugiere todos para un proyecto creado con la plantilla de Flutter.
+- **Dispositivos.** Flutter no lee `ANDROID_SERIAL`, y los dispositivos de otros worktrees también están conectados, así que `flutter run` sin `-d` pregunta o elige el equivocado. Arranca el dispositivo del worktree con `shogun emulator start` o `shogun simulator start` y pásalo explícitamente: `flutter run -d "$ANDROID_SERIAL"` o `flutter run -d "$IOS_SIMULATOR_UDID"`, y lo mismo con `flutter test integration_test` y `flutter drive`. Nunca lances emuladores con `flutter emulators --launch`, que arranca uno fuera del pool de ShogunAi y sin modo de solo lectura. El hook `SessionStart` se lo dice a Claude, nombrando solo los providers de dispositivo que declara el repositorio, y `fvm flutter` cuando tiene `.fvmrc`.
+- **CocoaPods.** Con `cocoaPods` activado, un worktree nuevo recibe los pods del repositorio base junto al `ios/Podfile.lock` versionado. La primera build de Flutter en ese worktree aún ejecuta `pod install` por su cuenta, porque lo decide a partir de una huella que guarda en `build/`; con los pods ya en su sitio no descarga nada. Un aviso de "necesita `pod install`" también lo resuelve la propia build de Flutter.
+- **Puertos.** `flutter run` enlaza su VM service y DevTools a puertos libres que elige él, así que los worktrees no chocan. Si el repositorio fija el puerto del servidor web, reserva uno por worktree con `env` y pásalo: `"env": { "FLUTTER_WEB_PORT": "${port}" }` y `flutter run -d chrome --web-port "$FLUTTER_WEB_PORT"`.
+- `build/` y `.dart_tool/` siguen siendo de cada worktree: guardan rutas absolutas y el estado incremental del compilador. La caché de pub (`~/.pub-cache`) ya la comparten todos los worktrees.

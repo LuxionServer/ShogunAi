@@ -7,6 +7,7 @@ import app.luxion.shogunai.domain.io.ToolDetector
 import app.luxion.shogunai.domain.model.DetectedTools
 import app.luxion.shogunai.domain.model.EditorId
 import app.luxion.shogunai.domain.model.HostOs
+import app.luxion.shogunai.domain.model.RunnerId
 import app.luxion.shogunai.domain.model.TerminalId
 import java.io.File
 
@@ -17,6 +18,7 @@ class LocalToolDetector(
     private val locator: ExecutableLocator = ExecutableLocator(os, home),
     private val editorResolver: EditorExecutableResolver = EditorExecutableResolver(os, locator),
     private val isDirectory: (String) -> Boolean = { File(it).isDirectory },
+    private val isRunnerInstalled: (RunnerId) -> Boolean = { false },
 ) : ToolDetector {
 
     override suspend fun detect(): DetectedTools {
@@ -25,6 +27,7 @@ class LocalToolDetector(
             terminals = TerminalId.entries.filter { isTerminalAvailable(it) },
             editors = EditorId.entries.filter { isEditorAvailable(it, snapshot) },
             claudeDesktop = os == HostOs.MACOS && isMacAppInstalled(ToolCatalog.claudeDesktopApp),
+            runners = RunnerId.entries.filterTo(mutableSetOf(), isRunnerInstalled),
         )
     }
 

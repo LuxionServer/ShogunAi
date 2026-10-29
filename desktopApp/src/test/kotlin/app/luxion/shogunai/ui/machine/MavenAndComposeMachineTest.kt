@@ -264,6 +264,22 @@ class MavenAndComposeMachineTest {
         assertNull(machine.composeDownReport)
     }
 
+    @Test
+    fun `trying again after docker starts reads the compose projects again`() = machineTest {
+        val calls = Calls().apply { composeProjects = Result.failure(WorktreeError.DockerUnavailable("daemon not reachable")) }
+        val machine = machine(calls, MachineResource.COMPOSE_PROJECTS)
+        machine.show(MachineResource.COMPOSE_PROJECTS)
+        runCurrent()
+        assertEquals(MachineLoad.Unavailable, machine.composeProjectList)
+
+        calls.composeProjects = Result.success(emptyList())
+        machine.retryComposeProjects()
+        runCurrent()
+
+        assertEquals(MachineLoad.Loaded(emptyList()), machine.composeProjectList)
+        assertNull(machine.composeUnavailableReason)
+    }
+
     private val leftoverNetwork = ComposeResource(ComposeResourceKind.NETWORK, "n1", "main-repo-task-9_default", "main-repo-task-9")
     private val leftoverVolume = ComposeResource(ComposeResourceKind.VOLUME, "main-repo-task-9_db", "main-repo-task-9_db", "main-repo-task-9")
 

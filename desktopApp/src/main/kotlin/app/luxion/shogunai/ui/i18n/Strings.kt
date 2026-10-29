@@ -10,7 +10,8 @@ import app.luxion.shogunai.domain.model.InstallChannel
 import app.luxion.shogunai.domain.model.MobileSecretKind
 import app.luxion.shogunai.domain.model.ProvisionDriftState
 import app.luxion.shogunai.domain.model.AppLanguage
-import app.luxion.shogunai.domain.model.AgentState
+import app.luxion.shogunai.domain.model.AgentStateSource
+import app.luxion.shogunai.ui.components.AgentPhase
 import app.luxion.shogunai.domain.usecase.HookEntry
 import app.luxion.shogunai.domain.usecase.HookReplacement
 import app.luxion.shogunai.domain.usecase.HooksInstallState
@@ -196,12 +197,26 @@ interface Strings {
     val menuActive: String
     val menuAllWorktrees: String
     fun agentsRunning(names: List<String>): String
-    fun agentLabel(name: String, state: AgentState?): String
     fun agentWaitingOn(tool: String, input: String?): String
     fun agentPrompt(prompt: String): String
     fun agentLastMessage(message: String): String
     fun portListening(label: String): String
     val orcaPortsTitle: String
+    fun agentLabel(name: String, phase: AgentPhase): String = "$name · ${agentPhaseName(phase)}"
+    fun agentPhaseName(phase: AgentPhase): String
+    fun agentStateSource(source: AgentStateSource?): String
+    fun agentsUpdated(relative: String): String
+    val noAgentRunning: String
+    fun copyValue(key: String): String
+    val agentSectionTitle: String
+    val resourcesTitle: String
+    val expanded: String
+    val collapsed: String
+    val changesKey: String
+    val upstreamKey: String
+    fun versusBranchKey(branch: String): String
+    val lastCommitKey: String
+    fun environmentSummary(ports: Int, variables: Int): String
     val claudeCodeLabel: String
     fun claudeHooksStatus(state: HooksInstallState): String
     val claudeHooksInstall: String
@@ -249,7 +264,6 @@ interface Strings {
     val mergedLabel: String
     fun commitAgo(relative: String): String
     fun createdAgo(relative: String): String
-    fun agentStateName(state: AgentState?): String
     val sortLabel: String
     val sortByName: String
     val sortByLastActivity: String
@@ -278,7 +292,7 @@ interface Strings {
     val provisioningUpToDate: String
     val provisionAction: String
     val copyAsEnv: String
-    fun provisionDriftFile(path: String, state: ProvisionDriftState): String
+    fun provisionDriftState(state: ProvisionDriftState): String
     val devicesTitle: String
     val diskTitle: String
     val deleteWorktree: String
@@ -380,6 +394,15 @@ interface Strings {
     fun derivedDataQuotaExceeded(inUse: List<String>): String
     fun derivedDataReleased(count: Int, freed: String): String
     val machineTitle: String
+    val machineStatusGradle: String
+    val machineStatusEmulators: String
+    val machineStatusSimulators: String
+    val machineStatusDerivedData: String
+    val machineStatusMaven: String
+    val machineStatusCompose: String
+    val machineStatusDesktop: String
+    val notMeasuredYet: String
+    val overQuota: String
     val resourcesLabel: String
     fun profileName(profile: CapacityProfile): String
     fun resourceLimitsSummary(limits: ResourceLimits, includeSimulators: Boolean): String
@@ -422,8 +445,9 @@ interface Strings {
     fun headlessStopFailed(path: String, detail: String): String
     fun releasedFor(worktree: String, time: String): String
     val notAcquired: String
-    fun poolUsage(inUse: Int, limit: Int?, profile: String): String
+    fun poolUsage(inUse: Int, limit: Int?): String
     val overLimit: String
+    val overLimitChip: String
     val changeInPreferences: String
     fun releasedNotice(kind: ResourceKind, released: String, forWorktree: String): String
     fun trimmedNotice(count: Int, limit: Int?): String
@@ -440,7 +464,6 @@ interface Strings {
     val machineColumnState: String
     val automaticAvd: String
     val simulatorNotCreated: String
-    fun simulatorNotCreatedFor(device: String): String
     val noMachineEmulators: String
     val unownedEmulatorsTitle: String
     val noMachineSimulators: String
@@ -459,6 +482,12 @@ interface Strings {
     fun daysAgo(count: Long): String
     fun monthsAgo(count: Long): String
     fun yearsAgo(count: Long): String
+    val compactNow: String
+    fun compactMinutes(count: Long): String
+    fun compactHours(count: Long): String
+    fun compactDays(count: Long): String
+    fun compactMonths(count: Long): String
+    fun compactYears(count: Long): String
     val menuCopyDiagnosticReport: String
     val secondaryWindowError: String
     val menuCheckForUpdates: String
@@ -520,6 +549,20 @@ interface Strings {
     fun openInTool(name: String): String
     val claudeDesktopName: String
     val openFolder: String
+    val openWith: String
+    val openWithMenu: String
+    val withAgent: String
+    fun actionWithAgent(action: String, agent: String): String
+    val defaultRunnerMark: String
+    val setDefaultRunner: String
+    val defaultRunnerLabel: String
+    val noRunnerFound: String
+    val deleteWorktreeAction: String
+    val moreActions: String
+    val folderMissingReason: String
+    val openingReason: String
+    val addProjectFirst: String
+    val addRepositoryFirst: String
     val chooseTerminalTitle: String
     val chooseTerminalMessage: String
     val projectEditorLabel: String
@@ -545,6 +588,7 @@ interface Strings {
     val xcodeCocoaPodsLabel: String
     val providerMaven: String
     val providerDockerCompose: String
+    val providerFlutter: String
     val mavenMaxHeapLabel: String
     val composePortVariablesLabel: String
     val composePortVariablesHelp: String
@@ -566,7 +610,7 @@ interface Strings {
     val composeProjectsTitle: String
     fun composeProjectsSummary(count: Int): String
     val noComposeProjects: String
-    fun composeProjectsUnavailable(reason: String?): String
+    val composeDockerUnavailableMessage: String
     val composeOwnerRemoved: String
     val takeDownRemovedComposeProjects: String
     val composeVolumesKept: String
@@ -618,6 +662,7 @@ interface Strings {
     val paletteNoResults: String
     val paletteCopyLaunchCommandHint: String
     val paletteKindView: String
+    val paletteKindSetting: String
     val paletteKindProject: String
     val paletteKindWorktree: String
     val paletteKindAction: String
@@ -643,6 +688,8 @@ interface Strings {
     val openAllInHerdr: String
     val openAllInOrca: String
     val addRepositoryToGroup: String
+    val openAllWith: String
+    val openMultirepoAgentWith: String
     val cleanUpGroup: String
     val cleanUpGroupTitle: String
     val openMultirepoAgent: String
@@ -650,7 +697,6 @@ interface Strings {
     val multirepoAgentFocused: String
     val multirepoAgentStarted: String
     val openMultirepoAgentInOrca: String
-    val openMultirepoAgentMenu: String
     val multirepoAgentStartedInOrca: String
     val multirepoAgentFocusedInOrca: String
     val openNewChangeIn: String
@@ -752,6 +798,17 @@ interface Strings {
     val tourEnd: String
     val tourEndTitle: String
     fun tourEndMessage(folder: String): String
+    val loading: String
+    fun noticeDetails(count: Int): String
+    fun releasedSummary(kind: ResourceKind, count: Int): String
+    val cleanUpBlockedRunning: String
+    val cleanUpBlockedNothing: String
+    val cleanUpBlockedReview: String
+    val daemonStopBlockedBusy: String
+    val daemonStopBlockedUnknown: String
+    val daemonStopBlockedGradleBusy: String
+    val stopIdleBlockedStopping: String
+    val stopIdleBlockedNoneIdle: String
 }
 
 val LocalStrings = staticCompositionLocalOf<Strings> { EnglishStrings }

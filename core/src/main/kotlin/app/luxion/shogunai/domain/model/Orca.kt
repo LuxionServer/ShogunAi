@@ -42,4 +42,13 @@ data class OrcaOpening(
     val terminalHandle: String,
     val agent: String?,
     val sessionName: String? = null,
+    val emulator: String? = null,
 )
+
+sealed interface OrcaEmulatorView {
+    data object Shown : OrcaEmulatorView
+
+    data object NotOpen : OrcaEmulatorView
+
+    data class Failed(val message: String) : OrcaEmulatorView
+}
