@@ -3,7 +3,6 @@ package app.luxion.shogunai.ui.machine
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -18,12 +17,16 @@ import app.luxion.shogunai.domain.model.ComposeDownReport
 import app.luxion.shogunai.domain.model.ComposeLeftoversReport
 import app.luxion.shogunai.domain.model.ComposeOwner
 import app.luxion.shogunai.domain.model.ComposeResourceKind
+import app.luxion.shogunai.ui.components.ShogunDialog
 import app.luxion.shogunai.ui.components.DangerButton
+import app.luxion.shogunai.ui.components.ErrorState
+import app.luxion.shogunai.ui.components.StateAction
 import app.luxion.shogunai.ui.components.NeutralTextButton
 import app.luxion.shogunai.ui.components.InlineProgress
 import app.luxion.shogunai.ui.components.Notice
 import app.luxion.shogunai.ui.components.NoticeKind
 import app.luxion.shogunai.ui.components.SecondaryButton
+import app.luxion.shogunai.ui.components.ColumnSpec
 import app.luxion.shogunai.ui.components.Spacing
 import app.luxion.shogunai.ui.i18n.LocalStrings
 
@@ -33,7 +36,11 @@ fun ComposeProjectsView(machine: MachineResources, onOpenWorktree: (String, Stri
     MachineViewFrame(strings.composeProjectsTitle) {
         when (val state = machine.composeProjectList) {
             MachineLoad.Loading -> InlineProgress()
-            MachineLoad.Unavailable -> MachineSecondaryText(strings.composeProjectsUnavailable(machine.composeUnavailableReason))
+            MachineLoad.Unavailable -> ErrorState(
+                message = strings.composeDockerUnavailableMessage,
+                action = StateAction(strings.tryAgain, machine::retryComposeProjects),
+                technicalDetails = machine.composeUnavailableReason,
+            )
             is MachineLoad.Loaded -> {
                 val projects = state.value
                 if (projects.isEmpty()) {
@@ -49,11 +56,11 @@ fun ComposeProjectsView(machine: MachineResources, onOpenWorktree: (String, Stri
                     }
                     projects.forEach { project ->
                         HorizontalDivider()
-                        MachineRowLine {
-                            MachineDataText(project.entry.project.name, Modifier.weight(1f))
-                            MachineDataText(project.entry.project.status, Modifier.width(150.dp))
-                            ComposeOwnerCell(machine, project, onOpenWorktree)
-                        }
+                        MachineRow(
+                            machineCell(MachineMainColumn) { MachineDataText(project.entry.project.name) },
+                            machineCell(ComposeKindColumn) { MachineStateText(project.entry.project.status) },
+                            machineCell(MachineOwnerColumn) { ComposeOwnerCell(machine, project, onOpenWorktree) },
+                        )
                     }
                     MachineSecondaryText(strings.composeVolumesKept)
                 }
@@ -89,25 +96,26 @@ private fun ComposeLeftovers(machine: MachineResources) {
     }
     leftovers.forEach { leftover ->
         HorizontalDivider()
-        MachineRowLine {
-            MachineDataText(leftover.resource.name, Modifier.weight(1f))
-            MachineDataText(strings.composeResourceKind(leftover.resource.kind), Modifier.width(150.dp))
-            MachineDataText(leftover.resource.project, Modifier.width(MachineOwnerColumnWidth))
-        }
+        MachineRow(
+            machineCell(MachineMainColumn) { MachineDataText(leftover.resource.name) },
+            machineCell(ComposeKindColumn) { MachineStateText(strings.composeResourceKind(leftover.resource.kind)) },
+            machineCell(MachineOwnerColumn) { MachineDataText(leftover.resource.project) },
+        )
     }
     if (confirmingVolumes) {
-        AlertDialog(
+        ShogunDialog(
+            title = strings.confirmRemoveComposeVolumesTitle,
             onDismissRequest = { confirmingVolumes = false },
-            title = { Text(strings.confirmRemoveComposeVolumesTitle) },
-            text = { Text(strings.confirmRemoveComposeVolumes(volumes)) },
-            confirmButton = {
+            confirm = {
                 DangerButton(onClick = {
                     confirmingVolumes = false
                     machine.removeComposeLeftovers(removeVolumes = true)
                 }) { Text(strings.removeVolumes) }
             },
-            dismissButton = { NeutralTextButton(onClick = { confirmingVolumes = false }) { Text(strings.cancel) } },
-        )
+            dismiss = { NeutralTextButton(onClick = { confirmingVolumes = false }) { Text(strings.cancel) } },
+        ) {
+            Text(strings.confirmRemoveComposeVolumes(volumes))
+        }
     }
 }
 
@@ -146,3 +154,5 @@ private fun ComposeDownMessage(report: ComposeDownReport, onDismiss: () -> Unit)
         onDismiss = onDismiss,
     )
 }
+
+private val ComposeKindColumn = ColumnSpec(width = 150.dp)

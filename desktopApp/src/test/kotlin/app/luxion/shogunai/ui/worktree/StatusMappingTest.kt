@@ -3,6 +3,7 @@ package app.luxion.shogunai.ui.worktree
 import app.luxion.shogunai.domain.model.EmulatorState
 import app.luxion.shogunai.domain.model.SimulatorState
 import app.luxion.shogunai.ui.i18n.EnglishStrings
+import app.luxion.shogunai.ui.i18n.SpanishStrings
 import app.luxion.shogunai.ui.theme.Status
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -15,7 +16,7 @@ class StatusMappingTest {
             mapOf(
                 StateBadgeKind.NEEDS_YOU to Status.WARNING,
                 StateBadgeKind.AGENT_WORKING to Status.INFO,
-                StateBadgeKind.NEW to null,
+                StateBadgeKind.NEW to Status.NEUTRAL,
                 StateBadgeKind.STOPPED to Status.NEUTRAL,
                 StateBadgeKind.MERGED to Status.SUCCESS,
                 StateBadgeKind.INACTIVE to Status.NEUTRAL,
@@ -24,6 +25,11 @@ class StatusMappingTest {
             ),
             StateBadgeKind.entries.associateWith { it.status },
         )
+    }
+
+    @Test
+    fun `only the new state is drawn outlined`() {
+        assertEquals(listOf(StateBadgeKind.NEW), StateBadgeKind.entries.filter { it.outlined })
     }
 
     @Test
@@ -44,14 +50,18 @@ class StatusMappingTest {
     }
 
     @Test
-    fun `device state labels are translated`() {
+    fun `device state labels are translated in sentence case`() {
         assertEquals(
-            listOf("stopped", "booting", "running"),
+            listOf("Stopped", "Booting", "Running"),
             listOf(EmulatorState.STOPPED, EmulatorState.BOOTING, EmulatorState.RUNNING).map { emulatorStateLabel(it, EnglishStrings) },
         )
         assertEquals(
-            listOf("shut down", "booting", "booted"),
+            listOf("Shut down", "Booting", "Booted"),
             listOf(SimulatorState.SHUTDOWN, SimulatorState.BOOTING, SimulatorState.BOOTED).map { simulatorStateLabel(it, EnglishStrings) },
+        )
+        assertEquals(
+            listOf("Parado", "Arrancando", "En marcha"),
+            listOf(EmulatorState.STOPPED, EmulatorState.BOOTING, EmulatorState.RUNNING).map { emulatorStateLabel(it, SpanishStrings) },
         )
     }
 }

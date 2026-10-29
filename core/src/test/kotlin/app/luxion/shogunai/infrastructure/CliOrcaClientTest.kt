@@ -320,6 +320,29 @@ class CliOrcaClientTest {
     }
 
     @Test
+    fun `an emulator is attached to a worktree by serial and focused`() = runTest {
+        val executor = answering("emulator-attach.json")
+
+        client(executor).attachEmulator(OrcaWorkspace.Worktree(shogunai), "emulator-5556")
+
+        assertEquals(
+            listOf(orca, "emulator", "attach", "emulator-5556", "--worktree", "path:$shogunai", "--focus", "--json"),
+            executor.executedCommands.single(),
+        )
+    }
+
+    @Test
+    fun `attaching an emulator that isn't running fails with Orca's message`() = runTest {
+        val executor = FakeShellCommandExecutor { CommandResult(it, 1, fixture("emulator-attach-not-found.json"), "") }
+
+        val error = assertFailsWith<WorktreeError.OrcaCommandFailed> {
+            client(executor).attachEmulator(OrcaWorkspace.Worktree(shogunai), "emulator-5590")
+        }
+
+        assertTrue("emulator-5590 not found" in error.detail)
+    }
+
+    @Test
     fun `a failed response becomes a command failure with Orca's message`() = runTest {
         val executor = FakeShellCommandExecutor { CommandResult(it, 1, fixture("error.json"), "") }
 

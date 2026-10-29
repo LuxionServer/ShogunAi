@@ -4,6 +4,7 @@ import app.luxion.shogunai.domain.FakeProjectRepository
 import app.luxion.shogunai.domain.FakeRepositoryProvisioningSource
 import app.luxion.shogunai.domain.model.DetectedStack
 import app.luxion.shogunai.domain.model.DockerComposeProvider
+import app.luxion.shogunai.domain.model.FlutterProvider
 import app.luxion.shogunai.domain.model.GradleProvider
 import app.luxion.shogunai.domain.model.MavenProvider
 import app.luxion.shogunai.domain.model.Project
@@ -152,6 +153,45 @@ class StackSuggestionsTest {
 
         val providers = provisioningSource.writtenEdits.single().second.providers
         assertNull(providers.maven)
+        assertEquals(GradleProvider(), providers.gradle)
+    }
+
+    @Test
+    fun `turning flutter on writes it and keeps the other providers`() {
+        declaring(RepositoryProviders(gradle = GradleProvider()))
+        val viewModel = viewModel()
+
+        viewModel.setFlutterEnabled(true)
+        viewModel.submit(previewConfirmed = true)
+
+        val providers = provisioningSource.writtenEdits.single().second.providers
+        assertEquals(FlutterProvider, providers.flutter)
+        assertEquals(GradleProvider(), providers.gradle)
+    }
+
+    @Test
+    fun `accepting the flutter suggestion turns the switch on without writing anything`() {
+        val viewModel = viewModel(listOf(DetectedStack(Stack.FLUTTER, listOf("pubspec.yaml"))))
+
+        assertEquals(SuggestedProvider.FLUTTER, viewModel.stackSuggestions.single().provider)
+        viewModel.acceptSuggestion(SuggestedProvider.FLUTTER)
+
+        assertTrue(viewModel.repositoryDraft.flutter)
+        assertTrue(viewModel.hasUnsavedChanges)
+        assertTrue(provisioningSource.writtenEdits.isEmpty())
+    }
+
+    @Test
+    fun `turning flutter off removes only its provider`() {
+        declaring(RepositoryProviders(flutter = FlutterProvider, gradle = GradleProvider()))
+        val viewModel = viewModel()
+
+        assertTrue(viewModel.repositoryDraft.flutter)
+        viewModel.setFlutterEnabled(false)
+        viewModel.submit(previewConfirmed = true)
+
+        val providers = provisioningSource.writtenEdits.single().second.providers
+        assertNull(providers.flutter)
         assertEquals(GradleProvider(), providers.gradle)
     }
 }

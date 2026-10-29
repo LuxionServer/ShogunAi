@@ -7,6 +7,7 @@ import app.luxion.shogunai.domain.io.ToolDetector
 import app.luxion.shogunai.domain.io.ToolPreferenceRepository
 import app.luxion.shogunai.domain.model.DetectedTools
 import app.luxion.shogunai.domain.model.EditorId
+import app.luxion.shogunai.domain.model.RunnerId
 import app.luxion.shogunai.domain.model.TerminalId
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -21,6 +22,14 @@ class ToolsPreferences(
         private set
     var chosenEditor by mutableStateOf(repository.loadEditor())
         private set
+    var chosenRunner by mutableStateOf(repository.loadRunner())
+        private set
+
+    val installedRunners: List<RunnerId>
+        get() = detected?.runners?.let { installed -> RunnerId.entries.filter { it in installed } } ?: RunnerId.entries
+
+    val defaultRunner: RunnerId?
+        get() = (chosenRunner ?: RunnerId.HERDR).takeIf { it in installedRunners } ?: installedRunners.firstOrNull()
 
     val availableTerminals: List<TerminalId> get() = detected?.terminals.orEmpty()
     val availableEditors: List<EditorId> get() = detected?.editors.orEmpty()
@@ -44,6 +53,11 @@ class ToolsPreferences(
         repository.saveTerminal(terminal)
     }
 
+    fun chooseRunner(runner: RunnerId) {
+        chosenRunner = runner
+        repository.saveRunner(runner)
+    }
+
     fun chooseEditor(editor: EditorId) {
         chosenEditor = editor
         repository.saveEditor(editor)
@@ -56,6 +70,8 @@ class ToolsPreferences(
                 override fun saveTerminal(terminal: TerminalId?) = Unit
                 override fun loadEditor(): EditorId? = null
                 override fun saveEditor(editor: EditorId?) = Unit
+                override fun loadRunner(): RunnerId? = null
+                override fun saveRunner(runner: RunnerId?) = Unit
             },
             detector = object : ToolDetector {
                 override suspend fun detect() = DetectedTools()

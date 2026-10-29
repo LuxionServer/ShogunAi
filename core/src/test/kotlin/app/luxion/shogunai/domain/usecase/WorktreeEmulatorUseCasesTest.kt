@@ -172,6 +172,22 @@ class WorktreeEmulatorUseCasesTest {
     }
 
     @Test
+    fun `the running serial is only given for a running emulator`() = runTest {
+        val source = provisioning()
+        val sdk = FakeAndroidSdk(states = mutableMapOf("emulator-5554" to EmulatorState.RUNNING))
+        val read = ReadEmulatorStatesUseCase(source, resolve(source), sdk)
+
+        assertNull(read.runningSerial(config, task), "not acquired yet")
+
+        start(sdk, source)(config, task).getOrThrow()
+        assertEquals("emulator-5554", read.runningSerial(config, task))
+
+        sdk.states.remove("emulator-5554")
+        assertNull(read.runningSerial(config, task), "stopped")
+        assertNull(ReadEmulatorStatesUseCase(provisioning(null), resolve(provisioning(null)), sdk).runningSerial(config, task))
+    }
+
+    @Test
     fun `resolving the environment reserves no port and the first start acquires it`() = runTest {
         val source = provisioning()
         val environment = resolve(source)(repository, task).getOrThrow()

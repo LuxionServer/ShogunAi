@@ -6,21 +6,6 @@ Shows the build and device resources that belong to the machine (Gradle daemons,
 
 ## Requirements
 
-### Requirement: Machine section in the sidebar
-The sidebar SHALL show a "Machine" section with an entry for each resource whose provider is declared by at least one saved project: Gradle daemons, Android emulators, and, on macOS, iOS simulators and Xcode DerivedData. Each entry SHALL show a summary: daemon count and memory, running emulators, booted simulators, DerivedData total size.
-
-#### Scenario: Only Gradle declared
-- **WHEN** one saved project declares the Gradle provider and none declares another provider
-- **THEN** the "Machine" section only shows "Gradle daemons", with the number of daemons and their memory
-
-#### Scenario: No provider declared
-- **WHEN** no saved project declares any provider
-- **THEN** the sidebar shows no "Machine" section
-
-#### Scenario: DerivedData size still being calculated
-- **WHEN** a saved project declares the Xcode provider and the DerivedData folders are known but their sizes aren't yet
-- **THEN** the DerivedData entry shows the number of folders and a calculating state instead of a size, and the app stays responsive
-
 ### Requirement: Gradle daemons across projects
 The Gradle daemons view SHALL list every Gradle and Kotlin daemon on the machine with its kind, version, process id, memory, state and owner, the total memory, and actions to stop one daemon or every idle one, following the existing stop rules. The result of a stop SHALL stay visible until dismissed.
 
@@ -109,18 +94,18 @@ While the main window is minimized, in the tray or the app is hidden, neither th
 - **THEN** no daemon, emulator or other machine state is read during that minute except to trim idle Gradle daemons beyond the limit, and the view and the summaries refresh when the window is shown again
 
 ### Requirement: Column labels in device views
-The Android emulators and iOS simulators views SHALL show a header row labeling their columns (device, worktree and state), aligned with the rows below it.
+The Android emulators and iOS simulators views SHALL show a header row labeling their columns (device, worktree and state) in the section label style, using the same columns as the rows below it so each label sits above its column.
 
 #### Scenario: Emulators listed
 - **WHEN** the Android emulators view lists at least one emulator
-- **THEN** a header row labels the device, worktree and state columns above the rows
+- **THEN** a header row labels the device, worktree and state columns, each starting where its column starts in the rows below
 
 ### Requirement: Pool usage in the machine views
-The Android emulators, iOS simulators and Gradle daemons views SHALL show their pool's usage against its effective limit and the active profile, with a link to Preferences' "Resources" section, and the sidebar summary SHALL include the usage against the limit. When a resource was released or stopped to make room or to stay within the limit, the view SHALL say which one and why until the user dismisses it.
+The Android emulators, iOS simulators and Gradle daemons views SHALL show their pool's usage against its effective limit, in the data font, and the active profile, in the interface font, with a link to Preferences' "Resources" section, and the status bar item SHALL include the usage against the limit. When a resource was released or stopped to make room or to stay within the limit, the view SHALL say which one and why until the user dismisses it.
 
 #### Scenario: Usage shown
 - **WHEN** the emulator limit is 2 and one worktree holds an emulator
-- **THEN** the Android emulators view says 1 of 2 in use with the profile's name
+- **THEN** the Android emulators view says 1 of 2 in use, in the data font, followed by the profile's name, such as "Automatic", in the interface font
 
 #### Scenario: Release reported
 - **WHEN** starting `TASK-2`'s emulator released `TASK-1`'s idle emulator
@@ -128,7 +113,7 @@ The Android emulators, iOS simulators and Gradle daemons views SHALL show their 
 
 #### Scenario: Over the limit
 - **WHEN** the Gradle limit is 2 and three busy daemons run
-- **THEN** the Gradle daemons view shows 3 of 2 in use, marked as over the limit
+- **THEN** the Gradle daemons view shows 3 of 2 in use, marked "Over the limit"
 
 ### Requirement: DerivedData listed before its sizes
 The DerivedData view SHALL show its folders, their owners and the orphans as soon as the folders are read, without waiting for any size. Each folder whose size isn't known yet, the totals that include it and the compilation cache size SHALL show a calculating state, replaced by the size once computed. The app SHALL stay responsive while sizes are computed.
@@ -142,11 +127,11 @@ The DerivedData view SHALL show its folders, their owners and the orphans as soo
 - **THEN** the confirmation names the number of orphans, and their total size once it's known
 
 ### Requirement: Cancellable size calculation
-DerivedData sizes SHALL be computed in the background, several folders at a time, and SHALL keep being computed when the user leaves the view so the sidebar summary can show the total. Reloading the view SHALL stop the running calculation and measure every folder read again, and the calculation SHALL stop when no saved project declares the Xcode provider anymore.
+DerivedData sizes SHALL be computed in the background, several folders at a time, and SHALL keep being computed when the user leaves the view so the status bar item can show the total. Reloading the view SHALL stop the running calculation and measure every folder read again, and the calculation SHALL stop when no saved project declares the Xcode provider anymore.
 
 #### Scenario: Leave the view
 - **WHEN** sizes are still being calculated and the user shows another view
-- **THEN** the calculation goes on without blocking the app, and the sidebar summary shows the total once every size is known
+- **THEN** the calculation goes on without blocking the app, and the status bar item shows the total once every size is known
 
 #### Scenario: Reload
 - **WHEN** the user reloads the DerivedData view while sizes are being calculated
@@ -216,20 +201,20 @@ The Compose view of the Machine section SHALL list, after the projects, the volu
 - **WHEN** no removed worktree left any resource
 - **THEN** the view shows no leftovers section and no removal action
 
-### Requirement: Desktop entry in the Machine section
-While a worktree holds the desktop turn or any worktree waits for it, the Machine section SHALL show a "Desktop" entry, also when no saved project declares a provider, with a summary naming the holder and the number of waiters. Its view SHALL show the holder with project, worktree, since when and until when, and "Release" with a confirmation naming it, then the waiters in order with since when each waits.
+### Requirement: Desktop entry in the status bar
+While a worktree holds the desktop turn or any worktree waits for it, the status bar SHALL show a "Desktop" item, also when no saved project declares a provider, with a summary naming the holder and the number of waiters. Its view SHALL show the holder with project, worktree, since when and until when, and "Release" with a confirmation naming it, then the waiters in order with since when each waits.
 
 #### Scenario: Held with waiters
 - **WHEN** `api` · `TASK-1` holds the turn and two worktrees wait
-- **THEN** the Machine section shows "Desktop" with `api` · `TASK-1` and 2 waiting, and its view lists the holder and the two waiters in order
+- **THEN** the status bar shows "Desktop" with `api` · `TASK-1` and 2 waiting, and its view lists the holder and the two waiters in order
 
 #### Scenario: Desktop free
 - **WHEN** nobody holds the turn and nobody waits
-- **THEN** the Machine section shows no "Desktop" entry
+- **THEN** the status bar shows no "Desktop" item
 
 #### Scenario: No provider declared
 - **WHEN** no saved project declares any provider and a worktree holds the turn
-- **THEN** the sidebar shows the Machine section with only the "Desktop" entry
+- **THEN** the status bar shows only the "Desktop" item
 
 #### Scenario: Holder outside the saved projects
 - **WHEN** the holder's worktree isn't in any saved project
@@ -268,3 +253,50 @@ The Maven daemons view SHALL list every Maven daemon on the machine with its pro
 #### Scenario: Stop one daemon
 - **WHEN** the user stops a Maven daemon whose state is unknown
 - **THEN** it isn't stopped and the view says its state is unknown
+
+### Requirement: Release and trim reports are grouped per view
+A machine view SHALL group its release and trim reports into a single banner: reports of the same kind are summarized together (the total of daemons stopped to stay within the limit, the number of resources released to make room) with their count, and each report stays readable in the banner's details until the user dismisses the banner.
+
+#### Scenario: Repeated trims
+- **WHEN** 1, 2 and 1 idle Gradle daemons were stopped in three trims to stay within a limit of 3
+- **THEN** the Gradle daemons view shows one banner saying 4 idle Gradle daemons were stopped to stay within the limit of 3, with a count of 3 and the three reports in its details
+
+#### Scenario: Releases and trims together
+- **WHEN** the Gradle daemons view has one release report and two trim reports
+- **THEN** it shows one banner that summarizes both kinds, and its details list the three reports
+
+### Requirement: Docker unavailable in the Compose view
+When Docker isn't available, the Compose projects view SHALL show an error state saying Docker isn't available, with "Try again" reading the view again, and the reason Docker gave folded under "Technical details".
+
+#### Scenario: Socket unreachable
+- **WHEN** listing Compose projects fails because Docker's socket can't be reached
+- **THEN** the view shows the error state, and the socket path appears only in its technical details
+
+### Requirement: Machine lists share the list row
+Every list of the Machine views (Gradle and Maven daemons, Android emulators, iOS simulators, Xcode DerivedData, Compose projects and the desktop turn) SHALL be drawn with the shared list row, one line high, with its values in the data font and its states in the interface font.
+
+#### Scenario: Gradle daemon row
+- **WHEN** the Gradle daemons view lists an idle daemon owned by a worktree
+- **THEN** its row is one line high, its PID and memory are in the data font, its state "idle 5 min" is in the interface font, and its "Stop" action sits at the row's end
+
+### Requirement: Modes and states in the device column
+A machine view's device column SHALL write data (a serial, an AVD, a simulator's name or device type) in the data font and modes or states ("Automatic", "Not created") in the interface font.
+
+#### Scenario: Automatic AVD
+- **WHEN** a worktree emulator isn't running and its project sets no AVD
+- **THEN** its device cell reads "Automatic" in the interface font
+
+#### Scenario: Simulator not created
+- **WHEN** a worktree of a project with the device type `iPhone 16` has no simulator yet
+- **THEN** its device cell reads "Not created" in the interface font and `iPhone 16` in the data font
+
+### Requirement: State chips in sentence case
+Every state chip of the machine views and of the inspector's Resources section SHALL take its text from the shared state mapping, written in sentence case, in English and Spanish.
+
+#### Scenario: Stopped emulator
+- **WHEN** a worktree emulator was acquired and is stopped
+- **THEN** its chip reads "Stopped", like "Not acquired" for one never started
+
+#### Scenario: Simulator states
+- **WHEN** simulators are shut down, booting and booted
+- **THEN** their chips read "Shut down", "Booting" and "Booted"

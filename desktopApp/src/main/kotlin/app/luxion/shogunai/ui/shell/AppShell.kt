@@ -10,9 +10,9 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.widthIn
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.MaterialTheme
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CreateNewFolder
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
@@ -30,20 +30,24 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalWindowInfo
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import app.luxion.shogunai.AppContainer
 import app.luxion.shogunai.domain.model.GroupedView
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.diagnostics.diagnosticsExceptionHandler
+import app.luxion.shogunai.ui.components.EmptyState
+import app.luxion.shogunai.ui.components.ShogunDialog
 import app.luxion.shogunai.ui.components.DangerButton
+import app.luxion.shogunai.ui.components.StateAction
 import app.luxion.shogunai.ui.isMacOs
 import app.luxion.shogunai.ui.components.FocusRingWidth
 import app.luxion.shogunai.ui.components.NeutralTextButton
 import app.luxion.shogunai.ui.components.PrimaryButton
-import app.luxion.shogunai.ui.components.SecondaryButton
 import app.luxion.shogunai.ui.components.Spacing
+import app.luxion.shogunai.ui.actions.ActionId
+import app.luxion.shogunai.ui.actions.menuBarEntries
+import app.luxion.shogunai.ui.actions.paletteEntries
 import app.luxion.shogunai.ui.components.ErrorFixActions
 import app.luxion.shogunai.ui.components.ErrorNotice
 import app.luxion.shogunai.ui.components.LocalErrorFixActions
@@ -53,6 +57,7 @@ import app.luxion.shogunai.ui.projectconfig.ProjectConfigViewModel
 import app.luxion.shogunai.ui.rememberScreenViewModelStoreOwner
 import app.luxion.shogunai.ui.machine.MachineResource
 import app.luxion.shogunai.ui.machine.MachineResources
+import app.luxion.shogunai.ui.machine.machineStatusItems
 import app.luxion.shogunai.ui.palette.CommandPalette
 import app.luxion.shogunai.ui.palette.PaletteAction
 import app.luxion.shogunai.ui.palette.PaletteCommand
@@ -66,15 +71,17 @@ import app.luxion.shogunai.ui.worktree.WorktreeRef
 import app.luxion.shogunai.ui.worktree.WorktreeScreen
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import androidx.compose.ui.platform.LocalClipboard
+import app.luxion.shogunai.ui.components.copyText
 import app.luxion.shogunai.ui.multirepo.AddMultirepoDialog
 import app.luxion.shogunai.ui.multirepo.AddMultirepoState
 import app.luxion.shogunai.ui.multirepo.MultirepoSettingsState
 import app.luxion.shogunai.ui.multirepo.MultirepoSettingsView
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.filter
+import app.luxion.shogunai.ui.theme.ShogunTheme
 
 private val NarrowWindowThreshold = 900.dp
-private val EmptyStateMaxWidth = 420.dp
 
 @Composable
 fun AppShell(
@@ -159,7 +166,7 @@ fun AppShell(
             }
             .then(
                 if (folderDrop.hovering) {
-                    Modifier.border(FocusRingWidth, MaterialTheme.colorScheme.primary)
+                    Modifier.border(FocusRingWidth, ShogunTheme.colors.accent)
                 } else {
                     Modifier
                 },
@@ -168,88 +175,97 @@ fun AppShell(
         val narrow = maxWidth < NarrowWindowThreshold
         LaunchedEffect(narrow) { viewModel.onWindowWidthChanged(narrow) }
 
-        Row(modifier = Modifier.fillMaxSize()) {
-            Sidebar(
-                projects = viewModel.projects,
-                selectedProjectId = viewModel.destination?.referencedProjectId,
-                isActiveSelected = viewModel.destination == ShellDestination.Active,
-                isAllSelected = viewModel.destination == ShellDestination.All(),
-                activeCount = board.activeCount,
-                totalWorktreeCount = board.totalWorktreeCount,
-                activityOf = { project -> ProjectActivity(board.activeCountOf(project.id), board.agentNamesOf(project.id)) },
-                machineResources = machine.visibleResources,
-                machineSummaries = machine.summaries,
-                selectedMachine = (viewModel.destination as? ShellDestination.Machine)?.resource,
-                rail = viewModel.isRail,
-                onSelectActive = viewModel::selectActive,
-                onSelectAll = viewModel::selectAll,
-                onSelectProject = viewModel::selectProject,
-                onEditProject = viewModel::editProject,
-                onRemoveProject = { projectPendingRemoval = it },
-                onAddProject = viewModel::addProject,
-                onSelectMachine = viewModel::selectMachine,
-                onToggle = viewModel::toggleSidebar,
-                multirepos = viewModel.memberships.map { membership ->
-                    val members = viewModel.projects.filter { it.id in membership.aliases }
-                    SidebarMultirepo(
-                        folder = membership.folder,
-                        name = membership.name,
-                        projects = members,
-                        activity = members.fold(
-                            ProjectActivity(board.multirepoActivityCountOf(membership.folder), board.multirepoAgentsOf(membership.folder).map { it.name }),
-                        ) { total, project ->
-                            total + ProjectActivity(board.activeCountOf(project.id), board.agentNamesOf(project.id))
-                        },
-                        collapsed = membership.folder in viewModel.collapsedMultirepos,
-                        needsReview = !membership.multirepo.approved,
-                    )
-                },
-                selectedMultirepo = viewModel.destination?.referencedMultirepo,
-                onSelectMultirepo = { viewModel.selectMultirepo(it) },
-                onToggleMultirepo = viewModel::toggleMultirepoCollapsed,
-                onEditMultirepo = viewModel::editMultirepo,
-                onAddMultirepo = { viewModel.addMultirepo() },
-                order = viewModel.sidebarOrder,
-                onMoveEntry = viewModel::moveSidebarEntry,
-                onSortLevel = viewModel::sortSidebarAlphabetically,
-            )
-            VerticalDivider(modifier = Modifier.fillMaxHeight())
-            Column(modifier = Modifier.weight(1f).fillMaxHeight()) {
-                appContainer.updates.notice?.let { UpdateNotice(appContainer.updates, Modifier.padding(Spacing.md)) }
-                LaunchedEffect(Unit) { appContainer.claudeHooks.refresh() }
-                TourNotice(appContainer.tour, viewModel.projects.isNotEmpty(), Modifier.padding(Spacing.md))
-                ClaudeHooksNotice(appContainer.claudeHooks, board.hasClaudeWithoutState, Modifier.padding(Spacing.md))
-                tourProjectShown(appContainer, viewModel)?.let { project ->
-                    TourBanner(
-                        state = appContainer.tour,
-                        project = project,
-                        onEnded = viewModel::refresh,
-                        agentChoices = { shown, onLaunched -> TourAgentChoices(board, shown, onLaunched) { messages.show(copiedMessage) } },
-                        modifier = Modifier.padding(Spacing.md),
-                    )
-                }
-                Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
-                    val fixActions = remember(viewModel, onOpenPreferences) {
-                        ErrorFixActions(
-                            openProjectSettings = { projectId -> viewModel.projects.firstOrNull { it.id == projectId }?.let(viewModel::editProject) },
-                            openPreferences = onOpenPreferences,
+        Column(modifier = Modifier.fillMaxSize()) {
+            Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                Sidebar(
+                    projects = viewModel.projects,
+                    selectedProjectId = viewModel.destination?.referencedProjectId,
+                    isActiveSelected = viewModel.destination == ShellDestination.Active,
+                    isAllSelected = viewModel.destination == ShellDestination.All(),
+                    activeCount = board.activeCount,
+                    totalWorktreeCount = board.totalWorktreeCount,
+                    activityOf = { project -> ProjectActivity(board.activeCountOf(project.id), board.agentNamesOf(project.id)) },
+                    rail = viewModel.isRail,
+                    onSelectActive = viewModel::selectActive,
+                    onSelectAll = viewModel::selectAll,
+                    onSelectProject = viewModel::selectProject,
+                    onEditProject = viewModel::editProject,
+                    onRemoveProject = { projectPendingRemoval = it },
+                    onAddProject = viewModel::addProject,
+                    onToggle = viewModel::toggleSidebar,
+                    multirepos = viewModel.memberships.map { membership ->
+                        val members = viewModel.projects.filter { it.id in membership.aliases }
+                        SidebarMultirepo(
+                            folder = membership.folder,
+                            name = membership.name,
+                            projects = members,
+                            activity = members.fold(
+                                ProjectActivity(board.multirepoActivityCountOf(membership.folder), board.multirepoAgentsOf(membership.folder).map { it.name }),
+                            ) { total, project ->
+                                total + ProjectActivity(board.activeCountOf(project.id), board.agentNamesOf(project.id))
+                            },
+                            collapsed = membership.folder in viewModel.collapsedMultirepos,
+                            labels = multirepoChildLabels(membership),
+                            needsReview = !membership.multirepo.approved,
+                        )
+                    },
+                    selectedMultirepo = viewModel.destination?.referencedMultirepo,
+                    onSelectMultirepo = { viewModel.selectMultirepo(it) },
+                    onToggleMultirepo = viewModel::toggleMultirepoCollapsed,
+                    onEditMultirepo = viewModel::editMultirepo,
+                    onAddMultirepo = { viewModel.addMultirepo() },
+                    order = viewModel.sidebarOrder,
+                    onMoveEntry = viewModel::moveSidebarEntry,
+                    onSortLevel = viewModel::sortSidebarAlphabetically,
+                )
+                VerticalDivider(modifier = Modifier.fillMaxHeight())
+                Column(modifier = Modifier.weight(1f).fillMaxHeight()) {
+                    appContainer.updates.notice?.let { UpdateNotice(appContainer.updates, Modifier.padding(Spacing.md)) }
+                    LaunchedEffect(Unit) { appContainer.claudeHooks.refresh() }
+                    TourNotice(appContainer.tour, viewModel.projects.isNotEmpty(), Modifier.padding(Spacing.md))
+                    ClaudeHooksNotice(appContainer.claudeHooks, board.hasClaudeWithoutState, Modifier.padding(Spacing.md))
+                    tourProjectShown(appContainer, viewModel)?.let { project ->
+                        TourBanner(
+                            state = appContainer.tour,
+                            project = project,
+                            onEnded = viewModel::refresh,
+                            agentChoices = { shown, onLaunched -> TourAgentChoices(board, shown, onLaunched) { messages.show(copiedMessage) } },
+                            modifier = Modifier.padding(Spacing.md),
                         )
                     }
-                    CompositionLocalProvider(LocalAppMessages provides messages, LocalErrorFixActions provides fixActions) {
-                        ShellContent(appContainer, viewModel, board, machine)
-                    }
-                    AppMessagesHost(messages, modifier = Modifier.align(Alignment.BottomCenter))
-                    if (viewModel.unreadableFiles.isNotEmpty()) {
-                        Column(
-                            modifier = Modifier.align(Alignment.TopCenter).padding(Spacing.md),
-                            verticalArrangement = Arrangement.spacedBy(Spacing.xs),
-                        ) {
-                            viewModel.unreadableFiles.forEach { problem ->
-                                ErrorNotice(error = problem, onDismiss = viewModel::dismissUnreadableFiles)
+                    Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                        val fixActions = remember(viewModel, onOpenPreferences) {
+                            ErrorFixActions(
+                                openProjectSettings = { projectId -> viewModel.projects.firstOrNull { it.id == projectId }?.let(viewModel::editProject) },
+                                openPreferences = onOpenPreferences,
+                            )
+                        }
+                        CompositionLocalProvider(LocalAppMessages provides messages, LocalErrorFixActions provides fixActions) {
+                            ShellContent(appContainer, viewModel, board, machine)
+                        }
+                        AppMessagesHost(messages, modifier = Modifier.align(Alignment.BottomCenter))
+                        if (viewModel.unreadableFiles.isNotEmpty()) {
+                            Column(
+                                modifier = Modifier.align(Alignment.TopCenter).padding(Spacing.md),
+                                verticalArrangement = Arrangement.spacedBy(Spacing.xs),
+                            ) {
+                                viewModel.unreadableFiles.forEach { problem ->
+                                    ErrorNotice(error = problem, onDismiss = viewModel::dismissUnreadableFiles)
+                                }
                             }
                         }
                     }
                 }
+            }
+            val statusItems = machineStatusItems(machine.visibleResources, machine.summaries, machine.summaryFailures, LocalStrings.current)
+            if (statusItems.isNotEmpty()) {
+                HorizontalDivider()
+                MachineStatusBar(
+                    items = statusItems,
+                    selected = (viewModel.destination as? ShellDestination.Machine)?.resource,
+                    compact = viewModel.isRail,
+                    onSelect = viewModel::selectMachine,
+                )
             }
         }
     }
@@ -304,9 +320,18 @@ private fun PaletteHost(
     onOpenPreferences: () -> Unit,
 ) {
     val strings = LocalStrings.current
-    val openActions = board.selectedOpenActions(strings)
-    val launchChoices = board.selectedLaunchChoices(strings)
-    val items = remember(viewModel.projects, board.paletteWorktrees, machine.visibleResources, board.canCleanUp(), strings, openActions.map { it.label }, launchChoices.map { it.label }) {
+    val worktreeActions = board.selectedCatalog(strings)?.paletteEntries(strings).orEmpty()
+    val clipboard = LocalClipboard.current
+    val scope = rememberCoroutineScope()
+    val copySelectedPath: () -> Unit = {
+        board.selectedWorktree?.worktree?.path?.let { path ->
+            scope.launch {
+                clipboard.copyText(path)
+                messages.show(strings.copied)
+            }
+        }
+    }
+    val items = remember(viewModel.projects, board.paletteWorktrees, machine.visibleResources, board.canCleanUp(), strings, worktreeActions.map { it.key }) {
         buildPaletteIndex(
             projects = viewModel.projects,
             worktrees = board.paletteWorktrees,
@@ -314,8 +339,7 @@ private fun PaletteHost(
             canCleanUp = board.canCleanUp(),
             strings = strings,
             shortcutLabel = ::platformShortcutLabel,
-            openActions = openActions,
-            launchChoices = launchChoices,
+            worktreeActions = worktreeActions,
         )
     }
     val knownIds = remember(items) { items.mapTo(mutableSetOf()) { it.id } }
@@ -325,7 +349,7 @@ private fun PaletteHost(
         onRun = { item, action ->
             viewModel.closePalette()
             viewModel.rememberPaletteItem(item.id, knownIds)
-            runPaletteAction(action, viewModel, board, onOpenPreferences) { messages.show(strings.copied) }
+            runPaletteAction(action, viewModel, board, onOpenPreferences, copySelectedPath) { messages.show(strings.copied) }
         },
         onDismiss = viewModel::closePalette,
     )
@@ -336,6 +360,7 @@ private fun runPaletteAction(
     viewModel: ShellViewModel,
     board: WorktreeBoard,
     onOpenPreferences: () -> Unit,
+    copySelectedPath: () -> Unit,
     onCopied: () -> Unit,
 ) {
     when (action) {
@@ -344,8 +369,7 @@ private fun runPaletteAction(
             board.revealInAllWorktrees(action.ref)
         }
         is PaletteAction.CopyLaunchCommand -> board.copyLaunchCommand(action.ref, onCopied)
-        is PaletteAction.OpenSelected -> board.openSelected(action.kind)
-        is PaletteAction.LaunchSelected -> board.launchSelected(action.kind, action.agent)
+        is PaletteAction.RunSelected -> if (action.id == ActionId.CopyPath) copySelectedPath() else board.performOnSelected(action.id, action.agent)
         is PaletteAction.NewWorktreeIn -> viewModel.navigate(ShellDestination.All(projectFilter = action.projectId)) {
             board.openCreateDialog(action.projectId)
         }
@@ -363,7 +387,7 @@ private fun runPaletteAction(
 private fun ShellContent(appContainer: AppContainer, viewModel: ShellViewModel, board: WorktreeBoard, machine: MachineResources) {
     val refreshBoard: (String) -> Unit = { projectId -> board.holder(projectId)?.refresh() }
     when (val destination = viewModel.destination) {
-        null -> EmptyState(onAddProject = viewModel::addProject, onTakeTour = appContainer.tour::start)
+        null -> FirstLaunchState(onAddProject = viewModel::addProject, onTakeTour = appContainer.tour::start)
         ShellDestination.Active -> WorktreeView(destination, viewModel, board)
         is ShellDestination.All -> WorktreeView(destination, viewModel, board)
         is ShellDestination.ProjectSettings -> viewModel.projectFor(destination)?.let { project ->
@@ -418,9 +442,8 @@ private fun WorktreeView(destination: ShellDestination, shellViewModel: ShellVie
         shellViewModel.updateWorktreeActions(
             WorktreeActions(
                 onFind = board::requestFind,
-                onCopySelectedLaunchCommand = board::copySelectedLaunchCommand,
-                onOpenSelectedInHerdr = board::openSelectedInHerdr,
-                onDeleteSelectedWorktree = board::deleteSelectedWorktree,
+                menuBar = { strings -> board.menuBarCatalog(strings).menuBarEntries() },
+                onRun = board::runFromMenu,
                 onClearSelection = board::clearSelection,
                 onEscape = board::escape,
                 hasSelection = { board.selectedWorktree != null },
@@ -500,51 +523,41 @@ private fun ProjectForm(
 }
 
 @Composable
-internal fun EmptyState(onAddProject: () -> Unit, onTakeTour: () -> Unit) {
+internal fun FirstLaunchState(onAddProject: () -> Unit, onTakeTour: () -> Unit) {
     val strings = LocalStrings.current
-    Box(modifier = Modifier.fillMaxSize().padding(Spacing.xl), contentAlignment = Alignment.Center) {
-        Column(
-            modifier = Modifier.widthIn(max = EmptyStateMaxWidth),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(Spacing.md),
-        ) {
-            Text(strings.emptyStateTitle, style = MaterialTheme.typography.headlineSmall)
-            Text(
-                strings.emptyStateMessage,
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center,
-            )
-            Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                PrimaryButton(onClick = onAddProject) { Text(strings.addProject) }
-                SecondaryButton(onClick = onTakeTour) { Text(strings.tourTakeTour) }
-            }
-        }
-    }
+    EmptyState(
+        icon = Icons.Default.CreateNewFolder,
+        title = strings.emptyStateTitle,
+        message = strings.emptyStateMessage,
+        action = StateAction(strings.addProject, onAddProject),
+        link = StateAction(strings.tourTakeTour, onTakeTour),
+    )
 }
 
 @Composable
 private fun DiscardChangesDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
     val strings = LocalStrings.current
-    AlertDialog(
+    ShogunDialog(
+        title = strings.discardChangesTitle,
         onDismissRequest = onDismiss,
-        title = { Text(strings.discardChangesTitle) },
-        text = { Text(strings.discardChangesMessage) },
-        confirmButton = { PrimaryButton(onClick = onConfirm) { Text(strings.discard) } },
-        dismissButton = { NeutralTextButton(onClick = onDismiss) { Text(strings.keepEditing) } },
-    )
+        confirm = { PrimaryButton(onClick = onConfirm) { Text(strings.discard) } },
+        dismiss = { NeutralTextButton(onClick = onDismiss) { Text(strings.keepEditing) } },
+    ) {
+        Text(strings.discardChangesMessage)
+    }
 }
 
 @Composable
 private fun RemoveProjectDialog(project: Project, onConfirm: () -> Unit, onDismiss: () -> Unit) {
     val strings = LocalStrings.current
-    AlertDialog(
+    ShogunDialog(
+        title = strings.removeProjectTitle,
         onDismissRequest = onDismiss,
-        title = { Text(strings.removeProjectTitle) },
-        text = { Text(strings.removeProjectMessage(project.name)) },
-        confirmButton = { DangerButton(onClick = onConfirm) { Text(strings.remove) } },
-        dismissButton = { NeutralTextButton(onClick = onDismiss) { Text(strings.cancel) } },
-    )
+        confirm = { DangerButton(onClick = onConfirm) { Text(strings.remove) } },
+        dismiss = { NeutralTextButton(onClick = onDismiss) { Text(strings.cancel) } },
+    ) {
+        Text(strings.removeProjectMessage(project.name))
+    }
 }
 
 private fun tourProjectShown(appContainer: AppContainer, viewModel: ShellViewModel): Project? {

@@ -29,6 +29,7 @@ class FakeOrcaClient(
     private val closeFailures: Map<String, Throwable> = emptyMap(),
     private val folderPaths: Map<String, String> = emptyMap(),
     private val updateFailures: Map<String, Throwable> = emptyMap(),
+    private val attachFailure: Throwable? = null,
 ) : OrcaClient {
 
     data class Created(val worktreePath: String, val title: String, val command: String, val focus: Boolean)
@@ -50,6 +51,8 @@ class FakeOrcaClient(
     val switched = mutableListOf<String>()
     val closedWorktrees = mutableListOf<String>()
     val updates = mutableListOf<Pair<String, OrcaWorktreeUpdate>>()
+    val attachedEmulators = mutableListOf<Pair<String, String>>()
+    val events = mutableListOf<String>()
     val terminalLookups = mutableListOf<String>()
     var raised = 0
         private set
@@ -141,6 +144,7 @@ class FakeOrcaClient(
         requireReady()
         val worktreePath = keyOf(workspace)
         created += Created(worktreePath, title, command, focus)
+        events += "create:$worktreePath"
         val terminal = OrcaTerminal("term_${created.size}", worktreePath, title)
         terminalsByPath.getOrPut(worktreePath) { mutableListOf() } += terminal
         if (startsAgents) {
@@ -153,6 +157,7 @@ class FakeOrcaClient(
     override suspend fun switchTo(handle: String) {
         requireReady()
         switched += handle
+        events += "switch:$handle"
     }
 
     override suspend fun closeTerminals(workspace: OrcaWorkspace) {
@@ -161,6 +166,14 @@ class FakeOrcaClient(
         closeFailures[worktreePath]?.let { throw it }
         closedWorktrees += worktreePath
         terminalsByPath -= worktreePath
+    }
+
+    override suspend fun attachEmulator(workspace: OrcaWorkspace, serial: String) {
+        requireReady()
+        attachFailure?.let { throw it }
+        val worktreePath = keyOf(workspace)
+        attachedEmulators += worktreePath to serial
+        events += "attach:$worktreePath:$serial"
     }
 
     private fun keyOf(workspace: OrcaWorkspace): String = when (workspace) {
