@@ -35,7 +35,7 @@ class ResolveMainBranchUseCase(
         executor.executeWithin(listOf("git", *args), CommandTimeouts.GIT_READ, workingDirectory = config.baseRepositoryPath)
 
     private companion object {
-        val FALLBACK_BRANCHES = listOf("main", "master")
+        private val FALLBACK_BRANCHES = listOf("main", "master")
     }
 }
 

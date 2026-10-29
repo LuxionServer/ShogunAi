@@ -161,7 +161,7 @@ El escritorio es un único recurso de toda la máquina que los agentes se turnan
 
 Lo que el provider de Gradle observa en la máquina (`GradleDaemon.kt`):
 
-- `DaemonProcess` — un daemon en ejecución: `pid`, `kind` (`DaemonKind.GRADLE` o `KOTLIN`), `gradleVersion` (solo daemons de Gradle), `residentMemoryBytes`, `lastBuildDirectory` (el directorio de la última build que recibió un daemon de Gradle) y `state`.
+- `DaemonProcess` — un daemon en ejecución: `pid`, `kind` (`DaemonKind.GRADLE` o `KOTLIN`), `gradleVersion` (solo daemons de Gradle), `residentMemoryBytes`, `lastBuildDirectory` (el directorio de la última build que recibió un daemon de Gradle), `state` y, para un daemon de Gradle ocupado, su `holder`: una `HoldingBuild` con el `directory` y el `startedAt` de la build y, cuando se puede rastrear, un `GradleClient` con el `pid` del cliente, sus `tasks`, sus `ancestors` (ids de los procesos padre, del más cercano al más lejano) y la `AgentSessionRef` (`sessionId`, `agent`, `worktreePath`) de la sesión de agente de la que desciende.
 - `DaemonState` — `Busy`, `Idle(since)`, `Unknown` (un daemon de Gradle cuyo estado no se puede leer) o `Untracked` (daemons de Kotlin, que no lo registran).
 - `GradleDaemon` — un `DaemonProcess` con su `owner` en un repositorio: `DaemonOwner.Worktree(path)`, `RemovedWorktree` (su último directorio de build ya no existe) u `OtherProject`; `null` para daemons de Kotlin, daemons sin directorio de build conocido o fuera de un repositorio.
 - `DaemonStopReport` — el resultado de una parada: `stopped`, `kept` (cada uno con un `DaemonKeptReason`: `BUSY`, `STATE_UNKNOWN` o `BUILD_RUNNING`), `notDaemons` (pids pedidos que no son daemons) y `failures`.

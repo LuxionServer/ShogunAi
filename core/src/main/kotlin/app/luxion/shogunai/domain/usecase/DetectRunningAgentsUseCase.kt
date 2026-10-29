@@ -260,7 +260,7 @@ class DetectRunningAgentsUseCase(
         const val LSOF_SOME_NOT_FOUND = 1
         const val TRANSCRIPT_GRACE_MILLIS = 1_000L
         const val UNKNOWN_PID_MAX_AGE_MILLIS = 12 * 60 * 60 * 1_000L
-        val KNOWN_AGENTS = setOf("claude", "codex", "gemini", "cursor-agent", "opencode", "aider", "copilot")
+        private val KNOWN_AGENTS = setOf("claude", "codex", "gemini", "cursor-agent", "opencode", "aider", "copilot")
         const val HERDR_TIMEOUT_MILLIS = 5_000L
         const val HERDR_BACK_OFF_MILLIS = 30_000L
     }

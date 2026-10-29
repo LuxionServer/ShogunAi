@@ -4,6 +4,7 @@ import app.luxion.shogunai.domain.FakeShellCommandExecutor
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -41,5 +42,17 @@ class PowerShellUserPathTest {
         PowerShellUserPath(executor).add("C:\\Users\\O'Neil\\bin")
 
         assertTrue("'C:\\Users\\O''Neil\\bin'" in executor.executedCommands.single()[4])
+    }
+
+    @Test
+    fun `removes a folder through PowerShell and reports a failure`() = runTest {
+        val executor = FakeShellCommandExecutor()
+
+        PowerShellUserPath(executor).remove("C:\\Users\\dev\\.shogunai\\bin\\")
+
+        assertTrue("'C:\\Users\\dev\\.shogunai\\bin'" in executor.executedCommands.single()[4])
+        assertFailsWith<IllegalStateException> {
+            PowerShellUserPath(FakeShellCommandExecutor { FakeShellCommandExecutor.failure(it, stderr = "denied") }).remove("C:\\Tools")
+        }
     }
 }

@@ -19,6 +19,7 @@ import java.util.Properties
 class NioFileManager(
     private val deleteAttempts: Int = 10,
     private val pauseBeforeRetry: () -> Unit = { Thread.sleep(200) },
+    private val linkTo: (Path, Path) -> Unit = { link, target -> Files.createSymbolicLink(link, target) },
 ) : FileManager {
 
     override fun exists(path: String): Boolean = Files.exists(Path.of(path))
@@ -66,7 +67,7 @@ class NioFileManager(
         linkPath.parent?.let { Files.createDirectories(it) }
         Files.deleteIfExists(linkPath)
         try {
-            Files.createSymbolicLink(linkPath, Path.of(target))
+            linkTo(linkPath, Path.of(target))
         } catch (error: UnsupportedOperationException) {
             throw SymbolicLinksNotSupported(error)
         } catch (error: FileSystemException) {

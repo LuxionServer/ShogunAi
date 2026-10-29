@@ -365,4 +365,28 @@ class ParseArgumentsTest {
         assertEquals("unknown agent 'zed' for 'guide', expected codex, gemini", usageError("guide", "install", "--agent", "zed"))
         assertEquals("Cursor has no user-level instructions file; use --project (its AGENTS.md) or --file", usageError("guide", "install", "--agent", "cursor"))
     }
+
+    @Test
+    fun `unknown subcommands, actions, options and extra arguments are usage errors`() {
+        assertEquals("unknown subcommand 'nope' for 'compose', expected up, build, down or prune", usageError("compose", "nope"))
+        assertEquals("unknown argument '--nope' for 'compose prune'", usageError("compose", "prune", "--nope"))
+        assertEquals("unknown action 'fix' for 'hooks', expected install, uninstall or status", usageError("hooks", "fix"))
+        assertEquals("unknown option '--nope' for 'hooks'", usageError("hooks", "install", "--nope"))
+        assertEquals("'hooks install' takes no arguments, got 'extra'", usageError("hooks", "install", "extra"))
+        assertEquals("unknown option '--nope' for 'guide install'", usageError("guide", "install", "--nope"))
+        assertEquals("'guide install' takes no arguments, got 'extra'", usageError("guide", "install", "extra"))
+        assertEquals("unknown action 'boot' for 'simulator', expected start, stop, status or gradle-init", usageError("simulator", "boot"))
+        assertEquals("unknown action 'reset' for 'simulator gradle-init', expected install or uninstall", usageError("simulator", "gradle-init", "reset"))
+        assertEquals("unknown option '--nope' for 'headless'", usageError("headless", "start", "--nope"))
+        assertEquals("'headless start' takes at most one path", usageError("headless", "start", "/w/a", "/w/b"))
+        assertEquals("unknown option '--nope' for 'desktop'", usageError("desktop", "status", "--nope"))
+        assertEquals("'desktop status' takes at most one path", usageError("desktop", "status", "/w/a", "/w/b"))
+        assertEquals("usage: shogun multirepo workspace set [--alias <alias>] [--default] | clear | detect", usageError("multirepo", "workspace", "toggle"))
+    }
+
+    @Test
+    fun `headless and desktop take a worktree path and start can stay visible`() {
+        assertEquals(CliCommand.Headless(HeadlessAction.START, "/w/a", visible = true), command("headless", "start", "/w/a", "--visible"))
+        assertEquals(CliCommand.Desktop(DesktopAction.STATUS, "/w/a"), command("desktop", "status", "/w/a"))
+    }
 }

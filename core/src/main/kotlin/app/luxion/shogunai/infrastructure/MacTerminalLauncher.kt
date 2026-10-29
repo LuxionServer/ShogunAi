@@ -28,7 +28,7 @@ class MacTerminalLauncher(
     companion object {
         private const val AUTOMATION_REFUSED = "(-1743)"
 
-        internal val SCRIPTS = mapOf(
+        private val SCRIPTS = mapOf(
             TerminalId.TERMINAL to listOf(
                 "on run argv",
                 "tell application \"Terminal\"",

@@ -151,6 +151,16 @@ class NioEnvironmentStateStoreTest {
     }
 
     @Test
+    fun `a port nobody listens on is free`() {
+        val port = ServerSocket().use { socket ->
+            socket.bind(InetSocketAddress(InetAddress.getLoopbackAddress(), 0))
+            socket.localPort
+        }
+
+        assertTrue(SocketPortProbe().isFree(port))
+    }
+
+    @Test
     fun `a port with a listener isn't free`() {
         ServerSocket().use { socket ->
             socket.bind(InetSocketAddress(InetAddress.getLoopbackAddress(), 0))

@@ -5,6 +5,7 @@ import app.luxion.shogunai.domain.FakeGitRepositories
 import app.luxion.shogunai.domain.FakeMultirepoSource
 import app.luxion.shogunai.domain.model.AgentLaunchConfig
 import app.luxion.shogunai.domain.model.MultirepoDeclaration
+import app.luxion.shogunai.domain.model.WorkspaceSetting
 import app.luxion.shogunai.domain.model.WorktreeError
 import kotlinx.coroutines.test.runTest
 import app.luxion.shogunai.domain.model.SharedVariablesDeclaration
@@ -252,5 +253,16 @@ class ResolveMultirepoUseCaseTest {
 
             assertTrue(failure == null || failure is WorktreeError.InvalidMultirepo, failure.toString())
         }
+    }
+
+    @Test
+    fun `a multirepo is read at its folder, with an enabled workspace, or reported missing`() = runTest {
+        world.makeFolderARepository()
+        world.source.declarations[world.folder] = world.declaration.copy(workspace = WorkspaceSetting(alias = "hub"))
+
+        val multirepo = world.resolver.at(world.folder).getOrThrow()
+
+        assertEquals("hub", multirepo.workspaceRepository?.alias)
+        assertIs<WorktreeError.MultirepoNotFound>(world.resolver.at("/home/dev/projects/nowhere").exceptionOrNull())
     }
 }

@@ -181,6 +181,6 @@ class CaptureHeadlessAppUseCase(
     }
 
     private companion object {
-        val CAPTURE_STAMP: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss-SSS").withZone(ZoneOffset.UTC)
+        private val CAPTURE_STAMP: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss-SSS").withZone(ZoneOffset.UTC)
     }
 }

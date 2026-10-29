@@ -1,7 +1,9 @@
+import kotlinx.kover.gradle.plugin.dsl.CoverageUnit
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
 
 plugins {
     alias(libs.plugins.kotlinJvm)
+    alias(libs.plugins.kover)
     alias(libs.plugins.composeMultiplatform)
     alias(libs.plugins.composeCompiler)
 }
@@ -145,5 +147,24 @@ tasks.withType<JavaExec>().matching { it.name == "run" }.configureEach {
         val delay = findProperty("benchmarkDelaySeconds") ?: "20"
         val duration = findProperty("benchmarkSeconds") ?: "60"
         doFirst { jvmArgs("-XX:StartFlightRecording=delay=${delay}s,duration=${duration}s,filename=$recording,settings=default") }
+    }
+}
+
+kover {
+    reports {
+        filters {
+            excludes {
+                annotatedBy("androidx.compose.runtime.Composable", "androidx.compose.ui.tooling.preview.Preview")
+                classes("*ComposableSingletons*")
+            }
+        }
+        verify {
+            rule("desktop app lines") {
+                minBound(83, CoverageUnit.LINE)
+            }
+            rule("desktop app branches") {
+                minBound(66, CoverageUnit.BRANCH)
+            }
+        }
     }
 }

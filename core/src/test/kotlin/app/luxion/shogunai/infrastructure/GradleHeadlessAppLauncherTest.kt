@@ -84,4 +84,17 @@ class GradleHeadlessAppLauncherTest {
 
         assertEquals("second\n", state.resolve("launch.log").readText())
     }
+
+    @Test
+    fun `stopping ends the app's process and a gone process is left alone`() = runTest {
+        val launcher = GradleHeadlessAppLauncher(FakeShellCommandExecutor { success(it) }, scripts.toString())
+        val process = startSleepingProcess()
+
+        assertTrue(launcher.isAlive(process.pid()))
+        launcher.stop(process.pid())
+        launcher.stop(Long.MAX_VALUE)
+
+        assertFalse(process.isAlive)
+        assertFalse(launcher.isAlive(process.pid()))
+    }
 }

@@ -4,6 +4,7 @@ import app.luxion.shogunai.domain.FakeAgentSessionStore
 import app.luxion.shogunai.domain.FakeClaudeSessionRegistry
 import app.luxion.shogunai.domain.FakeHerdrClient
 import app.luxion.shogunai.domain.FakeOrcaClient
+import app.luxion.shogunai.domain.io.HerdrClient
 import app.luxion.shogunai.domain.model.AgentActivity
 import app.luxion.shogunai.domain.model.AgentTool
 import app.luxion.shogunai.domain.model.OrcaAgent
@@ -23,6 +24,7 @@ import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.RunningAgent
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.WorktreeError
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -157,6 +159,17 @@ class DetectRunningAgentsUseCaseTest {
     }
 
     @Test
+    fun `a failing ps fails the detection`() = runTest {
+        val executor = FakeShellCommandExecutor { command ->
+            if (command.first() == "ps") failure(command, exitCode = 1) else success(command)
+        }
+
+        val error = DetectRunningAgentsUseCase(executor)(config, worktrees).exceptionOrNull()
+
+        assertIs<WorktreeError.ProcessListingFailed>(error)
+    }
+
+    @Test
     fun `an agent that exits before lsof reads it does not fail the detection`() = runTest {
         val executor = FakeShellCommandExecutor { command ->
             when (command.first()) {
@@ -236,6 +249,31 @@ class DetectRunningAgentsUseCaseTest {
         val agents = DetectRunningAgentsUseCase(executor(), herdr)(config, worktrees).getOrThrow()
 
         assertEquals(listOf(RunningAgent("claude", AgentState.BLOCKED, "w1:p2", AgentStateSource.HERDR)), agents[sibling.path])
+    }
+
+    @Test
+    fun `a pane with a known state wins over one without`() = runTest {
+        val herdr = FakeHerdrClient(
+            agents = listOf(
+                herdrAgent(sibling.path, null, pane = "w1:p1"),
+                herdrAgent(sibling.path, AgentState.IDLE, pane = "w1:p2"),
+            ),
+        )
+
+        val agents = DetectRunningAgentsUseCase(executor(), herdr)(config, worktrees).getOrThrow()
+
+        assertEquals(listOf(RunningAgent("claude", AgentState.IDLE, "w1:p2", AgentStateSource.HERDR)), agents[sibling.path])
+    }
+
+    @Test
+    fun `a Herdr that doesn't answer in time is treated as failing`() = runTest {
+        val herdr = object : HerdrClient by FakeHerdrClient() {
+            override suspend fun listAgents(): List<HerdrAgent> = awaitCancellation()
+        }
+
+        val agents = DetectRunningAgentsUseCase(executor(), herdr)(config, worktrees).getOrThrow()
+
+        assertEquals(listOf(RunningAgent("claude")), agents[nested.path])
     }
 
     @Test

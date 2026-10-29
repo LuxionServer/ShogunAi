@@ -36,7 +36,7 @@ class DetectInstallChannelUseCase(
     }.getOrDefault(false)
 
     private companion object {
-        val HomebrewCaskrooms = listOf("/opt/homebrew/Caskroom", "/usr/local/Caskroom")
+        private val HomebrewCaskrooms = listOf("/opt/homebrew/Caskroom", "/usr/local/Caskroom")
         const val LinuxPackageRoot = "/opt/shogunai"
     }
 }

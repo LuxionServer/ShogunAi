@@ -1,10 +1,15 @@
 package app.luxion.shogunai.infrastructure
 
 import app.luxion.shogunai.domain.FakeShellCommandExecutor
+import app.luxion.shogunai.domain.executor.CommandResult
+import app.luxion.shogunai.domain.model.GradleClient
+import app.luxion.shogunai.domain.model.HoldingBuild
 import app.luxion.shogunai.domain.model.DaemonKind
 import app.luxion.shogunai.domain.model.DaemonState
+import app.luxion.shogunai.domain.model.HostOs
 import app.luxion.shogunai.domain.model.WorktreeError
 import kotlinx.coroutines.test.runTest
+import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Instant
@@ -99,6 +104,100 @@ class ProcessGradleDaemonSourceTest {
         assertFailsWith<WorktreeError.ProcessListingFailed> { source.list() }
     }
 
+    @Test
+    fun `the Gradle user home is GRADLE_USER_HOME when set and the home's gradle folder otherwise`() {
+        fun environment(variables: Map<String, String>) = SystemHostEnvironment(HostOs.MACOS, variables, "/home/dev", loginShell = null)
+
+        assertEquals("/projects/gradle-home", defaultGradleUserHome(environment(mapOf("GRADLE_USER_HOME" to "/projects/gradle-home"))))
+        assertEquals(Path.of("/home/dev", ".gradle").toString(), defaultGradleUserHome(environment(mapOf("GRADLE_USER_HOME" to " "))))
+        assertEquals(Path.of("/home/dev", ".gradle").toString(), defaultGradleUserHome(environment(emptyMap())))
+    }
+
+    @Test
+    fun `reads the latest build's directory, start and client port`() {
+        val build = parseDaemonLog(IDLE_LOG + HELD_LINES).latestBuild
+
+        assertEquals(LoggedBuild("/home/dev/projects/worktrees/api/task-123", Instant.parse("2026-10-16T19:02:00Z"), 61048), build)
+    }
+
+    @Test
+    fun `falls back to the received command without a client port`() {
+        val build = parseDaemonLog(IDLE_LOG + BUSY_LINES).latestBuild
+
+        assertEquals(LoggedBuild("/home/dev/projects/main-repo", Instant.parse("2026-10-16T11:10:00Z"), null), build)
+    }
+
+    private fun writeLog(text: String) {
+        gradleUserHome.resolve("daemon/9.6.1").createDirectories().resolve("daemon-36474.out.log").writeText(text)
+    }
+
+    private fun heldSource(lsof: (List<String>) -> CommandResult, processTable: String = PROCESS_TABLE) =
+        ProcessGradleDaemonSource(
+            FakeShellCommandExecutor { command ->
+                when {
+                    command.first() == "lsof" -> lsof(command)
+                    command == listOf("ps", "-A", "-ww", "-o", "pid=,ppid=,command=") -> FakeShellCommandExecutor.success(command, processTable)
+                    else -> FakeShellCommandExecutor.success(command, PS_OUTPUT)
+                }
+            },
+            gradleUserHome.toString(),
+        )
+
+    private val connection: (List<String>) -> CommandResult = { command ->
+        FakeShellCommandExecutor.success(command, "p36474\ncjava\nf12\np81234\ncjava\nf9\n")
+    }
+
+    @Test
+    fun `a busy daemon's holding build has its client, tasks and ancestors`() = runTest {
+        writeLog(IDLE_LOG + HELD_LINES)
+        val lsofCalls = mutableListOf<List<String>>()
+
+        val holder = heldSource({ lsofCalls += it; connection(it) }).list()[0].holder
+
+        assertEquals("/home/dev/projects/worktrees/api/task-123", holder?.directory)
+        assertEquals(Instant.parse("2026-10-16T19:02:00Z"), holder?.startedAt)
+        assertEquals(GradleClient(81234, listOf("benchRun"), listOf(81200, 700, 500)), holder?.client)
+        assertEquals(listOf(listOf("lsof", "-nP", "-iTCP:61048", "-sTCP:ESTABLISHED", "-Fpc")), lsofCalls)
+    }
+
+    @Test
+    fun `a wrapper run as a jar is a Gradle client with the arguments after the jar`() = runTest {
+        writeLog(IDLE_LOG + HELD_LINES)
+        val table = "  81234   700 java -Xmx64m -Dorg.gradle.appname=gradlew -jar /home/dev/projects/worktrees/api/task-123/gradle/wrapper/gradle-wrapper.jar :core:test --rerun-tasks\n"
+
+        val client = heldSource(connection, processTable = table).list()[0].holder?.client
+
+        assertEquals(GradleClient(81234, listOf(":core:test", "--rerun-tasks"), listOf(700)), client)
+    }
+
+    @Test
+    fun `the holding build keeps its directory and start when the connection can't be inspected`() = runTest {
+        writeLog(IDLE_LOG + HELD_LINES)
+
+        val failing = heldSource({ FakeShellCommandExecutor.failure(it) }).list()[0].holder
+        val throwing = heldSource({ throw IOException("lsof: not found") }).list()[0].holder
+
+        listOf(failing, throwing).forEach { holder ->
+            assertEquals(HoldingBuild("/home/dev/projects/worktrees/api/task-123", Instant.parse("2026-10-16T19:02:00Z"), null), holder)
+        }
+    }
+
+    @Test
+    fun `a connected process that isn't a Gradle client isn't reported`() = runTest {
+        writeLog(IDLE_LOG + HELD_LINES)
+
+        val holder = heldSource(connection, processTable = "  81234   700 /usr/bin/nc localhost 61047\n").list()[0].holder
+
+        assertNull(holder?.client)
+    }
+
+    @Test
+    fun `an idle daemon has no holding build`() = runTest {
+        writeLog(IDLE_LOG)
+
+        assertNull(heldSource(connection).list()[0].holder)
+    }
+
     private companion object {
         val PS_OUTPUT = """
               1   12000 /sbin/launchd
@@ -112,6 +211,21 @@ class ProcessGradleDaemonSourceTest {
             2026-10-16T12:56:31.229+0200 [INFO] [org.gradle.launcher.daemon.server.DaemonRegistryUpdater] Marking the daemon as busy, address: [0fd86451 port:58388, addresses:[localhost/127.0.0.1]]
             2026-10-16T12:57:23.799+0200 [INFO] [org.gradle.launcher.daemon.server.DaemonRegistryUpdater] Marking the daemon as idle, address: [0fd86451 port:58388, addresses:[localhost/127.0.0.1]]
             2026-10-16T12:57:24.000+0200 [DEBUG] [org.gradle.launcher.daemon.server.Daemon] Starting periodic daemon health check
+        """.trimIndent() + "\n"
+
+        val HELD_LINES = """
+            2026-10-16T21:02:00.000+0200 [INFO] [org.gradle.launcher.daemon.server.DefaultIncomingConnectionHandler] Received command: Build{id=99d4836a-69a6-4a1a-d59a-626a5957cf13, currentDir=/home/dev/projects/worktrees/api/task-123}.
+            2026-10-16T21:02:00.000+0200 [DEBUG] [org.gradle.launcher.daemon.server.DefaultIncomingConnectionHandler] Starting executing command: Build{id=99d4836a-69a6-4a1a-d59a-626a5957cf13, currentDir=/home/dev/projects/worktrees/api/task-123} with connection: socket connection from /127.0.0.1:61047 to /127.0.0.1:61048.
+            2026-10-16T21:02:00.001+0200 [INFO] [org.gradle.launcher.daemon.server.DaemonRegistryUpdater] Marking the daemon as busy, address: [0fd86451 port:61047, addresses:[localhost/127.0.0.1]]
+        """.trimIndent() + "\n"
+
+        val PROCESS_TABLE = """
+              1     0 /sbin/launchd
+            500     1 /bin/zsh -l
+            700   500 claude
+          81200   700 /bin/sh ./gradlew benchRun
+          81234 81200 /opt/jdk-21/bin/java -Xmx64m -classpath /home/dev/projects/worktrees/api/task-123/gradle/wrapper/gradle-wrapper.jar org.gradle.wrapper.GradleWrapperMain benchRun
+          36474     1 /opt/jdk-21/bin/java org.gradle.launcher.daemon.bootstrap.GradleDaemon 9.6.1
         """.trimIndent() + "\n"
 
         val BUSY_LINES = """
