@@ -436,8 +436,9 @@ object SpanishStrings : Strings {
     override val alsoStopIdleGradleDaemons = "Parar también los daemons de Gradle ociosos de los worktrees que se eliminan"
     override val alsoStopIdleMavenDaemons = "Parar también los daemons de Maven ociosos de los worktrees que se eliminan"
     override val gradleDaemonsTitle = "Daemons de Gradle"
-    override fun gradleDaemonsSummary(count: Int, totalMemory: String) =
-        (if (count == 1) "1 daemon" else "$count daemons") + " · $totalMemory"
+    override fun gradleDaemonsSummary(gradle: Int, kotlin: Int, totalMemory: String) =
+        (if (gradle == 1) "1 daemon de Gradle" else "$gradle daemons de Gradle") +
+            (if (kotlin > 0) " y $kotlin de Kotlin" else "") + " · $totalMemory"
     override val noGradleDaemons = "No hay daemons de Gradle ni de Kotlin en ejecución"
     override val gradleDaemonsUnavailable = "No se pueden inspeccionar los daemons en este sistema"
     override fun gradleDaemonLabel(version: String?) = listOfNotNull("Gradle", version).joinToString(" ")
@@ -560,15 +561,25 @@ object SpanishStrings : Strings {
     override fun poolUsage(inUse: Int, limit: Int?) = if (limit == null) "$inUse en uso" else "$inUse de $limit en uso"
     override val overLimit = "por encima del límite"
     override val overLimitChip = "Por encima del límite"
+    override val overLimitBuildsRunningChip = "Por encima del límite: builds en curso"
+    override fun overLimitNothingIdle(busy: Int, unknown: Int): String {
+        val reasons = listOfNotNull(
+            busy.takeIf { it > 0 }?.let { if (it == 1) "1 tiene un build en curso" else "$it tienen un build en curso" },
+            unknown.takeIf { it > 0 }?.let { if (it == 1) "1 tiene un estado desconocido" else "$it tienen un estado desconocido" },
+        )
+        return "Ninguno se puede parar ahora: ${reasons.joinToString(" y ")}. " +
+            "Los que queden inactivos se paran automáticamente mientras se supere el límite."
+    }
     override val changeInPreferences = "Cambiar en Preferencias"
     override fun releasedNotice(kind: ResourceKind, released: String, forWorktree: String) = when (kind) {
         ResourceKind.EMULATOR -> "El emulador de $released se liberó para dejar sitio a $forWorktree"
         ResourceKind.IOS_SIMULATOR -> "El simulador de $released se eliminó para dejar sitio a $forWorktree"
         ResourceKind.GRADLE_DAEMON -> "Un daemon de Gradle de $released se detuvo para dejar sitio a $forWorktree"
     }
-    override fun trimmedNotice(count: Int, limit: Int?) =
+    override fun trimmedNotice(count: Int, limit: Int?, trims: Int, lastTime: String) =
         (if (count == 1) "Se detuvo 1 daemon de Gradle inactivo" else "Se detuvieron $count daemons de Gradle inactivos") +
-            (limit?.let { " para mantenerse dentro del límite de $it" } ?: "")
+            (limit?.let { " para mantenerse dentro del límite de $it" } ?: "") +
+            (if (trims == 1) " a las $lastTime" else " · $trims veces, la última a las $lastTime")
     override fun poolSummary(inUse: Int, limit: Int?) = if (limit == null) "$inUse" else "$inUse/$limit"
     override val machineTitle = "Máquina"
     override val machineStatusGradle = "Gradle"

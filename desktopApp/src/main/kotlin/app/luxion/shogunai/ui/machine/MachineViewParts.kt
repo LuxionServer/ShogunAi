@@ -59,18 +59,23 @@ fun PoolUsageSection(machine: MachineResources, resource: MachineResource) {
     val strings = LocalStrings.current
     val usage = machine.poolOf(resource)
     if (usage != null) {
+        val buildsHolding = buildsHoldingPool(usage)
         Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm), verticalAlignment = Alignment.CenterVertically) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 MachineDataText(strings.poolUsage(usage.inUse, usage.effectiveLimit))
                 MachineStateText(" · " + strings.profileName(machine.profile))
             }
-            if (usage.isOverLimit) StatusChip(Status.WARNING, strings.overLimitChip)
+            when {
+                buildsHolding != null -> StatusChip(Status.INFO, strings.overLimitBuildsRunningChip)
+                usage.isOverLimit -> StatusChip(Status.WARNING, strings.overLimitChip)
+            }
             LocalErrorFixActions.current?.let { actions ->
                 NeutralTextButton(onClick = actions.openPreferences) {
                     Text(strings.changeInPreferences)
                 }
             }
         }
+        buildsHolding?.let { MachineSecondaryText(strings.overLimitNothingIdle(it.busy, it.unknown)) }
     }
     poolNoticeBanner(machine.noticesOf(resource), strings)?.let { banner ->
         GroupedNotice(

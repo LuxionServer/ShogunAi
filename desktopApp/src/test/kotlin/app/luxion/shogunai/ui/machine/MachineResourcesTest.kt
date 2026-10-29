@@ -82,6 +82,7 @@ class MachineResourcesTest {
     }
 
     private val idle = DaemonState.Idle(Instant.parse("2026-01-01T00:00:00Z"))
+    private val now = Instant.parse("2026-01-01T10:42:00Z")
 
     private fun project(id: String) = Project(
         id = id,
@@ -147,6 +148,7 @@ class MachineResourcesTest {
         },
         pools: Map<ResourceKind, PoolUsage> = emptyMap(),
         trim: GradleTrim = GradleTrim(limit = null),
+        nextTrim: () -> GradleTrim = { trim },
         settings: ResourceSettings = ResourceSettings(),
         derivedDataTrim: (Long) -> DerivedDataTrim = { DerivedDataTrim(it, 0L, 0L) },
         stopDaemons: suspend (List<Long>?) -> Result<DaemonStopReport> = { pids ->
@@ -178,7 +180,7 @@ class MachineResourcesTest {
         readRunningEmulators = { calls.recordDispatcher(); Result.success(running) },
         startEmulator = startEmulator,
         readPool = { kind, _, _ -> calls.recordDispatcher(); pools[kind]?.let { Result.success(it) } ?: Result.failure(IllegalStateException()) },
-        trimGradleDaemons = { calls.recordDispatcher(); calls.trims++; Result.success(trim) },
+        trimGradleDaemons = { calls.recordDispatcher(); calls.trims++; Result.success(nextTrim()) },
         resourceSettings = { settings },
         trimDerivedData = { quota, _, _ -> calls.derivedDataTrims += quota; Result.success(derivedDataTrim(quota)) },
         stopEmulator = { _, _ -> Result.success(null) },
@@ -201,6 +203,7 @@ class MachineResourcesTest {
         onDevicesChanged: suspend (String) -> Unit = {},
         desktopTurn: DesktopTurnWatch = DesktopTurnWatch.NONE,
         ioDispatcher: CoroutineDispatcher = dispatcher,
+        clock: () -> Instant = { now },
     ) = MachineResources(
         scope = scope,
         useCases = useCases,
@@ -209,6 +212,7 @@ class MachineResourcesTest {
         onDevicesChanged = onDevicesChanged,
         desktopTurn = desktopTurn,
         ioDispatcher = ioDispatcher,
+        clock = clock,
     )
 
     @Test
@@ -677,7 +681,39 @@ class MachineResourcesTest {
         machine.refreshSummaries()
 
         assertEquals(1, calls.trims)
-        assertEquals(PoolNoticeContent.Trimmed(1, 2), machine.noticesOf(MachineResource.GRADLE_DAEMONS).single().content)
+        assertEquals(PoolNoticeContent.Trimmed(1, 2, 1, now), machine.noticesOf(MachineResource.GRADLE_DAEMONS).single().content)
+    }
+
+    @Test
+    fun `repeated trims accumulate into one report until it is dismissed`() = machineTest {
+        val calls = Calls()
+        var stopped = listOf(gradleDaemon(7, idle))
+        var time = now
+        val machine = machine(
+            useCases(calls, nextTrim = { GradleTrim(limit = 3, stopped = stopped) }),
+            listOf(machineProject("api", listOf(apiWorktree), MachineResource.GRADLE_DAEMONS)),
+            clock = { time },
+        )
+
+        machine.refreshSummaries()
+        val first = machine.noticesOf(MachineResource.GRADLE_DAEMONS).single()
+        stopped = listOf(gradleDaemon(8, idle), gradleDaemon(9, idle))
+        time = now.plusSeconds(30)
+        machine.refreshSummaries()
+        stopped = emptyList()
+        machine.refreshSummaries()
+        stopped = listOf(gradleDaemon(10, idle))
+        time = now.plusSeconds(90)
+        machine.refreshSummaries()
+
+        val accumulated = machine.noticesOf(MachineResource.GRADLE_DAEMONS).single()
+        assertEquals(first.id, accumulated.id)
+        assertEquals(PoolNoticeContent.Trimmed(4, 3, 3, now.plusSeconds(90)), accumulated.content)
+
+        machine.dismissNotices(MachineResource.GRADLE_DAEMONS)
+        machine.refreshSummaries()
+
+        assertEquals(PoolNoticeContent.Trimmed(1, 3, 1, now.plusSeconds(90)), machine.noticesOf(MachineResource.GRADLE_DAEMONS).single().content)
     }
 
     @Test
