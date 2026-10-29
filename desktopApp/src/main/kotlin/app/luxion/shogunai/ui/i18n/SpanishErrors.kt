@@ -1,6 +1,7 @@
 package app.luxion.shogunai.ui.i18n
 
 import app.luxion.shogunai.domain.model.AGENT_START_SECONDS
+import app.luxion.shogunai.domain.model.ORCA_START_SECONDS
 import app.luxion.shogunai.domain.model.MacPermission
 import app.luxion.shogunai.domain.executor.CommandExecutionException
 import app.luxion.shogunai.domain.model.HolderProtection
@@ -350,6 +351,22 @@ private fun spanishWorktreeTexts(error: WorktreeError): ErrorTexts = when (error
     is WorktreeError.HerdrAgentNotStarted -> ErrorTexts(
         "El agente no arrancó en Herdr en $AGENT_START_SECONDS segundos.",
         "Su panel sigue abierto en Herdr: revísalo y lanza allí el agente, o vuelve a abrirlo en Herdr.",
+    )
+    WorktreeError.OrcaNotInstalled -> ErrorTexts(
+        "Orca no está instalado.",
+        "Instálalo desde https://onorca.dev y vuelve a intentarlo.",
+    )
+    WorktreeError.OrcaNotStarted -> ErrorTexts(
+        "Orca no arrancó en $ORCA_START_SECONDS segundos.",
+        "Abre Orca tú mismo y vuelve a intentarlo.",
+    )
+    is WorktreeError.OrcaCommandFailed -> ErrorTexts(
+        "No se pudo abrir el worktree en Orca.",
+        "Revisa los detalles técnicos.",
+    )
+    is WorktreeError.OrcaAgentNotStarted -> ErrorTexts(
+        "El agente no arrancó en Orca en $AGENT_START_SECONDS segundos.",
+        "Su terminal sigue abierta en Orca: revísala y lanza allí el agente, o vuelve a abrirlo en Orca.",
     )
     is WorktreeError.TerminalLaunchFailed -> ErrorTexts(
         "${error.terminal.displayName} no pudo abrir el worktree.",

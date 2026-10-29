@@ -34,15 +34,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.luxion.shogunai.domain.model.Grouping
 import app.luxion.shogunai.domain.model.HerdrOutcome
+import app.luxion.shogunai.domain.model.OrcaOutcome
 import app.luxion.shogunai.domain.model.WorktreeSort
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.ui.components.DangerButton
-import app.luxion.shogunai.ui.components.DangerTextButton
 import app.luxion.shogunai.ui.components.DropdownSelector
 import app.luxion.shogunai.ui.components.IconAction
 import app.luxion.shogunai.ui.components.InlineProgress
@@ -65,6 +64,9 @@ import app.luxion.shogunai.ui.multirepo.multirepoNoticeMessage
 import app.luxion.shogunai.ui.shell.LocalAppMessages
 import app.luxion.shogunai.ui.shell.MessageAction
 import java.io.File
+import app.luxion.shogunai.ui.components.GhostButton
+import app.luxion.shogunai.ui.theme.ShogunLayout
+import app.luxion.shogunai.ui.theme.ShogunTheme
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -112,7 +114,7 @@ fun WorktreeScreen(
         ) {
             Text(
                 multirepo?.name ?: filteredProject?.name ?: if (board.isActiveView) strings.activeWorktrees else strings.allWorktrees,
-                style = MaterialTheme.typography.headlineSmall,
+                style = ShogunTheme.typography.viewTitle,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f),
@@ -135,7 +137,7 @@ fun WorktreeScreen(
                     Text(strings.openMultirepoAgent)
                 }
             }
-            DangerTextButton(onClick = { board.openCleanup() }, enabled = !needsReview && board.canCleanUp()) { Text(strings.cleanUp) }
+            GhostButton(onClick = { board.openCleanup() }, enabled = !needsReview && board.canCleanUp()) { Text(strings.cleanUp) }
             if (multirepo != null) {
                 PrimaryButton(onClick = board::openNewChange, enabled = !needsReview && multirepo.aliases.isNotEmpty()) {
                     Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(ButtonIconSize))
@@ -345,6 +347,13 @@ private fun RemoveWorktreeDialog(holder: ProjectWorktrees) {
                         modifier = Modifier.padding(top = Spacing.sm),
                     )
                 }
+                if (holder.pendingRemovalHasOrcaTerminals) {
+                    Text(
+                        strings.orcaTerminalsWillClose,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(top = Spacing.sm),
+                    )
+                }
                 holder.removeError?.let { error ->
                     ErrorNotice(error = error, onDismiss = null, modifier = Modifier.padding(top = Spacing.sm))
                 }
@@ -414,7 +423,7 @@ private fun WorktreeContent(
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .background(WorktreeOverlayScrim)
+                        .background(ShogunTheme.colors.scrim)
                         .clickable(onClick = board::clearSelection),
                 )
                 SelectedDetail(board, selected, Modifier.align(Alignment.CenterEnd).width(WorktreeDetailWidth))
@@ -467,7 +476,7 @@ private fun NothingActive(onNewWorktree: () -> Unit, onSeeAll: () -> Unit, modif
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(Spacing.md, Alignment.CenterVertically),
     ) {
-        Text(strings.nothingActiveTitle, style = MaterialTheme.typography.headlineSmall)
+        Text(strings.nothingActiveTitle, style = ShogunTheme.typography.viewTitle)
         Text(
             strings.nothingActiveMessage,
             style = MaterialTheme.typography.bodyLarge,
@@ -499,9 +508,8 @@ private fun NoMatch(onClear: () -> Unit, modifier: Modifier) {
 
 private val ButtonIconSize = 18.dp
 private val FilterFieldWidth = 240.dp
-private val WorktreeDetailWidth = 360.dp
-private val WorktreeDetailOverlayThreshold = 760.dp
-private val WorktreeOverlayScrim = Color(0x66000000)
+private val WorktreeDetailWidth = ShogunLayout.inspectorWidth
+private val WorktreeDetailOverlayThreshold = ShogunLayout.compactBreakpoint
 
 private fun Strings.successMessage(success: WorktreeSuccess): String = when (success) {
     is WorktreeSuccess.Created ->
@@ -514,6 +522,13 @@ private fun Strings.successMessage(success: WorktreeSuccess): String = when (suc
             HerdrOutcome.OPENED -> openedInHerdr(name)
             HerdrOutcome.STARTED_AGENT -> agentStartedInHerdr(name)
             HerdrOutcome.FOCUSED -> focusedInHerdr(name)
+        }
+    }
+    is WorktreeSuccess.OpenedInOrca -> {
+        val name = File(success.path).name
+        when (success.outcome) {
+            OrcaOutcome.STARTED_AGENT -> agentStartedInOrca(name)
+            OrcaOutcome.FOCUSED -> focusedInOrca(name)
         }
     }
     is WorktreeSuccess.CleanedUp -> listOfNotNull(

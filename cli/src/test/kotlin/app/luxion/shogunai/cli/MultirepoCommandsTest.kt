@@ -11,6 +11,7 @@ import app.luxion.shogunai.domain.FakeGitRepositories
 import app.luxion.shogunai.domain.FakeGradleDaemonSource
 import app.luxion.shogunai.domain.FakeHerdrClient
 import app.luxion.shogunai.domain.FakeHerdrConfigSource
+import app.luxion.shogunai.domain.FakeOrcaClient
 import app.luxion.shogunai.domain.FakeKmpTestWiring
 import app.luxion.shogunai.domain.FakeMachineCapacity
 import app.luxion.shogunai.domain.FakeMultirepoSource
@@ -99,6 +100,7 @@ class MultirepoCommandsTest {
         claudeSessions: FakeClaudeSessionRegistry = FakeClaudeSessionRegistry(),
         provisioning: FakeRepositoryProvisioningSource = FakeRepositoryProvisioningSource(),
         trust: RepositoryTrust = RepositoryTrust.NONE,
+        orca: FakeOrcaClient = FakeOrcaClient(installed = false),
     ) = ShogunCli(
         executor = git,
         fileManager = fileManager,
@@ -115,6 +117,7 @@ class MultirepoCommandsTest {
         machineCapacity = FakeMachineCapacity(),
         derivedDataSource = FakeDerivedDataSource(),
         herdrConfig = FakeHerdrConfigSource(),
+        orca = orca,
         workingDirectory = workingDirectory,
         out = out,
         err = err,
@@ -246,6 +249,19 @@ class MultirepoCommandsTest {
         cli().run(listOf("status"))
 
         assertEquals("No groups.", out.toString().trim())
+    }
+
+    @Test
+    fun `open in orca in a multirepo folder is a usage error`() {
+        groupTask1()
+        val orca = FakeOrcaClient()
+
+        val exitCode = cli(orca = orca).run(listOf("open", "TASK-1", "--orca"))
+
+        assertEquals(2, exitCode)
+        assertTrue(err.contains("can't be opened in Orca yet"), err.toString())
+        assertTrue(orca.created.isEmpty())
+        assertTrue(herdr.opened.isEmpty())
     }
 
     @Test

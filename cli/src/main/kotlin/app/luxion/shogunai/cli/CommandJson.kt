@@ -23,6 +23,8 @@ import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.ReleaseRecord
 import app.luxion.shogunai.domain.model.HerdrOpening
 import app.luxion.shogunai.domain.model.HerdrOutcome
+import app.luxion.shogunai.domain.model.OrcaOpening
+import app.luxion.shogunai.domain.model.OrcaOutcome
 import app.luxion.shogunai.domain.model.MavenDaemon
 import app.luxion.shogunai.domain.model.MavenDaemonStopReport
 import app.luxion.shogunai.domain.model.SuggestionReport
@@ -802,6 +804,21 @@ fun openJson(path: String, branch: String?, opening: HerdrOpening): JsonObject =
     put("agent", opening.agent)
     put("session_name", opening.sessionName)
 }
+
+fun openJson(path: String, branch: String?, opening: OrcaOpening): JsonObject = buildJsonObject {
+    put("path", path)
+    put("branch", branch)
+    put("orca", opening.outcome.jsonValue)
+    put("terminal", opening.terminalHandle)
+    put("agent", opening.agent)
+    put("session_name", opening.sessionName)
+}
+
+val OrcaOutcome.jsonValue: String
+    get() = when (this) {
+        OrcaOutcome.STARTED_AGENT -> "started-agent"
+        OrcaOutcome.FOCUSED -> "focused"
+    }
 
 val HerdrOutcome.jsonValue: String
     get() = when (this) {

@@ -33,10 +33,10 @@ data class WorktreeRowModel(
     val alias: String? = null,
 )
 
-enum class StateBadgeKind(val status: Status?) {
+enum class StateBadgeKind(val status: Status, val outlined: Boolean = false) {
     NEEDS_YOU(Status.WARNING),
     AGENT_WORKING(Status.INFO),
-    NEW(null),
+    NEW(Status.NEUTRAL, outlined = true),
     STOPPED(Status.NEUTRAL),
     MERGED(Status.SUCCESS),
     INACTIVE(Status.NEUTRAL),
@@ -117,6 +117,7 @@ internal fun originLabel(origin: WorktreeOrigin, strings: Strings): String = whe
     WorktreeOrigin.SHOGUNAI -> strings.originShogunAi
     WorktreeOrigin.CLAUDE_CODE -> strings.originClaudeCode
     WorktreeOrigin.HERDR -> strings.originHerdr
+    WorktreeOrigin.ORCA -> strings.originOrca
     WorktreeOrigin.OTHER -> strings.originOther
 }
 

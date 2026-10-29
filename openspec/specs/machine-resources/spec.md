@@ -6,21 +6,6 @@ Shows the build and device resources that belong to the machine (Gradle daemons,
 
 ## Requirements
 
-### Requirement: Machine section in the sidebar
-The sidebar SHALL show a "Machine" section with an entry for each resource whose provider is declared by at least one saved project: Gradle daemons, Android emulators, and, on macOS, iOS simulators and Xcode DerivedData. Each entry SHALL show a summary: daemon count and memory, running emulators, booted simulators, DerivedData total size.
-
-#### Scenario: Only Gradle declared
-- **WHEN** one saved project declares the Gradle provider and none declares another provider
-- **THEN** the "Machine" section only shows "Gradle daemons", with the number of daemons and their memory
-
-#### Scenario: No provider declared
-- **WHEN** no saved project declares any provider
-- **THEN** the sidebar shows no "Machine" section
-
-#### Scenario: DerivedData size still being calculated
-- **WHEN** a saved project declares the Xcode provider and the DerivedData folders are known but their sizes aren't yet
-- **THEN** the DerivedData entry shows the number of folders and a calculating state instead of a size, and the app stays responsive
-
 ### Requirement: Gradle daemons across projects
 The Gradle daemons view SHALL list every Gradle and Kotlin daemon on the machine with its kind, version, process id, memory, state and owner, the total memory, and actions to stop one daemon or every idle one, following the existing stop rules. The result of a stop SHALL stay visible until dismissed.
 
@@ -116,7 +101,7 @@ The Android emulators and iOS simulators views SHALL show a header row labeling 
 - **THEN** a header row labels the device, worktree and state columns above the rows
 
 ### Requirement: Pool usage in the machine views
-The Android emulators, iOS simulators and Gradle daemons views SHALL show their pool's usage against its effective limit and the active profile, with a link to Preferences' "Resources" section, and the sidebar summary SHALL include the usage against the limit. When a resource was released or stopped to make room or to stay within the limit, the view SHALL say which one and why until the user dismisses it.
+The Android emulators, iOS simulators and Gradle daemons views SHALL show their pool's usage against its effective limit and the active profile, with a link to Preferences' "Resources" section, and the status bar item SHALL include the usage against the limit. When a resource was released or stopped to make room or to stay within the limit, the view SHALL say which one and why until the user dismisses it.
 
 #### Scenario: Usage shown
 - **WHEN** the emulator limit is 2 and one worktree holds an emulator
@@ -142,11 +127,11 @@ The DerivedData view SHALL show its folders, their owners and the orphans as soo
 - **THEN** the confirmation names the number of orphans, and their total size once it's known
 
 ### Requirement: Cancellable size calculation
-DerivedData sizes SHALL be computed in the background, several folders at a time, and SHALL keep being computed when the user leaves the view so the sidebar summary can show the total. Reloading the view SHALL stop the running calculation and measure every folder read again, and the calculation SHALL stop when no saved project declares the Xcode provider anymore.
+DerivedData sizes SHALL be computed in the background, several folders at a time, and SHALL keep being computed when the user leaves the view so the status bar item can show the total. Reloading the view SHALL stop the running calculation and measure every folder read again, and the calculation SHALL stop when no saved project declares the Xcode provider anymore.
 
 #### Scenario: Leave the view
 - **WHEN** sizes are still being calculated and the user shows another view
-- **THEN** the calculation goes on without blocking the app, and the sidebar summary shows the total once every size is known
+- **THEN** the calculation goes on without blocking the app, and the status bar item shows the total once every size is known
 
 #### Scenario: Reload
 - **WHEN** the user reloads the DerivedData view while sizes are being calculated
@@ -216,20 +201,20 @@ The Compose view of the Machine section SHALL list, after the projects, the volu
 - **WHEN** no removed worktree left any resource
 - **THEN** the view shows no leftovers section and no removal action
 
-### Requirement: Desktop entry in the Machine section
-While a worktree holds the desktop turn or any worktree waits for it, the Machine section SHALL show a "Desktop" entry, also when no saved project declares a provider, with a summary naming the holder and the number of waiters. Its view SHALL show the holder with project, worktree, since when and until when, and "Release" with a confirmation naming it, then the waiters in order with since when each waits.
+### Requirement: Desktop entry in the status bar
+While a worktree holds the desktop turn or any worktree waits for it, the status bar SHALL show a "Desktop" item, also when no saved project declares a provider, with a summary naming the holder and the number of waiters. Its view SHALL show the holder with project, worktree, since when and until when, and "Release" with a confirmation naming it, then the waiters in order with since when each waits.
 
 #### Scenario: Held with waiters
 - **WHEN** `api` · `TASK-1` holds the turn and two worktrees wait
-- **THEN** the Machine section shows "Desktop" with `api` · `TASK-1` and 2 waiting, and its view lists the holder and the two waiters in order
+- **THEN** the status bar shows "Desktop" with `api` · `TASK-1` and 2 waiting, and its view lists the holder and the two waiters in order
 
 #### Scenario: Desktop free
 - **WHEN** nobody holds the turn and nobody waits
-- **THEN** the Machine section shows no "Desktop" entry
+- **THEN** the status bar shows no "Desktop" item
 
 #### Scenario: No provider declared
 - **WHEN** no saved project declares any provider and a worktree holds the turn
-- **THEN** the sidebar shows the Machine section with only the "Desktop" entry
+- **THEN** the status bar shows only the "Desktop" item
 
 #### Scenario: Holder outside the saved projects
 - **WHEN** the holder's worktree isn't in any saved project

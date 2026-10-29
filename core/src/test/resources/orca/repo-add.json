@@ -1,0 +1,30 @@
+{
+  "id": "a3e72333-eb12-4afc-8fe8-aa61087263cf",
+  "ok": true,
+  "result": {
+    "repo": {
+      "id": "0355427a-217f-4a07-9072-67d11e704c23",
+      "path": "/projects/main-repo",
+      "displayName": "main-repo",
+      "badgeColor": "#737373",
+      "addedAt": 1793229470237,
+      "kind": "git",
+      "externalWorktreeVisibilityLegacy": false,
+      "upstream": null,
+      "gitUsername": "",
+      "hookSettings": {
+        "mode": "auto",
+        "setupRunPolicy": "run-by-default",
+        "setupAgentStartupPolicy": "start-immediately",
+        "scripts": {
+          "setup": "",
+          "archive": ""
+        }
+      },
+      "externalWorktreeVisibility": "hide"
+    }
+  },
+  "_meta": {
+    "runtimeId": "24f610a7-56eb-433d-b32d-6af1e7aa64c7"
+  }
+}

@@ -227,9 +227,16 @@ class ParseArgumentsTest {
     }
 
     @Test
+    fun `open takes orca with an agent and json`() {
+        assertEquals(CliCommand.Open("TASK-123", orca = true), command("open", "TASK-123", "--orca"))
+        assertEquals(CliCommand.Open("TASK-123", agent = "codex", json = true, orca = true), command("open", "--orca", "--agent", "codex", "TASK-123", "--json"))
+    }
+
+    @Test
     fun `open needs a destination and knows its options`() {
         assertEquals(CliCommand.Open(null, herdr = true), command("open", "--herdr"))
-        assertEquals("'open' needs where to open the worktree: --herdr", usageError("open", "TASK-123"))
+        assertEquals("'open' needs where to open the worktree: --herdr or --orca", usageError("open", "TASK-123"))
+        assertEquals("'open' opens in one place at a time: pass either --herdr or --orca", usageError("open", "TASK-123", "--herdr", "--orca"))
         assertEquals("unknown option '--terminal' for 'open'", usageError("open", "TASK-123", "--terminal"))
         assertEquals("--agent needs a value", usageError("open", "TASK-123", "--herdr", "--agent"))
         assertEquals("'open' takes a single target, got 'TASK-1' and 'TASK-2'", usageError("open", "TASK-1", "TASK-2", "--herdr"))

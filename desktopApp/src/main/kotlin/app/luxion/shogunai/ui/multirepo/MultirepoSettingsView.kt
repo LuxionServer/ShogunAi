@@ -77,7 +77,7 @@ fun MultirepoSettingsView(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(modifier = Modifier.weight(1f)) {
-                Text(strings.multirepoSettingsTitle, style = MaterialTheme.typography.headlineSmall)
+                Text(strings.multirepoSettingsTitle, style = ShogunTheme.typography.viewTitle)
                 multirepo?.let {
                     Text(it.folder, style = ShogunTheme.typography.dataSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
@@ -161,7 +161,7 @@ fun MultirepoSettingsView(
             HorizontalDivider()
             SettingsSection(strings.deleteMultirepo) {
                 Text(strings.deleteMultirepoHint, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                DangerButton(onClick = state::requestDelete) { Text(strings.deleteMultirepo) }
+                DangerTextButton(onClick = state::requestDelete) { Text(strings.deleteMultirepo) }
             }
         }
     }

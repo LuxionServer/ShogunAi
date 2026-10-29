@@ -14,6 +14,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import app.luxion.shogunai.domain.usecase.CleanupFailure
 import app.luxion.shogunai.domain.usecase.CleanupReport
 import app.luxion.shogunai.domain.usecase.herdrDetail
+import app.luxion.shogunai.domain.usecase.orcaDetail
 import app.luxion.shogunai.ui.components.DangerButton
 import app.luxion.shogunai.ui.components.DangerTextButton
 import app.luxion.shogunai.ui.components.InlineProgress
@@ -52,6 +53,14 @@ fun CleanupDialog(board: WorktreeBoard) {
                         modifier = Modifier.padding(top = Spacing.xs),
                     )
                 }
+                if (groups.any { group -> group.worktrees.any { it.path in group.holder.orcaTerminalPaths } }) {
+                    Text(
+                        strings.orcaCleanupNotice,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(top = Spacing.xs),
+                    )
+                }
                 groups.filter { it.worktrees.isNotEmpty() }.forEach { group ->
                     if (showHeadings) {
                         Text(
@@ -66,6 +75,7 @@ fun CleanupDialog(board: WorktreeBoard) {
                                 worktree.path.substringAfterLast('/'),
                                 worktree.branch,
                                 strings.openInHerdrMark.takeIf { worktree.path in group.holder.openInHerdrPaths },
+                                strings.openInOrcaMark.takeIf { worktree.path in group.holder.orcaTerminalPaths },
                             ).joinToString(" · "),
                             style = ShogunTheme.typography.dataSmall,
                             maxLines = 1,
@@ -204,6 +214,17 @@ fun HerdrCloseFailures(failures: List<CleanupFailure>, onDismiss: () -> Unit) {
     Notice(
         kind = NoticeKind.WARNING,
         message = failures.joinToString("\n") { strings.herdrCloseFailed(it.path, it.error.herdrDetail()) },
+        onDismiss = onDismiss,
+        modifier = Modifier.padding(top = Spacing.sm),
+    )
+}
+
+@Composable
+fun OrcaCloseFailures(failures: List<CleanupFailure>, onDismiss: () -> Unit) {
+    val strings = LocalStrings.current
+    Notice(
+        kind = NoticeKind.WARNING,
+        message = failures.joinToString("\n") { strings.orcaCloseFailed(it.path, it.error.orcaDetail()) },
         onDismiss = onDismiss,
         modifier = Modifier.padding(top = Spacing.sm),
     )

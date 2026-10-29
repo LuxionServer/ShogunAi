@@ -35,7 +35,7 @@ fun SimulatorSettingsSection(viewModel: ProjectConfigViewModel, modifier: Modifi
     if (state == SimulatorSectionState.Hidden) return
     val strings = LocalStrings.current
     SettingsSection(title = strings.simulatorSection, modifier = modifier) {
-        Text(strings.machineOnlyLabel, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+        Text(strings.machineOnlyLabel, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text(
             strings.simulatorSectionDescription,
             style = MaterialTheme.typography.bodySmall,

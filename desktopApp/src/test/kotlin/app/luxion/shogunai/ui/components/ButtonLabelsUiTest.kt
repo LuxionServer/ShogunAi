@@ -33,6 +33,7 @@ class ButtonLabelsUiTest {
     private val buttons: List<Pair<String, @Composable (String) -> Unit>> = listOf(
         "primary" to { label -> PrimaryButton(onClick = {}) { Text(label) } },
         "secondary" to { label -> SecondaryButton(onClick = {}) { Text(label) } },
+        "ghost" to { label -> GhostButton(onClick = {}) { Text(label) } },
         "danger" to { label -> DangerButton(onClick = {}) { Text(label) } },
         "danger text" to { label -> DangerTextButton(onClick = {}) { Text(label) } },
         "neutral text" to { label -> NeutralTextButton(onClick = {}) { Text(label) } },

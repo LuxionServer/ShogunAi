@@ -17,7 +17,7 @@ A worktree's row SHALL have two lines and five cells, in this order: state badge
 - **THEN** it is cut with an ellipsis and its full name is shown on hover, and the other cells keep their positions
 
 ### Requirement: State badge
-The state badge SHALL be a circle in the color of the worktree's state with an icon inside that is distinct for each state, so the state can be told without seeing color. Hovering it SHALL show the state's name, and assistive technologies SHALL read the state's name.
+The state badge SHALL be a circle in the color of the worktree's state with an icon inside that is distinct for each state, so the state can be told without seeing color. The "New" state SHALL be an outlined circle in the neutral status color with its icon in that color, not a filled circle in a brand or primary color. Hovering it SHALL show the state's name, and assistive technologies SHALL read the state's name.
 
 #### Scenario: Needs you
 - **WHEN** a worktree needs the user
@@ -26,6 +26,10 @@ The state badge SHALL be a circle in the color of the worktree's state with an i
 #### Scenario: Same color, different icon
 - **WHEN** two states share a similar color
 - **THEN** their badges still differ by their icon
+
+#### Scenario: New worktree badge
+- **WHEN** a worktree has no commits of its own and isn't merged
+- **THEN** its badge is an outlined neutral circle with the "new" icon, and its tooltip and accessible name say "New"
 
 ### Requirement: Execution cell
 The execution cell SHALL show the worktree's agent on its first line and its emulator or simulator on its second line. The agent SHALL be shown with its name and its state (working, blocked, done, idle or unknown), its icon colored by that state. With several agents, the most urgent one SHALL be shown with a "+N" count, and the tooltip SHALL list every agent with its state. The device line SHALL show the device only while it is booting or running, colored by its state.
@@ -127,3 +131,14 @@ The row's hover action (copy the launch command) SHALL keep its fixed slot at th
 #### Scenario: Hover
 - **WHEN** the user hovers a row
 - **THEN** the copy action appears at the row's end without moving any cell
+
+### Requirement: Row identifiers and selection colors
+A row's repository alias and group tag SHALL be drawn in the secondary text color, not in the primary or brand color, and the selected row SHALL be drawn on the accent container.
+
+#### Scenario: Multirepo row
+- **WHEN** a row of a multirepo view shows its repository alias and its group tag
+- **THEN** both use the secondary text color
+
+#### Scenario: Selected row
+- **WHEN** the user selects a row
+- **THEN** its background is the accent container

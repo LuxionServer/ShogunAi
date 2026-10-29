@@ -69,10 +69,10 @@ fun ErrorNotice(
                 if (fixAction != null || onRetry != null) {
                     Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm), verticalAlignment = Alignment.CenterVertically) {
                         fixAction?.let { (label, action) ->
-                            SecondaryButton(onClick = action) { Text(label, style = MaterialTheme.typography.bodySmall) }
+                            SecondaryButton(onClick = action) { Text(label) }
                         }
                         onRetry?.let {
-                            SecondaryButton(onClick = it) { Text(strings.tryAgain, style = MaterialTheme.typography.bodySmall) }
+                            SecondaryButton(onClick = it) { Text(strings.tryAgain) }
                         }
                     }
                 }
@@ -115,7 +115,7 @@ private fun TechnicalDetailsDisclosure(details: TechnicalDetails) {
                     imageVector = if (expanded) Icons.Default.ExpandMore else Icons.Default.ChevronRight,
                     contentDescription = null,
                 )
-                Text(strings.technicalDetails, style = MaterialTheme.typography.bodySmall)
+                Text(strings.technicalDetails)
             }
             if (expanded) {
                 IconAction(

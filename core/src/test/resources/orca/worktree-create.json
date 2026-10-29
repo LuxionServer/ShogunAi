@@ -1,0 +1,75 @@
+{
+  "id": "7ba60a58-76bd-454e-9824-0dcbdc683dfa",
+  "ok": true,
+  "result": {
+    "worktree": {
+      "id": "0355427a-217f-4a07-9072-67d11e704c23::/Users/user/orca/workspaces/main-repo/TASK-2",
+      "identity": {
+        "key": "wt2:local:db161767-2afa-43ff-93ab-9244b1ea7804",
+        "executionHostId": "local",
+        "instanceId": "db161767-2afa-43ff-93ab-9244b1ea7804"
+      },
+      "instanceId": "db161767-2afa-43ff-93ab-9244b1ea7804",
+      "repoId": "0355427a-217f-4a07-9072-67d11e704c23",
+      "projectId": "repo:0355427a-217f-4a07-9072-67d11e704c23",
+      "hostId": "local",
+      "projectHostSetupId": "0355427a-217f-4a07-9072-67d11e704c23",
+      "creatorProvenance": {
+        "kind": "host"
+      },
+      "path": "/Users/user/orca/workspaces/main-repo/TASK-2",
+      "head": "b31e462b81987fc5c818ffacb7ab2b66a1c1085f",
+      "branch": "refs/heads/user/TASK-2",
+      "isBare": false,
+      "isMainWorktree": false,
+      "displayName": "TASK-2",
+      "displayNameMode": "fixed",
+      "comment": "",
+      "linkedIssue": null,
+      "linkedPR": null,
+      "linkedLinearIssue": null,
+      "linkedLinearIssueWorkspaceId": null,
+      "linkedLinearIssueOrganizationUrlKey": null,
+      "linkedGitLabMR": null,
+      "linkedGitLabIssue": null,
+      "linkedBitbucketPR": null,
+      "linkedAzureDevOpsPR": null,
+      "linkedGiteaPR": null,
+      "linkedWorkItem": null,
+      "linkedTaskSourceContext": null,
+      "isArchived": false,
+      "isUnread": false,
+      "isPinned": false,
+      "sortOrder": 1793229477120,
+      "lastActivityAt": 1793229477120,
+      "createdAt": 1793229477120,
+      "cliProvenance": {
+        "kind": "created-by-cli",
+        "createdAt": 1793229476905
+      },
+      "baseRef": "main",
+      "workspaceStatus": "in-progress",
+      "parentWorktreeId": null,
+      "childWorktreeIds": [],
+      "lineage": null,
+      "workspaceLineage": null,
+      "git": {
+        "path": "/Users/user/orca/workspaces/main-repo/TASK-2",
+        "head": "b31e462b81987fc5c818ffacb7ab2b66a1c1085f",
+        "branch": "refs/heads/user/TASK-2",
+        "isBare": false,
+        "isMainWorktree": false
+      }
+    },
+    "lineage": null,
+    "workspaceLineage": null,
+    "warnings": [],
+    "catalogVersion": {
+      "epoch": "862eb3e6-2b84-462e-a288-69e95e3a2073",
+      "sequence": 40
+    }
+  },
+  "_meta": {
+    "runtimeId": "24f610a7-56eb-433d-b32d-6af1e7aa64c7"
+  }
+}

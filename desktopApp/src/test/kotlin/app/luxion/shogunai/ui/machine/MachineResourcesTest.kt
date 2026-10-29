@@ -105,6 +105,7 @@ class MachineResourcesTest {
 
     private class Calls {
         var daemons = emptyList<DaemonProcess>()
+        var daemonFailure: Throwable? = null
         var daemonListings = 0
         var emulatorReads = 0
         var simulatorReads = 0
@@ -153,7 +154,7 @@ class MachineResourcesTest {
             Result.success(stopReport)
         },
     ) = MachineUseCases(
-        listDaemons = { calls.recordDispatcher(); calls.daemonListings++; Result.success(calls.daemons) },
+        listDaemons = { calls.recordDispatcher(); calls.daemonListings++; calls.daemonFailure?.let { Result.failure(it) } ?: Result.success(calls.daemons) },
         stopDaemons = stopDaemons,
         listDerivedData = {
             calls.derivedDataListings++
@@ -523,6 +524,28 @@ class MachineResourcesTest {
         runCurrent()
         assertEquals(MachineSummary(2, 3_000L), machine.summaries.getValue(MachineResource.GRADLE_DAEMONS))
         ticks.cancel()
+    }
+
+    @Test
+    fun `a failed summary read is remembered with the last summary and cleared when it recovers`() = machineTest {
+        val calls = Calls().apply { daemons = listOf(gradleDaemon(10, idle, memoryBytes = 1_000L)) }
+        val machine = machine(
+            useCases(calls),
+            listOf(machineProject("main-repo", listOf(mainWorktree), MachineResource.GRADLE_DAEMONS)),
+        )
+        val failure = IllegalStateException("jps failed")
+
+        machine.refreshSummaries()
+        calls.daemonFailure = failure
+        machine.refreshSummaries()
+
+        assertEquals(mapOf(MachineResource.GRADLE_DAEMONS to failure), machine.summaryFailures)
+        assertEquals(MachineSummary(1, 1_000L), machine.summaries.getValue(MachineResource.GRADLE_DAEMONS))
+
+        calls.daemonFailure = null
+        machine.refreshSummaries()
+
+        assertTrue(machine.summaryFailures.isEmpty())
     }
 
     private fun usage(kind: ResourceKind, limit: Int?, vararg holders: Int) = PoolUsage(

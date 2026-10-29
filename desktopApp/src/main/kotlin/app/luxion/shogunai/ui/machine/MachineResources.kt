@@ -141,6 +141,9 @@ class MachineResources(
 
     private var providerSummaries by mutableStateOf<Map<MachineResource, MachineSummary>>(emptyMap())
 
+    var summaryFailures by mutableStateOf<Map<MachineResource, Throwable>>(emptyMap())
+        private set
+
     val summaries: Map<MachineResource, MachineSummary>
         get() {
             val turn = desktopTurn.state
@@ -153,6 +156,8 @@ class MachineResources(
     private var composeProjects by mutableStateOf<MachineLoad<List<MachineComposeProject>>>(MachineLoad.Loading)
     var composeUnavailableReason by mutableStateOf<String?>(null)
         private set
+    private var composeFailure: Throwable? = null
+    private var derivedDataFailure: Throwable? = null
     var isTakingDownCompose by mutableStateOf(false)
         private set
     var composeDownReport by mutableStateOf<ComposeDownReport?>(null)
@@ -398,38 +403,44 @@ class MachineResources(
     suspend fun refreshSummaries() {
         val resources = declared
         val current = providerSummaries.filterKeys { it in resources }.toMutableMap()
+        val failures = mutableMapOf<MachineResource, Throwable>()
+        fun <T> record(resource: MachineResource, result: Result<T>?, summary: (T) -> MachineSummary) {
+            result?.fold({ current[resource] = summary(it) }, { failures[resource] = it })
+        }
         if (MachineResource.GRADLE_DAEMONS in resources) {
             trimGradleDaemons()
-            io { useCases.listDaemons() }.getOrNull()?.let { daemons ->
-                loadPool(ResourceKind.GRADLE_DAEMON)
+            val daemons = io { useCases.listDaemons() }
+            if (daemons.isSuccess) loadPool(ResourceKind.GRADLE_DAEMON)
+            record(MachineResource.GRADLE_DAEMONS, daemons) { listed ->
                 val pool = pools[ResourceKind.GRADLE_DAEMON]
-                current[MachineResource.GRADLE_DAEMONS] =
-                    MachineSummary(daemons.size, daemons.sumOf { it.residentMemoryBytes }, pool?.inUse, pool?.effectiveLimit)
+                MachineSummary(listed.size, listed.sumOf { it.residentMemoryBytes }, pool?.inUse, pool?.effectiveLimit)
             }
         }
         if (MachineResource.MAVEN_DAEMONS in resources) {
-            io { useCases.listMavenDaemons() }.getOrNull()?.let { daemons ->
-                current[MachineResource.MAVEN_DAEMONS] = MachineSummary(daemons.size, daemons.sumOf { it.residentMemoryBytes })
+            record(MachineResource.MAVEN_DAEMONS, io { useCases.listMavenDaemons() }) { daemons ->
+                MachineSummary(daemons.size, daemons.sumOf { it.residentMemoryBytes })
             }
         }
         if (MachineResource.COMPOSE_PROJECTS in resources) {
-            readComposeProjects()?.let { projects ->
-                current[MachineResource.COMPOSE_PROJECTS] = MachineSummary(projects.size)
+            val projects = readComposeProjects()
+            record(MachineResource.COMPOSE_PROJECTS, projects?.let { Result.success(it) } ?: composeFailure?.let { Result.failure(it) }) {
+                MachineSummary(it.size)
             }
         }
         if (MachineResource.ANDROID_EMULATORS in resources) {
-            readRunningEmulators()?.let { running ->
-                loadPool(ResourceKind.EMULATOR)
+            val running = runningEmulatorsResult()
+            if (running?.isSuccess == true) loadPool(ResourceKind.EMULATOR)
+            record(MachineResource.ANDROID_EMULATORS, running) { states ->
                 val pool = pools[ResourceKind.EMULATOR]
-                current[MachineResource.ANDROID_EMULATORS] =
-                    MachineSummary(running.count { it.value != EmulatorState.STOPPED }, poolInUse = pool?.inUse, poolLimit = pool?.effectiveLimit)
+                MachineSummary(states.count { it.value != EmulatorState.STOPPED }, poolInUse = pool?.inUse, poolLimit = pool?.effectiveLimit)
             }
         }
         if (MachineResource.IOS_SIMULATORS in resources) {
-            readSimulators()?.let { byProject ->
-                loadPool(ResourceKind.IOS_SIMULATOR)
+            val simulators = simulatorsResult()
+            if (simulators.isSuccess) loadPool(ResourceKind.IOS_SIMULATOR)
+            record(MachineResource.IOS_SIMULATORS, simulators) { byProject ->
                 val pool = pools[ResourceKind.IOS_SIMULATOR]
-                current[MachineResource.IOS_SIMULATORS] = MachineSummary(
+                MachineSummary(
                     byProject.values.sumOf { it.values.count { sim -> sim.state == SimulatorState.BOOTED } },
                     poolInUse = pool?.inUse,
                     poolLimit = pool?.effectiveLimit,
@@ -449,11 +460,13 @@ class MachineResources(
                     quotaAutomatic = isDerivedDataQuotaAutomatic && derivedDataQuotaBytes != null,
                 )
             }
+            derivedDataFailure?.let { failures[MachineResource.XCODE_DERIVED_DATA] = it }
         } else {
             stopDerivedDataMeasuring()
         }
         desktopTurn.refresh()
         providerSummaries = current
+        summaryFailures = failures
     }
 
     private suspend fun trimGradleDaemons() {
@@ -536,9 +549,11 @@ class MachineResources(
             machineProject.project.id to io { useCases.listComposeProjects(config, machineProject.worktrees.orEmpty(), root) }
         }
         listed.firstNotNullOfOrNull { (_, result) -> result.exceptionOrNull() }?.let { failure ->
+            composeFailure = failure
             composeUnavailableReason = (failure as? WorktreeError.DockerUnavailable)?.reason ?: failure.message
             return null
         }
+        composeFailure = null
         composeUnavailableReason = null
         return listed.flatMap { (projectId, result) -> result.getOrThrow().map { MachineComposeProject(projectId, it) } }
     }
@@ -583,9 +598,11 @@ class MachineResources(
         loadPool(ResourceKind.EMULATOR)
     }
 
-    private suspend fun readRunningEmulators(): Map<String, EmulatorState>? {
+    private suspend fun readRunningEmulators(): Map<String, EmulatorState>? = runningEmulatorsResult()?.getOrNull()
+
+    private suspend fun runningEmulatorsResult(): Result<Map<String, EmulatorState>>? {
         val declaring = projects().firstOrNull { MachineResource.ANDROID_EMULATORS in it.declares } ?: return null
-        return io { useCases.readRunningEmulators(declaring.project.config) }.getOrNull()
+        return io { useCases.readRunningEmulators(declaring.project.config) }
     }
 
     private suspend fun loadSimulators() {
@@ -596,14 +613,15 @@ class MachineResources(
         loadPool(ResourceKind.IOS_SIMULATOR)
     }
 
-    private suspend fun readSimulators(): Map<String, Map<String, WorktreeSimulator>>? {
+    private suspend fun readSimulators(): Map<String, Map<String, WorktreeSimulator>>? = simulatorsResult().getOrNull()
+
+    private suspend fun simulatorsResult(): Result<Map<String, Map<String, WorktreeSimulator>>> {
         val declaring = projects().filter { MachineResource.IOS_SIMULATORS in it.declares && it.worktrees != null }
         val states = declaring.associate { machineProject ->
-            machineProject.project.id to
-                io { useCases.readSimulatorStates(machineProject.project.config, machineProject.worktrees.orEmpty()) }.getOrNull()
+            machineProject.project.id to io { useCases.readSimulatorStates(machineProject.project.config, machineProject.worktrees.orEmpty()) }
         }
-        if (states.values.any { it == null }) return null
-        return states.mapValues { (_, byPath) -> byPath.orEmpty() }.filterValues { it.isNotEmpty() }
+        states.values.firstNotNullOfOrNull { it.exceptionOrNull() }?.let { return Result.failure(it) }
+        return Result.success(states.mapValues { (_, result) -> result.getOrThrow() }.filterValues { it.isNotEmpty() })
     }
 
     private suspend fun loadDerivedData(remeasure: Boolean = false) {
@@ -615,6 +633,7 @@ class MachineResources(
         compilationCacheMeasured = false
         packageCacheSizes = null
         derivedDataListing = listing.fold({ MachineLoad.Loaded(it) }, { MachineLoad.Unavailable })
+        derivedDataFailure = listing.exceptionOrNull()
         listing.getOrNull()?.let { sizeJob = scope.launch { measureDerivedData(it.folders.map { entry -> entry.folder }, remeasure) } }
     }
 

@@ -276,7 +276,7 @@ private fun projectListItems(board: WorktreeBoard): List<ListItem> = board.group
 }
 
 private val ProjectWorktrees.hasNotice: Boolean
-    get() = loadState is ProjectLoadState.Failed || error != null || cleanupIssues != null || herdrCloseFailures.isNotEmpty() || headlessStopFailures.isNotEmpty() ||
+    get() = loadState is ProjectLoadState.Failed || error != null || cleanupIssues != null || herdrCloseFailures.isNotEmpty() || orcaCloseFailures.isNotEmpty() || headlessStopFailures.isNotEmpty() ||
         keptBranchNotice != null
 
 private val ProjectWorktrees.hasGroupState: Boolean
@@ -340,7 +340,7 @@ private fun ProjectGroupHeader(
         DangerTextButton(
             onClick = { board.openCleanup(projectId) },
             enabled = board.canCleanUp(projectId),
-        ) { Text(strings.cleanUp, style = MaterialTheme.typography.bodySmall) }
+        ) { Text(strings.cleanUp) }
         IconAction(icon = Icons.Default.Settings, label = strings.projectConfigTitle, onClick = onOpenProjectSettings)
         IconAction(icon = Icons.Default.Add, label = strings.newWorktree, onClick = { board.openCreateDialog(projectId) })
     }
@@ -404,6 +404,11 @@ private fun GroupState(holder: ProjectWorktrees, projectId: String, projectName:
             HerdrCloseFailures(holder.herdrCloseFailures, onDismiss = { holder.dismissHerdrCloseFailures() })
         }
     }
+    if (holder.orcaCloseFailures.isNotEmpty()) {
+        Box(Modifier.padding(horizontal = Spacing.md)) {
+            OrcaCloseFailures(holder.orcaCloseFailures, onDismiss = { holder.dismissOrcaCloseFailures() })
+        }
+    }
 }
 
 @Composable
@@ -451,7 +456,7 @@ internal fun StateGroupHeader(
             DangerTextButton(
                 onClick = onCleanUp,
                 enabled = canCleanUp,
-            ) { Text(strings.cleanUp, style = MaterialTheme.typography.bodySmall) }
+            ) { Text(strings.cleanUp) }
         }
     }
 }
@@ -513,7 +518,7 @@ private fun WorktreeRowFor(
             agents = holder.agents.orEmpty()[worktree.path].orEmpty(),
             emulator = holder.emulators[worktree.path]?.takeIf { holder.isEmulatorRepository },
             simulator = holder.simulators[worktree.path]?.takeIf { holder.isSimulatorRepository },
-            origin = classifyOrigin(worktree, project.config, holder.herdrWorktreesRoot),
+            origin = classifyOrigin(worktree, project.config, holder.herdrWorktreesRoot, holder.orcaOrigins),
             projectName = projectName,
             inactiveAfter = board.inactivity.threshold,
             now = Instant.now(),
@@ -531,6 +536,7 @@ private fun WorktreeRowFor(
         onCopyLaunchCommand = { holder.copyLaunchCommand(worktree) },
         onCopyPath = { scope.launch { clipboard.copyText(worktree.path) } },
         onOpenInHerdr = { holder.openInHerdr(worktree) },
+        onOpenInOrca = { holder.openInOrca(worktree) },
         openActions = holder.openActions(worktree, strings),
         agentName = holder.agentFor(worktree).displayName.takeIf { holder.hasAgentChoice },
         launchChoices = holder.launchChoices(worktree, strings),
@@ -595,15 +601,15 @@ internal fun ChangeGroupHeaderView(
                 overflow = TextOverflow.Ellipsis,
             )
         }
-        StatusChip(group.state.status ?: Status.INFO, group.state.label(strings))
+        StatusChip(group.state.status, group.state.label(strings))
         if (isAdding) InlineProgress()
         NeutralTextButton(onClick = onOpenAll) {
-            Text(strings.openAllInHerdr, style = MaterialTheme.typography.bodySmall)
+            Text(strings.openAllInHerdr)
         }
         if (addableAliases.isNotEmpty()) AddRepositoryMenu(addableAliases, onAddRepository)
         val cleanUp: @Composable () -> Unit = {
             DangerTextButton(onClick = onCleanUp, enabled = canCleanUp) {
-                Text(strings.cleanUpGroup, style = MaterialTheme.typography.bodySmall)
+                Text(strings.cleanUpGroup)
             }
         }
         cleanUpBlocker?.let { WithTooltip(label = it, content = cleanUp) } ?: cleanUp()
@@ -616,7 +622,7 @@ private fun AddRepositoryMenu(aliases: List<String>, onPick: (String) -> Unit) {
     var expanded by remember { mutableStateOf(false) }
     Box {
         NeutralTextButton(onClick = { expanded = true }) {
-            Text(strings.addRepositoryToGroup, style = MaterialTheme.typography.bodySmall)
+            Text(strings.addRepositoryToGroup)
         }
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             aliases.forEach { alias ->

@@ -15,7 +15,7 @@ class StatusMappingTest {
             mapOf(
                 StateBadgeKind.NEEDS_YOU to Status.WARNING,
                 StateBadgeKind.AGENT_WORKING to Status.INFO,
-                StateBadgeKind.NEW to null,
+                StateBadgeKind.NEW to Status.NEUTRAL,
                 StateBadgeKind.STOPPED to Status.NEUTRAL,
                 StateBadgeKind.MERGED to Status.SUCCESS,
                 StateBadgeKind.INACTIVE to Status.NEUTRAL,
@@ -24,6 +24,11 @@ class StatusMappingTest {
             ),
             StateBadgeKind.entries.associateWith { it.status },
         )
+    }
+
+    @Test
+    fun `only the new state is drawn outlined`() {
+        assertEquals(listOf(StateBadgeKind.NEW), StateBadgeKind.entries.filter { it.outlined })
     }
 
     @Test

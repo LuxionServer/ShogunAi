@@ -19,6 +19,7 @@ class FakeAppleSimulators(
     val booted = mutableListOf<String>()
     val shown = mutableListOf<String>()
     var showFailure: Throwable? = null
+    var shutdownFailure: Throwable? = null
     val shutDown = mutableListOf<String>()
     val deleted = mutableListOf<String>()
     var calls = 0
@@ -64,6 +65,7 @@ class FakeAppleSimulators(
 
     override suspend fun shutdown(udid: String) {
         calls++
+        shutdownFailure?.let { throw it }
         shutDown += udid
         devicesByUdid[udid]?.let { devicesByUdid[udid] = it.copy(state = SimulatorState.SHUTDOWN) }
     }

@@ -56,6 +56,7 @@ import app.luxion.shogunai.ui.i18n.LocalStrings
 import app.luxion.shogunai.ui.i18n.Strings
 import app.luxion.shogunai.ui.theme.ShogunTheme
 import app.luxion.shogunai.ui.theme.Status
+import androidx.compose.foundation.border
 
 @Composable
 fun WorktreeRow(
@@ -68,6 +69,7 @@ fun WorktreeRow(
     onCopyLaunchCommand: () -> Unit,
     onCopyPath: () -> Unit,
     onOpenInHerdr: () -> Unit,
+    onOpenInOrca: () -> Unit = {},
     agentName: String? = null,
     launchChoices: List<LaunchChoice> = emptyList(),
     onLaunch: (LaunchChoice) -> Unit = {},
@@ -85,6 +87,7 @@ fun WorktreeRow(
                 add(ContextMenuItem(withAgent(strings.copyLaunchCommand, agentName, strings), onClick = onCopyLaunchCommand))
                 if (!prunable) {
                     add(ContextMenuItem(withAgent(strings.openInHerdr, agentName, strings), onClick = onOpenInHerdr))
+                    add(ContextMenuItem(withAgent(strings.openInOrca, agentName, strings), onClick = onOpenInOrca))
                     openActions.forEach { add(ContextMenuItem(it.label, onClick = it.onClick)) }
                 }
                 launchChoices.forEach { choice -> add(ContextMenuItem(choice.label, onClick = { onLaunch(choice) })) }
@@ -101,7 +104,7 @@ fun WorktreeRow(
                 .hoverable(interactionSource)
                 .interactive(onClick = onSelect)
                 .background(
-                    color = if (selected) MaterialTheme.colorScheme.surfaceVariant else Color.Transparent,
+                    color = if (selected) ShogunTheme.colors.accentContainer else Color.Transparent,
                     shape = InteractiveShape,
                 )
                 .padding(horizontal = Spacing.md, vertical = Spacing.sm),
@@ -135,6 +138,7 @@ fun WorktreeRow(
 
 private val BadgeSize = 20.dp
 private val BadgeIconSize = 12.dp
+private val BadgeOutlineWidth = 1.dp
 private val ExecutionWidth = 176.dp
 private val CompactExecutionWidth = 44.dp
 private val GitWidth = 76.dp
@@ -161,7 +165,7 @@ private fun AliasCellView(alias: String, compact: Boolean) {
         Text(
             alias,
             style = ShogunTheme.typography.data,
-            color = MaterialTheme.colorScheme.primary,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.width(if (compact) CompactAliasWidth else AliasWidth).testTag(AliasTag),
@@ -170,12 +174,10 @@ private fun AliasCellView(alias: String, compact: Boolean) {
 }
 
 @Composable
-internal fun StateBadgeKind.color(): Color =
-    status?.let { ShogunTheme.status.of(it).color } ?: MaterialTheme.colorScheme.primary
+internal fun StateBadgeKind.color(): Color = ShogunTheme.status.of(status).color
 
 @Composable
-private fun StateBadgeKind.onColor(): Color =
-    status?.let { ShogunTheme.status.of(it).onColor } ?: MaterialTheme.colorScheme.onPrimary
+private fun StateBadgeKind.onColor(): Color = if (outlined) color() else ShogunTheme.status.of(status).onColor
 
 internal fun StateBadgeKind.icon(): ImageVector = when (this) {
     StateBadgeKind.NEEDS_YOU -> Icons.Default.PriorityHigh
@@ -192,7 +194,13 @@ internal fun StateBadgeKind.icon(): ImageVector = when (this) {
 private fun StateBadgeCell(badge: StateBadge) {
     WithTooltip(label = badge.label) {
         Box(
-            modifier = Modifier.size(BadgeSize).background(badge.kind.color(), CircleShape),
+            modifier = Modifier.size(BadgeSize).then(
+                if (badge.kind.outlined) {
+                    Modifier.border(BadgeOutlineWidth, badge.kind.color(), CircleShape)
+                } else {
+                    Modifier.background(badge.kind.color(), CircleShape)
+                },
+            ),
             contentAlignment = Alignment.Center,
         ) {
             Icon(
@@ -235,7 +243,7 @@ private fun AgentLineView(agent: AgentLine, compact: Boolean) {
             if (!compact) {
                 Text(
                     agent.label,
-                    style = ShogunTheme.typography.dataSmall,
+                    style = MaterialTheme.typography.bodySmall,
                     color = color,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -305,7 +313,7 @@ private fun NameCellView(name: NameCell, onOpenGroupTag: () -> Unit, modifier: M
                 Text(
                     tag,
                     style = ShogunTheme.typography.dataSmall,
-                    color = MaterialTheme.colorScheme.primary,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                     modifier = Modifier
                         .testTag(GroupTagTag)
@@ -327,7 +335,7 @@ private fun NameCellView(name: NameCell, onOpenGroupTag: () -> Unit, modifier: M
             name.project?.let { project ->
                 Text(
                     if (context.isNotEmpty()) "· $project" else project,
-                    style = ShogunTheme.typography.dataSmall,
+                    style = MaterialTheme.typography.bodySmall,
                     color = secondary,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -376,7 +384,7 @@ private fun TimeCellView(time: TimeCell, compact: Boolean) {
         CellLine {
             Text(
                 time.activity.orEmpty(),
-                style = ShogunTheme.typography.dataSmall,
+                style = MaterialTheme.typography.bodySmall,
                 color = secondary,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -385,7 +393,7 @@ private fun TimeCellView(time: TimeCell, compact: Boolean) {
         CellLine {
             Text(
                 time.marks.joinToString(" · "),
-                style = ShogunTheme.typography.dataSmall,
+                style = MaterialTheme.typography.bodySmall,
                 color = secondary,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
