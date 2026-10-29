@@ -229,11 +229,13 @@ class ProcessBuilderShellCommandExecutorTest {
     }
 
     @Test
-    fun `la ejecución con salida en vivo conserva el PATH ampliado`() = runTest {
+    fun `streaming output keeps the host PATH next to the given variables`() = runTest {
         if (System.getProperty("os.name").startsWith("Windows")) return@runTest
-        val result = executor.executeStreaming(listOf("sh", "-c", "echo ${'$'}PATH"), null, mapOf("OTHER" to "1")) {}
+        val withHostPath = ProcessBuilderShellCommandExecutor(path = { listOf("/home/dev/tools/bin", "/usr/bin", "/bin") })
 
-        assertTrue(result.stdout.split(":").contains("/opt/homebrew/bin"))
+        val result = withHostPath.executeStreaming(listOf("/bin/sh", "-c", "printf %s \"${'$'}PATH ${'$'}OTHER\""), null, mapOf("OTHER" to "1")) {}
+
+        assertEquals("/home/dev/tools/bin:/usr/bin:/bin 1", result.stdout)
     }
 
     private fun isRunning(marker: String): Boolean = ProcessHandle.allProcesses().anyMatch { handle ->

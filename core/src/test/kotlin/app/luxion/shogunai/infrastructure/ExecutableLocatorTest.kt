@@ -47,12 +47,13 @@ class ExecutableLocatorTest {
 
     @Test
     fun `built from the host environment, looks in its PATH before the usual install folders`() {
+        if (HostOs.current() == HostOs.WINDOWS) return
         val root = createTempDirectory("executable-locator").toRealPath()
         val home = root.resolve("home")
         val tools = root.resolve("tools/bin").createDirectories()
         tools.resolve("example-tool").createFile()
         home.resolve(".local/bin").createDirectories().resolve("example-tool").createFile()
-        val environment = SystemHostEnvironment(HostOs.LINUX, mapOf("PATH" to tools.toString()), home.toString(), loginShell = null)
+        val environment = SystemHostEnvironment(HostOs.current(), mapOf("PATH" to tools.toString()), home.toString(), loginShell = null)
 
         assertEquals(tools.resolve("example-tool").toString(), ExecutableLocator(environment).find("example-tool"))
         Files.delete(tools.resolve("example-tool"))
