@@ -14,7 +14,6 @@ import app.luxion.shogunai.AppContainer
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.ProjectConfig
 import kotlin.test.Test
-import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 @OptIn(ExperimentalTestApi::class)
@@ -58,8 +57,9 @@ class CreateWorktreeE2eTest {
         onNode(hasClickAction() and hasText(strings.createWorktree)).performClick()
 
         val worktree = worktreesRoot.resolve("TASK-123")
-        awaitCondition("the local files in the worktree") { localFiles.keys.all { worktree.resolve(it).exists() } }
-        localFiles.forEach { (path, text) -> assertEquals(text, worktree.resolve(path).readText()) }
+        awaitCondition("the local files copied into the worktree") {
+            localFiles.all { (path, text) -> runCatching { worktree.resolve(path).readText() }.getOrNull() == text }
+        }
         assertTrue(environment.git(repository, "worktree", "list").contains(worktree.canonicalPath.replace('\\', '/')))
         assertTrue(environment.git(repository, "branch", "--list").contains("TASK-123"))
         awaitText("TASK-123", substring = true)
