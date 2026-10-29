@@ -1,0 +1,123 @@
+{
+  "id": "7866756a-d054-4155-a0ee-e9b6325f6837",
+  "ok": true,
+  "result": {
+    "platform": "darwin",
+    "scannedAt": 1793288229810,
+    "ports": [
+      {
+        "id": "*:5000:673",
+        "bindHost": "*",
+        "connectHost": "localhost",
+        "port": 5000,
+        "pid": 673,
+        "processName": "ControlCenter",
+        "protocol": "http",
+        "kind": "external"
+      },
+      {
+        "id": "127.0.0.1:6768:50856",
+        "bindHost": "127.0.0.1",
+        "connectHost": "127.0.0.1",
+        "port": 6768,
+        "pid": 50856,
+        "processName": "Orca",
+        "protocol": "unknown",
+        "kind": "external"
+      },
+      {
+        "id": "*:7000:673",
+        "bindHost": "*",
+        "connectHost": "localhost",
+        "port": 7000,
+        "pid": 673,
+        "processName": "ControlCenter",
+        "protocol": "unknown",
+        "kind": "external"
+      },
+      {
+        "id": "127.0.0.1:8765:14597",
+        "bindHost": "127.0.0.1",
+        "connectHost": "127.0.0.1",
+        "port": 8765,
+        "pid": 14597,
+        "processName": "Python",
+        "protocol": "http",
+        "kind": "workspace",
+        "owner": {
+          "worktreeId": "a9af95a5-5894-4761-8e24-d3a85dbbc64d::/projects/worktrees/TASK-1",
+          "repoId": "a9af95a5-5894-4761-8e24-d3a85dbbc64d",
+          "displayName": "feature/TASK-1",
+          "path": "/projects/worktrees/TASK-1",
+          "confidence": "cwd"
+        },
+        "advertisedUrl": "http://127.0.0.1:8765"
+      },
+      {
+        "id": "127.0.0.1:10004:2474",
+        "bindHost": "127.0.0.1",
+        "connectHost": "127.0.0.1",
+        "port": 10004,
+        "pid": 2474,
+        "processName": "java",
+        "protocol": "unknown",
+        "kind": "workspace",
+        "owner": {
+          "worktreeId": "718955fc-ce46-466b-a46c-9f1419817864::/projects/other-worktree",
+          "repoId": "718955fc-ce46-466b-a46c-9f1419817864",
+          "displayName": "feature/orca-agent-details",
+          "path": "/projects/other-worktree",
+          "confidence": "cwd"
+        }
+      },
+      {
+        "id": "127.0.0.1:10011:18719",
+        "bindHost": "127.0.0.1",
+        "connectHost": "127.0.0.1",
+        "port": 10011,
+        "pid": 18719,
+        "processName": "java",
+        "protocol": "unknown",
+        "kind": "workspace",
+        "owner": {
+          "worktreeId": "a9af95a5-5894-4761-8e24-d3a85dbbc64d::/projects/worktrees/TASK-1",
+          "repoId": "a9af95a5-5894-4761-8e24-d3a85dbbc64d",
+          "displayName": "feature/TASK-1",
+          "path": "/projects/worktrees/TASK-1",
+          "confidence": "cwd"
+        }
+      },
+      {
+        "id": "127.0.0.1:51461:50856",
+        "bindHost": "127.0.0.1",
+        "connectHost": "127.0.0.1",
+        "port": 51461,
+        "pid": 50856,
+        "processName": "Orca",
+        "protocol": "unknown",
+        "kind": "external"
+      },
+      {
+        "id": "127.0.0.1:61610:2674",
+        "bindHost": "127.0.0.1",
+        "connectHost": "127.0.0.1",
+        "port": 61610,
+        "pid": 2674,
+        "processName": "java",
+        "protocol": "unknown",
+        "kind": "workspace",
+        "owner": {
+          "worktreeId": "718955fc-ce46-466b-a46c-9f1419817864::/projects/other-worktree",
+          "repoId": "718955fc-ce46-466b-a46c-9f1419817864",
+          "displayName": "feature/orca-agent-details",
+          "path": "/projects/other-worktree",
+          "confidence": "cwd"
+        }
+      }
+    ],
+    "executionHostId": "local"
+  },
+  "_meta": {
+    "runtimeId": "82367bbd-cceb-4618-970a-a1eac65c406c"
+  }
+}

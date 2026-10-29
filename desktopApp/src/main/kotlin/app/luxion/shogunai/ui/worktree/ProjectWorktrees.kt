@@ -20,6 +20,7 @@ import app.luxion.shogunai.domain.model.GradleProvider
 import app.luxion.shogunai.domain.model.HeadlessAppProcess
 import app.luxion.shogunai.domain.model.HerdrOpening
 import app.luxion.shogunai.domain.model.HerdrOutcome
+import app.luxion.shogunai.domain.model.ObservedPort
 import app.luxion.shogunai.domain.model.OrcaOutcome
 import app.luxion.shogunai.domain.usecase.OrcaOrigins
 import app.luxion.shogunai.domain.model.MainBranch
@@ -127,6 +128,8 @@ class ProjectWorktrees(
     var sizes by mutableStateOf<Map<String, Long>>(emptyMap())
         private set
     var ports by mutableStateOf<Map<String, Map<String, Int>>>(emptyMap())
+        private set
+    var observedPorts by mutableStateOf<Map<String, List<ObservedPort>>>(emptyMap())
         private set
     var environments by mutableStateOf<Map<String, WorktreeEnvironment>>(emptyMap())
         private set
@@ -357,6 +360,7 @@ class ProjectWorktrees(
         agents = detected?.filterKeys { it in paths }
         agentsReadAt = clock()
         orcaOrigins = useCases.orca.origins()
+        observedPorts = useCases.orca.ports(worktrees).orEmpty()
     }
 
     suspend fun refreshDevices() {
@@ -454,6 +458,7 @@ class ProjectWorktrees(
                 agents = detected
                 agentsReadAt = clock()
                 orcaOrigins = useCases.orca.origins()
+                observedPorts = useCases.orca.ports(listed).orEmpty()
             }
         }
         loadGradleSection()

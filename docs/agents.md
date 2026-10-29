@@ -139,6 +139,10 @@ ShogunAi runs the project's own command rather than Orca's agent launcher, whose
 
 The main worktree, worktrees Orca doesn't list and folder workspaces are left alone, and Orca is never started for this. A failed update never fails the action: the command line prints `shogun: couldn't update <path> in Orca: …` and the app tries again on its next refresh.
 
+**What the agent is doing.** With the states, Orca reports what each agent waits on, what it was asked and what it last said. The worktree's detail shows, under each agent Orca reports, the tool it waits on with its input (only while it's blocked, for example `Waiting on Bash: npm test` on a permission prompt), its prompt and its last message, each shortened to three lines, and `shogun status --json` gives them in each agent's `activity`.
+
+**Ports Orca sees.** Orca ties the ports listening on the machine to the worktree their process runs in, also for worktrees it only shows, such as ShogunAi's. With the states, ShogunAi reads them with one `orca ports --all` per refresh, under the same rules: the worktree's detail lists them after the ports ShogunAi reserves, with the process and the address a dev server printed in an Orca terminal, and marks the reserved ports Orca sees listening; `shogun status` adds `listening=<ports>` and its JSON `listeningPorts`.
+
 **Origin.** Worktrees Orca created are labelled "Orca". A ShogunAi worktree opened in Orca keeps its ShogunAi label. While Orca can't be asked, worktrees inside the folder where Orca last created one, or `~/orca/workspaces`, are labelled "Orca".
 
 **Worktrees created from Orca.** Orca creates its worktrees in its own folder with branches named `<git user>/<name>`. Prefer creating them from ShogunAi. For the ones created from Orca anyway, add ShogunAi to the repository's `orca.yaml`, as described in [Configuration](guide/configuration.md#orca): `shogun hook orca setup` provisions them like `shogun provision` and notes when they're outside the project's worktrees folder, and `shogun hook orca archive` frees their emulator, simulator and idle Gradle daemons before Orca removes them.

@@ -4,6 +4,8 @@ import app.luxion.shogunai.domain.FakeAgentSessionStore
 import app.luxion.shogunai.domain.FakeClaudeSessionRegistry
 import app.luxion.shogunai.domain.FakeHerdrClient
 import app.luxion.shogunai.domain.FakeOrcaClient
+import app.luxion.shogunai.domain.model.AgentActivity
+import app.luxion.shogunai.domain.model.AgentTool
 import app.luxion.shogunai.domain.model.OrcaAgent
 import app.luxion.shogunai.domain.model.OrcaWorktree
 import app.luxion.shogunai.domain.FakeShellCommandExecutor
@@ -24,6 +26,7 @@ import app.luxion.shogunai.domain.model.WorktreeError
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
@@ -314,6 +317,65 @@ class DetectRunningAgentsUseCaseTest {
         val agents = detectWithOrca(orca)(config, worktrees).getOrThrow()
 
         assertEquals(listOf(RunningAgent("claude", AgentState.BLOCKED, stateSource = AgentStateSource.ORCA)), agents[nested.path])
+    }
+
+    @Test
+    fun `an agent waiting on a tool in Orca carries the tool, its input and its prompt`() = runTest {
+        val activity = AgentActivity(AgentTool("Bash", "curl -s https://example.com -o page.html"), prompt = "Download the page")
+        val orca = FakeOrcaClient(psRows = listOf(OrcaWorktree(nested.path, false, listOf(OrcaAgent("claude", AgentState.BLOCKED, activity)))))
+
+        val agents = detectWithOrca(orca)(config, worktrees).getOrThrow()
+
+        assertEquals(listOf(RunningAgent("claude", AgentState.BLOCKED, stateSource = AgentStateSource.ORCA, activity = activity)), agents[nested.path])
+    }
+
+    @Test
+    fun `a done agent only Orca sees carries its prompt and last message`() = runTest {
+        val activity = AgentActivity(prompt = "Save the date", lastMessage = "Saved it in now.txt")
+        val orca = FakeOrcaClient(psRows = listOf(OrcaWorktree(sibling.path, false, listOf(OrcaAgent("claude", AgentState.DONE, activity)))))
+
+        val agents = detectWithOrca(orca)(config, worktrees).getOrThrow()
+
+        assertEquals(listOf(RunningAgent("claude", AgentState.DONE, stateSource = AgentStateSource.ORCA, activity = activity)), agents[sibling.path])
+    }
+
+    @Test
+    fun `the details of several Orca agents of one name are those of the one shown`() = runTest {
+        val waiting = AgentActivity(AgentTool("Bash"), prompt = "B")
+        val orca = FakeOrcaClient(
+            psRows = listOf(
+                OrcaWorktree(
+                    nested.path,
+                    false,
+                    listOf(OrcaAgent("claude", AgentState.WORKING, AgentActivity(prompt = "A")), OrcaAgent("claude", AgentState.BLOCKED, waiting)),
+                ),
+            ),
+        )
+
+        val agents = detectWithOrca(orca)(config, worktrees).getOrThrow()
+
+        assertEquals(waiting, agents[nested.path]?.single()?.activity)
+    }
+
+    @Test
+    fun `an agent Orca doesn't report carries no details`() = runTest {
+        val orca = FakeOrcaClient(psRows = listOf(orcaRow(sibling.path, "claude" to AgentState.WORKING)))
+
+        val agents = detectWithOrca(orca)(config, worktrees).getOrThrow()
+
+        assertEquals(listOf(RunningAgent("codex")), agents[main.path])
+        assertNull(agents[nested.path]?.single()?.activity)
+    }
+
+    @Test
+    fun `Orca's details are kept when Herdr's state wins`() = runTest {
+        val herdr = FakeHerdrClient(agents = listOf(herdrAgent(nested.path, AgentState.BLOCKED, pane = "w2:p1")))
+        val activity = AgentActivity(prompt = "Count to ten")
+        val orca = FakeOrcaClient(psRows = listOf(OrcaWorktree(nested.path, false, listOf(OrcaAgent("claude", AgentState.WORKING, activity)))))
+
+        val agents = DetectRunningAgentsUseCase(executor(), herdr, orca = orcaReader(orca), canonical = { it })(config, worktrees).getOrThrow()
+
+        assertEquals(listOf(RunningAgent("claude", AgentState.BLOCKED, "w2:p1", AgentStateSource.HERDR, activity = activity)), agents[nested.path])
     }
 
     @Test

@@ -8,7 +8,9 @@ data class OrcaStatus(val running: Boolean, val version: String? = null)
 
 data class OrcaRepo(val id: String, val path: String, val externalWorktreeVisibility: String? = null)
 
-data class OrcaAgent(val agent: String, val state: AgentState?)
+data class OrcaAgent(val agent: String, val state: AgentState?, val activity: AgentActivity? = null)
+
+data class OrcaPort(val port: Int, val worktreePath: String, val process: String? = null, val url: String? = null)
 
 data class OrcaWorktree(
     val path: String,
