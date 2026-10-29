@@ -11,6 +11,7 @@ import java.nio.file.StandardOpenOption
 
 class FileAppInstanceLock(
     private val lockFile: Path = Path.of(System.getProperty("user.home"), ".shogunai", "app.lock"),
+    private val tryLock: (FileChannel) -> FileLock? = FileChannel::tryLock,
 ) : AppInstanceLock {
 
     private var channel: FileChannel? = null
@@ -21,7 +22,7 @@ class FileAppInstanceLock(
         if (held != null) return true
         val opened = open() ?: return false
         val lock = try {
-            opened.tryLock()
+            tryLock(opened)
         } catch (_: OverlappingFileLockException) {
             null
         } catch (_: IOException) {
@@ -42,7 +43,7 @@ class FileAppInstanceLock(
         val opened = open() ?: return false
         return opened.use {
             try {
-                it.tryLock()?.also { probe -> probe.release() } == null
+                tryLock(it)?.also { probe -> probe.release() } == null
             } catch (_: OverlappingFileLockException) {
                 true
             } catch (_: IOException) {

@@ -13,6 +13,15 @@ Don't load all of `docs/` into context by default: search for the specific page 
 - Code compiles without warnings: every compiler warning is an error in every module. Tests may use `ExperimentalCoroutinesApi` APIs without `@OptIn`; production code may not.
 - **Never use company identifiers** (internal repo names, task prefixes, etc.) in code, tests, or examples. Use generic placeholders (`~/projects/main-repo`, `TASK-123`).
 
+## Coverage
+
+Kover measures line and branch coverage of every module, and `./gradlew koverVerify` (run by the macOS job of the Tests workflow) fails below a module's rules, set in its `build.gradle.kts`.
+
+- `core` and `cli` must keep 100% of their lines: every production line you add needs a unit test. Their branches, and the lines and branches of the desktop app outside its composables, have floors.
+- When your change raises a figure past a whole percentage, raise that floor in the same change. Never lower a floor.
+- Don't exclude code to meet a rule. The exclusions and their reasons are listed in the archived `coverage-kover` change's `design.md` (`openspec/changes/archive/*-coverage-kover/`); a new one needs its own reason in your change's design.
+- Code that depends on the operating system takes it as a parameter (`osName`), so tests cover every system's path on the macOS job.
+
 ## How to document
 
 | What you're documenting | Where |
@@ -38,6 +47,8 @@ Rules:
 ./gradlew :desktopApp:hotRun --auto  # run with hot reload
 ./gradlew :cli:run --args="status"   # run the shogun CLI
 ./gradlew test                       # run tests for all modules
+./gradlew koverVerify                # check every module's coverage rules
+./gradlew koverHtmlReport            # coverage report per module in <module>/build/reports/kover/html
 mkdocs serve                         # serve the docs locally
 ```
 

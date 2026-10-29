@@ -7,12 +7,12 @@ Nothing measures how much of ShogunAi the tests exercise, so a change can add un
 ## What Changes
 
 - Kover measures line and branch coverage of `core`, `cli` and `desktopApp` whenever their tests run, with an HTML and XML report per module.
-- Coverage counts production code only: test fixtures are excluded everywhere, and in the desktop app composable functions and the lambdas Compose generates for them are excluded too, since the end-to-end tests of the desktop app will cover them.
+- Coverage counts production code only: test fixtures and compiler-generated interface bridges are excluded everywhere, the CLI's process entry point is excluded from `cli`, and in the desktop app composable functions and the lambdas Compose generates for them are excluded too, since the end-to-end tests of the desktop app will cover them.
 - Each module has a verification rule:
   - `core` and `cli`: 100% of lines, and branches at least at their current percentage.
   - `desktopApp` outside its composables: lines and branches at least at their current percentage.
 - New unit tests in `core` and `cli` cover every line that isn't covered today.
-- The Tests workflow verifies the rules on every operating system it runs on, so a pull request that lowers coverage below a rule fails its check.
+- The Tests workflow verifies the rules on its macOS job, where the floors are measured, so a pull request that lowers coverage below a rule fails its check.
 - A guideline in `AGENTS.md`: a change that raises a module's coverage raises its floor to the new level, and no change lowers a floor.
 - The roadmap keeps the remaining steps: raising branches of `core` and `cli`, and lines and branches of the desktop app, up to 100%.
 
@@ -30,6 +30,6 @@ Nothing measures how much of ShogunAi the tests exercise, so a change can add un
 
 - Build: `gradle/libs.versions.toml` (Kover 0.9.11), `core`, `cli` and `desktopApp` build scripts.
 - CI: `.github/workflows/test-suite.yml` runs the coverage verification after the tests.
-- Tests: new and extended unit tests under `core/src/test` and `cli/src/test`. Production code is changed only where a line can't be reached from a test without injecting a value, and only with the smallest possible change (a constructor parameter with the current default).
+- Tests: new and extended unit tests under `core/src/test` and `cli/src/test`, and small additions to `core`'s test fixtures. Production code changes only where a line couldn't be reached: dead code and unreachable branches removed, and a few seams with today's behavior as default (see design.md).
 - Docs: `AGENTS.md` (coverage guideline and command), `docs/roadmap.md` and `docs/roadmap.es.md`.
 - In-flight changes: `host-environment` and `worktree-preflight` add production code to `core` and `cli`, which has to arrive with all its lines tested once this change is in `develop`; see design.md.

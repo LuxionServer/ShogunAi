@@ -165,4 +165,29 @@ class CloseOrcaTerminalsUseCaseTest {
         assertEquals(setOf(path), CloseOrcaTerminalsUseCase(running).withTerminals(listOf(path, other)))
         assertEquals(emptySet(), CloseOrcaTerminalsUseCase(closed).withTerminals(listOf(path, other)))
     }
+
+    @Test
+    fun `an Orca status that fails counts as Orca not running`() = runTest {
+        val orca = FakeOrcaClient(statusFailure = IllegalStateException("socket closed"), terminals = mapOf(path to listOf(OrcaTerminal("term_1", path))))
+
+        assertEquals(emptySet(), CloseOrcaTerminalsUseCase(orca).withTerminals(listOf(path)))
+    }
+
+    @Test
+    fun `a retry that fails for another reason reports the git error`() = runTest {
+        var attempts = 0
+        val executor = FakeShellCommandExecutor { command ->
+            if (command == removeCommand) {
+                attempts++
+                failure(command, exitCode = 128, stderr = if (attempts == 1) locked else "fatal: unexpected failure")
+            } else {
+                success(command)
+            }
+        }
+
+        val error = removal(executor, openIn(path))(path).exceptionOrNull()
+
+        assertTrue(error is WorktreeError.GitCommandFailed)
+        assertEquals(2, attempts)
+    }
 }

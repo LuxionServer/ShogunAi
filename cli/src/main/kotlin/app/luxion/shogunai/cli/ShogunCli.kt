@@ -346,6 +346,7 @@ class ShogunCli(
         ClaudeCodeHooks.claudeSessionsDirectory(environmentVariable(CLAUDE_CONFIG_DIR), userHome),
     ),
     private val isClaudeProcessAlive: (Long) -> Boolean = ::isLiveClaudeProcess,
+    private val onShutdown: (Thread) -> () -> Unit = ::addJvmShutdownHook,
 ) {
     private val orcaReader = OrcaWorktreeReader(orca, orcaWorkspaces, userHome)
 
@@ -471,11 +472,11 @@ class ShogunCli(
             job.cancel()
             runBlocking { job.join() }
         }
-        Runtime.getRuntime().addShutdownHook(hook)
+        val removeHook = onShutdown(hook)
         try {
             return block()
         } finally {
-            runCatching { Runtime.getRuntime().removeShutdownHook(hook) }
+            removeHook()
         }
     }
 
@@ -3168,3 +3169,8 @@ internal fun claudeAncestorPid(): Long? =
     generateSequence(ProcessHandle.current().parent().orElse(null)) { it.parent().orElse(null) }
         .firstOrNull { it.info().command().orElse("").substringAfterLast('/') == "claude" }
         ?.pid()
+
+private fun addJvmShutdownHook(hook: Thread): () -> Unit {
+    Runtime.getRuntime().addShutdownHook(hook)
+    return { runCatching { Runtime.getRuntime().removeShutdownHook(hook) } }
+}

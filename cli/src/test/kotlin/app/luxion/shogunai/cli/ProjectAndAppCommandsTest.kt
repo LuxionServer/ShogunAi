@@ -223,6 +223,13 @@ class ProjectAndAppCommandsTest {
     }
 
     @Test
+    fun `project list json names each project with its repository`() {
+        cli(FakeProjectRepository(listOf(registered))).run(listOf("project", "list", "--json"))
+
+        assertEquals("{\"projects\":[{\"id\":\"${registered.id}\",\"name\":\"${registered.name}\",\"repository\":\"$base\"}]}\n", out.toString())
+    }
+
+    @Test
     fun `project remove removes the repository's project only`() {
         val second = registered.copy(id = "second", config = registered.config.copy(baseRepositoryPath = other))
         val projects = FakeProjectRepository(listOf(registered, second))

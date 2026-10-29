@@ -84,6 +84,16 @@ class WorktreeEmulatorUseCasesTest {
     }
 
     @Test
+    fun `by default the boot is polled with real pauses`() = runTest {
+        val sdk = FakeAndroidSdk(bootAfterPolls = 2)
+        val harness = harness(sdk)
+
+        val emulator = StartWorktreeEmulatorUseCase(provisioning(), harness.resolve, harness.acquire, sdk)(config, task).getOrThrow().device
+
+        assertEquals(EmulatorState.RUNNING, emulator.state)
+    }
+
+    @Test
     fun `fails at once with the log tail when the emulator process exits`() = runTest {
         val sdk = FakeAndroidSdk(bootAfterPolls = 1000)
         sdk.process = FakeAndroidSdk.FakeEmulatorProcess(alive = false, log = "line 1\nPANIC: Broken AVD system path")
@@ -102,6 +112,16 @@ class WorktreeEmulatorUseCasesTest {
 
         start(sdk)(config, task).getOrThrow()
 
+        assertTrue(sdk.started.isEmpty())
+    }
+
+    @Test
+    fun `an emulator already booting is waited for without starting another`() = runTest {
+        val sdk = FakeAndroidSdk(states = mutableMapOf("emulator-5554" to EmulatorState.BOOTING), bootAfterPolls = 5)
+
+        val emulator = start(sdk)(config, task).getOrThrow().device
+
+        assertEquals(WorktreeEmulator("emulator-5554", EmulatorState.RUNNING), emulator)
         assertTrue(sdk.started.isEmpty())
     }
 

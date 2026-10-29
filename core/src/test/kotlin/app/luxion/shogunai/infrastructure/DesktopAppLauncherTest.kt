@@ -1,5 +1,9 @@
 package app.luxion.shogunai.infrastructure
 
+import java.io.IOException
+import java.nio.file.Files
+import org.junit.Assume.assumeFalse
+import kotlin.test.assertFailsWith
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -41,5 +45,25 @@ class DesktopAppLauncherTest {
     fun `reports availability from the running executable`() {
         assertTrue(DesktopAppLauncher({ "/opt/shogunai/bin/ShogunAi" }, "Linux").isAvailable())
         assertFalse(DesktopAppLauncher({ "/usr/bin/java" }, "Linux").isAvailable())
+    }
+
+    @Test
+    fun `launching without a located app fails`() {
+        assertFailsWith<IOException> { DesktopAppLauncher(executable = { null }, osName = "Linux").launch() }
+    }
+
+    @Test
+    fun `launching starts the located app`() {
+        assumeFalse(isWindowsHost)
+        val folder = Files.createTempDirectory("desktop-app")
+        val app = folder.resolve("ShogunAi")
+        try {
+            Files.writeString(app, "#!/bin/sh\nexit 0\n")
+            app.toFile().setExecutable(true)
+
+            DesktopAppLauncher(executable = { app.toString() }, osName = "Linux").launch()
+        } finally {
+            folder.toFile().deleteRecursively()
+        }
     }
 }

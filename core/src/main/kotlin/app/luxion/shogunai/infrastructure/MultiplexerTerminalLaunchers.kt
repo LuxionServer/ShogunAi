@@ -46,7 +46,7 @@ class TmuxTerminalLauncher(private val executor: ShellCommandExecutor) : Termina
 
     private companion object {
         const val MINIMUM_MAJOR = 3
-        val VERSION = Regex("(\\d+)\\.\\d+")
+        private val VERSION = Regex("(\\d+)\\.\\d+")
     }
 }
 

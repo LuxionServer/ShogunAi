@@ -15,7 +15,9 @@ import java.nio.file.StandardCopyOption
 import java.nio.file.attribute.BasicFileAttributes
 import java.util.Properties
 
-class NioFileManager : FileManager {
+class NioFileManager(
+    private val linkTo: (Path, Path) -> Unit = { link, target -> Files.createSymbolicLink(link, target) },
+) : FileManager {
 
     override fun exists(path: String): Boolean = Files.exists(Path.of(path))
 
@@ -42,7 +44,7 @@ class NioFileManager : FileManager {
         linkPath.parent?.let { Files.createDirectories(it) }
         Files.deleteIfExists(linkPath)
         try {
-            Files.createSymbolicLink(linkPath, Path.of(target))
+            linkTo(linkPath, Path.of(target))
         } catch (error: UnsupportedOperationException) {
             throw SymbolicLinksNotSupported(error)
         } catch (error: FileSystemException) {

@@ -84,4 +84,11 @@ class ListGradleDaemonsUseCaseTest {
 
         assertEquals(listOf(1L, 3L), pids)
     }
+
+    @Test
+    fun `total memory adds the resident memory of every daemon`() {
+        val daemons = listOf(GradleDaemon(kotlinDaemon(1, memoryBytes = 300L), null), GradleDaemon(kotlinDaemon(2, memoryBytes = 200L), null))
+
+        assertEquals(500L, totalResidentMemory(daemons))
+    }
 }

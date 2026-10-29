@@ -40,4 +40,10 @@ class ExecutableLocatorTest {
 
         assertNull(locator.find("shogun"))
     }
+
+    @Test
+    fun `user bin folders are the usual ones outside Windows and none on Windows`() {
+        assertEquals(listOf("/opt/homebrew/bin", "/usr/local/bin", "/home/dev/.local/bin", "/home/dev/.cargo/bin"), ExecutableLocator(HostOs.MACOS, "/home/dev").userBinFolders())
+        assertEquals(emptyList(), ExecutableLocator(HostOs.WINDOWS, "C:\\Users\\dev").userBinFolders())
+    }
 }

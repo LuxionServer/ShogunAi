@@ -102,6 +102,6 @@ class FileAgentSessionStore(
         const val SESSIONS = "agent-sessions"
         const val EXTENSION = ".json"
         const val GITDIR_PREFIX = "gitdir:"
-        val UNSAFE = Regex("[^A-Za-z0-9_.-]")
+        private val UNSAFE = Regex("[^A-Za-z0-9_.-]")
     }
 }

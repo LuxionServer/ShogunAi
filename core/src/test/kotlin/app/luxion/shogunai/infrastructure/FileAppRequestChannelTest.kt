@@ -2,6 +2,7 @@ package app.luxion.shogunai.infrastructure
 
 import app.luxion.shogunai.domain.model.AppRequest
 import java.nio.file.Files
+import kotlin.io.path.createDirectories
 import kotlin.io.path.createTempDirectory
 import kotlin.io.path.listDirectoryEntries
 import kotlin.test.Test
@@ -56,5 +57,12 @@ class FileAppRequestChannelTest {
     @Test
     fun `receives nothing when the folder doesn't exist`() {
         assertTrue(channel.receive(nowMillis = 1_000).isEmpty())
+    }
+
+    @Test
+    fun `a request that can't be read is skipped`() {
+        directory.resolve("broken.json").createDirectories()
+
+        assertEquals(emptyList(), channel.receive(0L))
     }
 }

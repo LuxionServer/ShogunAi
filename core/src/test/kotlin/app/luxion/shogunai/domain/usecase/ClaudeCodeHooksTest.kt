@@ -257,4 +257,15 @@ class ClaudeCodeHooksTest {
 
         assertIs<JsonArray>(written().getValue("hooks").jsonObject.getValue("Stop"))
     }
+
+    @Test
+    fun `previewing an uninstall lists the ShogunAi hooks without writing`() {
+        hooks.install(path).getOrThrow()
+        val installed = files.writtenTexts.getValue(path)
+
+        val preview = hooks.previewUninstall(path).getOrThrow()
+
+        assertEquals(allEvents, preview.removed.map { it.event })
+        assertEquals(installed, files.writtenTexts.getValue(path))
+    }
 }

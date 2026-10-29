@@ -37,7 +37,7 @@ class ProcessGradleDaemonSource(
         Path.of(gradleUserHome, "daemon", version, "daemon-$pid.out.log")
 
     private companion object {
-        val PS_COMMAND = listOf("ps", "-A", "-ww", "-o", "pid=,rss=,command=")
+        private val PS_COMMAND = listOf("ps", "-A", "-ww", "-o", "pid=,rss=,command=")
         const val LOG_TAIL_BYTES = 1L shl 20
     }
 }

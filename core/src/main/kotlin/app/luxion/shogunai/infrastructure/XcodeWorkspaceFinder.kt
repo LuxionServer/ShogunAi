@@ -37,6 +37,6 @@ class FileSystemXcodeWorkspaceFinder(private val maxDepth: Int = MAX_DEPTH) : Xc
         const val MAX_DEPTH = 4
         const val WORKSPACE_SUFFIX = ".xcworkspace"
         const val PROJECT_SUFFIX = ".xcodeproj"
-        val SKIPPED = setOf("Pods", "build", "DerivedData", "node_modules", "Carthage")
+        private val SKIPPED = setOf("Pods", "build", "DerivedData", "node_modules", "Carthage")
     }
 }

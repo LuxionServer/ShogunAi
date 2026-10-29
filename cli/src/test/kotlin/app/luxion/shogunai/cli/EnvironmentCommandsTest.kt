@@ -300,6 +300,26 @@ class EnvironmentCommandsTest {
     }
 
     @Test
+    fun `simulator status json after a release says for whom, and without the provider it fails`() {
+        store.writeReleases("$common/worktrees/TASK-123", mapOf("ios-simulator" to ReleaseRecord(1_000L, "main-repo · TASK-9", "UDID-1")))
+
+        assertEquals(0, cli(withSimulator()).run(listOf("simulator", "status", "--json")))
+        val released = jsonOut().getValue("releasedFor") as kotlinx.serialization.json.JsonObject
+
+        assertEquals("main-repo · TASK-9", released.text("worktree"))
+        assertEquals(1, cli(withEmulator()).run(listOf("simulator", "status")))
+    }
+
+    @Test
+    fun `simulator start json reports an Orca that fails to show the simulator`() {
+        val orca = FakeOrcaClient(psRows = listOf(OrcaWorktree(linked, createdByOrca = false)), attachFailure = WorktreeError.OrcaCommandFailed(listOf("orca"), "no emulator view"))
+
+        assertEquals(0, cli(withSimulator(), orca = orca).run(listOf("simulator", "start", "--json")))
+
+        assertEquals("\"failed\"", jsonOut().getValue("orcaView").toString())
+    }
+
+    @Test
     fun `emulator start shows the emulator in Orca when the worktree is open there, keeping standard output`() {
         store.writePorts("$common/worktrees/TASK-123", mapOf("emulator" to 5554))
         androidSdk.states["emulator-5554"] = EmulatorState.RUNNING
@@ -792,6 +812,34 @@ class EnvironmentCommandsTest {
         assertTrue(out.contains("stopped 12"), out.toString())
         assertTrue(out.contains("gradle daemons 2/2"), out.toString())
         assertTrue(executedCommands.any { it == listOf("kill", "12") })
+    }
+
+    @Test
+    fun `pool trim --json lists what it stopped and kept`() {
+        resourceLimits.settings = ResourceSettings(CapacityProfile.CUSTOM, ResourceLimits(emulators = null, simulators = null, gradleDaemons = 1))
+        daemons.daemons = listOf(
+            FakeGradleDaemonSource.gradleDaemon(11, DaemonState.Idle(Instant.parse("2026-01-01T11:00:00Z"))),
+            FakeGradleDaemonSource.gradleDaemon(12, DaemonState.Idle(Instant.parse("2026-01-01T12:00:00Z"))),
+            FakeGradleDaemonSource.gradleDaemon(13, DaemonState.Busy),
+        )
+        daemons.laterDaemons = listOf(
+            FakeGradleDaemonSource.gradleDaemon(11, DaemonState.Idle(Instant.parse("2026-01-01T11:00:00Z"))),
+            FakeGradleDaemonSource.gradleDaemon(12, DaemonState.Busy),
+            FakeGradleDaemonSource.gradleDaemon(13, DaemonState.Busy),
+        )
+
+        assertEquals(0, cli(withEmulator()).run(listOf("pool", "trim", "--json")), err.toString())
+
+        assertEquals("{\"limit\":1,\"stopped\":[11],\"kept\":[{\"pid\":12,\"reason\":\"busy\"}],\"remaining\":2}\n", out.toString())
+    }
+
+    @Test
+    fun `pool status lists Gradle daemons by pid`() {
+        daemons.daemons = listOf(FakeGradleDaemonSource.gradleDaemon(11, DaemonState.Busy))
+
+        assertEquals(0, cli(withEmulator()).run(listOf("pool", "status")), err.toString())
+
+        assertTrue(out.lines().contains("  pid 11 - busy"), out.toString())
     }
 
     @Test

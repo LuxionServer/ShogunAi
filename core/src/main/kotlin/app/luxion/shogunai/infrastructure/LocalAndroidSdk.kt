@@ -125,7 +125,7 @@ internal fun parseAdbDevices(output: String): Map<String, String> =
         }
         .toMap()
 
-private fun launchDetached(command: List<String>, log: File): EmulatorProcess {
+internal fun launchDetached(command: List<String>, log: File): EmulatorProcess {
     val process = ProcessBuilder(WindowsArguments.prepare(command, System.getProperty("os.name")))
         .redirectErrorStream(true)
         .redirectOutput(ProcessBuilder.Redirect.appendTo(log))

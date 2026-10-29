@@ -12,11 +12,15 @@ The build SHALL measure line and branch coverage of the `core`, `cli` and `deskt
 - **THEN** its tests run and a report shows the module's line and branch coverage per class
 
 ### Requirement: Coverage counts production code only
-Coverage SHALL count only the production code of each module. Test fixtures SHALL be excluded in every module, and in the desktop app composable functions and the code Compose generates for them SHALL be excluded, since the desktop app's end-to-end tests cover them.
+Coverage SHALL count only the production code of each module that unit tests can reach: test fixtures and compiler-generated interface bridges SHALL be excluded everywhere, the command-line tool's process entry point SHALL be excluded from `cli`, and the desktop app's composables SHALL be excluded, since its end-to-end tests cover them.
 
 #### Scenario: Untested composable
 - **WHEN** a composable function of the desktop app is not run by any unit test
 - **THEN** the desktop app's coverage is unchanged by it
+
+#### Scenario: Command-line entry point
+- **WHEN** the `main` function of the command-line tool and the wiring it runs are not run by any unit test
+- **THEN** `cli`'s coverage is unchanged by them
 
 #### Scenario: Test fixture
 - **WHEN** a fake shared through `core`'s test fixtures has code no test runs

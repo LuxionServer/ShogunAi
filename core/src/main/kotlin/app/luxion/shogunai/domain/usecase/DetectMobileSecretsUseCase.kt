@@ -71,7 +71,7 @@ class DetectMobileSecretsUseCase(
     private data class KeystoreReference(val keystore: String? = null, val warning: KeystoreReferenceWarning? = null)
 
     private companion object {
-        val SECRET_PATTERNS = listOf(
+        private val SECRET_PATTERNS = listOf(
             "local.properties",
             "keystore.properties",
             "key.properties",
@@ -82,9 +82,9 @@ class DetectMobileSecretsUseCase(
             "firebase_options.dart",
         )
         val FIREBASE_CONFIG_FILES = setOf("google-services.json", "GoogleService-Info.plist", "firebase_options.dart")
-        val PROPERTIES_KINDS = setOf(MobileSecretKind.LOCAL_PROPERTIES, MobileSecretKind.SIGNING_PROPERTIES)
-        val EXCLUDED_FOLDERS = setOf("build", ".gradle", ".dart_tool", "node_modules", "Pods", "DerivedData")
-        val KEY_SEPARATORS = setOf('.', '_', '-')
+        private val PROPERTIES_KINDS = setOf(MobileSecretKind.LOCAL_PROPERTIES, MobileSecretKind.SIGNING_PROPERTIES)
+        private val EXCLUDED_FOLDERS = setOf("build", ".gradle", ".dart_tool", "node_modules", "Pods", "DerivedData")
+        private val KEY_SEPARATORS = setOf('.', '_', '-')
         const val STORE_FILE_SUFFIX = "storefile"
         const val FLUTTER_SDK_PROPERTY = "flutter.sdk"
         val WINDOWS_DRIVE = Regex("^[A-Za-z]:/")

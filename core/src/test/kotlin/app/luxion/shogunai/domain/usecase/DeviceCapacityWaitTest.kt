@@ -81,6 +81,28 @@ class DeviceCapacityWaitTest {
             .also { harness.waitQueue.write(ResourceKind.EMULATOR, listOf(it)) }
 
     @Test
+    fun `by default the wait sleeps on the real clock until it times out`() = runTest {
+        runningEmulatorOfTask1(leaseSeconds = 25)
+        val realTime = AcquireWorktreeResourceUseCase(
+            source,
+            harness.resolve,
+            WriteEnvironmentFileUseCase(git, files, source),
+            store,
+            harness.portProbe,
+            harness.simulators,
+            sdk,
+            harness.readPool,
+            { requested -> harness.contributions.requesting(requested) },
+            harness.waitQueue,
+            harness.liveness,
+        )
+
+        val error = realTime.emulator(repository, task2, DeviceWait(timeout = Duration.ofMillis(50))).exceptionOrNull()
+
+        assertIs<WorktreeError.DeviceWaitTimedOut>(error)
+    }
+
+    @Test
     fun `waits until a lease expires, then releases it and acquires`() = runTest {
         runningEmulatorOfTask1(leaseSeconds = 25)
 
@@ -202,5 +224,12 @@ class DeviceCapacityWaitTest {
         assertIs<WorktreeError.ResourcePoolFull>(error)
         assertEquals(0, error.waiting)
         assertTrue(error.message.orEmpty().endsWith("Wait for one with --wait, stop one, or raise the limit in Preferences"))
+    }
+
+    @Test
+    fun `lists the worktrees waiting in line for a device`() = runTest {
+        val ticket = waiterTask3()
+
+        assertEquals(listOf(ticket), harness.acquire.waiting(ResourceKind.EMULATOR))
     }
 }

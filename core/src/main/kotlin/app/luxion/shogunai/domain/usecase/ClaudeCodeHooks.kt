@@ -194,7 +194,7 @@ class ClaudeCodeHooks(private val fileManager: FileManager) {
             DesiredHook("PreToolUse", "shogun hook desktop-turn", matcher = "Bash", condition = "Bash(*computer *)"),
         )
 
-        val AGENT_STATE_EVENTS: List<String> = listOf("UserPromptSubmit", "Notification", "Stop", "SessionEnd")
+        private val AGENT_STATE_EVENTS: List<String> = listOf("UserPromptSubmit", "Notification", "Stop", "SessionEnd")
 
         fun userSettingsPath(configDirectory: String?, userHome: String): String =
             claudeConfigDirectory(configDirectory, userHome) + "/settings.json"

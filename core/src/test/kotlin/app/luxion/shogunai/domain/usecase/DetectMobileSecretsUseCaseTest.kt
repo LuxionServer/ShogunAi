@@ -59,6 +59,11 @@ class DetectMobileSecretsUseCaseTest {
     }
 
     @Test
+    fun `files that aren't secrets are left out`() = runTest {
+        assertEquals(listOf(MobileSecret("local.properties", MobileSecretKind.LOCAL_PROPERTIES)), detect(listOf("notes.txt", "local.properties")).secrets)
+    }
+
+    @Test
     fun `asks git for untracked files only, by name`() = runTest {
         val executor = executor(emptyList())
 

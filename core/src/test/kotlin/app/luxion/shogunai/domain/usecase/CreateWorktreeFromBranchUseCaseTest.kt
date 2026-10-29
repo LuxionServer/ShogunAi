@@ -60,6 +60,13 @@ class CreateWorktreeFromBranchUseCaseTest {
     }
 
     @Test
+    fun `fails when the base repository is gone`() = runTest {
+        val useCase = CreateWorktreeFromBranchUseCase(config, executor(), FakeFileManager(), FakeRepositoryProvisioningSource())
+
+        assertIs<WorktreeError.BaseRepositoryNotFound>(useCase(branch).exceptionOrNull())
+    }
+
+    @Test
     fun `fails when the branch does not exist locally`() = runTest {
         val exec = FakeShellCommandExecutor {
             if (it.getOrNull(1) == "show-ref") failure(it, exitCode = 1) else success(it)

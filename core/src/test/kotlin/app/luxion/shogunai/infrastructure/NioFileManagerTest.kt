@@ -8,6 +8,13 @@ import kotlin.io.path.createDirectories
 import kotlin.io.path.createTempDirectory
 import kotlin.io.path.exists
 import kotlin.io.path.writeBytes
+import app.luxion.shogunai.domain.io.SymbolicLinksNotSupported
+import java.nio.file.AccessDeniedException
+import java.nio.file.FileSystemException
+import java.nio.file.attribute.PosixFilePermissions
+import org.junit.Assume.assumeTrue
+import kotlin.test.assertFailsWith
+import kotlin.test.assertNull
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -233,5 +240,60 @@ class NioFileManagerTest {
         assertFalse(link.exists(LinkOption.NOFOLLOW_LINKS))
         assertFalse(file.exists())
         assertTrue(target.exists())
+    }
+
+    @Test
+    fun `a file system without symbolic links or without the privilege reports them unsupported`() {
+        val unsupported = NioFileManager { _, _ -> throw UnsupportedOperationException("no links") }
+        val unprivileged = NioFileManager { link, _ -> throw FileSystemException(link.toString(), null, "A required privilege is not held by the client") }
+        val other = NioFileManager { link, _ -> throw FileSystemException(link.toString(), null, "disk full") }
+        val link = root.resolve("link").toString()
+
+        assertFailsWith<SymbolicLinksNotSupported> { unsupported.createSymbolicLink("target", link) }
+        assertFailsWith<SymbolicLinksNotSupported> { unprivileged.createSymbolicLink("target", link) }
+        assertFailsWith<FileSystemException> { other.createSymbolicLink("target", link) }
+    }
+
+    @Test
+    fun `lists the names in a folder sorted and nothing for a missing folder`() {
+        root.resolve("b.txt").writeBytes(ByteArray(0))
+        root.resolve("a").createDirectories()
+
+        assertEquals(listOf("a", "b.txt"), fileManager.listNames(root.toString()))
+        assertNull(fileManager.listNames(root.resolve("missing").toString()))
+    }
+
+    @Test
+    fun `unreadable entries are skipped by every walk and unreadable properties read as empty`() {
+        assumeTrue(root.fileSystem.supportedFileAttributeViews().contains("posix"))
+        val locked = root.resolve("locked").createDirectories()
+        locked.resolve("inside.txt").writeBytes(ByteArray(3))
+        root.resolve("open.txt").writeBytes(ByteArray(2))
+        val properties = root.resolve("app.properties")
+        properties.writeBytes("a=1".toByteArray())
+        Files.setPosixFilePermissions(locked, emptySet())
+        Files.setPosixFilePermissions(properties, emptySet())
+        try {
+            assertEquals(listOf("open.txt"), fileManager.listTree(root.toString()).files.filter { it.endsWith(".txt") })
+            assertEquals(5L, fileManager.directorySize(root.toString()))
+            assertTrue(fileManager.modificationStamps(root.toString()).none { it.first.endsWith("inside.txt") })
+            assertEquals(emptyMap(), fileManager.readProperties(properties.toString()))
+        } finally {
+            Files.setPosixFilePermissions(locked, PosixFilePermissions.fromString("rwx------"))
+            Files.setPosixFilePermissions(properties, PosixFilePermissions.fromString("rw-------"))
+        }
+    }
+
+    @Test
+    fun `a read-only folder keeps its files from being deleted`() {
+        assumeTrue(root.fileSystem.supportedFileAttributeViews().contains("posix"))
+        val folder = root.resolve("sealed").createDirectories()
+        folder.resolve("file.txt").writeBytes(ByteArray(1))
+        Files.setPosixFilePermissions(folder, PosixFilePermissions.fromString("r-x------"))
+        try {
+            assertFailsWith<AccessDeniedException> { fileManager.deleteRecursively(folder.toString()) }
+        } finally {
+            Files.setPosixFilePermissions(folder, PosixFilePermissions.fromString("rwx------"))
+        }
     }
 }

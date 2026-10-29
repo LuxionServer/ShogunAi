@@ -7,6 +7,10 @@ import app.luxion.shogunai.domain.model.WorkflowTopic
 import app.luxion.shogunai.domain.usecase.EnvironmentFormat
 import java.time.Duration
 
+interface JsonOutput {
+    fun withJson(): CliCommand
+}
+
 sealed interface CliCommand {
     data object Help : CliCommand
     data object Version : CliCommand
@@ -21,33 +25,49 @@ sealed interface CliCommand {
         val fetch: Boolean = false,
         val json: Boolean = false,
         val repos: List<String>? = null,
-    ) : CliCommand
+    ) : CliCommand, JsonOutput {
+        override fun withJson() = copy(json = true)
+    }
 
-    data class Multirepo(val action: MultirepoAction, val json: Boolean = false) : CliCommand
+    data class Multirepo(val action: MultirepoAction, val json: Boolean = false) : CliCommand, JsonOutput {
+        override fun withJson() = copy(json = true)
+    }
 
-    data class Provision(val path: String? = null, val check: Boolean = false, val json: Boolean = false) : CliCommand
+    data class Provision(val path: String? = null, val check: Boolean = false, val json: Boolean = false) : CliCommand, JsonOutput {
+        override fun withJson() = copy(json = true)
+    }
     data class Trust(
         val path: String? = null,
         val yes: Boolean = false,
         val revoke: Boolean = false,
         val json: Boolean = false,
-    ) : CliCommand
+    ) : CliCommand, JsonOutput {
+        override fun withJson() = copy(json = true)
+    }
     data class Remove(
         val target: String,
         val force: Boolean = false,
         val deleteBranch: Boolean = false,
         val forceDeleteBranch: Boolean = false,
         val json: Boolean = false,
-    ) : CliCommand
-    data class Repair(val json: Boolean = false) : CliCommand
+    ) : CliCommand, JsonOutput {
+        override fun withJson() = copy(json = true)
+    }
+    data class Repair(val json: Boolean = false) : CliCommand, JsonOutput {
+        override fun withJson() = copy(json = true)
+    }
     data class Open(
         val target: String?,
         val runner: RunnerId? = null,
         val agent: String? = null,
         val json: Boolean = false,
-    ) : CliCommand
+    ) : CliCommand, JsonOutput {
+        override fun withJson() = copy(json = true)
+    }
     data class Status(val json: Boolean = false) : CliCommand
-    data class Base(val target: String? = null, val set: String? = null, val json: Boolean = false) : CliCommand
+    data class Base(val target: String? = null, val set: String? = null, val json: Boolean = false) : CliCommand, JsonOutput {
+        override fun withJson() = copy(json = true)
+    }
     data class Clean(
         val confirmed: Boolean = false,
         val deleteBranches: Boolean = false,
@@ -59,31 +79,61 @@ sealed interface CliCommand {
         val downComposeProjects: Boolean = false,
         val removeComposeVolumes: Boolean = false,
         val json: Boolean = false,
-    ) : CliCommand
+    ) : CliCommand, JsonOutput {
+        override fun withJson() = copy(json = true)
+    }
 
-    data class Xcode(val json: Boolean = false) : CliCommand
-    data class XcodeClean(val json: Boolean = false) : CliCommand
-    data class XcodeTrim(val dryRun: Boolean = false, val json: Boolean = false) : CliCommand
+    data class Xcode(val json: Boolean = false) : CliCommand, JsonOutput {
+        override fun withJson() = copy(json = true)
+    }
+    data class XcodeClean(val json: Boolean = false) : CliCommand, JsonOutput {
+        override fun withJson() = copy(json = true)
+    }
+    data class XcodeTrim(val dryRun: Boolean = false, val json: Boolean = false) : CliCommand, JsonOutput {
+        override fun withJson() = copy(json = true)
+    }
 
-    data class Gradle(val json: Boolean = false) : CliCommand
-    data class Stacks(val json: Boolean = false) : CliCommand
-    data class Maven(val json: Boolean = false) : CliCommand
-    data class Compose(val json: Boolean = false) : CliCommand
-    data class ComposeDown(val target: String? = null, val volumes: Boolean = false, val json: Boolean = false) : CliCommand
+    data class Gradle(val json: Boolean = false) : CliCommand, JsonOutput {
+        override fun withJson() = copy(json = true)
+    }
+    data class Stacks(val json: Boolean = false) : CliCommand, JsonOutput {
+        override fun withJson() = copy(json = true)
+    }
+    data class Maven(val json: Boolean = false) : CliCommand, JsonOutput {
+        override fun withJson() = copy(json = true)
+    }
+    data class Compose(val json: Boolean = false) : CliCommand, JsonOutput {
+        override fun withJson() = copy(json = true)
+    }
+    data class ComposeDown(val target: String? = null, val volumes: Boolean = false, val json: Boolean = false) : CliCommand, JsonOutput {
+        override fun withJson() = copy(json = true)
+    }
     data class ComposeRun(
         val target: String? = null,
         val build: Boolean = false,
         val onlyBuild: Boolean = false,
         val extraArguments: List<String> = emptyList(),
         val json: Boolean = false,
-    ) : CliCommand
-    data class ComposePrune(val volumes: Boolean = false, val confirmed: Boolean = false, val json: Boolean = false) : CliCommand
-    data class Pool(val action: PoolAction, val json: Boolean = false) : CliCommand
-    data class Project(val action: ProjectAction, val path: String? = null, val json: Boolean = false) : CliCommand
+    ) : CliCommand, JsonOutput {
+        override fun withJson() = copy(json = true)
+    }
+    data class ComposePrune(val volumes: Boolean = false, val confirmed: Boolean = false, val json: Boolean = false) : CliCommand, JsonOutput {
+        override fun withJson() = copy(json = true)
+    }
+    data class Pool(val action: PoolAction, val json: Boolean = false) : CliCommand, JsonOutput {
+        override fun withJson() = copy(json = true)
+    }
+    data class Project(val action: ProjectAction, val path: String? = null, val json: Boolean = false) : CliCommand, JsonOutput {
+        override fun withJson() = copy(json = true)
+    }
     data class App(val path: String? = null, val settings: Boolean = false) : CliCommand
-    data class GradleStop(val pids: List<Long> = emptyList(), val json: Boolean = false) : CliCommand
+    data class GradleStop(val pids: List<Long> = emptyList(), val json: Boolean = false) : CliCommand, JsonOutput {
+        override fun withJson() = copy(json = true)
+    }
 
-    data class MavenStop(val pids: List<Long> = emptyList(), val json: Boolean = false) : CliCommand
+    data class MavenStop(val pids: List<Long> = emptyList(), val json: Boolean = false) : CliCommand, JsonOutput {
+        override fun withJson() = copy(json = true)
+    }
     data object HookWorktreeCreate : CliCommand
     data object HookWorktreeRemove : CliCommand
     data object HookSessionStart : CliCommand
@@ -96,7 +146,9 @@ sealed interface CliCommand {
         val project: Boolean = false,
         val yes: Boolean = false,
         val json: Boolean = false,
-    ) : CliCommand
+    ) : CliCommand, JsonOutput {
+        override fun withJson() = copy(json = true)
+    }
     data class Guide(
         val topic: String? = null,
         val plain: Boolean = false,
@@ -110,7 +162,9 @@ sealed interface CliCommand {
         val file: String? = null,
         val yes: Boolean = false,
         val json: Boolean = false,
-    ) : CliCommand
+    ) : CliCommand, JsonOutput {
+        override fun withJson() = copy(json = true)
+    }
     data class Emulator(
         val action: EmulatorAction,
         val path: String? = null,
@@ -118,7 +172,9 @@ sealed interface CliCommand {
         val noWindow: Boolean = false,
         val json: Boolean = false,
         val wait: Duration? = null,
-    ) : CliCommand
+    ) : CliCommand, JsonOutput {
+        override fun withJson() = copy(json = true)
+    }
     data class Headless(
         val action: HeadlessAction,
         val path: String? = null,
@@ -126,13 +182,17 @@ sealed interface CliCommand {
         val fresh: Boolean = false,
         val output: String? = null,
         val json: Boolean = false,
-    ) : CliCommand
+    ) : CliCommand, JsonOutput {
+        override fun withJson() = copy(json = true)
+    }
     data class Desktop(
         val action: DesktopAction,
         val path: String? = null,
         val json: Boolean = false,
         val wait: Duration? = null,
-    ) : CliCommand
+    ) : CliCommand, JsonOutput {
+        override fun withJson() = copy(json = true)
+    }
     data class Simulator(
         val action: SimulatorAction,
         val path: String? = null,
@@ -140,7 +200,9 @@ sealed interface CliCommand {
         val runtime: String? = null,
         val json: Boolean = false,
         val wait: Duration? = null,
-    ) : CliCommand
+    ) : CliCommand, JsonOutput {
+        override fun withJson() = copy(json = true)
+    }
     data class SimulatorGradleInit(val install: Boolean, val confirmed: Boolean = false) : CliCommand
     data class Env(val path: String? = null, val format: EnvironmentFormat = EnvironmentFormat.SH) : CliCommand
 }
@@ -192,7 +254,7 @@ fun parseArguments(args: List<String>): ParsedArguments {
                 "headless" -> parseHeadless(arguments)
                 "desktop" -> parseDesktop(arguments)
                 else -> throw UsageException("unknown command '$name'")
-            }.withJson(json),
+            }.withJsonOutput(json),
         )
     } catch (error: UsageException) {
         ParsedArguments.UsageError(error.message.orEmpty())
@@ -209,38 +271,7 @@ private fun isSimulatorGradleInit(name: String, rest: List<String>) = name == "s
 
 private fun isGuideReading(name: String, rest: List<String>) = name == "guide" && rest.firstOrNull() !in GUIDE_ACTIONS
 
-private fun CliCommand.withJson(json: Boolean): CliCommand = if (!json) this else when (this) {
-    is CliCommand.New -> copy(json = true)
-    is CliCommand.Multirepo -> copy(json = true)
-    is CliCommand.Provision -> copy(json = true)
-    is CliCommand.Trust -> copy(json = true)
-    is CliCommand.Remove -> copy(json = true)
-    is CliCommand.Base -> copy(json = true)
-    is CliCommand.Repair -> copy(json = true)
-    is CliCommand.Open -> copy(json = true)
-    is CliCommand.Clean -> copy(json = true)
-    is CliCommand.Xcode -> copy(json = true)
-    is CliCommand.XcodeClean -> copy(json = true)
-    is CliCommand.XcodeTrim -> copy(json = true)
-    is CliCommand.Gradle -> copy(json = true)
-    is CliCommand.Stacks -> copy(json = true)
-    is CliCommand.Maven -> copy(json = true)
-    is CliCommand.Compose -> copy(json = true)
-    is CliCommand.ComposeDown -> copy(json = true)
-    is CliCommand.ComposeRun -> copy(json = true)
-    is CliCommand.ComposePrune -> copy(json = true)
-    is CliCommand.GradleStop -> copy(json = true)
-    is CliCommand.MavenStop -> copy(json = true)
-    is CliCommand.Pool -> copy(json = true)
-    is CliCommand.Project -> copy(json = true)
-    is CliCommand.Emulator -> copy(json = true)
-    is CliCommand.Simulator -> copy(json = true)
-    is CliCommand.Headless -> copy(json = true)
-    is CliCommand.Desktop -> copy(json = true)
-    is CliCommand.Hooks -> copy(json = true)
-    is CliCommand.GuideBlock -> copy(json = true)
-    else -> this
-}
+private fun CliCommand.withJsonOutput(json: Boolean): CliCommand = if (json && this is JsonOutput) withJson() else this
 
 private class UsageException(message: String) : Exception(message)
 

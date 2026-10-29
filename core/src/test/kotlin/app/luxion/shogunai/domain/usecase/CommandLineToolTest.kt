@@ -33,6 +33,7 @@ private class FakeLauncherFiles : LauncherFiles {
         links[link] = target
     }
     override fun delete(path: String) {
+        if (failWrites) throw java.io.IOException("denied")
         texts.remove(path)
         links.remove(path)
         others.remove(path)
@@ -298,5 +299,26 @@ class CommandLineToolTest {
         unix().remove().getOrThrow()
 
         assertTrue(files.links.isEmpty())
+    }
+
+    @Test
+    fun `reports the Windows script it could not write`() = runTest {
+        files.failWrites = true
+
+        val error = windows().install().exceptionOrNull()
+
+        assertIs<CommandLineToolError.WriteFailed>(error)
+        assertEquals("C:\\Users\\dev\\.shogunai\\bin\\shogun.cmd", error.path)
+    }
+
+    @Test
+    fun `reports the link it could not remove`() = runTest {
+        files.links["/home/dev/.local/bin/shogun"] = "/opt/shogunai/bin/ShogunAi"
+        files.failWrites = true
+
+        val error = unix().remove().exceptionOrNull()
+
+        assertIs<CommandLineToolError.WriteFailed>(error)
+        assertEquals("/home/dev/.local/bin/shogun", error.path)
     }
 }

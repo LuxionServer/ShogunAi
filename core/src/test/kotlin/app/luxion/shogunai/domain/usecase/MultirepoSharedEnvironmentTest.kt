@@ -79,4 +79,13 @@ class MultirepoSharedEnvironmentTest {
         assertTrue(reason.declarationPath.endsWith(".shogunai-multirepo.json"))
         assertTrue(reason.detail.contains("billing"))
     }
+
+    @Test
+    fun `a repository whose worktrees can't be listed is unreadable`() = runTest {
+        sharing("API_URL" to "http://localhost:\${port:api.http}")
+        with(world.git) { world.app.worktree(appTask, "feature/TASK-7") }
+        world.git.repositories.remove(world.api)
+
+        assertIs<SharedTarget.Unreadable>(shared.forWorktree(world.appBase, appTask)!!.targets["api"])
+    }
 }

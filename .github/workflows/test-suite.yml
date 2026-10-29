@@ -43,3 +43,8 @@ jobs:
       - name: Run tests
         shell: bash
         run: ./gradlew test
+
+      - name: Verify coverage
+        if: runner.os == 'macOS'
+        shell: bash
+        run: ./gradlew koverVerify

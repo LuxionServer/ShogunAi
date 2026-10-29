@@ -48,7 +48,7 @@ class FileClaudeSessionRegistry(private val directory: String) : ClaudeSessionRe
 
     private companion object {
         const val EXTENSION = ".json"
-        val LENIENT = Json {
+        private val LENIENT = Json {
             ignoreUnknownKeys = true
             coerceInputValues = true
         }

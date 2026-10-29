@@ -29,6 +29,6 @@ class ReadAgentActivityUseCase(
     private companion object {
         const val TRANSCRIPT_GRACE_MILLIS = 1_000L
         const val UNKNOWN_PID_MAX_AGE_MILLIS = 12 * 60 * 60 * 1_000L
-        val PRECEDENCE = listOf(AgentState.WORKING, AgentState.BLOCKED, AgentState.DONE, AgentState.IDLE)
+        private val PRECEDENCE = listOf(AgentState.WORKING, AgentState.BLOCKED, AgentState.DONE, AgentState.IDLE)
     }
 }
