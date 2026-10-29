@@ -10,6 +10,7 @@ data class RunnerOpening(
     val handle: String,
     val agent: String?,
     val sessionName: String? = null,
+    val emulator: String? = null,
 )
 
 data class GroupRunnerOpening(val alias: String, val path: String, val result: Result<RunnerOpening>)

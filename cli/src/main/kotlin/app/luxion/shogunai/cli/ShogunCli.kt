@@ -59,6 +59,7 @@ import app.luxion.shogunai.domain.model.DerivedDataFolder
 import app.luxion.shogunai.domain.model.DerivedDataOwner
 import app.luxion.shogunai.domain.model.EmulatorState
 import app.luxion.shogunai.domain.model.AGENT_START_SECONDS
+import app.luxion.shogunai.domain.model.OrcaEmulatorView
 import app.luxion.shogunai.domain.model.RunnerId
 import app.luxion.shogunai.domain.model.RunnerOpening
 import app.luxion.shogunai.domain.model.RunnerOutcome
@@ -173,6 +174,7 @@ import app.luxion.shogunai.domain.usecase.ResolveResourceLimitsUseCase
 import app.luxion.shogunai.domain.usecase.ResolveStartPointUseCase
 import app.luxion.shogunai.domain.usecase.ResourceAcquisition
 import app.luxion.shogunai.domain.usecase.ResolveWorktreeEnvironmentUseCase
+import app.luxion.shogunai.domain.usecase.ShowEmulatorInOrcaUseCase
 import app.luxion.shogunai.domain.usecase.StartWorktreeEmulatorUseCase
 import app.luxion.shogunai.domain.usecase.StartWorktreeSimulatorUseCase
 import app.luxion.shogunai.domain.usecase.StopGradleDaemonsUseCase
@@ -412,6 +414,7 @@ class ShogunCli(
     private val startEmulator = StartWorktreeEmulatorUseCase(provisioningSource, resolveEnvironment, acquireResource, androidSdk)
     private val stopEmulator = StopWorktreeEmulatorUseCase(provisioningSource, resolveEnvironment, androidSdk)
     private val readEmulatorStates = ReadEmulatorStatesUseCase(provisioningSource, resolveEnvironment, androidSdk)
+    private val showEmulatorInOrca = ShowEmulatorInOrcaUseCase(orca)
     private val headlessWorktrees = HeadlessAppWorktrees(
         provisioningSource,
         { resolveEnvironment.directoriesOf(it).admin },
@@ -1359,7 +1362,12 @@ class ShogunCli(
 
     private fun agentRunner(id: RunnerId): AgentRunner = when (id) {
         RunnerId.HERDR -> HerdrAgentRunner(herdr, resolveEnvironment, herdrLauncher())
-        RunnerId.ORCA -> OrcaAgentRunner(orca, resolveEnvironment, claudeSessionNaming(herdrAgentStartTimeout))
+        RunnerId.ORCA -> OrcaAgentRunner(
+            orca,
+            resolveEnvironment,
+            claudeSessionNaming(herdrAgentStartTimeout),
+            runningEmulator = readEmulatorStates::runningSerial,
+        )
     }
 
     private fun runnerFor(command: CliCommand.Open): AgentRunner = agentRunner(command.runner ?: runnerInUse())
@@ -1387,7 +1395,8 @@ class ShogunCli(
                 RunnerOutcome.FOCUSED -> "focused $path's running agent in Orca (terminal $handle)"
             }
         }
-        return opening.sessionName?.let { "$line as session $it" } ?: line
+        val named = opening.sessionName?.let { "$line as session $it" } ?: line
+        return opening.emulator?.let { "$named, with $it in its emulator view" } ?: named
     }
 
     private suspend fun repair(command: CliCommand.Repair): Int {
@@ -1717,6 +1726,7 @@ class ShogunCli(
         val target = absolute(command.path ?: workingDirectory)
         val (config, worktree) = configAndWorktreeContaining(target)
         var acquisition: ResourceAcquisition? = null
+        var orcaView: OrcaEmulatorView? = null
         val emulator = when (command.action) {
             EmulatorAction.START -> {
                 val started = startEmulator(
@@ -1727,6 +1737,7 @@ class ShogunCli(
                     command.wait?.let(::deviceWait),
                 ).getOrThrow()
                 acquisition = started.acquisition
+                orcaView = showEmulatorInOrca(worktree.path, started.device.serial)
                 started.device
             }
             EmulatorAction.STOP -> stopEmulator(config, worktree.path).getOrThrow()
@@ -1739,9 +1750,10 @@ class ShogunCli(
         }
         acquisition?.releases?.forEach { err.line("released the emulator of ${releasedName(it)} to make room") }
         reportWaited(acquisition)
+        if (emulator != null) reportOrcaView(emulator.serial, orcaView)
         val released = if (emulator == null) readReleaseRecord(worktree.path, ResourceKind.EMULATOR) else null
         if (command.json) {
-            printJson(emulatorJson(worktree.path, emulator, acquisition, released))
+            printJson(emulatorJson(worktree.path, emulator, acquisition, released, orcaView))
             return EXIT_OK
         }
         if (emulator == null) {
@@ -1751,6 +1763,14 @@ class ShogunCli(
             if (command.action == EmulatorAction.START) out.line("export $ANDROID_SERIAL=${emulator.serial}")
         }
         return EXIT_OK
+    }
+
+    private fun reportOrcaView(serial: String, view: OrcaEmulatorView?) {
+        when (view) {
+            OrcaEmulatorView.Shown -> err.line("shown $serial in Orca's emulator view")
+            is OrcaEmulatorView.Failed -> err.line("shogun: couldn't show the emulator in Orca: ${view.message}")
+            OrcaEmulatorView.NotOpen, null -> Unit
+        }
     }
 
     private fun deviceWait(timeout: Duration): DeviceWait {

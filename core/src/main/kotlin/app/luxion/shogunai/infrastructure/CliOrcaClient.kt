@@ -121,6 +121,10 @@ class CliOrcaClient(
         }
     }
 
+    override suspend fun attachEmulator(workspace: OrcaWorkspace, serial: String) {
+        run(listOf("emulator", "attach", serial, "--worktree", workspace.selector, "--focus"))
+    }
+
     private fun repo(repo: JsonObject): OrcaRepo? {
         val id = repo.string("id") ?: return null
         val path = repo.string("path") ?: return null

@@ -26,6 +26,7 @@ class OrcaAgentRunner(
     private val samePath: (String, String) -> Boolean = ::sameDirectory,
     private val timeout: Duration = AGENT_START_SECONDS.seconds,
     private val pollInterval: Duration = 500.milliseconds,
+    private val runningEmulator: suspend (ProjectConfig, String) -> String? = { _, _ -> null },
 ) : AgentRunner {
 
     override val id: RunnerId = RunnerId.ORCA
@@ -33,11 +34,13 @@ class OrcaAgentRunner(
     override fun isInstalled(): Boolean = orca.isInstalled()
 
     override suspend fun openWorktree(config: ProjectConfig, worktree: Worktree, agent: AgentLaunchConfig): Result<RunnerOpening> =
-        OpenWorktreeInOrcaUseCase(config, orca, resolveEnvironment, naming, usesPowerShell, samePath, timeout, pollInterval)(worktree, agent)
+        OpenWorktreeInOrcaUseCase(config, orca, resolveEnvironment, naming, usesPowerShell, samePath, timeout, pollInterval) { path ->
+            runningEmulator(config, path)
+        }(worktree, agent)
             .map { it.toRunnerOpening() }
 
     override suspend fun openGroup(group: WorktreeGroup): Result<List<GroupRunnerOpening>> =
-        OpenGroupInOrcaUseCase(orca, resolveEnvironment, naming, usesPowerShell, samePath, timeout, pollInterval)(group).map { openings ->
+        OpenGroupInOrcaUseCase(orca, resolveEnvironment, naming, usesPowerShell, samePath, timeout, pollInterval, runningEmulator)(group).map { openings ->
             openings.map { opening -> GroupRunnerOpening(opening.alias, opening.path, opening.result.map { it.toRunnerOpening() }) }
         }
 
@@ -46,7 +49,7 @@ class OrcaAgentRunner(
 }
 
 fun OrcaOpening.toRunnerOpening(): RunnerOpening =
-    RunnerOpening(RunnerId.ORCA, outcome.toRunnerOutcome(), terminalHandle, agent, sessionName)
+    RunnerOpening(RunnerId.ORCA, outcome.toRunnerOutcome(), terminalHandle, agent, sessionName, emulator)
 
 fun OrcaOutcome.toRunnerOutcome(): RunnerOutcome = when (this) {
     OrcaOutcome.STARTED_AGENT -> RunnerOutcome.STARTED_AGENT
