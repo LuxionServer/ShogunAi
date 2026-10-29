@@ -22,6 +22,9 @@ import app.luxion.shogunai.infrastructure.ShogunFiles
 import app.luxion.shogunai.infrastructure.SocketPortProbe
 import app.luxion.shogunai.infrastructure.SystemHostEnvironment
 import app.luxion.shogunai.infrastructure.defaultGradleUserHome
+import java.io.FileDescriptor
+import java.io.FileOutputStream
+import java.io.PrintStream
 import kotlin.system.exitProcess
 
 fun main(args: Array<String>) {
@@ -36,6 +39,8 @@ fun runShogun(args: Array<String>): Int {
     val fileManager = NioFileManager()
     val userHome = environment.home
     val derivedDataSource = MacDerivedDataSource(executor, fileManager, userHome)
+    val out = utf8Stream(FileDescriptor.out)
+    val err = utf8Stream(FileDescriptor.err)
     val exitCode = ShogunCli(
         executor = executor,
         fileManager = fileManager,
@@ -53,8 +58,8 @@ fun runShogun(args: Array<String>): Int {
         derivedDataSource = derivedDataSource,
         herdrConfig = HerdrConfigFile(environment::variable, userHome),
         workingDirectory = System.getProperty("user.dir"),
-        out = System.out,
-        err = System.err,
+        out = out,
+        err = err,
         readInput = { System.`in`.bufferedReader().readText() },
         trust = JsonRepositoryTrust(files.trust),
         readAnswer = { System.console()?.readLine() },
@@ -64,7 +69,10 @@ fun runShogun(args: Array<String>): Int {
         environment = environment,
         files = files,
     ).run(args.toList())
-    System.out.flush()
-    System.err.flush()
+    out.flush()
+    err.flush()
     return exitCode
 }
+
+private fun utf8Stream(descriptor: FileDescriptor): PrintStream =
+    PrintStream(FileOutputStream(descriptor), true, Charsets.UTF_8)

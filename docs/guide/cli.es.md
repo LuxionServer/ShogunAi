@@ -22,7 +22,7 @@ shogun app --settings              # abre la app de escritorio en los ajustes de
 eval "$(shogun env)"               # carga las variables de este worktree desde "env" en .shogunai.json
 ```
 
-La salida es texto plano en inglés; los scripts deben usar `--json`, que aceptan todos los comandos que informan de un resultado (ver [Salida JSON](#salida-json)).
+La salida es texto plano en inglés; los scripts deben usar `--json`, que aceptan todos los comandos que informan de un resultado (ver [Salida JSON](#salida-json)). La salida estándar y la de error son siempre UTF-8, sea cual sea el idioma o la página de códigos del sistema, así que las rutas con acentos llegan intactas a los scripts y a los hooks de los agentes; en una consola de Windows con otra página de códigos pueden verse mal.
 
 ## Códigos de salida
 
