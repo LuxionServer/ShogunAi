@@ -14,7 +14,6 @@ import java.io.RandomAccessFile
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
-import kotlin.io.path.createDirectories
 import kotlin.io.path.writeText
 
 fun main(arguments: Array<String>) {
@@ -47,9 +46,8 @@ object FakeRunners {
         if (Sandbox.isWindows) {
             writeWindowsLauncher(sandbox.pathFolder.resolve("orca.cmd"), "orca", sandbox.logOf("orca"))
         } else {
-            val folder = sandbox.home.resolve(".local/bin").createDirectories()
-            writeUnixLauncher(folder.resolve("herdr"), "herdr", sandbox.logOf("herdr"))
-            writeUnixLauncher(folder.resolve(if (Sandbox.isLinux) "orca-ide" else "orca"), "orca", sandbox.logOf("orca"))
+            writeUnixLauncher(sandbox.pathFolder.resolve("herdr"), "herdr", sandbox.logOf("herdr"))
+            writeUnixLauncher(sandbox.pathFolder.resolve(if (Sandbox.isLinux) "orca-ide" else "orca"), "orca", sandbox.logOf("orca"))
         }
     }
 
