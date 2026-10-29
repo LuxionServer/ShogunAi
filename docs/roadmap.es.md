@@ -111,6 +111,14 @@ Aceptados, pero aplazados hasta que alguien los necesite, porque amplían dónde
 
 ## En estudio
 
+### Replantear la UX/UI para que sea fácil de usar
+
+La app bombardea ahora con información a quien la abre: el estado Git de cada worktree, los agentes, los dispositivos, los puertos, los orígenes, los tamaños y los recursos de la máquina están en pantalla a la vez. Replantearla quiere decir decidir qué se muestra por defecto, de un vistazo, y qué solo aparece bajo demanda (en el detalle, al pasar el ratón o tras una acción), para que las preguntas habituales ("¿qué me necesita?", "¿dónde está cada agente?") se respondan primero. Necesita una exploración de las pantallas actuales y de cómo se usan de verdad antes de convertirse en un cambio.
+
+### Replantear los Ajustes
+
+Los Ajustes deberían permitir personalizar ShogunAi sin obligar a configurarlo todo: valores por defecto sensatos, pocas opciones de primer nivel y los detalles solo para quien los quiera. Eso incluye revisar la decisión provisional de ligar la cadencia de refresco de la app a los perfiles de capacidad (ver [Cadencia de refresco](guide/providers.es.md#cadencia-de-refresco)), que reutiliza los perfiles pensados para los límites de dispositivos y daemons en lugar de ofrecer una elección propia. Va después del replanteamiento de la UX/UI de arriba, porque lo que ofrecen los Ajustes depende de lo que la app mantenga en pantalla.
+
 ### Apps de escritorio en segundo plano más allá de macOS y del teclado
 
 Las apps de Compose Desktop ya se pueden comprobar en segundo plano en macOS (`shogun headless` y el provider `desktop-app`), pero quedan dos huecos. La entrada real de teclado no llega a una app cuya ventana no está activa: un puente que publique los eventos en la cola de la propia app, o una herramienta de teclas en el servidor MCP de Compose Hot Reload (una petición a JetBrains), podrían cerrarlo. Y ocultar y capturar una ventana solo funciona en macOS: Windows y Linux necesitan su propia forma de mantener la app fuera de la vista y capturar su ventana, o una pantalla virtual. Cada uno necesita un spike antes de convertirse en un cambio. El turno del escritorio que piden los agentes para computer use (`shogun desktop`) es cooperativo y solo para agentes: esperarlo desde la app de escritorio, y darse cuenta de que la persona está usando el escritorio para que los agentes también la esperen, quedan para cuando el turno esté en uso.

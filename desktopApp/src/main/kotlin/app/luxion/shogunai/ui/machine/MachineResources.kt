@@ -4,6 +4,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import app.luxion.shogunai.MachineUseCases
+import app.luxion.shogunai.ui.WindowActivity
+import app.luxion.shogunai.ui.machineViewInterval
 import app.luxion.shogunai.domain.model.CapacityProfile
 import app.luxion.shogunai.domain.model.DaemonKind
 import app.luxion.shogunai.domain.model.DaemonProcess
@@ -29,6 +31,7 @@ import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.PoolUsage
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.ProjectConfig
+import app.luxion.shogunai.domain.model.RefreshCadence
 import app.luxion.shogunai.domain.model.ResourceKind
 import app.luxion.shogunai.domain.model.SimulatorDevice
 import app.luxion.shogunai.domain.model.SimulatorState
@@ -47,17 +50,13 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
-import kotlin.time.Duration
-import kotlin.time.Duration.Companion.seconds
 
 enum class MachineResource { GRADLE_DAEMONS, ANDROID_EMULATORS, IOS_SIMULATORS, XCODE_DERIVED_DATA, MAVEN_DAEMONS, COMPOSE_PROJECTS, DESKTOP_TURN }
 
@@ -131,14 +130,13 @@ class MachineResources(
     private val projects: () -> List<MachineProject>,
     private val pathExists: (String) -> Boolean,
     private val onDevicesChanged: suspend (projectId: String) -> Unit = {},
-    private val processInterval: Duration = PROCESS_INTERVAL,
-    private val summaryInterval: Duration = SUMMARY_INTERVAL,
+    private val cadence: suspend () -> RefreshCadence = { RefreshCadence.BALANCED },
     val desktopTurn: DesktopTurnWatch = DesktopTurnWatch.NONE,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
     private val clock: () -> Instant = Instant::now,
 ) {
     private var shownJob: Job? = null
-    private val windowActive = MutableStateFlow(true)
+    private val windowActivity = MutableStateFlow(WindowActivity.FOCUSED)
     var shown by mutableStateOf<MachineResource?>(null)
         private set
 
@@ -388,14 +386,15 @@ class MachineResources(
         scope.launch { load(resource, remeasure = true) }
     }
 
-    fun setWindowActive(active: Boolean) {
-        windowActive.value = active
+    fun setWindowActivity(activity: WindowActivity) {
+        windowActivity.value = activity
     }
 
     suspend fun runSummaryTicks() {
         while (true) {
-            if (windowActive.value) refreshSummaries() else trimGradleDaemonsWhileHidden()
-            withTimeoutOrNull(summaryInterval) { windowActive.drop(1).first { it } }
+            val activity = windowActivity.value
+            if (activity.isShown) refreshSummaries() else trimGradleDaemonsWhileHidden()
+            withTimeoutOrNull(cadence().summaries) { windowActivity.first { it.isShown && !activity.isShown } }
         }
     }
 
@@ -505,9 +504,18 @@ class MachineResources(
             return
         }
         while (true) {
-            windowActive.first { it }
+            val activity = windowActivity.first { it.isShown }
             load(resource)
-            delay(processInterval)
+            awaitNextLoad(activity)
+        }
+    }
+
+    private suspend fun awaitNextLoad(loadedWhile: WindowActivity) {
+        var activity = loadedWhile
+        while (true) {
+            val changed = withTimeoutOrNull(cadence().machineViewInterval(activity)) { windowActivity.first { it != activity } } ?: return
+            if (changed != WindowActivity.UNFOCUSED) return
+            activity = changed
         }
     }
 
@@ -924,8 +932,6 @@ class MachineResources(
     }
 
     companion object {
-        val PROCESS_INTERVAL = 5.seconds
-        val SUMMARY_INTERVAL = 30.seconds
         private const val DAEMONS_KEY = "daemons"
         private const val MAVEN_DAEMONS_KEY = "mavenDaemons"
         private const val DERIVED_DATA_KEY = "derivedData"

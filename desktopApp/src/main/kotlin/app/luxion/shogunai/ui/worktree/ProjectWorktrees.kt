@@ -293,7 +293,6 @@ class ProjectWorktrees(
         scope.launch {
             val result = listPermits.withPermit {
                 lastFingerprint = useCases.readFingerprint().getOrNull() ?: lastFingerprint
-                useCases.invalidateEnvironments()
                 useCases.list()
             }
             applyListResult(generation, result, remeasureSizes)
@@ -349,10 +348,27 @@ class ProjectWorktrees(
         val previous = lastFingerprint
         lastFingerprint = fingerprint
         if (previous != null && fingerprint != previous) {
+            if (onlyIndexesChanged(previous, fingerprint)) {
+                refreshStatuses()
+                return FingerprintCheck.UNCHANGED
+            }
             refresh()
             return FingerprintCheck.RELOADED
         }
         return FingerprintCheck.UNCHANGED
+    }
+
+    private fun onlyIndexesChanged(previous: List<Pair<String, Long>>, current: List<Pair<String, Long>>): Boolean {
+        val before = previous.toSet()
+        val after = current.toSet()
+        return ((before - after) + (after - before)).all { (path, _) -> isIndexFile(path) }
+    }
+
+    private fun isIndexFile(path: String): Boolean {
+        val parts = path.split('/')
+        val name = parts.last()
+        if (name != INDEX_FILE && name != "$INDEX_FILE.lock") return false
+        return parts.size == 1 || (parts.size == LINKED_INDEX_DEPTH && parts.first() == WORKTREES_DIRECTORY)
     }
 
     fun applyAgents(detected: Map<String, List<RunningAgent>>?) {
@@ -1265,6 +1281,10 @@ sealed interface ProvisioningState {
 }
 
 enum class FingerprintCheck { RELOADED, UNCHANGED, UNREADABLE }
+
+private const val INDEX_FILE = "index"
+private const val WORKTREES_DIRECTORY = "worktrees"
+private const val LINKED_INDEX_DEPTH = 3
 
 sealed interface ProjectLoadState {
     data object Loading : ProjectLoadState

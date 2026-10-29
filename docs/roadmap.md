@@ -111,6 +111,14 @@ Accepted, but left until someone needs them, because they widen what ShogunAi op
 
 ## Under exploration
 
+### Rethinking the UX/UI for ease of use
+
+The app now bombards whoever opens it with information: every worktree's Git state, agents, devices, ports, origins, sizes and machine resources are on screen at once. Rethinking it means deciding what is shown by default, at a glance, and what only appears on demand (in the detail, on hover or behind an action), so the common questions ("what needs me?", "where is each agent?") are answered first. It needs an exploration of the current screens and of how people actually use them before becoming a change.
+
+### Rethinking Settings
+
+Settings should let people customize ShogunAi without making them configure everything: sensible defaults, a few top-level choices and the details only for whoever wants them. That includes revisiting the provisional decision of tying the app's refresh cadence to the capacity profiles (see [Refresh cadence](guide/providers.md#refresh-cadence)), which reuses the profiles meant for device and daemon limits instead of offering a choice of its own. It comes after the UX/UI rethink above, since what Settings offers depends on what the app keeps on screen.
+
 ### Background desktop apps beyond macOS and the keyboard
 
 Compose Desktop apps can be checked in the background on macOS (`shogun headless` and the `desktop-app` provider), but two gaps remain. Real keyboard input doesn't reach an app whose window isn't active: a bridge that posts events to the app's own queue, or a key tool in Compose Hot Reload's MCP server (a feature request to JetBrains), could close it. And hiding and capturing a window are macOS-only: Windows and Linux need their own way to keep the app out of sight and capture its window, or a virtual display. Each needs a spike before becoming a change. The desktop turn that agents take for computer use (`shogun desktop`) is cooperative and only for agents: waiting for it from the desktop app, and noticing that the person is using the desktop so agents wait for them too, are left for when the turn is in use.

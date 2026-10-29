@@ -141,6 +141,15 @@ tasks.withType<org.jetbrains.compose.desktop.application.tasks.AbstractJLinkTask
     }
 }
 
+tasks.withType<JavaExec>().matching { it.name == "run" }.configureEach {
+    (findProperty("benchmarkHome") as String?)?.let { systemProperty("user.home", it) }
+    (findProperty("benchmarkJfr") as String?)?.let { recording ->
+        val delay = findProperty("benchmarkDelaySeconds") ?: "20"
+        val duration = findProperty("benchmarkSeconds") ?: "60"
+        doFirst { jvmArgs("-XX:StartFlightRecording=delay=${delay}s,duration=${duration}s,filename=$recording,settings=default") }
+    }
+}
+
 kover {
     reports {
         filters {

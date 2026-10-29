@@ -209,8 +209,25 @@ Emulators, iOS simulators and Gradle daemons are limited per machine, shared by 
 - When you start a device and its pool is full, ShogunAi releases one device with an expired lease, in this order (the least recently used first within each step): a stopped device whose worktree has no agent session, a stopped device whose agent is done or idle, a running device (stopped first) and, last, a device whose agent is blocked. A device whose agent is working, or whose lease is still valid, is never released; if none can be released the start fails and names the worktrees that hold them, with when each lease expires.
 - `shogun emulator start --wait` and `shogun simulator start --wait` wait in line for a full pool instead of failing, for 30 minutes at most (`--wait-timeout <minutes>` changes it). Waiters are served first in, first out across the machine, and while anyone waits, other starts can't take the device they wait for. Agents should run a waiting start in the background; the session hint says so.
 - A released emulator loses its port and a released simulator is deleted. The released worktree remembers why (`shogun emulator status` says "released for …"), its port isn't handed to another worktree while another one is free, and it gets the same port back when it starts again. Agents should run `shogun emulator start` before every use of the device: it is idempotent, re-acquires one if it was released and prints the serial to use. The session hint says so.
-- Gradle daemons are started by your builds, so they can't be refused: the app (every 30 seconds) and `shogun pool trim` stop the idle ones, longest idle first, until they are within the limit.
+- Gradle daemons are started by your builds, so they can't be refused: the app (on every sidebar summary refresh, see below) and `shogun pool trim` stop the idle ones, longest idle first, until they are within the limit.
 - `shogun pool status` shows each pool with its limit, holders and waiters, and the machine views of the app show the same with a notice for what was released.
+
+### Refresh cadence
+
+The capacity profile also sets how often the desktop app refreshes what it shows, so a lighter profile costs less while the app sits open:
+
+| Profile | Worktrees, window focused | Worktrees, window in the background | Devices | Shown machine view | Sidebar summaries |
+|---|---|---|---|---|---|
+| Light | 10 s | 60 s | 30 s | 15 s | 120 s |
+| Balanced | 3 s | 15 s | 10 s | 5 s | 30 s |
+| One per worktree | 3 s | 5 s | 10 s | 5 s | 30 s |
+| Custom | as Balanced | | | | |
+| Automatic | Balanced with 16 GB of memory or more, Light below | | | | |
+
+- "In the background" means the window is visible but another app or window has the focus; a shown machine view then refreshes no more often than the worktrees. Focusing the window refreshes the statuses and agents at once.
+- While the window is minimized, in the tray or the app is hidden, nothing is refreshed on a timer, except trimming Gradle daemons to their limit at the summaries' pace.
+- With **Automatic**, a Mac running on battery uses the Light cadence and goes back when it's plugged in; the power source is checked at most once a minute, only while the window is shown. Windows and Linux don't check it and count as plugged in.
+- Tying the refresh cadence to the capacity profiles is **provisional**: it reuses a choice that exists today instead of adding a setting, and will be revisited when Settings is rethought (see the [roadmap](../roadmap.md)).
 
 ## Xcode
 

@@ -88,6 +88,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.coroutines.delay
 import kotlin.test.Test
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.test.assertEquals
@@ -1688,6 +1689,31 @@ class ShogunCliTest {
         )
     }
 
+    private class ConcurrencyRecordingExecutor(private val delegate: ShellCommandExecutor) : ShellCommandExecutor {
+        private var inFlight = 0
+        var maxInFlight = 0
+
+        override suspend fun execute(command: List<String>, workingDirectory: String?): CommandResult {
+            if ("status" !in command) return delegate.execute(command, workingDirectory)
+            inFlight++
+            maxInFlight = maxOf(maxInFlight, inFlight)
+            delay(10)
+            inFlight--
+            return delegate.execute(command, workingDirectory)
+        }
+    }
+
+    @Test
+    fun `status reads the worktrees concurrently and prints them in listing order`() {
+        val executor = ConcurrencyRecordingExecutor(repositoryExecutor())
+
+        val exitCode = cli(executor).run(listOf("status"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertTrue(executor.maxInFlight > 1, "max in flight: ${executor.maxInFlight}")
+        assertEquals(listOf(base, merged, dirty), out.lines().filter { it.isNotEmpty() }.map { it.substringBefore("  ") })
+    }
+
     private fun statusUnreadable(path: String) = repositoryExecutor { command, directory ->
         if (directory == path && "status" in command) Executor.fail(command, "fatal: not a git repository: $path/.git", 128) else null
     }
@@ -2487,7 +2513,7 @@ class ShogunCliTest {
     @Test
     fun `clean says when running agents couldn't be checked and goes on`() {
         val executor = repositoryExecutor { command, _ ->
-            if (command.first() == "lsof") Executor.fail(command, "lsof: not found", 127) else null
+            if (command.first() == "ps") Executor.fail(command, "ps: not found", 127) else null
         }
 
         val exitCode = cli(executor).run(listOf("clean"))
