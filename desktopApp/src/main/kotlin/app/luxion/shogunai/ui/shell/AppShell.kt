@@ -506,6 +506,7 @@ private fun ProjectForm(
             appContainer::multirepoNameOfWorkspace,
             appContainer::detectMobileSecrets,
             appContainer::listLocalFolder,
+            appContainer::listLocalFileCandidates,
         )
     }
     ProjectSettingsView(

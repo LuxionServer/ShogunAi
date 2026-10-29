@@ -131,8 +131,8 @@ class StringsTest {
 
         assertTrue(english.removeLocalFile.contains("folder"))
         assertTrue(spanish.removeLocalFile.contains("carpeta"))
-        assertTrue(english.selectLocalFilesDialogTitle.contains("folders"))
-        assertTrue(spanish.selectLocalFilesDialogTitle.contains("carpetas"))
+        assertTrue(english.localFilePickerDescription("/p").contains("folders"))
+        assertTrue(spanish.localFilePickerDescription("/p").contains("carpetas"))
         assertTrue(english.localFilesDescription.contains("folder"))
         assertTrue(spanish.localFilesDescription.contains("carpeta"))
         assertNotEquals(english.newLocalFileLabel, spanish.newLocalFileLabel)
