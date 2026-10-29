@@ -86,6 +86,15 @@ class ListGradleDaemonsUseCaseTest {
     }
 
     @Test
+    fun `sessions are looked up in the given worktrees by default`() = runTest {
+        val useCase = ListGradleDaemonsUseCase(FakeGradleDaemonSource(listOf(held(listOf(81200, 700, 500)))), FakeFileManager(existing), sessions)
+
+        val client = useCase(worktrees + Worktree(path = apps, branch = "feature/TASK-123")).getOrThrow().single().process.holder?.client
+
+        assertEquals(AgentSessionRef("963d9441", "claude", apps), client?.session)
+    }
+
+    @Test
     fun `a holding build from a terminal has no session`() = runTest {
         val useCase = ListGradleDaemonsUseCase(FakeGradleDaemonSource(listOf(held(listOf(81200, 500)))), FakeFileManager(existing), sessions)
 
@@ -133,5 +142,12 @@ class ListGradleDaemonsUseCaseTest {
         val pids = idleDaemonsOfRemovedWorktrees(daemons, worktrees, listOf(sibling.path, nested.path))
 
         assertEquals(listOf(1L, 3L), pids)
+    }
+
+    @Test
+    fun `total memory adds the resident memory of every daemon`() {
+        val daemons = listOf(GradleDaemon(kotlinDaemon(1, memoryBytes = 300L), null), GradleDaemon(kotlinDaemon(2, memoryBytes = 200L), null))
+
+        assertEquals(500L, totalResidentMemory(daemons))
     }
 }

@@ -218,6 +218,15 @@ class ResourceLeasesTest {
     }
 
     @Test
+    fun `a simulator release is read from its own key and Gradle daemons have none`() = runTest {
+        val record = ReleaseRecord(pool.now.toEpochMilli(), "main-repo · TASK-2", "UDID-1")
+        store.writeReleases(admin1, mapOf("ios-simulator" to record))
+
+        assertEquals(record, ReadReleaseRecordUseCase(pool.resolve, store)(task1, ResourceKind.IOS_SIMULATOR))
+        assertNull(ReadReleaseRecordUseCase(pool.resolve, store)(task1, ResourceKind.GRADLE_DAEMON))
+    }
+
+    @Test
     fun `acquiring writes the lease at the current time`() = runTest {
         pool.acquire.emulator(repository, task1).getOrThrow()
 

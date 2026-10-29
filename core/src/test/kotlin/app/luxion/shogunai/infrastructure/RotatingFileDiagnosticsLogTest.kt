@@ -79,4 +79,13 @@ class RotatingFileDiagnosticsLogTest {
 
         assertTrue(log.recent(10).isEmpty())
     }
+
+    @Test
+    fun `carriage returns and backslashes survive the round trip`() {
+        val log = log()
+
+        log.record(entry("line\r\nC:\\Users\\dev"))
+
+        assertEquals("line\r\nC:\\Users\\dev", log.recent(1).single().message)
+    }
 }

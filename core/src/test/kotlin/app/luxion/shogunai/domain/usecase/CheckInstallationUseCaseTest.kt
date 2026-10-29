@@ -5,6 +5,7 @@ import app.luxion.shogunai.domain.FakeProjectRepository
 import app.luxion.shogunai.domain.FakeRepositoryProvisioningSource
 import app.luxion.shogunai.domain.FakeShellCommandExecutor
 import app.luxion.shogunai.domain.executor.CommandExecutionException
+import app.luxion.shogunai.domain.io.FileManager
 import app.luxion.shogunai.domain.io.HostPath
 import app.luxion.shogunai.domain.io.HostPathSource
 import app.luxion.shogunai.domain.model.AgentToolId
@@ -62,6 +63,7 @@ class CheckInstallationUseCaseTest {
         orca: () -> String? = { null },
         projects: List<Project> = emptyList(),
         fileManager: FakeFileManager = FakeFileManager(),
+        hooksFiles: FileManager = fileManager,
         executor: FakeShellCommandExecutor = FakeShellCommandExecutor { command ->
             if (gitOutput == null) FakeShellCommandExecutor.failure(command) else FakeShellCommandExecutor.success(command, gitOutput)
         },
@@ -74,7 +76,7 @@ class CheckInstallationUseCaseTest {
                 path = { HostPath(listOf("/usr/bin"), source) },
                 shell = "/bin/zsh",
                 commandLineTool = tool,
-                hooks = ClaudeCodeHooks(fileManager),
+                hooks = ClaudeCodeHooks(hooksFiles),
                 hooksSettingsPath = settings,
                 herdrLocation = herdr,
                 orcaLocation = orca,
@@ -250,6 +252,26 @@ class CheckInstallationUseCaseTest {
         assertNull(finding.state)
         assertEquals(settings, finding.settingsPath)
         assertTrue(!finding.invalidDetail.isNullOrBlank())
+    }
+
+    @Test
+    fun `settings that can't be read fail the hooks with the reason`() {
+        val unreadable = object : FileManager by FakeFileManager() {
+            override fun readText(path: String): String = throw IOException("permission denied")
+        }
+
+        val hooks = check(hooksFiles = unreadable).single<InstallationFinding.Hooks>()
+
+        assertEquals(CheckState.FAILED, hooks.state)
+        assertEquals("permission denied", (hooks.finding as InstallationFinding.Hooks).invalidDetail)
+    }
+
+    @Test
+    fun `git that throws unexpectedly fails with the reason`() {
+        val git = check(executor = FakeShellCommandExecutor { throw IllegalStateException("boom") }).single<InstallationFinding.Git>()
+
+        assertEquals(CheckState.FAILED, git.state)
+        assertEquals("boom", (git.finding as InstallationFinding.Git).detail)
     }
 
     @Test

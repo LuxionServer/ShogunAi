@@ -3,6 +3,7 @@ androidx-lifecycle = "2.11.0"
 composeMultiplatform = "1.12.2"
 filekit = "0.17.0"
 kotlin = "2.4.0"
+kover = "0.9.11"
 kotlinx-coroutines = "1.11.0"
 kotlinx-serialization = "1.10.0"
 materialIconsCore = "1.7.3"
@@ -22,4 +23,5 @@ kotlinx-serializationJson = { module = "org.jetbrains.kotlinx:kotlinx-serializat
 composeMultiplatform = { id = "org.jetbrains.compose", version.ref = "composeMultiplatform" }
 composeCompiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 kotlinJvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
+kover = { id = "org.jetbrains.kotlinx.kover", version.ref = "kover" }
 kotlinSerialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }

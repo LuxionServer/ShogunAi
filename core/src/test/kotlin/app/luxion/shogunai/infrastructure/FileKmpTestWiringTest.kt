@@ -2,6 +2,8 @@ package app.luxion.shogunai.infrastructure
 
 import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.attribute.PosixFilePermissions
+import org.junit.Assume.assumeTrue
 import kotlin.io.path.createDirectories
 import kotlin.io.path.exists
 import kotlin.io.path.readText
@@ -73,6 +75,7 @@ class FileKmpTestWiringTest {
         assertTrue(wiring.isInitScriptInstalled())
         assertTrue(script.readText().contains("System.getenv(\"IOS_SIMULATOR_UDID\")"))
         assertTrue(script.readText().contains("getMethod(\"getDevice\")"))
+        assertEquals(FileKmpTestWiring.INIT_SCRIPT, script.readText())
 
         wiring.uninstallInitScript()
         assertFalse(wiring.isInitScriptInstalled())
@@ -87,5 +90,18 @@ class FileKmpTestWiringTest {
         wiring.uninstallInitScript()
 
         assertTrue(other.exists())
+    }
+
+    @Test
+    fun `an unreadable folder is skipped while looking for build scripts`() {
+        assumeTrue(root.fileSystem.supportedFileAttributeViews().contains("posix"))
+        val locked = repository.resolve("locked").createDirectories()
+        locked.resolve("build.gradle.kts").writeText("plugins { kotlin(\"multiplatform\") }")
+        Files.setPosixFilePermissions(locked, emptySet())
+        try {
+            assertFalse(wiring.usesKotlinMultiplatform(repository.toString()))
+        } finally {
+            Files.setPosixFilePermissions(locked, PosixFilePermissions.fromString("rwx------"))
+        }
     }
 }

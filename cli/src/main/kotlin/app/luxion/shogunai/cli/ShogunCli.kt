@@ -324,12 +324,12 @@ class ShogunCli(
     private val now: () -> Instant = Instant::now,
     private val environment: HostEnvironment,
     private val files: ShogunFiles = ShogunFiles(environment.home),
-    private val locator: ExecutableLocator = ExecutableLocator(environment),
-    private val herdr: HerdrClient = CliHerdrClient(executor, locator::find),
+    private val findExecutable: (String) -> String? = ExecutableLocator(environment)::find,
+    private val herdr: HerdrClient = CliHerdrClient(executor, findExecutable),
     private val toolPreferences: ToolPreferenceRepository = JsonToolPreferenceRepository(JsonSettingsFile(files.settings)),
     private val herdrAgentStartTimeout: kotlin.time.Duration = AGENT_START_SECONDS.seconds,
-    private val orca: OrcaClient = CliOrcaClient(executor, locator::find),
-    private val gitHub: GitHubClient = CliGitHubClient(executor, locator::find),
+    private val orca: OrcaClient = CliOrcaClient(executor, findExecutable),
+    private val gitHub: GitHubClient = CliGitHubClient(executor, findExecutable),
     private val orcaWorkspaces: OrcaWorkspaceStore = JsonOrcaWorkspaceStore(files.orcaWorkspaces),
     private val trust: RepositoryTrust = RepositoryTrust.NONE,
     private val readAnswer: () -> String? = { null },
@@ -357,13 +357,14 @@ class ShogunCli(
         ClaudeCodeHooks.claudeSessionsDirectory(environment.variable(CLAUDE_CONFIG_DIR), environment.home),
     ),
     private val isClaudeProcessAlive: (Long) -> Boolean = ::isLiveClaudeProcess,
+    private val onShutdown: (Thread) -> () -> Unit = ::addJvmShutdownHook,
     private val commandLineTool: CommandLineTool = CommandLineTool(
         os = environment.os,
         appLauncher = null,
         home = environment.home,
         pathFolders = { environment.path.folders },
-        userBinFolders = locator.userBinFolders(),
-        findShogun = { locator.find("shogun") },
+        userBinFolders = ExecutableLocator(environment).userBinFolders(),
+        findShogun = { findExecutable("shogun") },
         files = NioLauncherFiles(),
         userPath = PowerShellUserPath(executor),
     ),
@@ -496,11 +497,11 @@ class ShogunCli(
             job.cancel()
             runBlocking { job.join() }
         }
-        Runtime.getRuntime().addShutdownHook(hook)
+        val removeHook = onShutdown(hook)
         try {
             return block()
         } finally {
-            runCatching { Runtime.getRuntime().removeShutdownHook(hook) }
+            removeHook()
         }
     }
 
@@ -2275,7 +2276,7 @@ class ShogunCli(
     private suspend fun doctor(command: CliCommand.Doctor): Int {
         val report = CheckInstallationUseCase(
             executor = executor,
-            findExecutable = locator::find,
+            findExecutable = findExecutable,
             path = { environment.path },
             shell = environment.shell,
             commandLineTool = commandLineTool::status,
@@ -3245,3 +3246,8 @@ internal fun claudeAncestorPid(): Long? =
     generateSequence(ProcessHandle.current().parent().orElse(null)) { it.parent().orElse(null) }
         .firstOrNull { it.info().command().orElse("").substringAfterLast('/') == "claude" }
         ?.pid()
+
+private fun addJvmShutdownHook(hook: Thread): () -> Unit {
+    Runtime.getRuntime().addShutdownHook(hook)
+    return { runCatching { Runtime.getRuntime().removeShutdownHook(hook) } }
+}

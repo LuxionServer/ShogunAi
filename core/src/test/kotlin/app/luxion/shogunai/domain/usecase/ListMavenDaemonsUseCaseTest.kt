@@ -3,10 +3,13 @@ package app.luxion.shogunai.domain.usecase
 import app.luxion.shogunai.domain.FakeFileManager
 import app.luxion.shogunai.domain.FakeMavenDaemonSource
 import app.luxion.shogunai.domain.model.DaemonOwner
+import app.luxion.shogunai.domain.model.DaemonState
+import app.luxion.shogunai.domain.model.MavenDaemon
 import app.luxion.shogunai.domain.model.MavenDaemonProcess
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.WorktreeError
 import kotlinx.coroutines.test.runTest
+import java.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -64,5 +67,21 @@ class ListMavenDaemonsUseCaseTest {
         val source = FakeMavenDaemonSource(failure = WorktreeError.ProcessListingFailed(listOf("ps"), 1))
 
         assertTrue(ListMavenDaemonsUseCase(source, FakeFileManager())(worktrees).isFailure)
+    }
+
+    @Test
+    fun `selects the idle Maven daemons of removed worktrees`() {
+        val removed = Worktree("/home/dev/projects/worktrees/TASK-1", "feature/TASK-1")
+        val kept = Worktree("/home/dev/projects/worktrees/TASK-2", "feature/TASK-2")
+        val idle = DaemonState.Idle(Instant.EPOCH)
+        val daemons = listOf(
+            MavenDaemon(MavenDaemonProcess(1, 0, "${removed.path}/module", idle), null),
+            MavenDaemon(MavenDaemonProcess(2, 0, removed.path, DaemonState.Busy), null),
+            MavenDaemon(MavenDaemonProcess(3, 0, kept.path, idle), null),
+            MavenDaemon(MavenDaemonProcess(4, 0, null, idle), null),
+            MavenDaemon(MavenDaemonProcess(5, 0, "/home/dev/elsewhere", idle), null),
+        )
+
+        assertEquals(listOf(1L), idleMavenDaemonsOfRemovedWorktrees(daemons, listOf(removed, kept), listOf(removed.path)))
     }
 }

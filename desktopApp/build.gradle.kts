@@ -1,7 +1,9 @@
+import kotlinx.kover.gradle.plugin.dsl.CoverageUnit
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
 
 plugins {
     alias(libs.plugins.kotlinJvm)
+    alias(libs.plugins.kover)
     alias(libs.plugins.composeMultiplatform)
     alias(libs.plugins.composeCompiler)
 }
@@ -135,6 +137,25 @@ tasks.withType<org.jetbrains.compose.desktop.application.tasks.AbstractJLinkTask
         val javaExecutable = File(javaHome.get(), "bin/java.exe")
         if (javaExecutable.exists()) {
             javaExecutable.copyTo(destinationDir.get().asFile.resolve("bin/java.exe"), overwrite = true)
+        }
+    }
+}
+
+kover {
+    reports {
+        filters {
+            excludes {
+                annotatedBy("androidx.compose.runtime.Composable", "androidx.compose.ui.tooling.preview.Preview")
+                classes("*ComposableSingletons*")
+            }
+        }
+        verify {
+            rule("desktop app lines") {
+                minBound(83, CoverageUnit.LINE)
+            }
+            rule("desktop app branches") {
+                minBound(66, CoverageUnit.BRANCH)
+            }
         }
     }
 }

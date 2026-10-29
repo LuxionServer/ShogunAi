@@ -56,6 +56,11 @@ class AgentRunnersTest {
     }
 
     @Test
+    fun `the Herdr runner is installed when Herdr is`() {
+        assertTrue(herdr(FakeHerdrClient()).isInstalled())
+    }
+
+    @Test
     fun `a worktree opened in Herdr reports its pane as the handle`() = runTest {
         val opening = herdr(FakeHerdrClient()).openWorktree(world.appProject.config, Worktree(appTask, "feature/TASK-1")).getOrThrow()
 

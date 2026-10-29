@@ -86,7 +86,7 @@ internal class WaitInLine(
     private suspend fun <T> locked(block: () -> T): T = withContext(Dispatchers.IO) { stateStore.withLock(block) }
 
     companion object {
-        val WAIT_POLL_INTERVAL: Duration = Duration.ofSeconds(10)
+        private val WAIT_POLL_INTERVAL: Duration = Duration.ofSeconds(10)
         private val EXPIRY_MARGIN: Duration = Duration.ofSeconds(1)
         private val MINIMUM_WAIT_PAUSE: Duration = Duration.ofSeconds(1)
     }

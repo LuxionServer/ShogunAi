@@ -282,4 +282,15 @@ class DesktopTurnUseCasesTest {
         assertEquals(turn, state.holder)
         assertEquals(listOf(admin("TASK-2"), admin("TASK-3")), state.waiting.map { it.adminDirectory })
     }
+
+    @Test
+    fun `by default the wait sleeps on the real clock until it times out`() = runTest {
+        val realTime = DesktopTurnLedger(store, FakeEnvironmentStateStore(), queue, liveness, adminDirectoryOf = { path -> admin(path.substringAfterLast('/')) })
+        val start = Instant.now()
+        store.turn = DesktopTurn(admin("TASK-1"), worktree("TASK-1"), start.toEpochMilli(), (start + Duration.ofHours(1)).toEpochMilli())
+
+        val error = AcquireDesktopTurnUseCase(realTime) { Duration.ofMinutes(minutes) }(worktree("TASK-2"), DesktopWait(timeout = Duration.ofMillis(50))).exceptionOrNull()
+
+        assertIs<WorktreeError.DesktopTurnWaitTimedOut>(error)
+    }
 }
