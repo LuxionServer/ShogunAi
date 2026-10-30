@@ -35,7 +35,7 @@ class MachineOverviewViewUiTest {
         }
 
         onNodeWithText("Nobody holds the desktop.").assertIsDisplayed()
-        onNodeWithText("2/3").assertIsDisplayed()
+        onNodeWithText("2 of 3", substring = true).assertIsDisplayed()
         assertTrue(onAllNodesWithTag("machine-overview-no-providers").fetchSemanticsNodes().isEmpty())
         onNodeWithTag("machine-overview-GRADLE_DAEMONS").performClick()
         waitForIdle()

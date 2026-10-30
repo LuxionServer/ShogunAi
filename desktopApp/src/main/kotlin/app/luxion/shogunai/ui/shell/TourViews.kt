@@ -3,6 +3,8 @@ package app.luxion.shogunai.ui.shell
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -139,20 +141,17 @@ fun TourAgentChoices(board: WorktreeBoard, project: Project, onLaunched: () -> U
 }
 
 @Composable
-fun TourNotice(state: TourState, hasProjects: Boolean, modifier: Modifier = Modifier) {
+fun TourNotice(state: TourState, hasProjects: Boolean, rail: Boolean = false) {
     if (!state.showsNotice(hasProjects)) return
     val strings = LocalStrings.current
-    Notice(
-        kind = NoticeKind.INFO,
+    SidebarFooterLine(
         message = strings.tourNoticeMessage,
+        details = strings.tourNoticeDetails,
+        icon = Icons.Default.Explore,
+        rail = rail,
+        onClick = state::start,
         onDismiss = state::dismissNotice,
-        modifier = modifier,
-        details = {
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.xs)) {
-                PrimaryButton(onClick = state::start) { Text(strings.tourTakeTour) }
-                NeutralTextButton(onClick = state::dismissNotice) { Text(strings.claudeHooksNoticeDismiss) }
-            }
-        },
+        dismissLabel = strings.claudeHooksNoticeDismiss,
     )
 }
 

@@ -4,6 +4,7 @@ import app.luxion.shogunai.domain.model.CheckState
 import app.luxion.shogunai.domain.model.InstallationCheck
 import app.luxion.shogunai.domain.model.InstallationReport
 import app.luxion.shogunai.domain.model.AgentStateSource
+import app.luxion.shogunai.domain.model.RunnerId
 import app.luxion.shogunai.ui.components.AgentPhase
 import app.luxion.shogunai.domain.model.ComposeResourceKind
 import app.luxion.shogunai.domain.model.ResourceLimits
@@ -276,6 +277,8 @@ object SpanishStrings : Strings {
     override fun agentLastMessage(message: String) = "Último mensaje: $message"
     override fun portListening(label: String) = "$label (escuchando)"
     override val orcaPortsTitle = "Escuchando, según Orca"
+    override fun agentInRunner(runner: RunnerId) = "en ${runner.displayName}"
+    override val clickToFocus = "clic para enfocar"
     override fun agentStateSource(source: AgentStateSource?) = if (source == null) "Solo se ha encontrado su proceso" else when (source) {
         AgentStateSource.HERDR -> "Estado de Herdr"
         AgentStateSource.ORCA -> "Estado de Orca"
@@ -586,7 +589,7 @@ object SpanishStrings : Strings {
         (if (count == 1) "Se detuvo 1 daemon de Gradle inactivo" else "Se detuvieron $count daemons de Gradle inactivos") +
             (if (limit == null) "" else " para mantenerse dentro del límite de $limit") +
             (if (trims == 1) " a las $lastTime" else " · $trims veces, la última a las $lastTime")
-    override fun poolSummary(inUse: Int, limit: Int?) = if (limit == null) "$inUse" else "$inUse/$limit"
+    override fun poolSummary(inUse: Int, limit: Int?) = if (limit == null) "$inUse" else "$inUse de $limit"
     override val machineTitle = "Máquina"
     override val machineStatusGradle = "Gradle"
     override val machineStatusEmulators = "Emuladores"
@@ -814,7 +817,11 @@ object SpanishStrings : Strings {
     override val menuCommandPalette = "Paleta de comandos"
     override val paletteHint = "Busca vistas, proyectos, worktrees y acciones"
     override val paletteNoResults = "Sin resultados"
-    override val paletteCopyLaunchCommandHint = "Copiar comando de lanzamiento"
+    override val paletteSettingsSynonym = "Ajustes"
+    override fun paletteOpenWorktree(worktree: String) = "Abrir $worktree"
+    override val paletteEnterOpen = "Abrir"
+    override val paletteEnterRun = "Ejecutar"
+    override val paletteEnterShowWorktree = "Mostrar en Todos los worktrees"
     override val paletteKindView = "Vista"
     override val paletteKindSetting = "Ajuste"
     override val paletteKindProject = "Proyecto"
@@ -988,7 +995,8 @@ object SpanishStrings : Strings {
     override val tourExistingMessage = "El ejemplo del recorrido ya existe. Ábrelo donde lo dejaste, o reinicia el recorrido para crearlo de nuevo desde cero."
     override val tourRestart = "Reiniciar"
     override val tourOpenExisting = "Abrir"
-    override val tourNoticeMessage = "Novedad: un recorrido guiado por ShogunAi con un repositorio de ejemplo desechable y un agente que te enseña cada función."
+    override val tourNoticeMessage = "Novedad: haz el recorrido guiado"
+    override val tourNoticeDetails = "Un recorrido guiado por ShogunAi con un repositorio de ejemplo desechable y un agente que te enseña cada función."
     override val tourBannerMessage = "Este es el ejemplo desechable del recorrido. Su agente te enseña ShogunAi en el worktree principal."
     override val tourOpenAgent = "Abrir el agente del recorrido"
     override val tourEnd = "Terminar recorrido"

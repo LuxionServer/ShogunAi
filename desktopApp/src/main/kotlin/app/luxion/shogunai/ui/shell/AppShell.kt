@@ -1,5 +1,6 @@
 package app.luxion.shogunai.ui.shell
 
+import kotlin.time.Duration.Companion.seconds
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -140,6 +141,7 @@ fun AppShell(
     }
     val declaredMachine = machine.declared
     LaunchedEffect(declaredMachine) { machine.runSummaryTicks() }
+    LaunchedEffect(viewModel) { viewModel.watchCatalog(CatalogCheckInterval) }
     LaunchedEffect(viewModel.destination, board.isCatalogLoaded) {
         val destination = viewModel.destination as? ShellDestination.Machine
         machine.show(destination?.resource)
@@ -225,12 +227,12 @@ fun AppShell(
                     onMoveEntry = viewModel::moveSidebarEntry,
                     onSortLevel = viewModel::sortSidebarAlphabetically,
                     onOpenPreferences = onOpenPreferences,
+                    footer = { TourNotice(appContainer.tour, viewModel.projects.isNotEmpty(), viewModel.isRail) },
                 )
                 VerticalDivider(modifier = Modifier.fillMaxHeight())
                 Column(modifier = Modifier.weight(1f).fillMaxHeight()) {
                     appContainer.updates.notice?.let { UpdateNotice(appContainer.updates, Modifier.padding(Spacing.md)) }
                     LaunchedEffect(Unit) { appContainer.claudeHooks.refresh() }
-                    TourNotice(appContainer.tour, viewModel.projects.isNotEmpty(), Modifier.padding(Spacing.md))
                     ClaudeHooksNotice(appContainer.claudeHooks, board.hasClaudeWithoutState, Modifier.padding(Spacing.md))
                     tourProjectShown(appContainer, viewModel)?.let { project ->
                         TourBanner(
@@ -578,3 +580,5 @@ private fun tourProjectShown(appContainer: AppContainer, viewModel: ShellViewMod
     val projectId = (viewModel.destination as? ShellDestination.All)?.projectFilter ?: return null
     return viewModel.projects.firstOrNull { it.id == projectId }?.takeIf(appContainer.tourLocation::isTour)
 }
+
+private val CatalogCheckInterval = 5.seconds

@@ -11,6 +11,7 @@ import app.luxion.shogunai.domain.model.MobileSecretKind
 import app.luxion.shogunai.domain.model.ProvisionDriftState
 import app.luxion.shogunai.domain.model.AppLanguage
 import app.luxion.shogunai.domain.model.AgentStateSource
+import app.luxion.shogunai.domain.model.RunnerId
 import app.luxion.shogunai.ui.components.AgentPhase
 import app.luxion.shogunai.domain.usecase.HookEntry
 import app.luxion.shogunai.domain.usecase.HookReplacement
@@ -218,6 +219,8 @@ interface Strings {
     fun agentLabel(name: String, phase: AgentPhase): String = "$name · ${agentPhaseName(phase)}"
     fun agentPhaseName(phase: AgentPhase): String
     fun agentStateSource(source: AgentStateSource?): String
+    fun agentInRunner(runner: RunnerId): String
+    val clickToFocus: String
     fun agentsUpdated(relative: String): String
     val noAgentRunning: String
     fun copyValue(key: String): String
@@ -690,7 +693,11 @@ interface Strings {
     val menuCommandPalette: String
     val paletteHint: String
     val paletteNoResults: String
-    val paletteCopyLaunchCommandHint: String
+    val paletteSettingsSynonym: String
+    fun paletteOpenWorktree(worktree: String): String
+    val paletteEnterOpen: String
+    val paletteEnterRun: String
+    val paletteEnterShowWorktree: String
     val paletteKindView: String
     val paletteKindSetting: String
     val paletteKindProject: String
@@ -823,6 +830,7 @@ interface Strings {
     val tourRestart: String
     val tourOpenExisting: String
     val tourNoticeMessage: String
+    val tourNoticeDetails: String
     val tourBannerMessage: String
     val tourOpenAgent: String
     val tourEnd: String

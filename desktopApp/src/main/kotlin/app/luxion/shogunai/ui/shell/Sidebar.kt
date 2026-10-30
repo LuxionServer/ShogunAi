@@ -24,6 +24,7 @@ import androidx.compose.material.icons.automirrored.filled.ViewSidebar
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Folder
@@ -94,6 +95,7 @@ fun Sidebar(
     onMoveEntry: (SidebarLevel, String, Int) -> Unit = { _, _, _ -> },
     onSortLevel: (SidebarLevel) -> Unit = {},
     onOpenPreferences: () -> Unit = {},
+    footer: @Composable () -> Unit = {},
 ) {
     val strings = LocalStrings.current
     Column(
@@ -210,6 +212,7 @@ fun Sidebar(
                 AddRow(strings.addMultirepo, Icons.Default.CreateNewFolder, onAddMultirepo)
             }
         }
+        footer()
         SidebarFooter(rail, onOpenPreferences)
     }
 }
@@ -227,6 +230,43 @@ private fun SidebarFooter(rail: Boolean, onOpenPreferences: () -> Unit) {
             onClick = onOpenPreferences,
             tint = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+    }
+}
+
+@Composable
+fun SidebarFooterLine(
+    message: String,
+    details: String,
+    icon: ImageVector,
+    rail: Boolean,
+    onClick: () -> Unit,
+    onDismiss: () -> Unit,
+    dismissLabel: String,
+) {
+    val colors = MaterialTheme.colorScheme
+    if (rail) {
+        IconAction(icon = icon, label = details, onClick = onClick, tint = colors.primary)
+        return
+    }
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(start = Spacing.sm, end = Spacing.xs),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        WithTooltip(label = details, modifier = Modifier.weight(1f)) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(SidebarRowHeight)
+                    .interactive(onClick = onClick)
+                    .padding(horizontal = Spacing.sm),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+            ) {
+                Icon(icon, contentDescription = null, tint = colors.primary, modifier = Modifier.size(SidebarIconSize))
+                Text(message, style = MaterialTheme.typography.bodyMedium, color = colors.primary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        }
+        IconAction(icon = Icons.Default.Close, label = dismissLabel, onClick = onDismiss, tint = colors.onSurfaceVariant)
     }
 }
 
