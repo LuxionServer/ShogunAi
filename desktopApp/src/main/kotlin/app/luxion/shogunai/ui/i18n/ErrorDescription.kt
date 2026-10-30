@@ -59,6 +59,7 @@ private fun technicalDetailsOf(error: Throwable): TechnicalDetails? = when (erro
     is WorktreeError.AndroidToolFailed -> TechnicalDetails(error.command, error.exitCode, error.output)
     is WorktreeError.ProcessListingFailed -> TechnicalDetails(error.command, error.exitCode, "")
     is WorktreeError.WorktreeFolderInUse -> TechnicalDetails(error.command, error.exitCode, error.errorOutput)
+    is WorktreeError.WorktreeLocked -> TechnicalDetails(error.command, error.exitCode, error.errorOutput)
     is WorktreeError.HerdrCommandFailed -> TechnicalDetails(error.command, null, error.detail)
     is WorktreeError.HerdrAgentNotStarted -> TechnicalDetails(null, null, "pane: ${error.paneId}\ncommand: ${error.command}")
     is WorktreeError.OrcaCommandFailed -> TechnicalDetails(error.command, null, error.detail)

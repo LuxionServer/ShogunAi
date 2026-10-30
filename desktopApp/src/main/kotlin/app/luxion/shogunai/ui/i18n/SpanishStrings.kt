@@ -311,6 +311,8 @@ object SpanishStrings : Strings {
     override val forceRemoveTitle = "¿Forzar eliminación?"
     override fun forceRemoveMessage(path: String) =
         "\"$path\" tiene cambios sin guardar. Se perderán si se elimina el worktree."
+    override fun forceRemoveLockedMessage(path: String, reason: String?) =
+        "\"$path\" está bloqueado${reason?.let { ": $it" }.orEmpty()}. Forzar la eliminación se salta el bloqueo."
     override fun alsoDeleteLocalBranch(branch: String) = "Eliminar también la rama local ($branch)"
     override val forceRemove = "Forzar eliminación"
     override val detachedHead = "(desacoplado)"

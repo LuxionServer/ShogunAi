@@ -311,6 +311,8 @@ object EnglishStrings : Strings {
     override val forceRemoveTitle = "Force deletion?"
     override fun forceRemoveMessage(path: String) =
         "\"$path\" has unsaved changes. They will be lost if the worktree is deleted."
+    override fun forceRemoveLockedMessage(path: String, reason: String?) =
+        "\"$path\" is locked${reason?.let { ": $it" }.orEmpty()}. Forcing the deletion overrides the lock."
     override fun alsoDeleteLocalBranch(branch: String) = "Also delete the local branch ($branch)"
     override val forceRemove = "Force deletion"
     override val detachedHead = "(detached)"

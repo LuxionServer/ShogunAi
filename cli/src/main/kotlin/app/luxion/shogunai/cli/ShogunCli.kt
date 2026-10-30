@@ -1373,6 +1373,10 @@ class ShogunCli(
                     err.line("shogun: ${worktree.path} has uncommitted or untracked changes; use --force to remove it anyway")
                     return EXIT_FAILURE
                 }
+                if (failure is WorktreeError.WorktreeLocked) {
+                    err.line("shogun: ${worktree.path} is locked${failure.reason?.let { " ($it)" }.orEmpty()}; use --force to remove it anyway")
+                    return EXIT_FAILURE
+                }
                 throw failure
             }
         val say = saying(command.json)
