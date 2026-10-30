@@ -1,6 +1,7 @@
 package app.luxion.shogunai.ui.machine
 
 import app.luxion.shogunai.domain.model.ResourceKind
+import app.luxion.shogunai.domain.model.toLocalClockTime
 import app.luxion.shogunai.ui.components.NoticeGroup
 import app.luxion.shogunai.ui.components.groupNotices
 import app.luxion.shogunai.ui.i18n.Strings
@@ -23,18 +24,12 @@ private fun noticeKey(notice: PoolNotice): PoolNoticeKey = when (val content = n
     is PoolNoticeContent.Trimmed -> PoolNoticeKey.Trimmed
 }
 
-private fun NoticeGroup<PoolNoticeKey, PoolNotice>.summary(strings: Strings): String {
-    if (count == 1) return items.single().message(strings)
-    return when (val groupKey = key) {
-        is PoolNoticeKey.Released -> strings.releasedSummary(groupKey.kind, count)
-        PoolNoticeKey.Trimmed -> {
-            val trims = items.map { it.content as PoolNoticeContent.Trimmed }
-            strings.trimmedNotice(trims.sumOf { it.count }, trims.last().limit)
-        }
-    }
+private fun NoticeGroup<PoolNoticeKey, PoolNotice>.summary(strings: Strings): String = when (val groupKey = key) {
+    is PoolNoticeKey.Released -> if (count == 1) items.single().message(strings) else strings.releasedSummary(groupKey.kind, count)
+    PoolNoticeKey.Trimmed -> items.last().message(strings)
 }
 
 fun PoolNotice.message(strings: Strings): String = when (val content = content) {
     is PoolNoticeContent.Released -> strings.releasedNotice(content.kind, content.released, content.forWorktree)
-    is PoolNoticeContent.Trimmed -> strings.trimmedNotice(content.count, content.limit)
+    is PoolNoticeContent.Trimmed -> strings.trimmedNotice(content.count, content.limit, content.trims, content.lastAt.toLocalClockTime())
 }

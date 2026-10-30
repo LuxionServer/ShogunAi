@@ -18,6 +18,7 @@ import app.luxion.shogunai.domain.model.SimulatorSettings
 import app.luxion.shogunai.domain.io.DirectoryListing
 import app.luxion.shogunai.ui.isAbsolutePath
 import app.luxion.shogunai.domain.model.DetectedStack
+import app.luxion.shogunai.domain.model.LocalFileCandidate
 import app.luxion.shogunai.domain.model.MobileSecret
 import app.luxion.shogunai.domain.model.MobileSecretsReport
 import app.luxion.shogunai.domain.model.isLocalPattern
@@ -96,6 +97,7 @@ class ProjectConfigViewModel(
     private val multirepoOfWorkspace: (topLevel: String) -> String? = { null },
     private val detectMobileSecrets: (suspend (ProjectConfig) -> MobileSecretsReport)? = null,
     private val listLocalFolder: (path: String) -> DirectoryListing? = { null },
+    private val listLocalFileCandidates: (suspend (ProjectConfig) -> List<LocalFileCandidate>)? = null,
 ) : ViewModel(), LeaveGuard {
     private val existingId = existingProject?.id
     val isNewProject: Boolean = existingProject == null
@@ -655,6 +657,51 @@ class ProjectConfigViewModel(
     }
 
     private fun repositoryPatternOf(entry: String): String = if (isLocalPattern(entry)) entry else anchoredPattern(entry)
+
+    var localFilePicker by mutableStateOf<LocalFilePickerState?>(null)
+        private set
+
+    val canChooseLocalFiles: Boolean
+        get() = listLocalFileCandidates != null && baseRepositoryPath.isNotBlank()
+
+    fun openLocalFilePicker() {
+        if (!canChooseLocalFiles) return
+        val picker = LocalFilePickerState(secretFiles.toSet())
+        localFilePicker = picker
+        loadLocalFileCandidates(picker)
+    }
+
+    fun retryLocalFileCandidates() {
+        localFilePicker?.let(::loadLocalFileCandidates)
+    }
+
+    private fun loadLocalFileCandidates(picker: LocalFilePickerState) {
+        val list = listLocalFileCandidates ?: return
+        val config = ProjectConfig(
+            baseRepositoryPath = baseRepositoryPath,
+            worktreesRoot = worktreesRoot,
+            secretFiles = secretFiles,
+            linkedSecretFiles = linkedSecretFiles.toList(),
+        )
+        picker.load = LocalFileCandidatesLoad.Loading
+        viewModelScope.launch {
+            picker.load = runCatching { list(config) }.fold(
+                onSuccess = { LocalFileCandidatesLoad.Loaded(it) },
+                onFailure = { LocalFileCandidatesLoad.Failed(it) },
+            )
+        }
+    }
+
+    fun applyLocalFilePicker() {
+        val selection = localFilePicker?.selection() ?: return
+        localFilePicker = null
+        selection.removed.forEach(::removeSecretFile)
+        (selection.added + selection.patterns).forEach(::addSecretFile)
+    }
+
+    fun cancelLocalFilePicker() {
+        localFilePicker = null
+    }
 
     val mobileSecretSuggestions: List<MobileSecret>
         get() = mobileSecrets.secrets.filterNot { it.linkPattern in pendingLinkPatterns }

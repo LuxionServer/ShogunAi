@@ -31,13 +31,14 @@ import kotlin.time.Duration.Companion.seconds
 
 class CliOrcaClient(
     private val executor: ShellCommandExecutor,
-    private val userHome: String = System.getProperty("user.home"),
+    private val findExecutable: (String) -> String?,
     private val osName: String = System.getProperty("os.name").orEmpty(),
     private val isFile: (String) -> Boolean = { File(it).isFile },
-    private val findOnPath: (String) -> String? = { name -> ExecutableLocator().find(name) },
 ) : OrcaClient {
 
-    override fun isInstalled(): Boolean = executableOrNull() != null
+    override fun isInstalled(): Boolean = location() != null
+
+    override fun location(): String? = executableOrNull()
 
     override suspend fun status(): OrcaStatus {
         val result = run(listOf("status"))
@@ -213,16 +214,8 @@ class CliOrcaClient(
 
     fun executable(): String = executableOrNull() ?: binaryName()
 
-    private fun executableOrNull(): String? {
-        val name = binaryName()
-        val home = userHome.trimEnd('/', '\\')
-        val candidates = if (isWindows()) {
-            emptyList()
-        } else {
-            USER_BIN_FOLDERS.map { "$home/$it/$name" } + SYSTEM_BIN_FOLDERS.map { "$it/$name" } + listOfNotNull(MAC_APP_BINARY.takeIf { isMac() })
-        }
-        return candidates.firstOrNull(isFile) ?: findOnPath(name)
-    }
+    private fun executableOrNull(): String? =
+        findExecutable(binaryName()) ?: MAC_APP_BINARY.takeIf { isMac() && isFile(it) }
 
     private fun binaryName(): String = when {
         isWindows() || isMac() -> "orca"
@@ -278,8 +271,6 @@ class CliOrcaClient(
         private const val FOLDER_WORKSPACE = "folder-workspace"
         private const val FOLDER_PREFIX = "folder:"
         private const val MAC_APP_BINARY = "/Applications/Orca.app/Contents/Resources/bin/orca"
-        private val USER_BIN_FOLDERS = listOf(".local/bin")
-        private val SYSTEM_BIN_FOLDERS = listOf("/opt/homebrew/bin", "/usr/local/bin")
 
         fun isOlder(version: String, minimum: String): Boolean {
             val parts = version.split('.', '-').map { it.toIntOrNull() ?: 0 }

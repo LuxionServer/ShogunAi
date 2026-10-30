@@ -4,6 +4,7 @@ import app.luxion.shogunai.domain.io.HerdrClient
 import app.luxion.shogunai.domain.model.ClaudeSession
 import app.luxion.shogunai.domain.model.HerdrAgent
 import app.luxion.shogunai.domain.model.HerdrPane
+import app.luxion.shogunai.domain.model.HerdrPaneProcesses
 import app.luxion.shogunai.domain.model.HerdrWorkspace
 import app.luxion.shogunai.domain.model.HerdrWorktreeOpening
 
@@ -21,6 +22,8 @@ class FakeHerdrClient(
     private val openFailures: Map<String, Throwable> = emptyMap(),
     private val startsAgents: Boolean = true,
     private val agentDetectedAfterListings: Int = 0,
+    private val busyPanes: Set<String> = emptySet(),
+    private val unknownProcessPanes: Set<String> = emptySet(),
 ) : HerdrClient {
 
     data class Split(val paneId: String, val cwd: String, val environment: List<Pair<String, String>>)
@@ -36,6 +39,7 @@ class FakeHerdrClient(
     val focusedAgents = mutableListOf<String>()
     val ran = mutableListOf<Pair<String, String>>()
     val paneListings = mutableListOf<String?>()
+    val processReads = mutableListOf<String>()
     private val createdPanes = mutableListOf<HerdrPane>()
     private val startingAgents = mutableMapOf<String, Pair<String, Int>>()
     private val workspacesByPath = mutableMapOf<String, String>()
@@ -158,8 +162,19 @@ class FakeHerdrClient(
     override suspend fun focusWorkspace(workspaceId: String) {
         focusedWorkspaces += workspaceId
     }
+
+    override suspend fun paneProcesses(paneId: String): HerdrPaneProcesses? {
+        processReads += paneId
+        return when (paneId) {
+            in unknownProcessPanes -> null
+            in busyPanes -> HerdrPaneProcesses(SHELL_PID, SHELL_PID + 1)
+            else -> HerdrPaneProcesses(SHELL_PID, SHELL_PID)
+        }
+    }
 }
 
 private val SESSION_NAME_ARGUMENT = Regex(" -n \\S+$")
 
 const val STARTED_SESSION_PID = 9000L
+
+private const val SHELL_PID = 4000L

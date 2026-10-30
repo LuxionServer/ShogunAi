@@ -20,24 +20,24 @@ class SmokeTestLaunchTest {
 
     @Test
     fun `the report variable starts the smoke test when there are no arguments`() {
-        assertEquals("/tmp/report.json", smokeTestReportPath(emptyList(), mapOf(SMOKE_TEST_REPORT_VARIABLE to "/tmp/report.json")))
+        assertEquals("/tmp/report.json", smokeTestReportPath(emptyList(), mapOf(SMOKE_TEST_REPORT_VARIABLE to "/tmp/report.json")::get))
     }
 
     @Test
     fun `arguments run the command line even with the report variable set`() {
-        assertNull(smokeTestReportPath(listOf("status"), mapOf(SMOKE_TEST_REPORT_VARIABLE to "/tmp/report.json")))
+        assertNull(smokeTestReportPath(listOf("status"), mapOf(SMOKE_TEST_REPORT_VARIABLE to "/tmp/report.json")::get))
     }
 
     @Test
     fun `without the report variable the app starts as before`() {
-        assertNull(smokeTestReportPath(emptyList(), emptyMap()))
-        assertNull(smokeTestReportPath(emptyList(), mapOf(SMOKE_TEST_REPORT_VARIABLE to " ")))
+        assertNull(smokeTestReportPath(emptyList()) { null })
+        assertNull(smokeTestReportPath(emptyList(), mapOf(SMOKE_TEST_REPORT_VARIABLE to " ")::get))
     }
 
     @Test
     fun `local files are a comma-separated list`() {
-        assertEquals(listOf(".env.local", "keys/dev.pem"), smokeTestLocalFiles(mapOf(SMOKE_TEST_LOCAL_FILES_VARIABLE to " .env.local, ,keys/dev.pem")))
-        assertEquals(emptyList(), smokeTestLocalFiles(emptyMap()))
+        assertEquals(listOf(".env.local", "keys/dev.pem"), smokeTestLocalFiles(mapOf(SMOKE_TEST_LOCAL_FILES_VARIABLE to " .env.local, ,keys/dev.pem")::get))
+        assertEquals(emptyList(), smokeTestLocalFiles { null })
     }
 
     @Test

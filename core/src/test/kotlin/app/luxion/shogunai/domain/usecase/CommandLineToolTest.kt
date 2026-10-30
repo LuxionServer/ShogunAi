@@ -4,7 +4,7 @@ import app.luxion.shogunai.domain.FakeShellCommandExecutor
 import app.luxion.shogunai.domain.io.LauncherFiles
 import app.luxion.shogunai.domain.io.UserPathEntries
 import app.luxion.shogunai.domain.model.HostOs
-import app.luxion.shogunai.infrastructure.ShellLoginShellPath
+import app.luxion.shogunai.infrastructure.SystemHostEnvironment
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -33,6 +33,7 @@ private class FakeLauncherFiles : LauncherFiles {
         links[link] = target
     }
     override fun delete(path: String) {
+        if (failWrites) throw java.io.IOException("denied")
         texts.remove(path)
         links.remove(path)
         others.remove(path)
@@ -88,12 +89,17 @@ class CommandLineToolTest {
         val shell = FakeShellCommandExecutor {
             FakeShellCommandExecutor.success(it, "__SHOGUNAI_PATH__/opt/homebrew/bin:/usr/bin:/bin__SHOGUNAI_PATH__")
         }
-        val loginShellPath = ShellLoginShellPath(shell, HostOs.MACOS, "/bin/zsh", "/usr/bin:/bin:/usr/sbin:/sbin", "/home/dev")
+        val environment = SystemHostEnvironment(
+            HostOs.MACOS,
+            mapOf("PATH" to "/usr/bin:/bin:/usr/sbin:/sbin", "SHELL" to "/bin/zsh"),
+            "/home/dev",
+            shell,
+        )
         return CommandLineTool(
             os = HostOs.MACOS,
             appLauncher = "/Applications/ShogunAi.app/Contents/MacOS/ShogunAi",
             home = "/home/dev",
-            pathFolders = loginShellPath::folders,
+            pathFolders = { environment.path.folders },
             userBinFolders = listOf("/opt/homebrew/bin", "/usr/local/bin", "/home/dev/.local/bin", "/home/dev/.cargo/bin"),
             findShogun = { found },
             files = files,
@@ -298,5 +304,26 @@ class CommandLineToolTest {
         unix().remove().getOrThrow()
 
         assertTrue(files.links.isEmpty())
+    }
+
+    @Test
+    fun `reports the Windows script it could not write`() = runTest {
+        files.failWrites = true
+
+        val error = windows().install().exceptionOrNull()
+
+        assertIs<CommandLineToolError.WriteFailed>(error)
+        assertEquals("C:\\Users\\dev\\.shogunai\\bin\\shogun.cmd", error.path)
+    }
+
+    @Test
+    fun `reports the link it could not remove`() = runTest {
+        files.links["/home/dev/.local/bin/shogun"] = "/opt/shogunai/bin/ShogunAi"
+        files.failWrites = true
+
+        val error = unix().remove().exceptionOrNull()
+
+        assertIs<CommandLineToolError.WriteFailed>(error)
+        assertEquals("/home/dev/.local/bin/shogun", error.path)
     }
 }

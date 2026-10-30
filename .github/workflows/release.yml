@@ -63,6 +63,7 @@ jobs:
     with:
       version: ${{ needs.resolve-version.outputs.version }}
       ref: ${{ needs.resolve-version.outputs.ref }}
+    secrets: inherit
 
   smoke-test:
     name: Smoke test

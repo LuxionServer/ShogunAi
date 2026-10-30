@@ -56,15 +56,35 @@ class WorkflowRulesTest {
         assertEquals(WorkflowRules.GUIDE_POINTER, lines.last())
     }
 
+    private val backendWorktree = WorkflowContext(inMainCheckout = false, runnerAvailable = true, emulatorProvider = false, simulatorProvider = false, composeProvider = true)
+
     @Test
-    fun `the desktop turn rule is in every session start`() {
-        listOf(worktree, worktree.copy(desktopAppProvider = false, emulatorProvider = false, simulatorProvider = false, inMainCheckout = true)).forEach { context ->
-            val rule = WorkflowRules.sessionStartRules(context).single { it.id == "resources.desktop-turn" }
-            assertTrue("shogun desktop acquire --wait" in rule.text)
-            assertTrue("shogun desktop release" in rule.text)
-            assertTrue("background" in rule.text)
-            assertTrue("`orca computer`" in rule.text)
+    fun `neither the desktop turn nor the worktree base rule is in the session start`() {
+        listOf(worktree, bare, backendWorktree).forEach { context ->
+            val sessionIds = ids(WorkflowRules.sessionStartRules(context))
+            assertFalse("resources.desktop-turn" in sessionIds, sessionIds.toString())
+            assertFalse("worktrees.base" in sessionIds, sessionIds.toString())
+            val text = WorkflowRules.sessionStartLines(context).joinToString("\n")
+            assertFalse("--from" in text, text)
+            assertFalse("git log -1" in text, text)
         }
+    }
+
+    @Test
+    fun `the guide keeps the desktop turn and worktree base rules`() {
+        val turn = WorkflowRules.rulesFor(bare, WorkflowTopic.RESOURCES).applicable.single { it.id == "resources.desktop-turn" }
+        listOf("shogun desktop acquire --wait", "shogun desktop release", "background", "`orca computer`").forEach {
+            assertTrue(it in turn.text, it)
+        }
+        val base = WorkflowRules.rulesFor(worktree, WorkflowTopic.WORKTREES).applicable.single { it.id == "worktrees.base" }
+        assertTrue("--from <ref>" in base.text && "git log -1" in base.text)
+    }
+
+    @Test
+    fun `a backend session start has no desktop, emulator or simulator rules`() {
+        val text = WorkflowRules.sessionStartLines(backendWorktree).joinToString("\n").lowercase()
+
+        listOf("desktop", "computer use", "emulator", "simulator", "headless").forEach { assertFalse(it in text, it) }
     }
 
     private fun flutterRule(context: WorkflowContext): String =
@@ -113,8 +133,13 @@ class WorkflowRulesTest {
     }
 
     @Test
-    fun `the desktop app rule is in the session start only with the provider`() {
-        val rule = WorkflowRules.sessionStartRules(worktree).single { it.id == "resources.desktop-app" }
+    fun `the desktop app rule has a one line session start form and the full text in the guide`() {
+        val lines = WorkflowRules.sessionStartLines(worktree)
+        val line = lines.single { "shogun headless start" in it }
+        assertTrue("shogun guide resources" in line, line)
+        assertFalse("shogun headless capture" in line, line)
+
+        val rule = WorkflowRules.rulesFor(worktree, WorkflowTopic.RESOURCES).applicable.single { it.id == "resources.desktop-app" }
         listOf("shogun headless start", "shogun headless capture", "take_screenshot", "restart", "menu bar", "shogun desktop acquire --wait").forEach {
             assertTrue(it in rule.text, it)
         }

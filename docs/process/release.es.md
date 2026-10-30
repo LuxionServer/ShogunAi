@@ -8,22 +8,20 @@ Cómo se corta y publica una nueva versión del instalador de escritorio (`.dmg`
 graph LR
     A["Crear rama release/X.X.X"] --> B["Push a release/X.X.X"]
     B --> C["Tests + Release candidate"]
-    C --> R["Ensayo en una cuenta limpia"]
-    R --> D["PR release/X.X.X → main"]
+    C --> D["PR release/X.X.X → main + ensayo"]
     D --> E["Merge"]
     E --> F["Release: tests + build + smoke test + tag + publish"]
 ```
 
 1. **Crear la rama** `release/X.X.X` (donde `X.X.X` es la versión a publicar) desde `develop`, escribir la feature principal de la release en `.github/release-title` (ver [Título de la release](#título-de-la-release)) y sus notas en `.github/release-notes/X.X.X.md` y `X.X.X.es.md` (ver [Notas de la release](#notas-de-la-release)).
 2. **Validar** — cada push a `release/**` dispara dos workflows, que sirven para iterar y corregir antes de abrir la PR:
-      - `Tests` (`.github/workflows/tests.yml`), que corre `./gradlew test`. El mismo workflow corre también en cada pull request hacia `develop` o una rama `epic/**` y en cada push a ellas (un push a una rama con una pull request así abierta se lo salta, porque ya lo corre la pull request), así que las regresiones se detectan antes de llegar a una rama de release.
+      - `Tests` (`.github/workflows/tests.yml`), que corre `./gradlew test`. El mismo workflow corre también en cada pull request hacia `develop` o una rama `epic/**` y en cada push a `develop`, así que las regresiones se detectan antes de llegar a una rama de release.
       - `Release candidate` (`.github/workflows/release-candidate.yml`), que compila los instaladores de la versión del nombre de la rama y les pasa el [smoke test de la app empaquetada](#smoke-test-de-la-app-empaquetada). Nunca crea un tag, una release ni un manifiesto de paquete. También se puede lanzar a mano desde la pestaña Actions en cualquier rama, indicando la versión a empaquetar.
-3. **Ensayar** en una cuenta de macOS limpia, siguiendo el [guion de ensayo](rehearsal.md), antes de la release o antes de una demo.
-4. **Abrir la PR** de `release/X.X.X` a `main` y revisarla como cualquier otra.
-5. **Mergear** — al mergearse una PR cuya rama de origen matchea `release/*`, el workflow `Release` (`.github/workflows/release.yml`):
+3. **Abrir la PR** de `release/X.X.X` a `main` y revisarla como cualquier otra. Mientras está abierta, hacer el [ensayo en una cuenta limpia](clean-account-rehearsal.md) con el `.dmg` compilado desde la rama: el artefacto `installer-macos-latest` (Apple Silicon) o `installer-macos-26-intel` de su último run de `Release candidate`, firmado y notarizado como el publicado.
+4. **Mergear** — al mergearse una PR cuya rama de origen matchea `release/*`, el workflow `Release` (`.github/workflows/release.yml`):
       1. valida la versión tomada del nombre de la rama (o del tag): debe ser `X.Y.Z` solo con dígitos; si no, el run falla antes de compilar nada,
       2. ejecuta la suite completa de tests sobre el commit de la release en Linux, macOS y Windows (`.github/workflows/test-suite.yml`, el mismo que usa `Tests`). Nada más corre hasta que pasa,
-      3. compila los instaladores en macOS Apple Silicon, macOS Intel, Windows y Linux (`packageReleaseDmg`/`Msi`/`Deb`) pasando esa versión, con un token de solo lectura, y en paralelo, una vez en Linux, la herramienta de línea de comandos independiente (`:cli:distZip`, ver [Línea de comandos](../architecture/cli.md)), todo en `.github/workflows/package.yml`, el mismo que usa `Release candidate`. Cada `.dmg` de macOS se renombra `ShogunAi-X.X.X-<arch>.dmg` (`arm64`/`x64`, tomado de la arquitectura del propio runner) justo después del build, y cada instalador y `shogun-X.X.X.zip` se guardan como artefactos del workflow,
+      3. compila los instaladores en macOS Apple Silicon, macOS Intel, Windows y Linux (`packageReleaseDmg`/`Msi`/`Deb`) pasando esa versión, con un token de solo lectura, y en paralelo, una vez en Linux, la herramienta de línea de comandos independiente (`:cli:distZip`, ver [Línea de comandos](../architecture/cli.md)), todo en `.github/workflows/package.yml`, el mismo que usa `Release candidate`. Los instaladores de macOS los compila `.github/workflows/macos-installer.yml`, que firma la app con el certificado Developer ID, renombra cada `.dmg` `ShogunAi-X.X.X-<arch>.dmg` (`arm64`/`x64`, tomado de la arquitectura del propio runner), lo firma, lo notariza con Apple, le grapa el ticket y lo comprueba con Gatekeeper (ver [Firma y notarización en macOS](#firma-y-notarizacion-en-macos)). Cada instalador y `shogun-X.X.X.zip` se guardan como artefactos del workflow,
       4. pasa el [smoke test de la app empaquetada](#smoke-test-de-la-app-empaquetada) a cada instalador (`.github/workflows/smoke-test.yml`). Todavía no existe nada público, y nada más corre hasta que pasa en todos los sistemas operativos,
       5. crea y pushea el tag `vX.X.X` sobre el commit de merge (la versión sale del nombre de la rama, no hay que escribirla dos veces) y crea el GitHub Release en modo **draft** con las notas de la release como cuerpo (ver [Notas de la release](#notas-de-la-release)) y el título `vX.X.X — <feature>` (la feature se lee de `.github/release-title`, ver [Título de la release](#título-de-la-release)); una sola vez,
       6. un job que solo tiene los permisos para firmar atestaciones (no hace checkout del repositorio ni ejecuta la build) genera una atestación de procedencia de build firmada para cada instalador y el zip (`actions/attest`). La release no se publica hasta que existen todas,
@@ -34,7 +32,7 @@ graph LR
 
 Los pasos 8, 9 y 10 se ejecutan en paralelo y son independientes: si uno falla, la release sigue publicada y los demás se ejecutan igualmente.
 
-Todo el flujo desde el paso 5 ocurre en un único run de CI, sin intervención manual. La release se crea en draft y recién se publica al final porque una release ya publicada es inmutable para GitHub (rechaza nuevos assets) y porque escribir las notas una sola vez evita que se dupliquen si cada build del matrix las escribiera por su cuenta.
+Todo el flujo desde el paso 4 ocurre en un único run de CI, sin intervención manual. La release se crea en draft y recién se publica al final porque una release ya publicada es inmutable para GitHub (rechaza nuevos assets) y porque escribir las notas una sola vez evita que se dupliquen si cada build del matrix las escribiera por su cuenta.
 
 ## Smoke test de la app empaquetada
 
@@ -108,6 +106,26 @@ El workflow construye el cuerpo del GitHub Release con los dos ficheros: las not
 La app de escritorio lee cada idioma entre sus marcadores para mostrar las notas en el aviso de actualización (ver [App de escritorio](../guide/desktop-app.md)), así que no cambies los marcadores sin cambiar la app. Las releases publicadas antes de este formato solo tienen las notas que genera GitHub; la app las muestra sin autores, enlaces a pull requests ni la línea «Full Changelog».
 
 Si falta `X.X.X.md`, el workflow publica la release con las notas generadas por GitHub y registra un warning que nombra los ficheros que faltan, así que unas notas olvidadas nunca bloquean una release. Si solo falta `X.X.X.es.md`, el cuerpo lleva solo la sección en inglés y el workflow registra un warning; la app muestra entonces las notas en inglés a quien la use en español.
+
+## Firma y notarización en macOS
+
+Cada `.dmg` de macOS se firma con el certificado Developer ID Application del proyecto bajo el hardened runtime (permisos en `desktopApp/macos/entitlements.plist`), se notariza con `notarytool` usando una clave de API de App Store Connect y se le grapa el ticket, así que Gatekeeper lo abre sin avisos. Si falta un secreto o Apple rechaza la notarización, falla la build de macOS antes de crear ningún tag ni release: nunca se publica un instalador sin firmar. El run de `Release candidate` de una rama de release los compila igual, así que un problema de firma aparece antes del merge. Cuando Apple rechaza un envío, el job muestra el log de la notarización.
+
+La build solo firma cuando recibe una identidad (`-PmacSigningIdentity=<nombre sin el prefijo "Developer ID Application: ">`, y `-PmacSigningKeychain=<ruta>` si el certificado no está en el llavero por defecto). Las builds locales y los tests siguen sin firmar y no necesitan nada.
+
+El workflow lee cinco secretos de Actions:
+
+- `MACOS_CERTIFICATE_P12`: el certificado con su clave privada, exportado desde Acceso a Llaveros como `.p12` y codificado en base64 (`base64 -i <fichero>.p12 | gh secret set MACOS_CERTIFICATE_P12 -R LuxionServer/ShogunAi`).
+- `MACOS_CERTIFICATE_PASSWORD`: la contraseña elegida al exportar el `.p12`.
+- `MACOS_NOTARY_KEY`: el contenido del fichero `.p8` de la clave de API de equipo de App Store Connect, creada con el rol Developer (`gh secret set MACOS_NOTARY_KEY -R LuxionServer/ShogunAi < AuthKey_<id>.p8`).
+- `MACOS_NOTARY_KEY_ID` y `MACOS_NOTARY_ISSUER_ID`: el ID de la clave y el ID del emisor que muestra la página de claves de API de App Store Connect.
+
+La identidad de firma se lee del certificado, así que el repositorio no guarda ningún nombre ni Team ID. Borra el `.p12` y el `.p8` locales en cuanto estén puestos los secretos.
+
+Para comprobar la configuración sin publicar, lanza a mano el workflow `macOS installer` (`gh workflow run macos-installer.yml -R LuxionServer/ShogunAi -f version=X.Y.Z`): sube los dos `.dmg` firmados y notarizados como artefactos del workflow y no toca ninguna release, tag ni gestor de paquetes.
+
+- **Renovar el certificado**: los certificados Developer ID duran cinco años. Antes de que caduque, crea uno nuevo en developer.apple.com a partir de un CSR de Acceso a Llaveros, expórtalo como `.p12` y sustituye `MACOS_CERTIFICATE_P12` y `MACOS_CERTIFICATE_PASSWORD`. Los instaladores ya publicados siguen abriéndose, porque sus firmas llevan sello de tiempo.
+- **Rotar la clave de API**: crea una clave de equipo nueva en App Store Connect, sustituye `MACOS_NOTARY_KEY` y `MACOS_NOTARY_KEY_ID`, compruébalo con un run manual y después revoca la clave antigua.
 
 ## Gestores de paquetes de Windows
 

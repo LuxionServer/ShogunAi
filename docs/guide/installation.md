@@ -9,14 +9,7 @@ brew tap LuxionServer/shogunai
 brew install --cask shogunai
 ```
 
-Homebrew picks the installer for your Mac's architecture (Apple Silicon or Intel) automatically, and links the `shogun` command.
-
-!!! note "Unverified developer warning"
-    The app isn't notarized by Apple. If macOS warns that "the developer cannot be verified" the first time you open it, open it with right click → Open, or run:
-
-    ```bash
-    xattr -dr com.apple.quarantine "/Applications/ShogunAi.app"
-    ```
+Homebrew picks the installer for your Mac's architecture (Apple Silicon or Intel) automatically, and links the `shogun` command. The app is signed and notarized by Apple, so macOS opens it without warnings.
 
 ## Windows (winget)
 
@@ -54,7 +47,7 @@ The desktop app tells you when a newer release is out and reminds you how to upd
 
 ## The `shogun` command
 
-The desktop app can install it for you, whichever way you installed ShogunAi: open Preferences, find Claude Code and activate "Install command-line tool". It uses the app's own bundled runtime, so it needs no Java and no download, and the same button appears next to the hooks' "Install" when the command is missing (the hooks can't be installed until it is available). On macOS and Linux it links the app's launcher as `shogun` in a user-writable folder already on your `PATH`, or in `~/.local/bin` (the app shows the line to add to your shell profile if that folder isn't on your `PATH`). There, "your `PATH`" is your login shell's: an app opened from the Dock or Finder gets a minimal `PATH`, so at start-up the app asks your shell (`$SHELL -l -i`) for its own, and if the shell doesn't answer within a few seconds it uses its own `PATH` plus `/opt/homebrew/bin`, `/usr/local/bin`, `~/.local/bin` and `~/.cargo/bin`. The app reads it once, so restart it after changing your shell profile. On Windows it writes `shogun.cmd` in `%USERPROFILE%\.shogunai\bin` and adds that folder to your user `PATH`, with no administrator rights; restart your terminal and Claude Code afterwards. "Remove command-line tool" undoes only what the app created. A development build (`./gradlew run`) has no launcher to expose and shows the manual steps instead.
+The desktop app can install it for you, whichever way you installed ShogunAi: open Preferences, find Claude Code and activate "Install command-line tool". It uses the app's own bundled runtime, so it needs no Java and no download, and the same button appears next to the hooks' "Install" when the command is missing (the hooks can't be installed until it is available). On macOS and Linux it links the app's launcher as `shogun` in a user-writable folder already on your `PATH`, or in `~/.local/bin` (the app shows the line to add to your shell profile if that folder isn't on your `PATH`). There, "your `PATH`" is your login shell's: an app opened from the Dock or Finder gets a minimal `PATH`, so at start-up the app asks your shell (`$SHELL -l -i`) for its own, and if the shell doesn't answer within a few seconds it uses its own `PATH` plus `/opt/homebrew/bin`, `/usr/local/bin`, `~/.local/bin` and `~/.cargo/bin`. The app reads it once, so restart it after changing your shell profile. Everything the app starts gets that same `PATH`: Git, post-creation commands, a Herdr server and its panes, so `shogun` and your other tools are found there too. The `shogun` command itself uses the `PATH` it was started with, followed by those same usual folders. On Windows it writes `shogun.cmd` in `%USERPROFILE%\.shogunai\bin` and adds that folder to your user `PATH`, with no administrator rights; restart your terminal and Claude Code afterwards. "Remove command-line tool" undoes only what the app created. A development build (`./gradlew run`) has no launcher to expose and shows the manual steps instead.
 
 By hand:
 

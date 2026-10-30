@@ -4,6 +4,7 @@ import app.luxion.shogunai.domain.FakeAgentSessionStore
 import app.luxion.shogunai.domain.FakeClaudeSessionRegistry
 import app.luxion.shogunai.domain.FakeHerdrClient
 import app.luxion.shogunai.domain.FakeOrcaClient
+import app.luxion.shogunai.domain.io.HerdrClient
 import app.luxion.shogunai.domain.model.AgentActivity
 import app.luxion.shogunai.domain.model.AgentTool
 import app.luxion.shogunai.domain.model.OrcaAgent
@@ -23,6 +24,7 @@ import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.RunningAgent
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.WorktreeError
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -81,7 +83,7 @@ class DetectRunningAgentsUseCaseTest {
     private fun executor(lsof: String = lsofOutput, ps: String = psOutput, failLsof: Boolean = false) =
         FakeShellCommandExecutor { command ->
             when (command.first()) {
-                "lsof" -> if (failLsof) failure(command, exitCode = 1) else success(command, stdout = lsof)
+                "lsof" -> if (failLsof) failure(command, exitCode = 127) else success(command, stdout = lsof)
                 "ps" -> success(command, stdout = ps)
                 else -> success(command)
             }
@@ -97,13 +99,16 @@ class DetectRunningAgentsUseCaseTest {
     }
 
     @Test
-    fun `only processes inside some worktree are inspected with ps`() = runTest {
+    fun `processes are listed once by name and only agent processes are inspected with lsof`() = runTest {
         val executor = executor()
 
         DetectRunningAgentsUseCase(executor)(config, worktrees).getOrThrow()
 
         val ps = executor.executedCommands.single { it.first() == "ps" }
-        assertEquals(setOf("100", "101", "102", "103", "104"), ps.last().split(",").toSet())
+        assertEquals(listOf("ps", "-A", "-o", "pid=,comm="), ps)
+        val lsof = executor.executedCommands.single { it.first() == "lsof" }
+        assertEquals(listOf("lsof", "-a", "-d", "cwd", "-F", "pcn", "-p"), lsof.dropLast(1))
+        assertEquals(setOf("100", "103", "104"), lsof.last().split(",").toSet())
     }
 
     @Test
@@ -120,20 +125,72 @@ class DetectRunningAgentsUseCaseTest {
     }
 
     @Test
-    fun `no process inside a worktree skips ps`() = runTest {
-        val executor = executor(lsof = "p1\nczsh\nfcwd\nn/somewhere/else")
+    fun `no agent process running skips lsof`() = runTest {
+        val executor = executor(ps = "1 -zsh\n2 /usr/local/bin/node")
 
         val agents = DetectRunningAgentsUseCase(executor)(config, worktrees).getOrThrow()
 
         assertTrue(agents.isEmpty())
-        assertTrue(executor.executedCommands.none { it.first() == "ps" })
+        assertTrue(executor.executedCommands.none { it.first() == "lsof" })
+    }
+
+    @Test
+    fun `an agent outside every worktree is not attributed`() = runTest {
+        val executor = executor(lsof = "p100\nc2.1.301\nfcwd\nn/somewhere/else", ps = "100 claude")
+
+        val agents = DetectRunningAgentsUseCase(executor)(config, worktrees).getOrThrow()
+
+        assertTrue(agents.isEmpty())
     }
 
     @Test
     fun `a failing lsof fails the detection`() = runTest {
-        val error = DetectRunningAgentsUseCase(executor(failLsof = true))(config, worktrees).exceptionOrNull()
+        val executor = FakeShellCommandExecutor { command ->
+            when (command.first()) {
+                "lsof" -> failure(command, exitCode = 127)
+                "ps" -> success(command, stdout = psOutput)
+                else -> success(command)
+            }
+        }
+
+        val error = DetectRunningAgentsUseCase(executor)(config, worktrees).exceptionOrNull()
 
         assertIs<WorktreeError.ProcessListingFailed>(error)
+    }
+
+    @Test
+    fun `a failing ps fails the detection`() = runTest {
+        val executor = FakeShellCommandExecutor { command ->
+            if (command.first() == "ps") failure(command, exitCode = 1) else success(command)
+        }
+
+        val error = DetectRunningAgentsUseCase(executor)(config, worktrees).exceptionOrNull()
+
+        assertIs<WorktreeError.ProcessListingFailed>(error)
+    }
+
+    @Test
+    fun `an agent that exits before lsof reads it does not fail the detection`() = runTest {
+        val executor = FakeShellCommandExecutor { command ->
+            when (command.first()) {
+                "lsof" -> failure(command, exitCode = 1).copy(stdout = "p104\nc2.1.301\nfcwd\nn${nested.path}")
+                "ps" -> success(command, stdout = psOutput)
+                else -> success(command)
+            }
+        }
+
+        val agents = DetectRunningAgentsUseCase(executor)(config, worktrees).getOrThrow()
+
+        assertEquals(listOf(RunningAgent("claude")), agents[nested.path])
+    }
+
+    @Test
+    fun `lsof lines for processes that were not asked for are ignored`() = runTest {
+        val executor = executor(lsof = "p101\nczsh\nfcwd\nn${main.path}\np103\nccodex\nfcwd\nn${main.path}", ps = "103 codex")
+
+        val agents = DetectRunningAgentsUseCase(executor)(config, worktrees).getOrThrow()
+
+        assertEquals(mapOf(main.path to listOf(RunningAgent("codex"))), agents)
     }
 
     @Test
@@ -192,6 +249,31 @@ class DetectRunningAgentsUseCaseTest {
         val agents = DetectRunningAgentsUseCase(executor(), herdr)(config, worktrees).getOrThrow()
 
         assertEquals(listOf(RunningAgent("claude", AgentState.BLOCKED, "w1:p2", AgentStateSource.HERDR)), agents[sibling.path])
+    }
+
+    @Test
+    fun `a pane with a known state wins over one without`() = runTest {
+        val herdr = FakeHerdrClient(
+            agents = listOf(
+                herdrAgent(sibling.path, null, pane = "w1:p1"),
+                herdrAgent(sibling.path, AgentState.IDLE, pane = "w1:p2"),
+            ),
+        )
+
+        val agents = DetectRunningAgentsUseCase(executor(), herdr)(config, worktrees).getOrThrow()
+
+        assertEquals(listOf(RunningAgent("claude", AgentState.IDLE, "w1:p2", AgentStateSource.HERDR)), agents[sibling.path])
+    }
+
+    @Test
+    fun `a Herdr that doesn't answer in time is treated as failing`() = runTest {
+        val herdr = object : HerdrClient by FakeHerdrClient() {
+            override suspend fun listAgents(): List<HerdrAgent> = awaitCancellation()
+        }
+
+        val agents = DetectRunningAgentsUseCase(executor(), herdr)(config, worktrees).getOrThrow()
+
+        assertEquals(listOf(RunningAgent("claude")), agents[nested.path])
     }
 
     @Test

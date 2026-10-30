@@ -9,15 +9,15 @@ import java.nio.file.Paths
 const val SMOKE_TEST_REPORT_VARIABLE = "SHOGUNAI_SMOKE_TEST_REPORT"
 const val SMOKE_TEST_LOCAL_FILES_VARIABLE = "SHOGUNAI_SMOKE_TEST_LOCAL_FILES"
 
-fun smokeTestReportPath(arguments: List<String>, environment: Map<String, String>): String? =
-    environment[SMOKE_TEST_REPORT_VARIABLE]?.takeIf { arguments.isEmpty() && it.isNotBlank() }
+fun smokeTestReportPath(arguments: List<String>, variable: (String) -> String?): String? =
+    variable(SMOKE_TEST_REPORT_VARIABLE)?.takeIf { arguments.isEmpty() && it.isNotBlank() }
 
-fun smokeTestLocalFiles(environment: Map<String, String>): List<String> =
-    environment[SMOKE_TEST_LOCAL_FILES_VARIABLE].orEmpty().split(',').map(String::trim).filter(String::isNotEmpty)
+fun smokeTestLocalFiles(variable: (String) -> String?): List<String> =
+    variable(SMOKE_TEST_LOCAL_FILES_VARIABLE).orEmpty().split(',').map(String::trim).filter(String::isNotEmpty)
 
-fun runSmokeTest(reportPath: String, environment: Map<String, String>): Int {
+fun runSmokeTest(reportPath: String, variable: (String) -> String?): Int {
     val report = runCatching {
-        runBlocking { smokeTestScenario(AppContainer()).run(environment[SmokeTestScenario.REPOSITORY_VARIABLE], smokeTestLocalFiles(environment)) }
+        runBlocking { smokeTestScenario(AppContainer()).run(variable(SmokeTestScenario.REPOSITORY_VARIABLE), smokeTestLocalFiles(variable)) }
     }.getOrElse { error ->
         SmokeTestReport(listOf(SmokeStep(SmokeStepName.SCENARIO, SmokeStepStatus.FAILED, error.stackTraceToString())))
     }

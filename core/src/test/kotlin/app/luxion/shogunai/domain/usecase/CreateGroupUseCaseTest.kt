@@ -1,6 +1,10 @@
 package app.luxion.shogunai.domain.usecase
 
 import app.luxion.shogunai.domain.FakeRepositoryProvisioningSource
+import app.luxion.shogunai.domain.FakeRepositoryTrust
+import app.luxion.shogunai.domain.executor.CommandResult
+import app.luxion.shogunai.domain.executor.ShellCommandExecutor
+import app.luxion.shogunai.domain.model.RepositoryProvisioning
 import app.luxion.shogunai.domain.model.BranchType
 import app.luxion.shogunai.domain.model.WorktreeError
 import kotlinx.coroutines.test.runTest
@@ -82,5 +86,21 @@ class CreateGroupUseCaseTest {
     fun `an invalid id creates nothing`() = runTest {
         assertIs<WorktreeError.InvalidTaskId>(create(world.members(), "bad..id", BranchType.FEATURE).exceptionOrNull())
         assertFalse(world.git.calls.any { it.first.take(3) == listOf("git", "worktree", "add") })
+    }
+
+    @Test
+    fun `a failing post-creation command fails its repository and keeps the worktree's path`() = runTest {
+        val failingInstall = object : ShellCommandExecutor by world.git {
+            override suspend fun execute(command: List<String>, workingDirectory: String?): CommandResult =
+                if (command.first() == "npm") CommandResult(command, 1, "", "npm ERR! missing script") else world.git.execute(command, workingDirectory)
+        }
+        val source = FakeRepositoryProvisioningSource(byRepository = mapOf(world.appBase to RepositoryProvisioning(postCreateCommands = listOf(listOf("npm", "install")))))
+        val create = CreateGroupUseCase(failingInstall, world.fileManager, source, trust = FakeRepositoryTrust(approvesEverything = true))
+
+        val result = create(listOf(world.member("app")), "TASK-12", BranchType.FEATURE).getOrThrow().repositories.single()
+
+        assertEquals(GroupRepositoryOutcome.FAILED, result.outcome)
+        assertEquals("${world.worktreesRoot}/app/TASK-12", result.path)
+        assertIs<WorktreeError.PostCreateCommandFailed>(result.error)
     }
 }

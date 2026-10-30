@@ -78,12 +78,6 @@ internal object ToolCatalog {
 
     fun windowsTerminalExecutable(): String = "wt.exe"
 
-    fun multiplexerExecutable(terminal: TerminalId): String = when (terminal) {
-        TerminalId.TMUX -> "tmux"
-        TerminalId.ZELLIJ -> "zellij"
-        else -> error("${terminal.displayName} isn't a terminal multiplexer")
-    }
-
     fun toolboxScriptFolders(os: HostOs, home: String, localAppData: String?): List<String> = when (os) {
         HostOs.MACOS -> listOf("$home/Library/Application Support/JetBrains/Toolbox/scripts")
         HostOs.WINDOWS -> listOfNotNull(localAppData?.let { "$it\\JetBrains\\Toolbox\\scripts" })

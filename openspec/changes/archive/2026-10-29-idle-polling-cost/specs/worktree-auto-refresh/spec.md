@@ -1,0 +1,77 @@
+# Spec Delta
+
+## MODIFIED Requirements
+
+### Requirement: Reload when the repository's Git metadata changes
+While a worktree view is shown, the system SHALL check the Git metadata of every saved project at the interval of the refresh cadence, whichever projects the view shows, and reload that project's worktree list, statuses and overview when its metadata differs from the previous check. Projects whose metadata didn't change SHALL NOT be reloaded. The watched metadata is each main repository's `HEAD`, `index`, `packed-refs`, `FETCH_HEAD`, everything under `refs`, and everything under `worktrees`, which holds each linked worktree's `HEAD`, `index` and lock.
+
+#### Scenario: Worktree created from a terminal
+- **WHEN** a worktree is added to a shown project's repository by another tool
+- **THEN** it appears in that project's group by the next check, without the user reloading
+
+#### Scenario: Commit in a worktree
+- **WHEN** a commit is made in one of the listed worktrees
+- **THEN** its status and last commit date are updated by the next check
+
+#### Scenario: Worktree locked or removed
+- **WHEN** a listed worktree is locked, unlocked or removed by another tool
+- **THEN** the list reflects it by the next check
+
+#### Scenario: Nothing changed
+- **WHEN** a project's metadata is the same as in the previous check
+- **THEN** that project's list isn't reloaded, even if another shown project is
+
+### Requirement: Watch only while it is useful
+The system SHALL only check the Git metadata of the projects shown in the current worktree view, SHALL stop checking a project when no shown view includes it, and SHALL skip a project's check while it is loading or busy creating, removing or cleaning up. Checks SHALL run while the main window is visible, at the refresh cadence's focused interval when it is focused and at its unfocused interval when it isn't, and SHALL pause while it is minimized, in the tray or the app is hidden; unreported states count as visible and focused. The light refresh on focus SHALL run when the window regains focus.
+
+#### Scenario: Leaving the screen
+- **WHEN** the user switches from "All worktrees" to the view filtered to `api`
+- **THEN** only `api` keeps being checked
+
+#### Scenario: Action in progress
+- **WHEN** a check is due while a worktree is being created, removed or cleaned up in a project
+- **THEN** that project's check is skipped, the other projects are checked, and the next check runs normally
+
+#### Scenario: Window in the background
+- **WHEN** the profile is Balanced, the window stays visible on a second monitor while the user works in another app, and an agent starts in a shown worktree
+- **THEN** checks keep running every 15 seconds and the worktree shows the agent by the next check, without the window regaining focus
+
+#### Scenario: Window minimized or app hidden
+- **WHEN** the user minimizes the window, closes it to the tray, or hides the app, for a minute
+- **THEN** no check runs during that minute, and checks resume when the window is shown again
+
+#### Scenario: Loaded but hidden project
+- **WHEN** `api` and `web` were loaded and the view now shows only `web`
+- **THEN** checks read the Git metadata of `web` only, and agents are still detected for both
+
+### Requirement: Refresh device states at a slower pace
+While a worktree view is shown, the system SHALL refresh the emulator, simulator and background app states of a checked project at most once per device interval of the refresh cadence rather than on every check. It SHALL refresh them right away after the user starts or stops a device from ShogunAi and whenever the project's worktree list reloads.
+
+#### Scenario: Nothing changes
+- **WHEN** the profile is Balanced and a project that declares the emulator provider is checked every 3 seconds for 30 seconds without changes
+- **THEN** its emulator states are refreshed at most 3 times in that period
+
+#### Scenario: Emulator stopped outside ShogunAi
+- **WHEN** the profile is Balanced, the window is focused and a worktree's emulator is closed from its own window
+- **THEN** its row and detail show it as stopped within about 10 seconds
+
+#### Scenario: Start from ShogunAi
+- **WHEN** the user starts a worktree's emulator and it finishes booting
+- **THEN** its row and detail show it as running as soon as the start completes, without waiting for the next device refresh
+
+#### Scenario: Worktree list reloads
+- **WHEN** a project's Git metadata changes and its worktree list reloads
+- **THEN** its device states are refreshed with that reload
+
+## ADDED Requirements
+
+### Requirement: Index-only changes re-read statuses only
+When the only watched metadata of a project that changed since the previous check are index files (the main repository's `index` or a linked worktree's `index`, including their lock files), the system SHALL re-read the status of that project's listed worktrees without listing the worktrees again and without reloading devices, ports, disk usage or the overview.
+
+#### Scenario: File staged in a worktree
+- **WHEN** a file is staged in a listed worktree and nothing else changes
+- **THEN** that worktree's uncommitted changes count is updated by the next check, and the project's worktree list, devices and sizes aren't read again
+
+#### Scenario: Index and branch change together
+- **WHEN** a commit in a listed worktree changes its `index` and a ref
+- **THEN** the project is reloaded as for any other metadata change

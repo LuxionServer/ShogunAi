@@ -89,6 +89,13 @@ class ResolveRepositoryUseCaseTest {
     }
 
     @Test
+    fun `fails when a separate Git folder lists no worktree`() = runTest {
+        val executor = layoutExecutor(commonDir = "/home/dev/git-dirs/main-repo.git", worktrees = "")
+
+        assertIs<WorktreeError.RepositoryNotFound>(ResolveRepositoryUseCase(executor)("/home/dev/projects/main-repo/src").exceptionOrNull())
+    }
+
+    @Test
     fun `fails for a bare repository`() = runTest {
         val executor = layoutExecutor(commonDir = "/home/dev/projects/main-repo.git", bare = true)
 

@@ -111,9 +111,9 @@ class EditorExecutableResolver(
     private fun join(folder: String, name: String): String = folder.trimEnd('/', '\\') + "\\" + name
 
     private companion object {
-        val NUMBERS = Regex("""\d+""")
+        private val NUMBERS = Regex("""\d+""")
 
-        val NEWEST_FIRST = Comparator<String> { first, second ->
+        private val NEWEST_FIRST = Comparator<String> { first, second ->
             val a = NUMBERS.findAll(first).map { it.value.toBigInteger() }.toList()
             val b = NUMBERS.findAll(second).map { it.value.toBigInteger() }.toList()
             var order = 0

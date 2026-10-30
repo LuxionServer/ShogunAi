@@ -131,6 +131,18 @@ class TerminalLaunchersTest {
     }
 
     @Test
+    fun `tmux with a server but no session reports a launch failure`() = runTest {
+        val executor = FakeShellCommandExecutor { command ->
+            if (command[1] == "-V") FakeShellCommandExecutor.success(command, "tmux 3.4\n") else FakeShellCommandExecutor.success(command, "\n")
+        }
+
+        val error = TmuxTerminalLauncher(executor).open(launch).exceptionOrNull()
+
+        assertIs<WorktreeError.TerminalLaunchFailed>(error)
+        assertTrue(error.message.orEmpty().contains("no tmux session is running"))
+    }
+
+    @Test
     fun `Zellij opens a tab in its latest session and writes the line`() = runTest {
         val executor = FakeShellCommandExecutor { command ->
             if (command[1] == "list-sessions") FakeShellCommandExecutor.success(command, "first\nlast\n") else FakeShellCommandExecutor.success(command)

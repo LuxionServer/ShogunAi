@@ -8,22 +8,20 @@ How a new version of the desktop installer (`.dmg`/`.msi`/`.deb`) is cut and pub
 graph LR
     A["Create branch release/X.X.X"] --> B["Push to release/X.X.X"]
     B --> C["Tests + Release candidate"]
-    C --> R["Rehearsal on a clean account"]
-    R --> D["PR release/X.X.X → main"]
+    C --> D["PR release/X.X.X → main + rehearsal"]
     D --> E["Merge"]
     E --> F["Release: test + build + smoke test + tag + publish"]
 ```
 
 1. **Create the branch** `release/X.X.X` (where `X.X.X` is the version to publish) from `develop`, write the headline feature of the release in `.github/release-title` (see [Release title](#release-title)) and its notes in `.github/release-notes/X.X.X.md` and `X.X.X.es.md` (see [Release notes](#release-notes)).
 2. **Validate** — every push to `release/**` triggers two workflows, used to iterate and fix issues before opening the PR:
-      - `Tests` (`.github/workflows/tests.yml`), which runs `./gradlew test`. The same workflow also runs on every pull request targeting `develop` or an `epic/**` branch and every push to them (a push to a branch with such a pull request open skips it, as the pull request already runs it), so regressions are caught before they reach a release branch.
+      - `Tests` (`.github/workflows/tests.yml`), which runs `./gradlew test`. The same workflow also runs on every pull request targeting `develop` or an `epic/**` branch and on every push to `develop`, so regressions are caught before they reach a release branch.
       - `Release candidate` (`.github/workflows/release-candidate.yml`), which builds the installers for the version in the branch name and runs the [packaged smoke test](#packaged-smoke-test) on them. It never creates a tag, a release or a package manifest. It can also be started by hand from the Actions tab on any branch, giving the version to package.
-3. **Rehearse** on a clean macOS account, following the [rehearsal script](rehearsal.md), before the release or before a demo.
-4. **Open the PR** from `release/X.X.X` to `main` and review it like any other.
-5. **Merge** — when a PR whose source branch matches `release/*` is merged, the `Release` workflow (`.github/workflows/release.yml`):
+3. **Open the PR** from `release/X.X.X` to `main` and review it like any other. While it is open, go through the [clean account rehearsal](clean-account-rehearsal.md) with the `.dmg` built from the branch: the `installer-macos-latest` (Apple Silicon) or `installer-macos-26-intel` artifact of its latest `Release candidate` run, signed and notarized like the published one.
+4. **Merge** — when a PR whose source branch matches `release/*` is merged, the `Release` workflow (`.github/workflows/release.yml`):
       1. validates the version taken from the branch name (or the tag): it must be `X.Y.Z` with digits only, otherwise the run fails before building anything,
       2. runs the full test suite on the release commit on Linux, macOS and Windows (`.github/workflows/test-suite.yml`, the same one `Tests` uses). Nothing else runs until it passes,
-      3. builds the installers on macOS Apple Silicon, macOS Intel, Windows and Linux (`packageReleaseDmg`/`Msi`/`Deb`) passing that version, with a read-only token, and in parallel the standalone command-line tool once on Linux (`:cli:distZip`, see [Command-line tool](../architecture/cli.md)), all in `.github/workflows/package.yml`, the same one `Release candidate` uses. Each macOS `.dmg` is renamed `ShogunAi-X.X.X-<arch>.dmg` (`arm64`/`x64`, taken from the runner's own architecture) right after the build, and each installer and `shogun-X.X.X.zip` are kept as workflow artifacts,
+      3. builds the installers on macOS Apple Silicon, macOS Intel, Windows and Linux (`packageReleaseDmg`/`Msi`/`Deb`) passing that version, with a read-only token, and in parallel the standalone command-line tool once on Linux (`:cli:distZip`, see [Command-line tool](../architecture/cli.md)), all in `.github/workflows/package.yml`, the same one `Release candidate` uses. The macOS installers are built by `.github/workflows/macos-installer.yml`, which signs the app with the Developer ID certificate, renames each `.dmg` `ShogunAi-X.X.X-<arch>.dmg` (`arm64`/`x64`, taken from the runner's own architecture), signs it, notarizes it with Apple, staples the ticket and checks it with Gatekeeper (see [macOS signing and notarization](#macos-signing-and-notarization)). Each installer and `shogun-X.X.X.zip` are kept as workflow artifacts,
       4. runs the [packaged smoke test](#packaged-smoke-test) on each installer (`.github/workflows/smoke-test.yml`). Nothing public exists yet, and nothing else runs until it passes on every operating system,
       5. creates and pushes the `vX.X.X` tag on the merge commit (the version comes from the branch name, no need to write it twice) and creates the GitHub Release in **draft** mode with the release notes as its body (see [Release notes](#release-notes)) titled `vX.X.X — <headline>` (the headline read from `.github/release-title`, see [Release title](#release-title)), only once,
       6. a job that holds only the permissions to sign attestations (it doesn't check out the repository or run the build) generates a signed build provenance attestation for each installer and the zip (`actions/attest`). The release isn't published until every attestation exists,
@@ -34,7 +32,7 @@ graph LR
 
 Steps 8, 9 and 10 run in parallel and are independent: if one fails, the release stays published and the others still run.
 
-The whole flow from step 5 happens in a single CI run, with no manual intervention. The release is created as a draft and only published at the end because an already-published release is immutable for GitHub (it rejects new assets), and because writing the notes only once avoids duplicates if each matrix build wrote them on its own.
+The whole flow from step 4 happens in a single CI run, with no manual intervention. The release is created as a draft and only published at the end because an already-published release is immutable for GitHub (it rejects new assets), and because writing the notes only once avoids duplicates if each matrix build wrote them on its own.
 
 ## Packaged smoke test
 
@@ -108,6 +106,26 @@ The workflow builds the GitHub release body from both files: the English notes v
 The desktop app reads each language between its markers to show the notes in the update notice (see [Desktop app](../guide/desktop-app.md)), so don't change the markers without changing the app. Releases published before this format only have GitHub's generated notes; the app shows them without authors, pull request links or the "Full Changelog" line.
 
 If `X.X.X.md` is missing, the workflow publishes the release with GitHub's generated notes and logs a warning naming the missing files, so forgotten notes never block a release. If only `X.X.X.es.md` is missing, the body has only the English section and the workflow logs a warning; the app then shows the English notes to Spanish users.
+
+## macOS signing and notarization
+
+Every macOS `.dmg` is signed with the project's Developer ID Application certificate under the hardened runtime (entitlements in `desktopApp/macos/entitlements.plist`), notarized with `notarytool` using an App Store Connect API key, and stapled, so Gatekeeper opens it without warnings. A missing secret or a rejected notarization fails the macOS build before any tag or release is created: an unsigned installer is never published. The `Release candidate` run of a release branch builds them the same way, so a signing problem shows up before the merge. The notary log is printed in the job when Apple rejects a submission.
+
+The build only signs when it's given an identity (`-PmacSigningIdentity=<name without the "Developer ID Application: " prefix>`, plus `-PmacSigningKeychain=<path>` if the certificate isn't in the default keychain). Local builds and tests stay unsigned and need nothing.
+
+The workflow reads five Actions secrets:
+
+- `MACOS_CERTIFICATE_P12`: the certificate with its private key, exported from Keychain Access as `.p12` and base64-encoded (`base64 -i <file>.p12 | gh secret set MACOS_CERTIFICATE_P12 -R LuxionServer/ShogunAi`).
+- `MACOS_CERTIFICATE_PASSWORD`: the password chosen when exporting the `.p12`.
+- `MACOS_NOTARY_KEY`: the content of the App Store Connect team API key's `.p8` file, created with the Developer role (`gh secret set MACOS_NOTARY_KEY -R LuxionServer/ShogunAi < AuthKey_<id>.p8`).
+- `MACOS_NOTARY_KEY_ID` and `MACOS_NOTARY_ISSUER_ID`: the key's ID and the issuer ID shown on App Store Connect's API keys page.
+
+The signing identity is read from the certificate, so no name or team ID is stored in the repository. Delete the local `.p12` and `.p8` once the secrets are set.
+
+To check the setup without releasing, run the `macOS installer` workflow by hand (`gh workflow run macos-installer.yml -R LuxionServer/ShogunAi -f version=X.Y.Z`): it uploads both signed and notarized `.dmg` files as workflow artifacts and touches no release, tag or package manager.
+
+- **Renewing the certificate**: Developer ID certificates last five years. Before it expires, create a new one from a CSR in Keychain Access at developer.apple.com, export it as `.p12` and replace `MACOS_CERTIFICATE_P12` and `MACOS_CERTIFICATE_PASSWORD`. Installers already published keep opening, because their signatures are timestamped.
+- **Rotating the API key**: create a new team key in App Store Connect, replace `MACOS_NOTARY_KEY` and `MACOS_NOTARY_KEY_ID`, check with a manual run, then revoke the old key.
 
 ## Windows package managers
 

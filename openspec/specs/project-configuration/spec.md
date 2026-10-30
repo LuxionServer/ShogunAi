@@ -32,14 +32,14 @@ The system SHALL let the user edit an existing project's configuration from the 
 - **THEN** the app persists the updated `ProjectConfig` for that project's id and navigates back to the worktree management screen
 
 ### Requirement: Add or remove secret files
-The system SHALL let the user add or remove entries in the project's `secretFiles` list within the configuration form, shown as "Local files": exact paths of files or folders, or patterns, stored only on this machine, copied or linked into each new worktree in addition to what the repository declares. The browse dialog SHALL allow selecting files and folders. The system SHALL NOT add an entry that is already present in the list.
+The system SHALL let the user add or remove entries in the project's `secretFiles` list within the configuration form, shown as "Local files": exact paths of files or folders, or patterns, stored only on this machine, copied or linked into each new worktree in addition to what the repository declares. Entries SHALL be typed in the field or chosen with the in-app local file picker, which offers the base repository's untracked and ignored files and folders. The system SHALL NOT add an entry that is already present in the list.
 
 #### Scenario: Add a secret file entry
 - **WHEN** the user adds a file name to the secret files list and saves
 - **THEN** the saved `ProjectConfig.secretFiles` includes the new entry
 
 #### Scenario: Add a folder entry
-- **WHEN** the user selects a folder inside the base repository with the browse dialog and saves
+- **WHEN** the user checks an ignored folder of the base repository in the local file picker, applies it and saves
 - **THEN** the saved `ProjectConfig.secretFiles` includes the folder's path relative to the base repository
 
 #### Scenario: Add a pattern entry
@@ -273,10 +273,10 @@ Each time the project configuration screen is opened, the system SHALL start fro
 - **THEN** the screen shows the saved name
 
 ### Requirement: Pick hidden files as local files
-The file picker used to add local files SHALL list hidden files, such as those whose name starts with a dot, so they can be chosen like any other file.
+The local file picker SHALL list hidden files and folders, such as those whose name starts with a dot, so they can be chosen like any other entry.
 
 #### Scenario: Pick a dotfile
-- **WHEN** the user browses the base repository to add a local file and the repository contains `.env`
+- **WHEN** the user opens the local file picker and the base repository ignores `.env`
 - **THEN** `.env` is listed and can be selected
 
 ### Requirement: Settings organized in sections

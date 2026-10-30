@@ -3,6 +3,7 @@ package app.luxion.shogunai.infrastructure
 import app.luxion.shogunai.domain.io.DirectoryListing
 import app.luxion.shogunai.domain.io.FileManager
 import app.luxion.shogunai.domain.io.SymbolicLinksNotSupported
+import app.luxion.shogunai.domain.model.UnavailableReason
 import java.io.IOException
 import java.nio.file.AccessDeniedException
 import java.nio.file.FileSystemException
@@ -15,9 +16,33 @@ import java.nio.file.StandardCopyOption
 import java.nio.file.attribute.BasicFileAttributes
 import java.util.Properties
 
-class NioFileManager : FileManager {
+class NioFileManager(
+    private val deleteAttempts: Int = 10,
+    private val pauseBeforeRetry: () -> Unit = { Thread.sleep(200) },
+    private val linkTo: (Path, Path) -> Unit = { link, target -> Files.createSymbolicLink(link, target) },
+) : FileManager {
 
     override fun exists(path: String): Boolean = Files.exists(Path.of(path))
+
+    override fun unavailableReason(path: String): UnavailableReason? {
+        val file = Path.of(path)
+        return when {
+            !Files.exists(file, LinkOption.NOFOLLOW_LINKS) -> UnavailableReason.Missing
+            !Files.exists(file) -> UnavailableReason.BrokenLink(Files.readSymbolicLink(file).toString())
+            else -> readFailure(file)?.let { UnavailableReason.Unreadable(it) }
+        }
+    }
+
+    private fun readFailure(file: Path): String? = try {
+        if (Files.isDirectory(file)) Files.newDirectoryStream(file).close() else Files.newByteChannel(file).close()
+        null
+    } catch (error: AccessDeniedException) {
+        error.reason ?: "permission denied"
+    } catch (error: FileSystemException) {
+        error.reason ?: error.javaClass.simpleName
+    } catch (error: IOException) {
+        error.message ?: error.javaClass.simpleName
+    }
 
     override fun isInside(root: String, path: String): Boolean = runCatching {
         val realRoot = Path.of(root).toRealPath()
@@ -42,7 +67,7 @@ class NioFileManager : FileManager {
         linkPath.parent?.let { Files.createDirectories(it) }
         Files.deleteIfExists(linkPath)
         try {
-            Files.createSymbolicLink(linkPath, Path.of(target))
+            linkTo(linkPath, Path.of(target))
         } catch (error: UnsupportedOperationException) {
             throw SymbolicLinksNotSupported(error)
         } catch (error: FileSystemException) {
@@ -63,6 +88,17 @@ class NioFileManager : FileManager {
         runCatching { Files.mismatch(Path.of(first), Path.of(second)) == -1L }.getOrDefault(false)
 
     override fun deleteRecursively(path: String) {
+        repeat(deleteAttempts - 1) {
+            try {
+                return deleteTree(path)
+            } catch (_: FileSystemException) {
+                pauseBeforeRetry()
+            }
+        }
+        deleteTree(path)
+    }
+
+    private fun deleteTree(path: String) {
         val root = Path.of(path)
         if (!Files.exists(root, LinkOption.NOFOLLOW_LINKS)) return
         Files.walkFileTree(
@@ -98,6 +134,7 @@ class NioFileManager : FileManager {
         if (!Files.isDirectory(root)) return DirectoryListing()
         val files = mutableListOf<String>()
         val skippedLinks = mutableListOf<String>()
+        val unreadable = mutableListOf<String>()
         Files.walkFileTree(
             root,
             object : SimpleFileVisitor<Path>() {
@@ -110,10 +147,13 @@ class NioFileManager : FileManager {
                     return FileVisitResult.CONTINUE
                 }
 
-                override fun visitFileFailed(file: Path, exc: IOException): FileVisitResult = FileVisitResult.CONTINUE
+                override fun visitFileFailed(file: Path, exc: IOException): FileVisitResult {
+                    unreadable += root.relativize(file).joinToString("/")
+                    return FileVisitResult.CONTINUE
+                }
             },
         )
-        return DirectoryListing(files, skippedLinks)
+        return DirectoryListing(files, skippedLinks, unreadable)
     }
 
     override fun isSymbolicLink(path: String): Boolean = Files.isSymbolicLink(Path.of(path))

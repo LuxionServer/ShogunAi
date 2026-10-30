@@ -1,13 +1,21 @@
 package app.luxion.shogunai.ui.components
 
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.assertHeightIsEqualTo
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertWidthIsEqualTo
+import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performMouseInput
 import androidx.compose.ui.test.v2.runComposeUiTest
+import app.luxion.shogunai.ui.theme.ShogunTheme
+import kotlin.math.abs
 import kotlin.test.Test
+import kotlin.test.assertTrue
 
 @OptIn(ExperimentalTestApi::class)
 class AgentIndicatorUiTest {
@@ -35,4 +43,38 @@ class AgentIndicatorUiTest {
         mainClock.advanceTimeBy(2_000)
         onNodeWithText(model.tooltip).assertIsDisplayed()
     }
+
+    @Test
+    fun `the compact indicator measures the icon of each size`() {
+        AgentIndicatorSize.entries.forEach { size ->
+            runComposeUiTest {
+                setContent { MaterialTheme { AgentIndicator(model, compact = true, size = size) } }
+
+                onNodeWithContentDescription("Claude · needs you +1")
+                    .assertWidthIsEqualTo(size.icon)
+                    .assertHeightIsEqualTo(size.icon)
+            }
+        }
+    }
+
+    @Test
+    fun `the icon is drawn in the state color`() = runComposeUiTest {
+        var warning = Color.Unspecified
+        setContent {
+            MaterialTheme {
+                warning = ShogunTheme.status.of(AgentPhase.NEEDS_YOU.status).color
+                AgentIndicator(model, compact = true, size = AgentIndicatorSize.LARGE)
+            }
+        }
+
+        val pixels = onNodeWithContentDescription("Claude · needs you +1").captureToImage().toPixelMap()
+        val colors = (0 until pixels.width).flatMap { x -> (0 until pixels.height).map { y -> pixels[x, y] } }
+        assertTrue(colors.any { it.isCloseTo(warning) }, "no pixel of the icon has the warning color")
+    }
+
+    private fun Color.isCloseTo(other: Color) =
+        alpha > 0.95f &&
+            abs(red - other.red) < 0.02f &&
+            abs(green - other.green) < 0.02f &&
+            abs(blue - other.blue) < 0.02f
 }

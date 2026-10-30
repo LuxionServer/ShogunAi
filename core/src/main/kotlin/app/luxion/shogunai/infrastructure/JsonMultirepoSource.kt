@@ -23,7 +23,7 @@ import kotlin.io.path.isRegularFile
 import kotlin.io.path.readText
 
 class JsonMultirepoSource(
-    private val registryPath: Path = Path.of(System.getProperty("user.home"), ".shogunai", "multirepos.json"),
+    private val registryPath: Path,
 ) : MultirepoSource {
 
     private val json = Json { prettyPrint = true; ignoreUnknownKeys = true; encodeDefaults = false }

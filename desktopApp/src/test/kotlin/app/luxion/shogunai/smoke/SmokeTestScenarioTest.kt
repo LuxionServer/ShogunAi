@@ -264,7 +264,7 @@ class SmokeTestScenarioTest {
 
     @Test
     fun `a worktree that can't be created fails with its error and skips the check`() {
-        val report = run(scenario(createWorktree = { _, _ -> Result.failure(WorktreeError.SecretFileNotFound(listOf(".env.local"), repository.path)) }))
+        val report = run(scenario(createWorktree = { _, _ -> Result.failure(WorktreeError.LocalFileUnreadable("${repository.path}/.env.local", "permission denied")) }))
 
         assertEquals(SmokeStepStatus.FAILED, report.status(SmokeStepName.CREATE_WORKTREE))
         assertEquals(SmokeStepStatus.SKIPPED, report.status(SmokeStepName.CHECK_FILES))

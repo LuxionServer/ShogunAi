@@ -80,11 +80,19 @@ On macOS, the DerivedData view SHALL list every DerivedData folder with its size
 - **THEN** the delete action is disabled
 
 ### Requirement: Refresh while shown
-A machine view SHALL refresh its process and device states every 5 seconds while it is shown, and its disk sizes when it is opened and on View > Reload. Nothing SHALL be inspected for a resource whose view isn't shown, apart from the sidebar summaries, which refresh every 30 seconds.
+A machine view SHALL refresh its process and device states at the machine view interval of the refresh cadence while it is shown, and its disk sizes when it is opened and on View > Reload. Nothing SHALL be inspected for a resource whose view isn't shown, apart from the sidebar summaries, which refresh at the summary interval of the refresh cadence.
 
 #### Scenario: Daemon finishes a build
-- **WHEN** a busy daemon becomes idle while the Gradle view is shown
-- **THEN** it is shown as idle within a few seconds and its stop action becomes enabled
+- **WHEN** the profile is Balanced and a busy daemon becomes idle while the Gradle view is shown with the window focused
+- **THEN** it is shown as idle within about 5 seconds and its stop action becomes enabled
+
+#### Scenario: Light profile
+- **WHEN** the profile is Light and the Gradle view is shown with the window focused for a minute
+- **THEN** its daemons are read at most 5 times in that minute and the sidebar summaries at most once
+
+#### Scenario: Window in the background
+- **WHEN** the profile is Balanced and the Gradle view stays shown in a visible but unfocused window for a minute
+- **THEN** its daemons are read at most 5 times in that minute
 
 ### Requirement: Pause while the window is hidden
 While the main window is minimized, in the tray or the app is hidden, neither the shown machine view nor the sidebar summaries SHALL refresh, except for trimming Gradle daemons to the pool limit. Both SHALL refresh as soon as the window is shown again.
@@ -112,8 +120,15 @@ The Android emulators, iOS simulators and Gradle daemons views SHALL show their 
 - **THEN** the Android emulators view says `TASK-1`'s emulator was released to make room for `TASK-2`
 
 #### Scenario: Over the limit
-- **WHEN** the Gradle limit is 2 and three busy daemons run
-- **THEN** the Gradle daemons view shows 3 of 2 in use, marked "Over the limit"
+- **WHEN** the Gradle limit is 2 and two busy daemons and two idle ones run
+- **THEN** the Gradle daemons view shows 4 of 2 in use, marked "Over the limit" in the warning color
+
+### Requirement: Over the limit while builds run
+When the Gradle daemon pool is over its limit and none of its daemons is idle, the Gradle daemons view SHALL mark it as over the limit because builds are running, in the informational color instead of the warning one, and SHALL say how many daemons are running a build, how many have an unknown state, and that idle ones are stopped automatically while the pool is over the limit.
+
+#### Scenario: Over the limit with builds running
+- **WHEN** the Gradle limit is 3 and four busy daemons and one of unknown state run
+- **THEN** the Gradle daemons view shows 5 of 3 in use, marked "Over the limit: builds running" in the informational color, and says 4 are running a build, 1 has an unknown state, and idle ones are stopped automatically while over the limit
 
 ### Requirement: DerivedData listed before its sizes
 The DerivedData view SHALL show its folders, their owners and the orphans as soon as the folders are read, without waiting for any size. Each folder whose size isn't known yet, the totals that include it and the compilation cache size SHALL show a calculating state, replaced by the size once computed. The app SHALL stay responsive while sizes are computed.
@@ -255,15 +270,22 @@ The Maven daemons view SHALL list every Maven daemon on the machine with its pro
 - **THEN** it isn't stopped and the view says its state is unknown
 
 ### Requirement: Release and trim reports are grouped per view
-A machine view SHALL group its release and trim reports into a single banner: reports of the same kind are summarized together (the total of daemons stopped to stay within the limit, the number of resources released to make room) with their count, and each report stays readable in the banner's details until the user dismisses the banner.
-
-#### Scenario: Repeated trims
-- **WHEN** 1, 2 and 1 idle Gradle daemons were stopped in three trims to stay within a limit of 3
-- **THEN** the Gradle daemons view shows one banner saying 4 idle Gradle daemons were stopped to stay within the limit of 3, with a count of 3 and the three reports in its details
+A machine view SHALL group its release and trim reports into a single banner: reports of the same kind are summarized together (the total of daemons stopped to stay within the limit, the number of resources released to make room) with their count, and each release report stays readable in the banner's details until the user dismisses the banner.
 
 #### Scenario: Releases and trims together
-- **WHEN** the Gradle daemons view has one release report and two trim reports
-- **THEN** it shows one banner that summarizes both kinds, and its details list the three reports
+- **WHEN** the Gradle daemons view has one release report and two trims
+- **THEN** it shows one banner that summarizes both kinds, and its details list the release and the accumulated trim
+
+### Requirement: Trims accumulate into one report
+Trims SHALL accumulate into a single trim report per view, holding the total of daemons stopped, the number of trims and the time of the last one, so repeated trims never add banners or details; dismissing the banner SHALL start the accumulation again.
+
+#### Scenario: Repeated trims
+- **WHEN** 1, 2 and 1 idle Gradle daemons were stopped in three trims to stay within a limit of 3, the last at 10:42
+- **THEN** the Gradle daemons view shows one banner saying 4 idle Gradle daemons were stopped to stay within the limit of 3, 3 times, the last at 10:42, with no details
+
+#### Scenario: Trim after dismissing
+- **WHEN** the user dismisses the banner after 15 trims and the next trim stops 1 idle daemon
+- **THEN** the banner says 1 idle Gradle daemon was stopped to stay within the limit
 
 ### Requirement: Docker unavailable in the Compose view
 When Docker isn't available, the Compose projects view SHALL show an error state saying Docker isn't available, with "Try again" reading the view again, and the reason Docker gave folded under "Technical details".
@@ -300,3 +322,14 @@ Every state chip of the machine views and of the inspector's Resources section S
 #### Scenario: Simulator states
 - **WHEN** simulators are shut down, booting and booted
 - **THEN** their chips read "Shut down", "Booting" and "Booted"
+
+### Requirement: Gradle and Kotlin daemons counted apart
+The Gradle daemons view SHALL count Gradle daemons and Kotlin compile daemons apart in its summary, next to the memory of all of them, so the Gradle count matches the pool's usage, which counts Gradle daemons only.
+
+#### Scenario: Both kinds running
+- **WHEN** five Gradle daemons and two Kotlin compile daemons run, using 4.5 GB together
+- **THEN** the view's summary reads 5 Gradle daemons, 2 Kotlin, and 4.5 GB, and the pool's usage reads 5 in use
+
+#### Scenario: Only Gradle daemons
+- **WHEN** three Gradle daemons run and no Kotlin compile daemon
+- **THEN** the view's summary reads 3 Gradle daemons and their memory, without mentioning Kotlin

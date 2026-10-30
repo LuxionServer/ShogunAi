@@ -20,6 +20,7 @@ import app.luxion.shogunai.domain.model.WorktreeError
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
@@ -110,6 +111,25 @@ class GroupStateAndContextTest {
     }
 
     @Test
+    fun `the hint to add a missing repository follows the group's branch`() = runTest {
+        with(world.git) {
+            world.app.worktree("${world.worktreesRoot}/app/TASK-2", "fix/TASK-2")
+            world.api.worktree("${world.worktreesRoot}/api/TASK-2", "fix/TASK-2")
+            world.app.worktree("${world.worktreesRoot}/app/spike", "spike")
+            world.api.worktree("${world.worktreesRoot}/api/spike", "spike")
+        }
+        val detected = DetectGroupsUseCase(world.git)(world.members())
+        val context = GroupContext(FakeFileManager())
+
+        val fix = context.groupLines(world.multirepo, detected.group("fix/TASK-2")!!, "${world.worktreesRoot}/api/TASK-2")
+        val spike = context.groupLines(world.multirepo, detected.group("spike")!!, "${world.worktreesRoot}/api/spike")
+
+        assertTrue(fix[2].contains("shogun new TASK-2 --fix --repos docs"))
+        assertTrue(spike[2].contains("add one by creating a worktree on spike in it"))
+        assertEquals(detected.group("spike"), detected.groupOf("${world.worktreesRoot}/app/spike"))
+    }
+
+    @Test
     fun `OpenSpec in a repository outside the group points to its main checkout`() = runTest {
         val fileManager = FakeFileManager(existing = listOf("${world.docsBase}/openspec"))
         val group = DetectGroupsUseCase(world.git)(world.members()).groups.single()
@@ -147,6 +167,16 @@ class GroupStateAndContextTest {
     }
 
     @Test
+    fun `an id matching a single prefixed branch finds that group`() = runTest {
+        with(world.git) {
+            world.app.worktree("/w/app-fix-5", "fix/TASK-5")
+            world.docs.worktree("/w/docs-fix-5", "fix/TASK-5")
+        }
+
+        assertEquals("fix/TASK-5", (findGroup(DetectGroupsUseCase(world.git)(world.members()), "TASK-5") as GroupTarget.Found).group.branch)
+    }
+
+    @Test
     fun `a group is found by branch or by id when only one prefix matches`() = runTest {
         with(world.git) {
             world.app.worktree("/w/app-fix-1", "fix/TASK-1")
@@ -174,19 +204,39 @@ class GroupStateAndContextTest {
 
     @Test
     fun `opening a group focuses live agents and starts the agent where the workspace has none`() = runTest {
-        val herdr = FakeHerdrClient(
-            alreadyOpen = setOf(appTask, apiTask),
-            panes = listOf(HerdrPane("w1:p1", "w1", appTask, agent = "claude", agentStatus = "idle"), HerdrPane("w2:p1", "w2", apiTask)),
-        )
-        val resolveEnvironment = ResolveWorktreeEnvironmentUseCase(world.git, FakeRepositoryProvisioningSource(), FakeEnvironmentStateStore(), FakePortProbe(), trust = FakeRepositoryTrust(approvesEverything = true))
-        val group = DetectGroupsUseCase(world.git)(world.members()).groups.single()
+        val herdr = groupHerdr()
 
-        val openings = OpenGroupInHerdrUseCase(herdr, resolveEnvironment)(group)
+        val openings = openGroup(herdr)
 
         assertEquals(HerdrOpening(HerdrOutcome.FOCUSED, "w1:p1", "claude"), openings[0].result.getOrThrow())
         assertEquals(HerdrOutcome.STARTED_AGENT, openings[1].result.getOrThrow().outcome)
+        assertEquals("w2:p1", openings[1].result.getOrThrow().paneId)
+        assertEquals(listOf("w2:p1"), herdr.ran.map { it.first })
+        assertTrue(herdr.splits.isEmpty())
+    }
+
+    @Test
+    fun `opening a group starts the agent in a new pane where the workspace's pane is busy`() = runTest {
+        val herdr = groupHerdr(busyPanes = setOf("w2:p1"))
+
+        val openings = openGroup(herdr)
+
+        assertEquals(HerdrOutcome.STARTED_AGENT, openings[1].result.getOrThrow().outcome)
         assertEquals("w2:p2", openings[1].result.getOrThrow().paneId)
         assertEquals(listOf("w2:p2"), herdr.ran.map { it.first })
+        assertTrue(herdr.closed.isEmpty())
+    }
+
+    private fun groupHerdr(busyPanes: Set<String> = emptySet()) = FakeHerdrClient(
+        alreadyOpen = setOf(appTask, apiTask),
+        panes = listOf(HerdrPane("w1:p1", "w1", appTask, agent = "claude", agentStatus = "idle"), HerdrPane("w2:p1", "w2", apiTask)),
+        busyPanes = busyPanes,
+    )
+
+    private suspend fun openGroup(herdr: FakeHerdrClient): List<GroupOpening> {
+        val resolveEnvironment = ResolveWorktreeEnvironmentUseCase(world.git, FakeRepositoryProvisioningSource(), FakeEnvironmentStateStore(), FakePortProbe(), trust = FakeRepositoryTrust(approvesEverything = true))
+        val group = DetectGroupsUseCase(world.git)(world.members()).groups.single()
+        return OpenGroupInHerdrUseCase(herdr, resolveEnvironment)(group)
     }
 
     @Test
@@ -235,11 +285,28 @@ class GroupStateAndContextTest {
     }
 
     @Test
-    fun `the multirepo agent starts in a new pane of its open workspace without an agent`() = runTest {
+    fun `the multirepo agent starts in the idle pane of its open workspace without an agent`() = runTest {
         val multirepo = Multirepo(world.folder, world.declaration, approved = true, localAgent = AgentLaunchConfig(agentCommand = "claude", useHeadroom = false))
         val herdr = FakeHerdrClient(
             workspaces = listOf(HerdrWorkspace("w5", "product", null)),
             panes = listOf(HerdrPane("w5:p1", "w5", world.folder)),
+        )
+
+        val opening = OpenMultirepoAgentInHerdrUseCase(herdr)(multirepo).getOrThrow()
+
+        assertEquals(HerdrOpening(HerdrOutcome.STARTED_AGENT, "w5:p1", multirepo.agent.displayName), opening)
+        assertTrue(herdr.splits.isEmpty())
+        assertEquals(listOf("w5:p1" to "claude -n product"), herdr.ran)
+        assertTrue(herdr.createdWorkspaces.isEmpty() && herdr.closed.isEmpty())
+    }
+
+    @Test
+    fun `the multirepo agent starts in a new pane of its open workspace whose pane is busy`() = runTest {
+        val multirepo = Multirepo(world.folder, world.declaration, approved = true, localAgent = AgentLaunchConfig(agentCommand = "claude", useHeadroom = false))
+        val herdr = FakeHerdrClient(
+            workspaces = listOf(HerdrWorkspace("w5", "product", null)),
+            panes = listOf(HerdrPane("w5:p1", "w5", world.folder)),
+            busyPanes = setOf("w5:p1"),
         )
 
         val opening = OpenMultirepoAgentInHerdrUseCase(herdr)(multirepo).getOrThrow()
@@ -296,5 +363,17 @@ class GroupStateAndContextTest {
         val focused = OpenMultirepoAgentInHerdrUseCase(open, HerdrAgentLauncher(open, registry = registry, isClaudeProcessAlive = { true }))(multirepo).getOrThrow()
 
         assertEquals(HerdrOpening(HerdrOutcome.FOCUSED, "w5:p2", "claude", "product"), focused)
+    }
+
+    @Test
+    fun `a clean and merged loose worktree joins the cleanup next to the groups`() = runTest {
+        with(world.git) { world.api.worktree("${world.worktreesRoot}/api/merged", "feature/MERGED", merged = true) }
+        val state = readGroups()(world.members())
+
+        val selection = selectGroupCleanup(state.groups).copy(loose = selectLooseCleanup(state.ungrouped))
+
+        assertFalse(selection.isEmpty)
+        assertEquals(listOf(appTask, apiTask, "${world.worktreesRoot}/api/merged"), selection.removablePaths)
+        assertEquals(setOf("app", "api"), selection.removableByAlias.keys)
     }
 }

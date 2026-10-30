@@ -8,6 +8,9 @@ import app.luxion.shogunai.domain.model.PoolHolder
 import app.luxion.shogunai.domain.model.PoolHolderState
 import app.luxion.shogunai.domain.model.ResourceKind
 import app.luxion.shogunai.domain.model.WorktreeError
+import app.luxion.shogunai.domain.model.UnavailableReason
+import app.luxion.shogunai.domain.model.UnavailableLocalFile
+import app.luxion.shogunai.domain.model.LocalFileOrigin
 import app.luxion.shogunai.domain.model.toLocalClockTime
 import app.luxion.shogunai.domain.usecase.GitFailureCause
 import java.time.Instant
@@ -95,9 +98,9 @@ private fun englishWorktreeTexts(error: WorktreeError): ErrorTexts = when (error
         "\"${error.rawInput}\" isn't a valid task id.",
         "Use only letters, digits, \"-\", \"_\" and \"/\".",
     )
-    is WorktreeError.SecretFileNotFound -> ErrorTexts(
-        "These local files weren't found in ${error.basePath}: ${error.files.joinToString()}.",
-        "Create them in the base repository, or remove them from the project's local files.",
+    is WorktreeError.LocalFilesUnavailable -> ErrorTexts(
+        "These local files can't be copied or linked from ${error.basePath}: ${error.files.joinToString { it.path }}. Nothing was changed.",
+        englishLocalFilesFix(error.files),
     )
     is WorktreeError.InvalidRepositoryConfig -> ErrorTexts(
         "Couldn't read ${error.path}.",
@@ -416,4 +419,18 @@ private fun englishProtection(holder: PoolHolder): String = when (holder.protect
     HolderProtection.AGENT_WORKING -> ", agent working"
     HolderProtection.LEASED -> ", lease until ${holder.leaseExpiresAt?.toLocalClockTime()}"
     null -> ""
+}
+
+internal fun englishLocalFilesFix(files: List<UnavailableLocalFile>): String {
+    val reasons = files.map { it.reason }
+    val fixes = listOfNotNull(
+        "create the missing ones there".takeIf { reasons.any { it is UnavailableReason.Missing } },
+        "restore the targets of the broken links".takeIf { reasons.any { it is UnavailableReason.BrokenLink } },
+        "make the unreadable ones readable for your user".takeIf { reasons.any { it is UnavailableReason.Unreadable } },
+    )
+    val removals = listOfNotNull(
+        "the project's local files".takeIf { files.any { it.origin == LocalFileOrigin.PROJECT } },
+        ".shogunai.json or .worktreeinclude".takeIf { files.any { it.origin == LocalFileOrigin.REPOSITORY } },
+    )
+    return fixes.joinToString(", ").replaceFirstChar { it.uppercase() } + ", or remove them from " + removals.joinToString(" and ") + "."
 }

@@ -95,4 +95,13 @@ class AgentInstructionsBlockTest {
 
         assertFalse(block.status(path).duplicatesOutside)
     }
+
+    @Test
+    fun `a block is present unless it is missing`() {
+        assertFalse(block.status(path).hasBlock)
+
+        block.install(path)
+
+        assertTrue(block.status(path).hasBlock)
+    }
 }

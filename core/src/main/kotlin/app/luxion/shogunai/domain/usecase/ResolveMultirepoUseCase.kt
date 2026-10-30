@@ -6,6 +6,7 @@ import app.luxion.shogunai.domain.io.MultirepoSource
 import app.luxion.shogunai.domain.model.Multirepo
 import app.luxion.shogunai.domain.model.InvalidSharedEnvironment
 import app.luxion.shogunai.domain.model.MultirepoDeclaration
+import app.luxion.shogunai.domain.model.MultirepoRepository
 import app.luxion.shogunai.domain.model.joinPath
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.MAX_MULTIREPO_NAME_LENGTH
@@ -86,6 +87,18 @@ class ResolveMultirepoUseCase(
     }
 
     suspend fun validate(multirepo: Multirepo) {
+        validateDeclaration(multirepo)
+        missingRepositories(multirepo).firstOrNull()?.let { repository ->
+            throw WorktreeError.InvalidMultirepo(multirepo.declarationPath, "repository '${repository.alias}' at ${repository.path} isn't a Git repository")
+        }
+    }
+
+    suspend fun missingRepositories(multirepo: Multirepo): List<MultirepoRepository> = multirepo.repositories.filter { repository ->
+        val resolved = if (fileManager.exists(repository.path)) ResolveRepositoryUseCase(executor)(repository.path).getOrNull() else null
+        resolved == null || !sameDirectory(resolved, repository.path)
+    }
+
+    suspend fun validateDeclaration(multirepo: Multirepo) {
         fun invalid(detail: String): Nothing = throw WorktreeError.InvalidMultirepo(multirepo.declarationPath, detail)
         val declaration = multirepo.declaration
         if (declaration.worktreesRoot.isBlank()) invalid("worktreesRoot is missing")
@@ -124,12 +137,6 @@ class ResolveMultirepoUseCase(
         val enclosing = ResolveRepositoryUseCase(executor)(multirepo.folder).getOrNull()
         if (enclosing != null && !sameDirectory(enclosing, multirepo.folder)) {
             invalid("a multirepo can't be declared inside the repository $enclosing")
-        }
-        multirepo.repositories.forEach { repository ->
-            val resolved = if (fileManager.exists(repository.path)) ResolveRepositoryUseCase(executor)(repository.path).getOrNull() else null
-            if (resolved == null || !sameDirectory(resolved, repository.path)) {
-                invalid("repository '${repository.alias}' at ${repository.path} isn't a Git repository")
-            }
         }
     }
 }

@@ -128,8 +128,7 @@ class MultirepoCommandsTest {
         err = err,
         readInput = { input },
         canonicalPath = { it.trimEnd('/') },
-        environmentVariable = { if (it == "CLAUDE_ENV_FILE") envFile.toString() else null },
-        userHome = "/home/dev",
+        environment = hostEnvironment(variables = mapOf("CLAUDE_ENV_FILE" to envFile.toString())),
         herdr = herdrClient,
         toolPreferences = runner,
         herdrAgentStartTimeout = 100.milliseconds,
@@ -188,6 +187,15 @@ class MultirepoCommandsTest {
         assertEquals(listOf("created", "existing"), repos.map { it["result"]!!.jsonPrimitive.content })
         assertEquals("/home/dev/old/api-task-12", repos[1]["path"]!!.jsonPrimitive.content)
         assertEquals("feature/TASK-12", json()["branch"]!!.jsonPrimitive.content)
+    }
+
+    @Test
+    fun `new in text names the repositories already in the group`() {
+        with(git) { api.worktree("/home/dev/old/api-task-12", "feature/TASK-12") }
+
+        assertEquals(0, cli().run(listOf("new", "TASK-12")), err.toString())
+
+        assertTrue(err.contains("api: already in the group at /home/dev/old/api-task-12"), err.toString())
     }
 
     @Test
@@ -401,7 +409,7 @@ class MultirepoCommandsTest {
         assertEquals(0, exitCode, err.toString())
         val repos = json()["repos"]!!.jsonArray.map { it.jsonObject }
         assertEquals(listOf("focused", "started-agent"), repos.map { it["result"]!!.jsonPrimitive.content })
-        assertEquals(listOf("w1:p1", "w2:p2"), repos.map { it["pane_id"]!!.jsonPrimitive.content })
+        assertEquals(listOf("w1:p1", "w2:p1"), repos.map { it["pane_id"]!!.jsonPrimitive.content })
         assertEquals("claude", repos[0]["agent"]!!.jsonPrimitive.content)
     }
 
@@ -524,9 +532,10 @@ class MultirepoCommandsTest {
 
         assertEquals(0, exitCode, err.toString())
         assertEquals("started-agent", json()["herdr"]!!.jsonPrimitive.content)
-        assertEquals("w5:p2", json()["pane_id"]!!.jsonPrimitive.content)
+        assertEquals("w5:p1", json()["pane_id"]!!.jsonPrimitive.content)
         assertTrue(json()["opened"]!!.jsonPrimitive.content.toBoolean())
-        assertEquals(listOf("w5:p2" to "claude -n product"), herdr.ran)
+        assertEquals(listOf("w5:p1" to "claude -n product"), herdr.ran)
+        assertTrue(herdr.splits.isEmpty())
     }
 
     @Test
@@ -576,6 +585,56 @@ class MultirepoCommandsTest {
 
         assertEquals("feature/TASK-1", json()["candidates"]!!.jsonArray.single().jsonObject["branch"]!!.jsonPrimitive.content)
         assertTrue(json()["dryRun"]!!.jsonPrimitive.content.toBoolean())
+    }
+
+    private fun groupsKeptForEveryReason() = with(git) {
+        app.worktree("$worktreesRoot/app/TASK-6", "feature/TASK-6", merged = true)
+        api.worktree("$worktreesRoot/api/TASK-6", "feature/TASK-6")
+        app.worktree("$worktreesRoot/app/TASK-2", "feature/TASK-2", merged = true)
+        api.worktree("$worktreesRoot/api/TASK-2", "feature/TASK-2", merged = true)
+        api.dirty["$worktreesRoot/api/TASK-2"] = 1
+        app.worktree("$worktreesRoot/app/TASK-3", "feature/TASK-3", merged = true)
+        api.worktree("$worktreesRoot/api/TASK-3", "feature/TASK-3", merged = true)
+        api.unreadableStatus += "$worktreesRoot/api/TASK-3"
+        app.worktree("$worktreesRoot/app/TASK-4", "feature/TASK-4", merged = true)
+        api.worktree("$worktreesRoot/api/TASK-4", "feature/TASK-4", merged = true)
+        lsof = "p400\ncclaude\nfcwd\nn$worktreesRoot/api/TASK-4\n"
+        ps = "400 claude\n"
+        api.worktree("$worktreesRoot/api/TASK-5", "feature/TASK-5", merged = true)
+    }
+
+    @Test
+    fun `clean names why each group is kept`() {
+        groupsKeptForEveryReason()
+
+        assertEquals(0, cli().run(listOf("clean")), err.toString())
+
+        assertTrue(out.contains("kept feature/TASK-2 (api has uncommitted changes)"), out.toString())
+        assertTrue(out.contains("kept feature/TASK-3 (the status of api is unavailable)"), out.toString())
+        assertTrue(out.contains("kept feature/TASK-4 (claude is running in api)"), out.toString())
+    }
+
+    @Test
+    fun `clean json labels the kept groups and lists the loose worktrees`() {
+        groupsKeptForEveryReason()
+
+        cli().run(listOf("clean", "--json"))
+
+        val kept = json()["kept"]!!.jsonArray.map { it.jsonObject["reason"]!!.jsonPrimitive.content }
+        assertEquals(listOf("uncommitted-changes", "status-unavailable", "agent-running", "not-merged"), kept)
+        assertEquals("claude", json()["kept"]!!.jsonArray[2].jsonObject["agents"]!!.jsonArray.single().jsonPrimitive.content)
+        assertEquals("$worktreesRoot/api/TASK-5", json()["loose"]!!.jsonArray.single().jsonObject["path"]!!.jsonPrimitive.content)
+    }
+
+    @Test
+    fun `clean yes json reports the removed worktrees`() {
+        groupTask1(merged = true)
+
+        assertEquals(0, cli().run(listOf("clean", "--yes", "--json")), err.toString())
+
+        assertFalse(json()["dryRun"]!!.jsonPrimitive.content.toBoolean())
+        assertEquals(listOf("$worktreesRoot/app/TASK-1", "$worktreesRoot/api/TASK-1"), json()["removed"]!!.jsonArray.map { it.jsonPrimitive.content })
+        assertTrue(json()["failures"]!!.jsonArray.isEmpty())
     }
 
     @Test
@@ -726,6 +785,40 @@ class MultirepoCommandsTest {
         assertEquals(0, cli(workingDirectory = moved, multirepos = registry).run(listOf("multirepo", "init", "--json")))
         assertEquals(false, json()["registered"]!!.jsonPrimitive.content.toBoolean())
         assertTrue(json()["projects"]!!.jsonArray.isEmpty())
+    }
+
+    @Test
+    fun `init of a moved multirepo without a terminal asks for --yes, and with --yes json lists the registered projects`() {
+        val moved = "/home/dev/work/product"
+        val movedApp = "$moved/product-app"
+        git.repository(movedApp)
+        fileManager.writeText(movedApp, "")
+        val registry = FakeMultirepoSource(mapOf(moved to MultirepoDeclaration(linkedMapOf("app" to "product-app"), "../product-worktrees")), known = emptyList(), approveAll = false)
+
+        assertEquals(1, cli(workingDirectory = moved, multirepos = registry, answer = null).run(listOf("multirepo", "init")))
+        assertTrue(err.contains("can't ask without a terminal"), err.toString())
+        out.clear()
+        assertEquals(0, cli(workingDirectory = moved, multirepos = registry).run(listOf("multirepo", "init", "--yes", "--json")), err.toString())
+        val registered = json()["projects"]!!.jsonArray.single().jsonObject
+        out.clear()
+        assertEquals(0, cli(workingDirectory = moved, multirepos = registry).run(listOf("multirepo", "init")))
+
+        assertEquals(movedApp, registered["path"]!!.jsonPrimitive.content)
+        assertEquals("$movedApp-worktrees", registered["worktreesFolder"]!!.jsonPrimitive.content)
+        assertTrue(out.contains("the multirepo product is already registered"), out.toString())
+    }
+
+    @Test
+    fun `trust revoke and delete answer in JSON`() {
+        val multirepos = FakeMultirepoSource(mapOf(folder to declaration), known = listOf(folder))
+
+        assertEquals(0, cli(multirepos = multirepos).run(listOf("multirepo", "trust", "--revoke", "--json")))
+        val revoked = json()
+        out.clear()
+        assertEquals(0, cli(multirepos = FakeMultirepoSource(mapOf(folder to declaration))).run(listOf("multirepo", "delete", "--json")))
+
+        assertEquals("false", revoked["approved"]!!.jsonPrimitive.content)
+        assertEquals("$folder/.shogunai-multirepo.json", json()["deleted"]!!.jsonPrimitive.content)
     }
 
     @Test

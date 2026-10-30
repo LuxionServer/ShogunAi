@@ -8,6 +8,7 @@ import app.luxion.shogunai.domain.FakeEnvironmentStateStore
 import app.luxion.shogunai.domain.FakeFileManager
 import app.luxion.shogunai.domain.FakeGradleDaemonSource
 import app.luxion.shogunai.domain.FakeHerdrClient
+import app.luxion.shogunai.domain.io.HerdrClient
 import app.luxion.shogunai.domain.FakeHerdrConfigSource
 import app.luxion.shogunai.domain.FakeOrcaClient
 import app.luxion.shogunai.domain.FakeToolPreferenceRepository
@@ -35,6 +36,8 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import app.luxion.shogunai.domain.model.HerdrAgent
+import kotlinx.coroutines.awaitCancellation
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -86,7 +89,7 @@ class GuideCommandsTest {
         workingDirectory: String = linked,
         input: String = "",
         answer: String? = null,
-        herdr: FakeHerdrClient = FakeHerdrClient(agentsFailure = IllegalStateException("herdr isn't running")),
+        herdr: HerdrClient = FakeHerdrClient(agentsFailure = IllegalStateException("herdr isn't running")),
         environment: Map<String, String> = emptyMap(),
         registered: Boolean = true,
         runner: FakeToolPreferenceRepository = FakeToolPreferenceRepository(),
@@ -113,8 +116,7 @@ class GuideCommandsTest {
         err = err,
         readInput = { input },
         canonicalPath = { it.trimEnd('/') },
-        environmentVariable = { environment[it] },
-        userHome = home,
+        environment = hostEnvironment(home, environment),
         herdr = herdr,
         toolPreferences = runner,
         readAnswer = { answer },
@@ -150,6 +152,36 @@ class GuideCommandsTest {
 
         assertTrue(out.contains("shogun new <id> --from <ref>"), out.toString())
         assertTrue(out.contains("epic's branch"), out.toString())
+    }
+
+    @Test
+    fun `the worktree base rule stays out of the session start`() {
+        listOf(linked, base).forEach { cwd ->
+            out.setLength(0)
+            assertEquals(0, cli(everything(), input = """{"cwd": "$cwd"}""", herdr = fakeHerdr()).run(listOf("hook", "session-start")), err.toString())
+
+            assertFalse(out.contains("--from"), out.toString())
+            assertFalse(out.contains("git log -1"), out.toString())
+        }
+    }
+
+    @Test
+    fun `a backend session start has no desktop, emulator or simulator rules`() {
+        val exitCode = cli(declaring(RepositoryProviders(dockerCompose = DockerComposeProvider())), input = """{"cwd": "$linked"}""", herdr = fakeHerdr())
+            .run(listOf("hook", "session-start"))
+
+        assertEquals(0, exitCode, err.toString())
+        val context = out.toString().lowercase()
+        listOf("desktop", "computer use", "emulator", "simulator", "headless").forEach { assertFalse(it in context, "$it in $context") }
+    }
+
+    @Test
+    fun `guide resources keeps the desktop turn rule`() {
+        assertEquals(0, cli().run(listOf("guide", "resources")), err.toString())
+
+        assertTrue(out.contains("shogun desktop acquire --wait"), out.toString())
+        assertTrue(out.contains("shogun desktop release"), out.toString())
+        assertTrue(out.contains("`orca computer`"), out.toString())
     }
 
     @Test
@@ -193,6 +225,17 @@ class GuideCommandsTest {
         val applicable = out.lines().takeWhile { !it.startsWith("Not applicable") }
         assertTrue(applicable.any { it.contains("shogun open <id> --herdr") }, out.toString())
         assertTrue(applicable.any { it.contains("never by typing into its terminal") }, out.toString())
+    }
+
+    @Test
+    fun `guide parallel treats a Herdr that doesn't answer as unavailable`() {
+        val silent = object : HerdrClient by FakeHerdrClient() {
+            override suspend fun listAgents(): List<HerdrAgent> = awaitCancellation()
+        }
+
+        assertEquals(0, cli(herdr = silent).run(listOf("guide", "parallel")))
+
+        assertFalse(out.lines().takeWhile { !it.startsWith("Not applicable") }.any { it.contains("shogun open <id> --herdr") }, out.toString())
     }
 
     @Test
@@ -319,6 +362,23 @@ class GuideCommandsTest {
         assertEquals(0, cli().run(listOf("guide", "install", "--project", "--yes")), err.toString())
 
         assertEquals(listOf("$base/AGENTS.md"), files.writtenTexts.keys.toList())
+    }
+
+    @Test
+    fun `install --json reports the block without asking, applies it with --yes and then reports it up to date`() {
+        val path = "$home/.gemini/GEMINI.md"
+
+        assertEquals(0, cli().run(listOf("guide", "install", "--agent", "gemini", "--json")))
+        val preview = out.toString()
+        out.clear()
+        assertEquals(0, cli().run(listOf("guide", "install", "--agent", "gemini", "--json", "--yes")))
+        val applied = out.toString()
+        out.clear()
+        assertEquals(0, cli().run(listOf("guide", "install", "--agent", "gemini", "--json")))
+
+        assertEquals("{\"path\":\"$path\",\"applied\":false,\"state\":\"missing\",\"warnings\":[]}\n", preview)
+        assertEquals("{\"path\":\"$path\",\"applied\":true,\"state\":\"installed\",\"warnings\":[]}\n", applied)
+        assertEquals("{\"path\":\"$path\",\"applied\":false,\"state\":\"installed\",\"warnings\":[]}\n", out.toString())
     }
 
     @Test

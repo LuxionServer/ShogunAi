@@ -2,12 +2,15 @@ package app.luxion.shogunai.domain.io
 
 import app.luxion.shogunai.domain.model.HerdrAgent
 import app.luxion.shogunai.domain.model.HerdrPane
+import app.luxion.shogunai.domain.model.HerdrPaneProcesses
 import app.luxion.shogunai.domain.model.HerdrWorkspace
 import app.luxion.shogunai.domain.model.HerdrWorktreeOpening
 
 interface HerdrClient {
 
     fun isInstalled(): Boolean = true
+
+    fun location(): String? = null
 
     suspend fun openWorktree(repository: String, path: String, label: String): HerdrWorktreeOpening
 
@@ -32,4 +35,6 @@ interface HerdrClient {
     suspend fun listPanes(workspaceId: String? = null): List<HerdrPane>
 
     suspend fun focusWorkspace(workspaceId: String)
+
+    suspend fun paneProcesses(paneId: String): HerdrPaneProcesses?
 }

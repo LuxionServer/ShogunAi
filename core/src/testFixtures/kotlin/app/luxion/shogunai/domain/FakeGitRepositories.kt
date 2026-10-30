@@ -14,7 +14,10 @@ class FakeGitRepositories : ShellCommandExecutor {
         val mergedOnlyInto = mutableMapOf<String, String>()
         val recordedBases = linkedMapOf<String, String>()
         val dirty = mutableMapOf<String, Int>()
+        val unreadableStatus = mutableSetOf<String>()
         var failAdd: String? = null
+        val prunable = mutableSetOf<String>()
+        var failList = false
     }
 
     val repositories = mutableListOf<Repository>()
@@ -53,6 +56,7 @@ class FakeGitRepositories : ShellCommandExecutor {
         val repository = owner(directory) ?: return fail(command, "fatal: not a git repository")
         return when {
             "--git-common-dir" in args -> ok(command, "${repository.base}/.git\nfalse\n")
+            args.take(2) == listOf("worktree", "list") && repository.failList -> fail(command, "fatal: unable to read worktrees")
             args.take(2) == listOf("worktree", "list") -> ok(command, porcelain(repository))
             args.take(1) == listOf("show-ref") -> exists(command, repository, args.last())
             args.take(2) == listOf("rev-parse", "--verify") && !args.last().startsWith("refs/") -> ok(command, "abc123\n")
@@ -64,6 +68,7 @@ class FakeGitRepositories : ShellCommandExecutor {
                 repository.worktrees.remove(args.last().trimEnd('/'))
                 ok(command)
             }
+            args.take(1) == listOf("status") && directory in repository.unreadableStatus -> fail(command, "fatal: index file corrupt")
             args.take(1) == listOf("status") -> ok(command, " M file\n".repeat(repository.dirty[directory] ?: 0))
             args.take(1) == listOf("rev-list") && args.last().endsWith("@{upstream}...HEAD") -> fail(command)
             args.take(1) == listOf("rev-list") -> ok(command, if (readsAsMerged(repository, directory, args.last())) "3\t0" else "0\t2")
@@ -115,6 +120,7 @@ class FakeGitRepositories : ShellCommandExecutor {
             appendLine("worktree $path")
             appendLine("HEAD 2222222222222222222222222222222222222222")
             if (branch == null) appendLine("detached") else appendLine("branch refs/heads/$branch")
+            if (path in repository.prunable) appendLine("prunable gitdir file points to non-existent location")
         }
     }
 

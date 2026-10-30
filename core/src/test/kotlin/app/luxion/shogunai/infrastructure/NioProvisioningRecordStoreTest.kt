@@ -68,4 +68,13 @@ class NioProvisioningRecordStoreTest {
     fun `writing for a folder without a Git admin folder fails`() {
         assertFailsWith<IOException> { store.write(root.resolve("missing").toString(), mapOf("keys" to listOf("a.pem"))) }
     }
+
+    @Test
+    fun `a record without local folders or a git file without gitdir reads as empty`() {
+        adminDirectory.resolve("shogunai-provisioning.json").writeText("""{ "other": {} }""")
+        assertEquals(emptyMap(), store.read(worktree.toString()))
+
+        worktree.resolve(".git").writeText("not a pointer\n")
+        assertEquals(emptyMap(), store.read(worktree.toString()))
+    }
 }

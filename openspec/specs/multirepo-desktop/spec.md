@@ -101,7 +101,7 @@ The multirepo view SHALL offer opening the multirepo agent in Herdr in its heade
 
 #### Scenario: Open workspace without an agent
 - **WHEN** the multirepo's Herdr workspace is open but has no live agent
-- **THEN** the agent is started in a new pane of it and the notice says the agent was started, not that it was focused
+- **THEN** the agent is started in that workspace, in its only pane when that pane is idle in the multirepo folder or in a new pane otherwise, and the notice says the agent was started, not that it was focused
 
 #### Scenario: Agent doesn't start
 - **WHEN** Herdr doesn't detect the multirepo agent in time
@@ -200,7 +200,7 @@ The multirepo view SHALL show the multirepo agent running in the multirepo folde
 
 #### Scenario: Agent working in the folder
 - **WHEN** Claude Code runs in `~/projects/product` and is working
-- **THEN** the multirepo view shows the agent with an info dot and "Claude · working", and the multirepo's sidebar row shows activity
+- **THEN** the multirepo view shows the agent with an info-colored agent icon and "Claude · working", and the multirepo's sidebar row shows activity
 
 #### Scenario: Agent in a member repository
 - **WHEN** an agent runs in `~/projects/product/product-app`
@@ -308,7 +308,7 @@ In the multirepo view by change, each group's header SHALL show the most urgent 
 
 #### Scenario: Agent in one repository of the change
 - **WHEN** the change `TASK-12` has worktrees in `api` and `app`, and Claude needs the user in `app`'s
-- **THEN** the `TASK-12` header shows a warning dot with "Claude · needs you"
+- **THEN** the `TASK-12` header shows a warning-colored agent icon with "Claude · needs you"
 
 ### Requirement: Repository rows in the multirepo settings
 The multirepo settings SHALL list the repositories with the shared list row: the editable alias, the path in the data font, "Rename" only while the alias differs from the saved one, and the remove action at the row's end, labeled and with a tooltip.

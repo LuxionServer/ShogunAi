@@ -6,6 +6,7 @@ import app.luxion.shogunai.domain.executor.CommandResult
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.model.HerdrAgent
 import app.luxion.shogunai.domain.model.HerdrPane
+import app.luxion.shogunai.domain.model.HerdrPaneProcesses
 import app.luxion.shogunai.domain.model.HerdrWorkspace
 import app.luxion.shogunai.domain.model.AgentState
 import app.luxion.shogunai.domain.model.HerdrWorktreeOpening
@@ -16,6 +17,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class CliHerdrClientTest {
@@ -25,18 +27,25 @@ class CliHerdrClientTest {
 
     private fun client(
         executor: ShellCommandExecutor,
-        files: Set<String> = emptySet(),
+        onPath: Map<String, String> = emptyMap(),
         osName: String = "Mac OS X",
-    ) = CliHerdrClient(executor, userHome = "/home/dev", osName = osName, isFile = { it in files })
+    ) = CliHerdrClient(executor, findExecutable = { onPath[it] }, osName = osName)
 
     private val worktree = "/home/dev/projects/worktrees/TASK-9"
 
     @Test
-    fun `herdr is installed when found in a known folder or on the path`() {
+    fun `herdr is installed when it is found`() {
         val executor = FakeShellCommandExecutor { FakeShellCommandExecutor.failure(it) }
-        assertTrue(client(executor, files = setOf("/home/dev/.local/bin/herdr")).isInstalled())
-        assertTrue(CliHerdrClient(executor, userHome = "/home/dev", osName = "Linux", isFile = { false }, findOnPath = { "/usr/bin/$it" }).isInstalled())
-        assertFalse(CliHerdrClient(executor, userHome = "/home/dev", osName = "Linux", isFile = { false }, findOnPath = { null }).isInstalled())
+        assertTrue(client(executor, onPath = mapOf("herdr" to "/home/dev/tools/bin/herdr")).isInstalled())
+        assertFalse(client(executor).isInstalled())
+    }
+
+    @Test
+    fun `location is the herdr binary that would run`() {
+        val executor = FakeShellCommandExecutor()
+
+        assertEquals("/home/dev/tools/bin/herdr", client(executor, onPath = mapOf("herdr" to "/home/dev/tools/bin/herdr")).location())
+        assertNull(client(executor).location())
     }
 
     @Test
@@ -155,6 +164,38 @@ class CliHerdrClientTest {
     }
 
     @Test
+    fun `a shell at its prompt owns the pane's foreground process group`() = runTest {
+        val executor = FakeShellCommandExecutor { FakeShellCommandExecutor.success(it, fixture("pane-process-info-prompt.json")) }
+
+        val processes = client(executor).paneProcesses("w2:p1")
+
+        assertEquals(HerdrPaneProcesses(shellPid = 17820, foregroundProcessGroupId = 17820), processes)
+        assertTrue(processes!!.atPrompt)
+        assertEquals(listOf("herdr", "pane", "process-info", "--pane", "w2:p1"), executor.executedCommands.single())
+    }
+
+    @Test
+    fun `a pane running a program isn't at its prompt`() = runTest {
+        val executor = FakeShellCommandExecutor { FakeShellCommandExecutor.success(it, fixture("pane-process-info-running.json")) }
+
+        assertEquals(false, client(executor).paneProcesses("w2:p1")?.atPrompt)
+    }
+
+    @Test
+    fun `unknown pane processes are reported as null instead of failing`() = runTest {
+        listOf(
+            FakeShellCommandExecutor { FakeShellCommandExecutor.failure(it, stderr = "unknown command") },
+            FakeShellCommandExecutor { FakeShellCommandExecutor.success(it, fixture("pane-close.json")) },
+            FakeShellCommandExecutor {
+                FakeShellCommandExecutor.success(it, """{"result":{"process_info":{"shell_pid":17820}}}""")
+            },
+            FakeShellCommandExecutor { throw CommandExecutionException(it, IOException("not found")) },
+        ).forEach { executor ->
+            assertNull(client(executor).paneProcesses("w2:p1"))
+        }
+    }
+
+    @Test
     fun `an agent is focused by its pane`() = runTest {
         val executor = FakeShellCommandExecutor { FakeShellCommandExecutor.success(it, "") }
 
@@ -238,20 +279,11 @@ class CliHerdrClientTest {
     }
 
     @Test
-    fun `the binary is looked up in the user's bin folders before the PATH`() {
+    fun `the binary is run from where it is found, or by name`() {
         val executor = FakeShellCommandExecutor()
 
         assertEquals("herdr", client(executor).executable())
-        assertEquals("/home/dev/.cargo/bin/herdr", client(executor, files = setOf("/home/dev/.cargo/bin/herdr")).executable())
-        assertEquals(
-            "/home/dev/.local/bin/herdr",
-            client(executor, files = setOf("/home/dev/.local/bin/herdr", "/home/dev/.cargo/bin/herdr")).executable(),
-        )
-        assertEquals("/opt/homebrew/bin/herdr", client(executor, files = setOf("/opt/homebrew/bin/herdr")).executable())
-        assertEquals(
-            "/home/dev/.cargo/bin/herdr",
-            client(executor, files = setOf("/opt/homebrew/bin/herdr", "/home/dev/.cargo/bin/herdr")).executable(),
-        )
+        assertEquals("/home/dev/tools/bin/herdr", client(executor, onPath = mapOf("herdr" to "/home/dev/tools/bin/herdr")).executable())
         assertEquals("herdr.exe", client(executor, osName = "Windows 11").executable())
     }
 

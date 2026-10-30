@@ -103,7 +103,7 @@ class HeadlessCommandsTest {
         err = err,
         readInput = { input },
         canonicalPath = { it.trimEnd('/') },
-        environmentVariable = { null },
+        environment = hostEnvironment(),
         headlessLauncher = launcher,
         appWindows = windows,
         pauseWhileStartingApp = {},
@@ -178,6 +178,97 @@ class HeadlessCommandsTest {
     }
 
     @Test
+    fun `start, capture and stop report as JSON`() {
+        appWindow()
+
+        assertEquals(0, cli().run(listOf("headless", "start", "--json")), err.toString())
+        val started = Json.parseToJsonElement(out.toString().trim()).jsonObject
+        out.clear()
+        assertEquals(0, cli().run(listOf("headless", "capture", "--output", "/tmp/example/window.png", "--json")), err.toString())
+        val captured = out.toString()
+        out.clear()
+        assertEquals(0, cli().run(listOf("headless", "stop", "--json")), err.toString())
+
+        assertEquals("running", started.getValue("state").jsonPrimitive.content)
+        assertEquals(4242L, started.getValue("pid").jsonPrimitive.long)
+        assertEquals("$admin/shogunai/headless/home", started.getValue("home").jsonPrimitive.content)
+        assertEquals("{\"worktree\":\"$linked\",\"capture\":\"/tmp/example/window.png\"}\n", captured)
+        assertEquals("{\"worktree\":\"$linked\",\"state\":\"stopped\",\"wasRunning\":true,\"pid\":4242}\n", out.toString())
+    }
+
+    @Test
+    fun `status names the window and the permissions still missing`() {
+        appWindow()
+        cli().run(listOf("headless", "start"))
+        out.clear()
+        windows.granted = setOf(MacPermission.ACCESSIBILITY)
+
+        cli().run(listOf("headless", "status"))
+        val hidden = out.lines()
+        out.clear()
+        windows.windows[4242L] = AppWindow(77, isOnScreen = true)
+        windows.hidden.clear()
+        cli(workingDirectory = linked).run(listOf("headless", "start", "--visible"))
+        out.clear()
+        cli().run(listOf("headless", "status"))
+        val visible = out.lines()
+        out.clear()
+        windows.windows.clear()
+        cli().run(listOf("headless", "status"))
+
+        assertEquals("4242 running, hidden", hidden.first())
+        assertTrue(hidden.any { it.startsWith("missing permission: ${MacPermission.SCREEN_RECORDING.displayName}") }, hidden.toString())
+        assertEquals("4242 running, visible", visible.first(), visible.toString())
+        assertEquals("4242 running, no window", out.lines().first())
+    }
+
+    @Test
+    fun `removing a worktree whose desktop app can't be stopped says so and still removes it`() {
+        appWindow()
+        cli().run(listOf("headless", "start"))
+        launcher.failStop = java.io.IOException("kill denied")
+
+        assertEquals(0, cli(workingDirectory = base).run(listOf("remove", linked, "--force")), err.toString())
+
+        assertTrue(err.contains("shogun: couldn't stop the desktop app of $linked"), err.toString())
+    }
+
+    @Test
+    fun `by default start pauses for real between window checks`() {
+        appWindow()
+        windows.windowAfterPolls = 1
+        val realPauses = ShogunCli(
+            executor = executor,
+            fileManager = files,
+            projectRepository = FakeProjectRepository(emptyList()),
+            provisioningSource = provisioning(true),
+            daemonSource = FakeGradleDaemonSource(),
+            gradleUserHome = "/home/dev/.gradle",
+            environmentStateStore = FakeEnvironmentStateStore(),
+            portProbe = FakePortProbe(),
+            androidSdk = FakeAndroidSdk(),
+            appleSimulators = FakeAppleSimulators(),
+            kmpTestWiring = FakeKmpTestWiring(),
+            resourceLimits = FakeResourceLimitsRepository(ResourceSettings(CapacityProfile.PER_WORKTREE)),
+            machineCapacity = FakeMachineCapacity(),
+            derivedDataSource = FakeDerivedDataSource(),
+            herdrConfig = FakeHerdrConfigSource(),
+            orca = FakeOrcaClient(installed = false),
+            workingDirectory = linked,
+            out = out,
+            err = err,
+            canonicalPath = { it.trimEnd('/') },
+            environment = hostEnvironment(),
+            headlessLauncher = launcher,
+            appWindows = windows,
+        )
+
+        assertEquals(0, realPauses.run(listOf("headless", "start")), err.toString())
+
+        assertEquals("4242 running hidden\n", out.toString())
+    }
+
+    @Test
     fun `a denied hide warns which permission would hide the window`() {
         windows.granted = setOf(MacPermission.SCREEN_RECORDING)
         appWindow()
@@ -219,11 +310,21 @@ class HeadlessCommandsTest {
     }
 
     @Test
-    fun `the session start context tells the agent how to check the desktop app`() {
+    fun `the session start context tells the agent in one line how to check the desktop app`() {
         val context = sessionStart()
 
-        listOf("shogun headless start", "shogun headless capture", "take_screenshot", "restart", "menu bar").forEach {
-            assertTrue(it in context, context)
+        val line = context.lines().single { "shogun headless start" in it }
+        assertTrue("shogun guide resources" in line, context)
+        assertFalse("shogun headless capture" in context, context)
+    }
+
+    @Test
+    fun `the guide keeps the full desktop app rule`() {
+        assertEquals(0, cli().run(listOf("guide", "resources")), err.toString())
+
+        val guide = out.toString()
+        listOf("shogun headless capture", "take_screenshot", "restart", "menu bar", "shogun desktop acquire --wait").forEach {
+            assertTrue(it in guide, it)
         }
     }
 

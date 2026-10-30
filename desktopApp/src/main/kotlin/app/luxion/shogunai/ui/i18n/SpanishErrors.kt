@@ -9,6 +9,9 @@ import app.luxion.shogunai.domain.model.PoolHolder
 import app.luxion.shogunai.domain.model.PoolHolderState
 import app.luxion.shogunai.domain.model.ResourceKind
 import app.luxion.shogunai.domain.model.WorktreeError
+import app.luxion.shogunai.domain.model.UnavailableReason
+import app.luxion.shogunai.domain.model.UnavailableLocalFile
+import app.luxion.shogunai.domain.model.LocalFileOrigin
 import app.luxion.shogunai.domain.model.toLocalClockTime
 import app.luxion.shogunai.domain.usecase.GitFailureCause
 import java.time.Instant
@@ -96,9 +99,9 @@ private fun spanishWorktreeTexts(error: WorktreeError): ErrorTexts = when (error
         "\"${error.rawInput}\" no es un id de tarea válido.",
         "Usa solo letras, dígitos, \"-\", \"_\" y \"/\".",
     )
-    is WorktreeError.SecretFileNotFound -> ErrorTexts(
-        "No se encontraron estos archivos locales en ${error.basePath}: ${error.files.joinToString()}.",
-        "Créalos en el repositorio base, o quítalos de los archivos locales del proyecto.",
+    is WorktreeError.LocalFilesUnavailable -> ErrorTexts(
+        "No se pueden copiar ni enlazar estos archivos locales desde ${error.basePath}: ${error.files.joinToString { it.path }}. No se ha cambiado nada.",
+        spanishLocalFilesFix(error.files),
     )
     is WorktreeError.InvalidRepositoryConfig -> ErrorTexts(
         "No se pudo leer ${error.path}.",
@@ -437,4 +440,18 @@ private fun spanishProtection(holder: PoolHolder): String = when (holder.protect
 private fun spanishPermissionName(permission: MacPermission): String = when (permission) {
     MacPermission.SCREEN_RECORDING -> "Grabación de pantalla"
     MacPermission.ACCESSIBILITY -> "Accesibilidad"
+}
+
+internal fun spanishLocalFilesFix(files: List<UnavailableLocalFile>): String {
+    val reasons = files.map { it.reason }
+    val fixes = listOfNotNull(
+        "crea los que faltan ahí".takeIf { reasons.any { it is UnavailableReason.Missing } },
+        "restaura los destinos de los enlaces rotos".takeIf { reasons.any { it is UnavailableReason.BrokenLink } },
+        "da permiso de lectura a tu usuario sobre los que no se pueden leer".takeIf { reasons.any { it is UnavailableReason.Unreadable } },
+    )
+    val removals = listOfNotNull(
+        "los archivos locales del proyecto".takeIf { files.any { it.origin == LocalFileOrigin.PROJECT } },
+        ".shogunai.json o .worktreeinclude".takeIf { files.any { it.origin == LocalFileOrigin.REPOSITORY } },
+    )
+    return fixes.joinToString(", ").replaceFirstChar { it.uppercase() } + ", o quítalos de " + removals.joinToString(" y ") + "."
 }

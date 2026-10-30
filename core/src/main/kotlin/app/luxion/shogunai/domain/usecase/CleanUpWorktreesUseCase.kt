@@ -37,7 +37,7 @@ data class CleanupSelection(
 fun selectCleanup(
     worktrees: List<Worktree>,
     statuses: Map<String, WorktreeStatus>,
-    runningAgents: Map<String, List<RunningAgent>>? = null,
+    runningAgents: Map<String, List<RunningAgent>>?,
 ): CleanupSelection {
     val qualifying = worktrees.filter { worktree ->
         !worktree.isMain && !worktree.isLocked && (worktree.isPrunable || statuses[worktree.path].isCleanAndMerged())

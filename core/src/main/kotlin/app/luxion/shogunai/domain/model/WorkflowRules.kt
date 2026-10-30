@@ -30,6 +30,7 @@ data class WorkflowRule(
     val text: String,
     val condition: WorkflowCondition = WorkflowCondition.ALWAYS,
     val inSessionStart: Boolean = false,
+    val sessionStartText: String? = null,
 )
 
 data class WorkflowContext(
@@ -96,7 +97,6 @@ object WorkflowRules {
             WorkflowTopic.WORKTREES,
             "`shogun new <id>` branches from the current worktree's HEAD; use `shogun new <id> --from <ref>` to branch from something else, " +
                 "such as an epic's branch, and check the new worktree's `git log -1`.",
-            inSessionStart = true,
         ),
         WorkflowRule(
             "worktrees.pull-request-base",
@@ -181,6 +181,8 @@ object WorkflowRules {
                 "Keyboard shortcuts, native menus, the menu bar and system dialogs still need the desktop: take its turn first with `shogun desktop acquire --wait`.",
             WorkflowCondition.DESKTOP_APP_PROVIDER,
             inSessionStart = true,
+            sessionStartText = "Check the desktop app hidden, without computer use, with `shogun headless start`; " +
+                "see `shogun guide resources` for driving and capturing it.",
         ),
         WorkflowRule(
             "resources.desktop-turn",
@@ -188,7 +190,6 @@ object WorkflowRules {
             "Before driving the desktop with computer use, Orca's `orca computer` commands included, take the machine's desktop turn with `shogun desktop acquire --wait`, " +
                 "run in the background or with a long enough shell timeout, since it can wait up to 30 minutes; " +
                 "run it again to renew the turn during a long check, before it expires, and give it back with `shogun desktop release` as soon as you are done.",
-            inSessionStart = true,
         ),
         WorkflowRule(
             "resources.caches",
@@ -248,5 +249,5 @@ object WorkflowRules {
         rulesFor(context).applicable.filter { it.inSessionStart }
 
     fun sessionStartLines(context: WorkflowContext): List<String> =
-        listOf(PRECEDENCE) + sessionStartRules(context).map { it.text } + GUIDE_POINTER
+        listOf(PRECEDENCE) + sessionStartRules(context).map { it.sessionStartText ?: it.text } + GUIDE_POINTER
 }
