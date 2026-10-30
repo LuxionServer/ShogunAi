@@ -160,7 +160,7 @@ fun worktreeRowModel(
     val kind = worktreeActivity(worktree, loaded, agents, now, inactiveAfter).badgeKind()
     return WorktreeRowModel(
         badge = StateBadge(kind, kind.label(strings)),
-        execution = executionCell(agents, agentsReadAt, now, desktopTurn, emulator, simulator, headlessApp, strings),
+        execution = executionCell(agents, agentsReadAt, now, desktopTurn, emulator, simulator, headlessApp, strings, clickToFocus = true),
         name = nameCell(worktree, origin, projectName, strings).copy(groupTag = groupTag),
         git = gitCell(status, loaded, mainBranchName, strings),
         time = activityDate(worktree, loaded).let { date ->
@@ -184,8 +184,9 @@ fun executionCell(
     simulator: WorktreeSimulator?,
     headlessApp: HeadlessAppProcess?,
     strings: Strings,
+    clickToFocus: Boolean = false,
 ): ExecutionCell = ExecutionCell(
-    agent = agentIndicator(agents, agentsReadAt, now, strings),
+    agent = agentIndicator(agents, agentsReadAt, now, strings, clickToFocus),
     device = secondLine(desktopTurn, emulator, simulator, headlessApp, strings),
 )
 

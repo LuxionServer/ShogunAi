@@ -44,17 +44,10 @@ Una revisión de UX de la interfaz v2 ya implementada, hecha sobre `develop` en 
   - «↑» significa solo commits no subidos al upstream: la comparación con la base pasa al inspector, y una rama sin upstream muestra un icono de «sin subir».
   - Una vista de Activos vacía y tranquila: «Nada te necesita», con cuántos agentes están trabajando y «Ver todos los worktrees».
 - Una fila por cambio de multirepo en Activos, con el peor estado de sus repositorios, que se despliega en una fila hija por repositorio; las filas hijas no repiten la rama.
-- Enfocar un agente desde su fila: hacer clic en el indicador de agente de la fila, o pulsar Intro sobre ella, enfoca el panel del agente en su runner, y el tooltip lo dice.
 - La entrada a la máquina y sus alarmas:
   - La barra de estado empieza siempre por «Máquina», y un engranaje al pie de la barra lateral abre los Ajustes.
   - Una herramienta que falta o es opcional se muestra neutra con su motivo; el color de peligro queda para los fallos reales.
   - La vista de daemons de Gradle quita la columna de estado cuando todos los valores son desconocidos, explica por qué «Parar los ociosos» está desactivado y muestra qué worktree usa cada daemon cuando se sabe.
-- Arreglos rápidos que no necesitan OpenSpec:
-  - La barra de estado, su tooltip y la vista toman el número de daemons de Gradle de una sola fuente; hoy no coinciden.
-  - El aviso del recorrido guiado pasa a ser una línea en el pie de la barra lateral.
-  - Una insignia «Nuevo» legible.
-  - La paleta de comandos toma Ajustes y Preferencias como sinónimos y lista los worktrees para «abrir» cuando no hay nada seleccionado, descarta las coincidencias aproximadas que no son una subsecuencia del nombre visible, y dice en su pie, en la fuente de la interfaz, qué hacen ↵ y ⌘↵, tomado del catálogo de acciones.
-  - Comprobar a mano dos problemas, que solo se arreglan si se reproducen: un proyecto añadido con `shogun project add` no aparece hasta reiniciar la app, y ⌘A seguido de borrar en la paleta borra un solo carácter.
 
 ### 3. Orca, un segundo runner de primera clase
 

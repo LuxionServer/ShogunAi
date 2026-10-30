@@ -66,7 +66,7 @@ class XcodeDerivedDataViewUiTest {
         stopSimulator = { _, _ -> Result.success(null) },
         readSimulatorOrphans = { Result.success(emptyList()) },
         deleteSimulators = { Result.success(it) },
-        readPool = { _, _, _ -> Result.failure(IllegalStateException()) },
+        readPool = { _, _, _, _ -> Result.failure(IllegalStateException()) },
         trimGradleDaemons = { Result.success(GradleTrim(limit = null)) },
         resourceSettings = { settings },
         trimDerivedData = { quota, _, _ -> Result.success(trim ?: DerivedDataTrim(quota, 0L, 0L)) },

@@ -59,6 +59,7 @@ import app.luxion.shogunai.domain.model.AgentLaunchConfig
 import app.luxion.shogunai.ui.shell.AgentChoices
 import app.luxion.shogunai.SimulatorUseCases
 import app.luxion.shogunai.domain.model.AgentState
+import app.luxion.shogunai.domain.model.AgentStateSource
 import app.luxion.shogunai.domain.model.HerdrOpening
 import app.luxion.shogunai.domain.model.ObservedPort
 import app.luxion.shogunai.domain.model.OrcaOpening
@@ -3199,6 +3200,115 @@ class ProjectWorktreesTest {
         assertEquals(listOf("w1:p2"), focused)
         assertEquals(0, opened)
         assertEquals(WorktreeSuccess.OpenedInHerdr(worktreePath, HerdrOutcome.FOCUSED), viewModel.success)
+    }
+
+    @Test
+    fun `focusing the agent focuses the pane of the most urgent agent in Herdr`() = runTest(dispatcher) {
+        val focused = mutableListOf<String>()
+        val used = mutableListOf<String>()
+        val herdr = HerdrUseCases.NONE.copy(focusAgent = { pane -> focused += pane; Result.success(Unit) })
+        val viewModel = projectWorktrees(useCases(listingResponder()).copy(herdr = herdr), onUsed = { used += it })
+        advanceUntilIdle()
+        viewModel.applyAgents(
+            mapOf(
+                worktreePath to listOf(
+                    RunningAgent("codex", AgentState.DONE, "w1:p1", AgentStateSource.HERDR),
+                    RunningAgent("claude", AgentState.BLOCKED, "w1:p2", AgentStateSource.HERDR),
+                ),
+            ),
+        )
+
+        assertTrue(viewModel.focusAgent(viewModel.worktrees.first { it.path == worktreePath }))
+        assertTrue(worktreePath in viewModel.openingInHerdr)
+        advanceUntilIdle()
+
+        assertEquals(listOf("w1:p2"), focused)
+        assertEquals(listOf(worktreePath), used)
+        assertEquals(WorktreeSuccess.OpenedInHerdr(worktreePath, HerdrOutcome.FOCUSED), viewModel.success)
+        assertTrue(viewModel.openingInHerdr.isEmpty())
+    }
+
+    @Test
+    fun `focusing the agent while Herdr is opening the worktree does nothing more`() = runTest(dispatcher) {
+        val focused = mutableListOf<String>()
+        val herdr = HerdrUseCases.NONE.copy(focusAgent = { pane -> focused += pane; Result.success(Unit) })
+        val viewModel = projectWorktrees(useCases(listingResponder()).copy(herdr = herdr))
+        advanceUntilIdle()
+        viewModel.applyAgents(mapOf(worktreePath to listOf(RunningAgent("claude", AgentState.BLOCKED, "w1:p2", AgentStateSource.HERDR))))
+        val target = viewModel.worktrees.first { it.path == worktreePath }
+
+        viewModel.focusAgent(target)
+        assertTrue(viewModel.focusAgent(target))
+        advanceUntilIdle()
+
+        assertEquals(listOf("w1:p2"), focused)
+    }
+
+    @Test
+    fun `focusing the agent records Herdr's error for the worktree`() = runTest(dispatcher) {
+        val herdr = HerdrUseCases.NONE.copy(focusAgent = { Result.failure(WorktreeError.HerdrNotInstalled) })
+        val viewModel = projectWorktrees(useCases(listingResponder()).copy(herdr = herdr))
+        advanceUntilIdle()
+        viewModel.applyAgents(mapOf(worktreePath to listOf(RunningAgent("claude", AgentState.BLOCKED, "w1:p2", AgentStateSource.HERDR))))
+
+        viewModel.focusAgent(viewModel.worktrees.first { it.path == worktreePath })
+        advanceUntilIdle()
+
+        assertIs<WorktreeError.HerdrNotInstalled>(viewModel.actionErrors[worktreePath])
+        assertNull(viewModel.success)
+    }
+
+    @Test
+    fun `focusing an agent in Orca opens the worktree in Orca`() = runTest(dispatcher) {
+        val calls = mutableListOf<Worktree>()
+        val orca = OrcaUseCases.NONE.copy(open = { target, _ -> calls += target; Result.success(OrcaOpening(OrcaOutcome.FOCUSED, "term_9", "codex")) })
+        val viewModel = projectWorktrees(useCases(listingResponder()).copy(orca = orca))
+        advanceUntilIdle()
+        viewModel.applyAgents(mapOf(worktreePath to listOf(RunningAgent("codex", AgentState.WORKING, stateSource = AgentStateSource.ORCA))))
+        val target = viewModel.worktrees.first { it.path == worktreePath }
+
+        assertTrue(viewModel.focusAgent(target))
+        advanceUntilIdle()
+
+        assertEquals(target, calls.single())
+        assertEquals(WorktreeSuccess.OpenedInOrca(worktreePath, OrcaOutcome.FOCUSED), viewModel.success)
+    }
+
+    @Test
+    fun `focusing an agent without a known runner does nothing`() = runTest(dispatcher) {
+        var opened = 0
+        val herdr = HerdrUseCases.NONE.copy(
+            open = { _, _ -> opened++; Result.success(HerdrOpening(HerdrOutcome.OPENED, "w1:p1", "Claude")) },
+            focusAgent = { opened++; Result.success(Unit) },
+        )
+        val viewModel = projectWorktrees(useCases(listingResponder()).copy(herdr = herdr))
+        advanceUntilIdle()
+        viewModel.applyAgents(mapOf(worktreePath to listOf(RunningAgent("claude"))))
+
+        assertFalse(viewModel.focusAgent(viewModel.worktrees.first { it.path == worktreePath }))
+        advanceUntilIdle()
+
+        assertEquals(0, opened)
+        assertNull(viewModel.success)
+    }
+
+    @Test
+    fun `Enter focuses the selected worktree's agent`() = runTest(dispatcher) {
+        val focused = mutableListOf<String>()
+        val herdr = HerdrUseCases.NONE.copy(focusAgent = { pane -> focused += pane; Result.success(Unit) })
+        val board = board(useCases(listingResponder()).copy(herdr = herdr))
+        advanceUntilIdle()
+
+        assertFalse(board.focusSelectedAgent())
+
+        board.selectPath(worktreePath)
+        assertFalse(board.focusSelectedAgent())
+
+        board.project.applyAgents(mapOf(worktreePath to listOf(RunningAgent("claude", AgentState.BLOCKED, "w1:p2", AgentStateSource.HERDR))))
+        assertTrue(board.focusSelectedAgent())
+        advanceUntilIdle()
+
+        assertEquals(listOf("w1:p2"), focused)
     }
 
     @Test
