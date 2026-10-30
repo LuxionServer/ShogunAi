@@ -174,7 +174,7 @@ object EnglishStrings : Strings {
     override val startFromLabel = "Start from"
     override fun startFromMainBranch(ref: String) = "$ref (main branch)"
     override fun startFromCurrentBranch(branch: String?) =
-        if (branch != null) "Current branch of the repository ($branch)" else "Current commit of the repository"
+        if (branch != null) "Current branch of the repository ($branch) · same as shogun new" else "Current commit of the repository · same as shogun new"
     override fun remoteBranchLabel(branch: String) = "$branch (remote)"
     override val fetchFirstLabel = "Fetch from origin first"
     override val createWithoutFetching = "Create without fetching"

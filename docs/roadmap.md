@@ -30,11 +30,9 @@ ShogunAi has to work the first time on a machine that isn't the one it's develop
 
 - Tests that hold the product to it:
   - Raising the coverage floors that CI enforces up to 100%: the branches of `core` (79% today) and `cli` (83%), and the lines (83%) and branches (66%) of the desktop app outside its composables, which the end-to-end tests cover. Lines of `core` and `cli` are already at 100%.
-  - Opening in Herdr in the CLI's end-to-end tests on Windows, where Herdr's client only runs `herdr.exe` and the tests need a stand-in executable for it; on Linux and macOS they already run against a fake `herdr`.
   - The desktop app's end-to-end tests forcing whether `shogun` is installed, once the host environment is resolved in one place: today the tour and the hooks tests follow what the machine has, since `/opt/homebrew/bin` is always searched on macOS, and "the command is missing" is covered only with fakes.
 - A smoke test of the packaged app on a clean machine in CI before every release: install the `.dmg` on a macOS runner, open the app with the environment the Dock gives it, install the command and the hooks, add a project with local files, run `shogun new` and check the copied files. A release that fails it isn't published. Then the same on Windows and Linux with their packages, which also covers installing the command from the app on Windows and on a machine without `~/.local/bin` on its `PATH`, and choosing a folder with the system's dialog, which on Linux goes through the desktop portal and falls back to Java's chooser without one.
-- More checks in `shogun doctor` and "Check Installation": the tools of the providers a repository declares (Xcode, the Android SDK, Docker), and multirepos with their repositories and groups.
-- A step running `shogun doctor` in the [clean account rehearsal](process/clean-account-rehearsal.md), so a failure there arrives with what is wrong and how to fix it.
+- What the providers' tools need beyond being installed, in `shogun doctor` and "Check Installation": the Java runtime behind Gradle and Maven, Docker's daemon running, and minimum versions; today they check that each tool is found and runs.
 
 ### 2. Fixes from the UX review of the v2 interface
 
@@ -60,7 +58,6 @@ A UX review of the implemented v2 interface, done on `develop` at `aaf42f94` wit
   - The status bar always starts with "Machine", and a gear at the bottom of the sidebar opens Settings.
   - A missing or optional tool shows as neutral with its reason; the danger color is kept for real failures.
   - The Gradle daemons view drops the state column when every value is unknown, explains why "Stop idle daemons" is disabled, and shows which worktree uses each daemon when that's known.
-- New worktree's default start (a small OpenSpec change, already decided): the dialog starts from the main checkout's current branch, as `shogun new` does, instead of the project's main branch, fixing the spec and the desktop app guide with it.
 - A tidier toolbar that fits in one row: the filter; "View ▾" with the project, grouping, order and Reload (also on ⌘R); "Clean up N" only when there is something to clean up; and New worktree. On narrow windows the filter becomes an icon and New worktree becomes "+".
 
 ### 3. Orca, a second first-class runner
