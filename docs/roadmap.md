@@ -55,7 +55,6 @@ A UX review of the implemented v2 interface, done on `develop` at `aaf42f94` wit
   - The Agent section is one line when no agent runs, and keeps the running agent apart from "Runs with".
   - On narrow windows the type prefix truncates first, so the task id always shows, and the rail's tiles use two letters that tell sibling projects apart.
   - Counts inside sentences use the interface font with tabular figures; lone figures stay in the data font.
-- Focusing an agent from its row: clicking the row's agent indicator, or pressing Enter on the row, focuses the agent's pane in its runner, and the tooltip says so.
 - The machine's entry point and its alarms:
   - The status bar always starts with "Machine", and a gear at the bottom of the sidebar opens Settings.
   - A missing or optional tool shows as neutral with its reason; the danger color is kept for real failures.

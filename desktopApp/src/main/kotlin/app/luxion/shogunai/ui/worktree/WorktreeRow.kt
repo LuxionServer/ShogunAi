@@ -68,6 +68,7 @@ fun WorktreeRow(
     onCopyLaunchCommand: () -> Unit,
     contextMenu: () -> List<MenuEntry> = { emptyList() },
     onOpenGroupTag: () -> Unit = {},
+    onFocusAgent: () -> Unit = {},
 ) {
     val strings = LocalStrings.current
     WorktreeContextMenu(entries = contextMenu) {
@@ -75,7 +76,7 @@ fun WorktreeRow(
             cells = listOfNotNull(
                 model.alias?.let { alias -> DataCell(ColumnSpec(width = aliasWidth)) { AliasCellView(alias) } },
                 DataCell(BadgeColumn) { StateBadgeCell(model.badge) },
-                DataCell(ExecutionColumn, Modifier.testTag(ExecutionTag)) { compact -> ExecutionCellView(model.execution, compact) },
+                DataCell(ExecutionColumn, Modifier.testTag(ExecutionTag)) { compact -> ExecutionCellView(model.execution, compact, onFocusAgent) },
                 DataCell(NameColumn) { NameCellView(model.name, onOpenGroupTag) },
                 DataCell(GitColumn, Modifier.testTag(GitTag)) { GitCellView(model.git) },
                 DataCell(TimeColumn, Modifier.testTag(TimeTag)) { compact -> TimeCellView(model.time, compact) },
@@ -206,10 +207,10 @@ private fun CellLine(modifier: Modifier = Modifier, content: @Composable RowScop
 }
 
 @Composable
-private fun ExecutionCellView(cell: ExecutionCell, compact: Boolean) {
+private fun ExecutionCellView(cell: ExecutionCell, compact: Boolean, onFocusAgent: () -> Unit) {
     Column {
         CellLine {
-            cell.agent?.let { AgentIndicator(it, compact = compact) }
+            cell.agent?.let { agent -> AgentIndicator(agent, compact = compact, onClick = onFocusAgent.takeIf { agent.focusable }) }
         }
         CellLine {
             cell.device?.let { DeviceLineView(it, compact) }
