@@ -10,8 +10,13 @@ import kotlin.test.assertNull
 class ChangeGroupingTest {
 
     @Test
-    fun `one worktree needing the user makes the whole group need the user`() {
-        assertEquals(StateBadgeKind.NEEDS_YOU, combinedState(listOf(StateBadgeKind.AGENT_WORKING, StateBadgeKind.NEEDS_YOU)))
+    fun `one worktree waiting for the user makes the whole group wait for the user`() {
+        assertEquals(StateBadgeKind.WAITING_FOR_YOU, combinedState(listOf(StateBadgeKind.AGENT_WORKING, StateBadgeKind.WAITING_FOR_YOU)))
+    }
+
+    @Test
+    fun `an agent working outranks unfinished work in the group`() {
+        assertEquals(StateBadgeKind.AGENT_WORKING, combinedState(listOf(StateBadgeKind.UNFINISHED, StateBadgeKind.AGENT_WORKING)))
     }
 
     @Test

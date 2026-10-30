@@ -88,6 +88,12 @@ The inspector keeps its base and main-branch divergences. `statusProperties` add
 
 `WorktreeScreen` replaces `NothingActive` with `NothingNeedsYou`: a neutral row (`bodyMedium` title "Nothing needs you", `bodySmall` "2 agents working"/"No agents working" in `onSurfaceVariant`, and a "See all worktrees" text link), drawn at the top of the list's column. When the list is empty it is the only content, centered as the empty states are, with the same pieces and no `Inbox` illustration. The old `isNothingActive`, `nothingActiveTitle` and `nothingActiveMessage` go away.
 
+### The top of the list stays in view
+
+Found while checking the app: the lazy list keeps its first visible item when items are inserted above it, so a "Waiting for you" group that appears once the agents are read ends up above the viewport, with its row under the sticky header. `KeepTopInView(listState, firstKey)` in `WorktreeListPane` remembers whether the list is pinned to its top (updated when a scroll by the user ends, from `canScrollBackward`) and, when the first item's key changes while pinned, scrolls to the first item. Programmatic scrolls (revealing the selection) don't unpin it.
+
+Alternative considered: detecting the insertion from the first visible item's index and offset after the change. Rejected: it depends on when the layout pass runs relative to the effect and didn't fire in the real app.
+
 ### Tray, Orca and the tour
 
 - Tray: "!" only for `WaitingForYou`.

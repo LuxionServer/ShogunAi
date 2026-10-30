@@ -50,9 +50,9 @@ class WorktreeRowUiTest {
 
     private val now = Instant.parse("2026-10-16T12:00:00Z")
 
-    private fun status(changes: Int = 0, mainBranch: Divergence = Divergence(2, 0)) = WorktreeStatus(
+    private fun status(changes: Int = 0, mainBranch: Divergence = Divergence(2, 0), upstream: Divergence? = Divergence(0, 0)) = WorktreeStatus(
         uncommittedChanges = changes,
-        upstream = Divergence(0, 0),
+        upstream = upstream,
         mainBranch = mainBranch,
         lastCommitAt = now.minus(Duration.ofHours(3)),
     )
@@ -200,10 +200,25 @@ class WorktreeRowUiTest {
     }
 
     @Test
+    fun `a branch never pushed shows the not pushed icon with its meaning`() = runComposeUiTest {
+        setContent { MaterialTheme { Row(model("feature/TASK-1", status = status(upstream = null))) } }
+
+        onNodeWithTag(NotPushedTag, useUnmergedTree = true).assertIsDisplayed()
+        onNodeWithContentDescription("The branch isn't pushed: it has no upstream", useUnmergedTree = true).assertIsDisplayed()
+    }
+
+    @Test
+    fun `a pushed branch shows no not pushed icon`() = runComposeUiTest {
+        setContent { MaterialTheme { Row(model("feature/TASK-1")) } }
+
+        onNodeWithTag(NotPushedTag, useUnmergedTree = true).assertDoesNotExist()
+    }
+
+    @Test
     fun `the badge exposes the name of the state`() = runComposeUiTest {
         setContent { MaterialTheme { Row(model("feature/TASK-1", status = status(changes = 2))) } }
 
-        onNodeWithContentDescription("Needs you", useUnmergedTree = true).assertIsDisplayed()
+        onNodeWithContentDescription("Unfinished", useUnmergedTree = true).assertIsDisplayed()
     }
 
     @Test

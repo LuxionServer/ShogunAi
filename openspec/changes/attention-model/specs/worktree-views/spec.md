@@ -146,3 +146,14 @@ Each state group header SHALL offer a collapse toggle; a collapsed group SHALL k
 #### Scenario: Keyboard skips hidden rows
 - **WHEN** the user moves the selection with the arrows across a collapsed group
 - **THEN** the selection skips that group's rows
+
+### Requirement: New groups at the top stay in view
+While the user hasn't scrolled the list away from its top, a group or row that appears above the first one, such as "Waiting for you" once an agent blocks, SHALL be shown at the top instead of being scrolled out of view or covered by the sticky header. A list the user scrolled down SHALL keep its place.
+
+#### Scenario: Agent blocks while the list is at its top
+- **WHEN** "Active" shows its groups from the top and an agent becomes blocked
+- **THEN** the "Waiting for you" header and its row are visible at the top of the list
+
+#### Scenario: List scrolled down
+- **WHEN** the user scrolled "Active" down and an agent becomes blocked
+- **THEN** the list keeps showing the rows the user scrolled to

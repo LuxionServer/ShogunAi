@@ -16,6 +16,7 @@ import app.luxion.shogunai.domain.usecase.Activity
 import app.luxion.shogunai.domain.usecase.ActivityDate
 import app.luxion.shogunai.domain.usecase.ActivityKind
 import app.luxion.shogunai.domain.usecase.activityDate
+import app.luxion.shogunai.domain.usecase.isUnpushedBranch
 import app.luxion.shogunai.domain.usecase.worktreeActivity
 import app.luxion.shogunai.ui.components.AgentIndicatorModel
 import app.luxion.shogunai.ui.i18n.Strings
@@ -34,8 +35,9 @@ data class WorktreeRowModel(
 )
 
 enum class StateBadgeKind(val status: Status, val outlined: Boolean = false) {
-    NEEDS_YOU(Status.WARNING),
+    WAITING_FOR_YOU(Status.WARNING),
     AGENT_WORKING(Status.INFO),
+    UNFINISHED(Status.NEUTRAL),
     NEW(Status.NEUTRAL, outlined = true),
     STOPPED(Status.NEUTRAL),
     MERGED(Status.SUCCESS),
@@ -80,13 +82,15 @@ data class GitCell(
     val secondLine: String?,
     val secondLineTooltip: String?,
     val unavailableTooltip: String?,
+    val notPushed: Boolean = false,
 )
 
 data class TimeCell(val activity: String?, val marks: List<String>, val compactActivity: String? = activity)
 
 fun StateBadgeKind.label(strings: Strings): String = when (this) {
-    StateBadgeKind.NEEDS_YOU -> strings.groupNeedsYou
+    StateBadgeKind.WAITING_FOR_YOU -> strings.groupWaitingForYou
     StateBadgeKind.AGENT_WORKING -> strings.groupAgentWorking
+    StateBadgeKind.UNFINISHED -> strings.groupUnfinished
     StateBadgeKind.NEW -> strings.groupNew
     StateBadgeKind.STOPPED -> strings.groupStopped
     StateBadgeKind.MERGED -> strings.groupMerged
@@ -96,8 +100,9 @@ fun StateBadgeKind.label(strings: Strings): String = when (this) {
 }
 
 fun Activity.badgeKind(): StateBadgeKind = when (this) {
-    Activity.NeedsYou -> StateBadgeKind.NEEDS_YOU
+    Activity.WaitingForYou -> StateBadgeKind.WAITING_FOR_YOU
     Activity.AgentWorking -> StateBadgeKind.AGENT_WORKING
+    Activity.Unfinished -> StateBadgeKind.UNFINISHED
     Activity.New -> StateBadgeKind.NEW
     Activity.Stopped -> StateBadgeKind.STOPPED
     Activity.Merged -> StateBadgeKind.MERGED
@@ -231,18 +236,19 @@ private fun gitCell(
     }
     val mergedInto = status.mergedInto(mainBranchName)
     val changes = status.uncommittedChanges.takeIf { it > 0 }
-    val secondLine = if (mergedInto != null) strings.mergedLabel else status.base?.arrows()
+    val upstream = status.upstream
     return GitCell(
         state = GitCellState.READY,
         changes = changes?.let { "✎ $it" },
         changesTooltip = changes?.let(strings::uncommittedChanges),
-        secondLine = secondLine,
+        secondLine = if (mergedInto != null) strings.mergedLabel else upstream?.arrows(),
         secondLineTooltip = when {
             mergedInto != null -> strings.mergedInto(mergedInto)
-            secondLine != null -> listOfNotNull(secondLine, status.baseName ?: mainBranchName).joinToString(" ")
+            upstream?.arrows() != null -> strings.upstreamArrows(upstream.ahead, upstream.behind)
             else -> null
         },
         unavailableTooltip = null,
+        notPushed = status.isUnpushedBranch,
     )
 }
 

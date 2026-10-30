@@ -184,7 +184,8 @@ object EnglishStrings : Strings {
     override val allWorktrees = "All worktrees"
     override val activeWorktrees = "Active"
     override val groupAgentWorking = "Agent working"
-    override val groupNeedsYou = "Needs you"
+    override val groupWaitingForYou = "Waiting for you"
+    override val groupUnfinished = "Unfinished"
     override val groupNew = "New"
     override val groupStopped = "Stopped"
     override val groupMerged = "Merged"
@@ -193,8 +194,10 @@ object EnglishStrings : Strings {
     override val groupOther = "Other"
     override val groupAgentWorkingHint = "agent running"
     override val groupAgentWorkingCriterion = "An AI agent is working in the worktree, or runs without a known state."
-    override val groupNeedsYouHint = "agent waiting, uncommitted or unpushed"
-    override val groupNeedsYouCriterion = "An agent is blocked or done, or no agent is working and there are uncommitted changes or commits not pushed to its upstream (or to its base when it has none)."
+    override val groupWaitingForYouHint = "agent blocked or done"
+    override val groupWaitingForYouCriterion = "An AI agent in the worktree is blocked, for example on a permission prompt, or has finished its turn."
+    override val groupUnfinishedHint = "uncommitted or unpushed"
+    override val groupUnfinishedCriterion = "No agent is working and there are uncommitted changes, commits not pushed to its upstream, or commits of its own on a branch never pushed. The main worktree and inactive worktrees aren't listed here."
     override val groupNewHint = "no commits yet"
     override val groupNewCriterion = "No commits of its own, no uncommitted changes and no agent running."
     override val groupStoppedHint = "pushed, waiting"
@@ -203,16 +206,20 @@ object EnglishStrings : Strings {
     override val groupMergedCriterion = "No commits of its own ahead of its base or the main branch. Can be cleaned up."
     override fun groupInactiveHint(days: Int) = "no activity for $days+ days"
     override fun groupInactiveCriterion(days: Int) =
-        "Clean, no agent running and no activity in the last " + (if (days == 1) "day." else "$days days.")
+        "No agent running and no activity in the last " + (if (days == 1) "day" else "$days days") + ", even with uncommitted or unpushed work."
     override val groupFolderMissingHint = "folder deleted"
     override val groupFolderMissingCriterion = "Git still lists it but its folder no longer exists. Can be cleaned up."
     override val groupOtherHint = "main or not read yet"
-    override val groupOtherCriterion = "The main worktree when it's clean, or a worktree whose status isn't read yet."
+    override val groupOtherCriterion = "The main worktree without an agent, or a worktree whose status isn't read yet."
     override val groupByState = "By state"
     override val groupByProject = "By project"
     override val readingWorktreeStatus = "Reading worktree status…"
-    override val nothingActiveTitle = "Nothing is active"
-    override val nothingActiveMessage = "No agents are running and no worktree has work in progress."
+    override val nothingNeedsYou = "Nothing needs you"
+    override fun agentsWorking(count: Int) = when (count) {
+        0 -> "No agents working"
+        1 -> "1 agent working"
+        else -> "$count agents working"
+    }
     override val seeAllWorktrees = "See all worktrees"
     override val menuActive = "Show Active"
     override val menuAllWorktrees = "Show All worktrees"
@@ -319,6 +326,12 @@ object EnglishStrings : Strings {
     override fun mergedInto(branch: String) = "merged into $branch"
     override val notStarted = "not started"
     override val mergedLabel = "merged"
+    override val notPushedLabel = "not pushed"
+    override val branchNotPushed = "The branch isn't pushed: it has no upstream"
+    override fun upstreamArrows(ahead: Int, behind: Int) = listOfNotNull(
+        ahead.takeIf { it > 0 }?.let { if (it == 1) "1 commit not pushed" else "$it commits not pushed" },
+        behind.takeIf { it > 0 }?.let { if (it == 1) "1 commit not pulled" else "$it commits not pulled" },
+    ).joinToString(" · ")
     override fun commitAgo(relative: String) = "commit $relative"
     override fun createdAgo(relative: String) = "created $relative"
     override val sortLabel = "Sort"

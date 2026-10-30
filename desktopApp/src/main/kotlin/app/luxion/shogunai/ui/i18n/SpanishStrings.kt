@@ -184,7 +184,8 @@ object SpanishStrings : Strings {
     override val allWorktrees = "Todos los worktrees"
     override val activeWorktrees = "Activos"
     override val groupAgentWorking = "Con agente"
-    override val groupNeedsYou = "Te necesitan"
+    override val groupWaitingForYou = "Esperándote"
+    override val groupUnfinished = "Sin terminar"
     override val groupNew = "Nuevos"
     override val groupStopped = "Parados"
     override val groupMerged = "Fusionados"
@@ -193,8 +194,10 @@ object SpanishStrings : Strings {
     override val groupOther = "Otros"
     override val groupAgentWorkingHint = "agente en marcha"
     override val groupAgentWorkingCriterion = "Un agente de IA está trabajando en el worktree, o se ejecuta sin estado conocido."
-    override val groupNeedsYouHint = "agente esperando, sin commit o sin subir"
-    override val groupNeedsYouCriterion = "Un agente está bloqueado o ha terminado, o ningún agente trabaja y hay cambios sin commit o commits sin subir a su upstream (o a su base si no tiene)."
+    override val groupWaitingForYouHint = "agente bloqueado o terminado"
+    override val groupWaitingForYouCriterion = "Un agente de IA del worktree está bloqueado, por ejemplo en una petición de permiso, o ha terminado su turno."
+    override val groupUnfinishedHint = "sin commit o sin subir"
+    override val groupUnfinishedCriterion = "Ningún agente trabaja y hay cambios sin commit, commits sin subir a su upstream o commits propios en una rama nunca subida. El worktree principal y los inactivos no aparecen aquí."
     override val groupNewHint = "aún sin commits"
     override val groupNewCriterion = "Sin commits propios, sin cambios sin commit y sin agente en marcha."
     override val groupStoppedHint = "subido, en espera"
@@ -203,16 +206,20 @@ object SpanishStrings : Strings {
     override val groupMergedCriterion = "Sin commits propios por delante de su base o de la rama principal. Se puede limpiar."
     override fun groupInactiveHint(days: Int) = "sin actividad en $days+ días"
     override fun groupInactiveCriterion(days: Int) =
-        "Limpio, sin agente en marcha y sin actividad en " + (if (days == 1) "el último día." else "los últimos $days días.")
+        "Sin agente en marcha y sin actividad en " + (if (days == 1) "el último día" else "los últimos $days días") + ", aunque tenga trabajo sin commit o sin subir."
     override val groupFolderMissingHint = "carpeta borrada"
     override val groupFolderMissingCriterion = "Git aún lo lista, pero su carpeta ya no existe. Se puede limpiar."
     override val groupOtherHint = "principal o sin leer"
-    override val groupOtherCriterion = "El worktree principal cuando está limpio, o un worktree cuyo estado aún no se ha leído."
+    override val groupOtherCriterion = "El worktree principal sin agente, o un worktree cuyo estado aún no se ha leído."
     override val groupByState = "Por estado"
     override val groupByProject = "Por proyecto"
     override val readingWorktreeStatus = "Leyendo el estado de los worktrees…"
-    override val nothingActiveTitle = "No hay nada activo"
-    override val nothingActiveMessage = "No hay agentes en ejecución ni worktrees con trabajo en curso."
+    override val nothingNeedsYou = "Nada te necesita"
+    override fun agentsWorking(count: Int) = when (count) {
+        0 -> "Ningún agente trabajando"
+        1 -> "1 agente trabajando"
+        else -> "$count agentes trabajando"
+    }
     override val seeAllWorktrees = "Ver todos los worktrees"
     override val menuActive = "Mostrar activos"
     override val menuAllWorktrees = "Mostrar todos los worktrees"
@@ -318,6 +325,12 @@ object SpanishStrings : Strings {
     override val upstream = "upstream"
     override fun mergedInto(branch: String) = "mergeada en $branch"
     override val mergedLabel = "fusionado"
+    override val notPushedLabel = "sin subir"
+    override val branchNotPushed = "La rama no está subida: no tiene upstream"
+    override fun upstreamArrows(ahead: Int, behind: Int) = listOfNotNull(
+        ahead.takeIf { it > 0 }?.let { if (it == 1) "1 commit sin subir" else "$it commits sin subir" },
+        behind.takeIf { it > 0 }?.let { if (it == 1) "1 commit sin traer" else "$it commits sin traer" },
+    ).joinToString(" · ")
     override fun commitAgo(relative: String) = "commit $relative"
     override fun createdAgo(relative: String) = "creado $relative"
     override val sortLabel = "Orden"

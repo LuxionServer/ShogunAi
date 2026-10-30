@@ -226,9 +226,34 @@ class StringsTest {
     ).map { WorktreeError.GitCommandFailed(listOf("git", "worktree", "add"), 128, it) }
 
     @Test
+    fun `the upstream arrows explain what is not pushed and not pulled in both languages`() {
+        assertEquals("1 commit not pushed · 3 commits not pulled", EnglishStrings.upstreamArrows(1, 3))
+        assertEquals("2 commits not pushed", EnglishStrings.upstreamArrows(2, 0))
+        assertEquals("1 commit not pulled", EnglishStrings.upstreamArrows(0, 1))
+        assertEquals("1 commit sin subir · 3 commits sin traer", SpanishStrings.upstreamArrows(1, 3))
+        assertEquals("2 commits sin subir", SpanishStrings.upstreamArrows(2, 0))
+        assertEquals("1 commit sin traer", SpanishStrings.upstreamArrows(0, 1))
+    }
+
+    @Test
+    fun `the working agents are counted in both languages`() {
+        assertEquals(listOf("No agents working", "1 agent working", "3 agents working"), listOf(0, 1, 3).map(EnglishStrings::agentsWorking))
+        assertEquals(listOf("Ningún agente trabajando", "1 agente trabajando", "3 agentes trabajando"), listOf(0, 1, 3).map(SpanishStrings::agentsWorking))
+    }
+
+    @Test
+    fun `the inactive criterion reads well for a single day in both languages`() {
+        assertEquals("No agent running and no activity in the last day, even with uncommitted or unpushed work.", EnglishStrings.groupInactiveCriterion(1))
+        assertEquals("Sin agente en marcha y sin actividad en el último día, aunque tenga trabajo sin commit o sin subir.", SpanishStrings.groupInactiveCriterion(1))
+        assertEquals("Sin agente en marcha y sin actividad en los últimos 3 días, aunque tenga trabajo sin commit o sin subir.", SpanishStrings.groupInactiveCriterion(3))
+    }
+
+    @Test
     fun `every state group has its own hint and criterion in both languages`() {
-        assertEquals("agent waiting, uncommitted or unpushed", StateGroupKind.NEEDS_YOU.hint(EnglishStrings))
-        assertEquals("agente esperando, sin commit o sin subir", StateGroupKind.NEEDS_YOU.hint(SpanishStrings))
+        assertEquals("agent blocked or done", StateGroupKind.WAITING_FOR_YOU.hint(EnglishStrings))
+        assertEquals("agente bloqueado o terminado", StateGroupKind.WAITING_FOR_YOU.hint(SpanishStrings))
+        assertEquals("uncommitted or unpushed", StateGroupKind.UNFINISHED.hint(EnglishStrings))
+        assertEquals("sin commit o sin subir", StateGroupKind.UNFINISHED.hint(SpanishStrings))
         allStrings.forEach { strings ->
             val hints = StateGroupKind.entries.map { it.hint(strings) }
             val criteria = StateGroupKind.entries.map { it.criterion(strings) }

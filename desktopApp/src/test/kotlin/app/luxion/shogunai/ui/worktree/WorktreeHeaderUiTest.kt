@@ -14,6 +14,9 @@ import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -28,6 +31,7 @@ import app.luxion.shogunai.ui.i18n.LocalStrings
 import app.luxion.shogunai.ui.i18n.SpanishStrings
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 
 @OptIn(ExperimentalTestApi::class)
 class WorktreeHeaderUiTest {
@@ -85,11 +89,11 @@ class WorktreeHeaderUiTest {
     @Test
     fun `a state group header shows its hint next to its title`() = runComposeUiTest {
         setContent {
-            MaterialTheme { StateGroupHeader(StateGroupKind.NEEDS_YOU, count = 2, canCleanUp = false, onCleanUp = {}) }
+            MaterialTheme { StateGroupHeader(StateGroupKind.UNFINISHED, count = 2, canCleanUp = false, onCleanUp = {}) }
         }
 
-        onNodeWithText("Needs you").assertIsDisplayed()
-        onNodeWithText("agent waiting, uncommitted or unpushed").assertIsDisplayed()
+        onNodeWithText("Unfinished").assertIsDisplayed()
+        onNodeWithText("uncommitted or unpushed").assertIsDisplayed()
     }
 
     @Test
@@ -114,12 +118,44 @@ class WorktreeHeaderUiTest {
     fun `the hint is translated`() = runComposeUiTest {
         setContent {
             CompositionLocalProvider(LocalStrings provides SpanishStrings) {
-                MaterialTheme { StateGroupHeader(StateGroupKind.NEEDS_YOU, count = 2, canCleanUp = false, onCleanUp = {}) }
+                MaterialTheme { StateGroupHeader(StateGroupKind.WAITING_FOR_YOU, count = 2, canCleanUp = false, onCleanUp = {}) }
             }
         }
 
-        onNodeWithText("Te necesitan").assertIsDisplayed()
-        onNodeWithText("agente esperando, sin commit o sin subir").assertIsDisplayed()
+        onNodeWithText("Esperándote").assertIsDisplayed()
+        onNodeWithText("agente bloqueado o terminado").assertIsDisplayed()
+    }
+
+    @Test
+    fun `the waiting header is drawn with its warning icon and the unfinished header without one`() = runComposeUiTest {
+        setContent {
+            MaterialTheme {
+                Column {
+                    StateGroupHeader(StateGroupKind.WAITING_FOR_YOU, count = 1, canCleanUp = false, onCleanUp = {})
+                    StateGroupHeader(StateGroupKind.UNFINISHED, count = 1, canCleanUp = false, onCleanUp = {})
+                }
+            }
+        }
+
+        onNodeWithText("Waiting for you").assertIsDisplayed()
+        onNodeWithText("Unfinished").assertIsDisplayed()
+        onAllNodesWithTag(WaitingHeaderIconTag, useUnmergedTree = true).assertCountEquals(1)
+    }
+
+    @Test
+    fun `a state group header toggles its group and says whether it expands or collapses`() = runComposeUiTest {
+        var collapsed by mutableStateOf(true)
+        setContent {
+            MaterialTheme {
+                StateGroupHeader(StateGroupKind.STOPPED, count = 2, canCleanUp = false, onCleanUp = {}, collapsed = collapsed, onToggle = { collapsed = !collapsed })
+            }
+        }
+
+        onNodeWithContentDescription("Expand").performClick()
+
+        assertFalse(collapsed)
+        onNodeWithContentDescription("Collapse").assertIsDisplayed()
+        onNodeWithText("2 worktrees").assertIsDisplayed()
     }
 
     @Test
@@ -128,10 +164,10 @@ class WorktreeHeaderUiTest {
             MaterialTheme { StateGroupHeader(StateGroupKind.INACTIVE, count = 1, canCleanUp = false, onCleanUp = {}) }
         }
 
-        onNodeWithText("Inactive").performMouseInput { moveTo(center) }
+        onNodeWithText("Inactive", useUnmergedTree = true).performMouseInput { moveTo(center) }
         mainClock.advanceTimeBy(2_000)
 
-        onNodeWithText("Clean, no agent running and no activity in the last 3 days.").assertIsDisplayed()
+        onNodeWithText("No agent running and no activity in the last 3 days, even with uncommitted or unpushed work.").assertIsDisplayed()
     }
 
     @Test
@@ -143,10 +179,10 @@ class WorktreeHeaderUiTest {
         }
 
         onNodeWithText("no activity for 7+ days").assertIsDisplayed()
-        onNodeWithText("Inactive").performMouseInput { moveTo(center) }
+        onNodeWithText("Inactive", useUnmergedTree = true).performMouseInput { moveTo(center) }
         mainClock.advanceTimeBy(2_000)
 
-        onNodeWithText("Clean, no agent running and no activity in the last 7 days.").assertIsDisplayed()
+        onNodeWithText("No agent running and no activity in the last 7 days, even with uncommitted or unpushed work.").assertIsDisplayed()
     }
 
     @Test

@@ -188,9 +188,9 @@ fun AppShell(
                     selectedProjectId = viewModel.destination?.referencedProjectId,
                     isActiveSelected = viewModel.destination == ShellDestination.Active,
                     isAllSelected = viewModel.destination == ShellDestination.All(),
-                    activeCount = board.activeCount,
+                    waitingCount = board.waitingCount,
                     totalWorktreeCount = board.totalWorktreeCount,
-                    activityOf = { project -> ProjectActivity(board.activeCountOf(project.id), board.agentNamesOf(project.id)) },
+                    activityOf = { project -> ProjectActivity(board.waitingCountOf(project.id), board.agentNamesOf(project.id)) },
                     rail = viewModel.isRail,
                     onSelectActive = viewModel::selectActive,
                     onSelectAll = viewModel::selectAll,
@@ -206,9 +206,9 @@ fun AppShell(
                             name = membership.name,
                             projects = members,
                             activity = members.fold(
-                                ProjectActivity(board.multirepoActivityCountOf(membership.folder), board.multirepoAgentsOf(membership.folder).map { it.name }),
+                                ProjectActivity(board.multirepoWaitingCountOf(membership.folder), board.multirepoAgentsOf(membership.folder).map { it.name }),
                             ) { total, project ->
-                                total + ProjectActivity(board.activeCountOf(project.id), board.agentNamesOf(project.id))
+                                total + ProjectActivity(board.waitingCountOf(project.id), board.agentNamesOf(project.id))
                             },
                             collapsed = membership.folder in viewModel.collapsedMultirepos,
                             labels = multirepoChildLabels(membership),
