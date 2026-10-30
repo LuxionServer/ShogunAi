@@ -11,6 +11,7 @@ import app.luxion.shogunai.domain.model.MobileSecretKind
 import app.luxion.shogunai.domain.model.ProvisionDriftState
 import app.luxion.shogunai.domain.model.AppLanguage
 import app.luxion.shogunai.domain.model.AgentStateSource
+import app.luxion.shogunai.domain.model.RunnerId
 import app.luxion.shogunai.ui.components.AgentPhase
 import app.luxion.shogunai.domain.usecase.HookEntry
 import app.luxion.shogunai.domain.usecase.HookReplacement
@@ -178,7 +179,8 @@ interface Strings {
     val allWorktrees: String
     val activeWorktrees: String
     val groupAgentWorking: String
-    val groupNeedsYou: String
+    val groupWaitingForYou: String
+    val groupUnfinished: String
     val groupNew: String
     val groupStopped: String
     val groupMerged: String
@@ -187,8 +189,10 @@ interface Strings {
     val groupOther: String
     val groupAgentWorkingHint: String
     val groupAgentWorkingCriterion: String
-    val groupNeedsYouHint: String
-    val groupNeedsYouCriterion: String
+    val groupWaitingForYouHint: String
+    val groupWaitingForYouCriterion: String
+    val groupUnfinishedHint: String
+    val groupUnfinishedCriterion: String
     val groupNewHint: String
     val groupNewCriterion: String
     val groupStoppedHint: String
@@ -204,8 +208,8 @@ interface Strings {
     val groupByState: String
     val groupByProject: String
     val readingWorktreeStatus: String
-    val nothingActiveTitle: String
-    val nothingActiveMessage: String
+    val nothingNeedsYou: String
+    fun agentsWorking(count: Int): String
     val seeAllWorktrees: String
     val menuActive: String
     val menuAllWorktrees: String
@@ -218,6 +222,8 @@ interface Strings {
     fun agentLabel(name: String, phase: AgentPhase): String = "$name · ${agentPhaseName(phase)}"
     fun agentPhaseName(phase: AgentPhase): String
     fun agentStateSource(source: AgentStateSource?): String
+    fun agentInRunner(runner: RunnerId): String
+    val clickToFocus: String
     fun agentsUpdated(relative: String): String
     val noAgentRunning: String
     fun copyValue(key: String): String
@@ -267,6 +273,7 @@ interface Strings {
     fun removeWorktreeMessage(path: String): String
     val forceRemoveTitle: String
     fun forceRemoveMessage(path: String): String
+    fun forceRemoveLockedMessage(path: String, reason: String?): String
     fun alsoDeleteLocalBranch(branch: String): String
     val forceRemove: String
     val detachedHead: String
@@ -275,6 +282,9 @@ interface Strings {
     fun mergedInto(branch: String): String
     val notStarted: String
     val mergedLabel: String
+    val notPushedLabel: String
+    val branchNotPushed: String
+    fun upstreamArrows(ahead: Int, behind: Int): String
     fun commitAgo(relative: String): String
     fun createdAgo(relative: String): String
     val sortLabel: String
@@ -690,7 +700,11 @@ interface Strings {
     val menuCommandPalette: String
     val paletteHint: String
     val paletteNoResults: String
-    val paletteCopyLaunchCommandHint: String
+    val paletteSettingsSynonym: String
+    fun paletteOpenWorktree(worktree: String): String
+    val paletteEnterOpen: String
+    val paletteEnterRun: String
+    val paletteEnterShowWorktree: String
     val paletteKindView: String
     val paletteKindSetting: String
     val paletteKindProject: String
@@ -823,6 +837,7 @@ interface Strings {
     val tourRestart: String
     val tourOpenExisting: String
     val tourNoticeMessage: String
+    val tourNoticeDetails: String
     val tourBannerMessage: String
     val tourOpenAgent: String
     val tourEnd: String
@@ -839,6 +854,13 @@ interface Strings {
     val daemonStopBlockedGradleBusy: String
     val stopIdleBlockedStopping: String
     val stopIdleBlockedNoneIdle: String
+    fun stopIdleAllBusy(count: Int): String
+    fun stopIdleAllUnknown(count: Int): String
+    fun stopIdleBusyAndUnknown(busy: Int, unknown: Int): String
+    fun gradleBuildCacheOffIn(projects: Int): String
+    val ownerUnknown: String
+    val machineOverviewTooltip: String
+    val machineOverviewNoProviders: String
 }
 
 val LocalStrings = staticCompositionLocalOf<Strings> { EnglishStrings }

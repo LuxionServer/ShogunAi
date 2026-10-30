@@ -11,12 +11,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Bedtime
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.DesktopMac
 import androidx.compose.material.icons.filled.DesktopWindows
-import androidx.compose.material.icons.filled.FiberNew
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FolderOff
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PhoneAndroid
@@ -68,6 +70,7 @@ fun WorktreeRow(
     onCopyLaunchCommand: () -> Unit,
     contextMenu: () -> List<MenuEntry> = { emptyList() },
     onOpenGroupTag: () -> Unit = {},
+    onFocusAgent: () -> Unit = {},
 ) {
     val strings = LocalStrings.current
     WorktreeContextMenu(entries = contextMenu) {
@@ -75,7 +78,7 @@ fun WorktreeRow(
             cells = listOfNotNull(
                 model.alias?.let { alias -> DataCell(ColumnSpec(width = aliasWidth)) { AliasCellView(alias) } },
                 DataCell(BadgeColumn) { StateBadgeCell(model.badge) },
-                DataCell(ExecutionColumn, Modifier.testTag(ExecutionTag)) { compact -> ExecutionCellView(model.execution, compact) },
+                DataCell(ExecutionColumn, Modifier.testTag(ExecutionTag)) { compact -> ExecutionCellView(model.execution, compact, onFocusAgent) },
                 DataCell(NameColumn) { NameCellView(model.name, onOpenGroupTag) },
                 DataCell(GitColumn, Modifier.testTag(GitTag)) { GitCellView(model.git) },
                 DataCell(TimeColumn, Modifier.testTag(TimeTag)) { compact -> TimeCellView(model.time, compact) },
@@ -136,6 +139,7 @@ private val TimeColumn = ColumnSpec(width = 172.dp, compact = CompactBehavior.Sh
 
 internal const val BranchTag = "row-branch"
 internal const val GitTag = "row-git"
+internal const val NotPushedTag = "row-git-not-pushed"
 internal const val TimeTag = "row-time"
 internal const val ExecutionTag = "row-execution"
 internal const val AliasTag = "row-alias"
@@ -163,9 +167,10 @@ internal fun StateBadgeKind.color(): Color = ShogunTheme.status.of(status).color
 private fun StateBadgeKind.onColor(): Color = if (outlined) color() else ShogunTheme.status.of(status).onColor
 
 internal fun StateBadgeKind.icon(): ImageVector = when (this) {
-    StateBadgeKind.NEEDS_YOU -> Icons.Default.PriorityHigh
+    StateBadgeKind.WAITING_FOR_YOU -> Icons.Default.PriorityHigh
+    StateBadgeKind.UNFINISHED -> Icons.Default.Edit
     StateBadgeKind.AGENT_WORKING -> Icons.Default.PlayArrow
-    StateBadgeKind.NEW -> Icons.Default.FiberNew
+    StateBadgeKind.NEW -> Icons.Default.Add
     StateBadgeKind.STOPPED -> Icons.Default.Pause
     StateBadgeKind.MERGED -> Icons.Default.Check
     StateBadgeKind.INACTIVE -> Icons.Default.Bedtime
@@ -206,10 +211,10 @@ private fun CellLine(modifier: Modifier = Modifier, content: @Composable RowScop
 }
 
 @Composable
-private fun ExecutionCellView(cell: ExecutionCell, compact: Boolean) {
+private fun ExecutionCellView(cell: ExecutionCell, compact: Boolean, onFocusAgent: () -> Unit) {
     Column {
         CellLine {
-            cell.agent?.let { AgentIndicator(it, compact = compact) }
+            cell.agent?.let { agent -> AgentIndicator(agent, compact = compact, onClick = onFocusAgent.takeIf { agent.focusable }) }
         }
         CellLine {
             cell.device?.let { DeviceLineView(it, compact) }
@@ -327,9 +332,25 @@ private fun GitCellView(git: GitCell) {
             }
             GitCellState.READY -> {
                 CellLine { git.changes?.let { TooltipText(it, git.changesTooltip, Status.WARNING) } }
-                CellLine { git.secondLine?.let { TooltipText(it, git.secondLineTooltip, null) } }
+                CellLine {
+                    git.secondLine?.let { TooltipText(it, git.secondLineTooltip, null) }
+                    if (git.notPushed) NotPushedIcon()
+                }
             }
         }
+    }
+}
+
+@Composable
+private fun NotPushedIcon() {
+    val label = LocalStrings.current.branchNotPushed
+    WithTooltip(label = label) {
+        Icon(
+            Icons.Default.CloudOff,
+            contentDescription = label,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(CellIconSize).testTag(NotPushedTag),
+        )
     }
 }
 

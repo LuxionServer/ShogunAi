@@ -11,6 +11,7 @@ class ExecutableLocator(
     val localAppData: String? = null,
     val programFolders: List<String> = emptyList(),
     val pathExtensions: List<String> = DEFAULT_PATH_EXTENSIONS,
+    private val userBinFolders: List<String> = ToolCatalog.userBinFolders(os, home),
     val subfolders: (String) -> List<String> = { folder -> File(folder).listFiles { entry -> entry.isDirectory }.orEmpty().map { it.name } },
     val isFile: (String) -> Boolean = { File(it).isFile },
 ) {
@@ -21,17 +22,18 @@ class ExecutableLocator(
         localAppData = environment.variable("LOCALAPPDATA"),
         programFolders = listOfNotNull(environment.variable("ProgramFiles"), environment.variable("ProgramFiles(x86)")),
         pathExtensions = environment.variable("PATHEXT").orEmpty().split(';').filter { it.isNotBlank() }.ifEmpty { DEFAULT_PATH_EXTENSIONS },
+        userBinFolders = environment.userBinFolders,
     )
 
     fun find(executable: String, includeToolbox: Boolean = false): String? {
         val separator = if (os == HostOs.WINDOWS) "\\" else "/"
         val toolbox = if (includeToolbox) ToolCatalog.toolboxScriptFolders(os, home, localAppData) else emptyList()
-        val folders = pathFolders() + ToolCatalog.userBinFolders(os, home) + toolbox
+        val folders = pathFolders() + userBinFolders + toolbox
         val names = if (os == HostOs.WINDOWS && '.' !in executable) listOf(executable) + pathExtensions.map { executable + it } else listOf(executable)
         return folders.flatMap { folder -> names.map { folder.trimEnd('/', '\\') + separator + it } }.firstOrNull(isFile)
     }
 
-    fun userBinFolders(): List<String> = ToolCatalog.userBinFolders(os, home)
+    fun userBinFolders(): List<String> = userBinFolders
 
     private companion object {
         private val DEFAULT_PATH_EXTENSIONS = listOf(".COM", ".EXE", ".BAT", ".CMD")

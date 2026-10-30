@@ -29,8 +29,7 @@ Numbered in the order they will be picked up: the number is the priority.
 ShogunAi has to work the first time on a machine that isn't the one it's developed on, and every regression has to be caught before a release reaches anyone. A demo on another Mac showed why: the app, opened from the Dock, gets macOS's minimal `PATH`, so it reported a `shogun` command installed by Homebrew as not on the `PATH`, the guided tour refused to start and Claude Code's hooks read as unusable; and creating a worktree failed while copying its local files. Neither showed up on the developer's machine, whose own setup hides them. In order:
 
 - Tests that hold the product to it:
-  - Raising the coverage floors that CI enforces up to 100%: the branches of `core` (79% today) and `cli` (83%), and the lines (88%) and branches (74%) of the desktop app outside its composables, which the end-to-end tests cover. Lines of `core` and `cli` are already at 100%, and so are the desktop app's texts. The desktop app goes up one package per change, in this order: project settings, worktrees and their inspector, the shell and the menu bar icon, the machine views and multirepos, shared components, and last the app's wiring, once its host environment is resolved in one place.
-  - The desktop app's end-to-end tests forcing whether `shogun` is installed, once the host environment is resolved in one place: today the tour and the hooks tests follow what the machine has, since `/opt/homebrew/bin` is always searched on macOS, and "the command is missing" is covered only with fakes.
+  - Raising the coverage floors that CI enforces up to 100%: the branches of `core` (79% today) and `cli` (83%), and the lines (88%) and branches (74%) of the desktop app outside its composables, which the end-to-end tests cover. Lines of `core` and `cli` are already at 100%, and so are the desktop app's texts. The desktop app goes up one package per change, in this order: project settings, worktrees and their inspector, the shell and the menu bar icon, the machine views and multirepos, shared components, and last the app's wiring.
 - What the packaged smoke test left out: installing the `.deb` on a machine without a system menus folder (servers, minimal containers), where its post-install script fails today; and smoke testing the Homebrew Cask and the Scoop manifest rendered for a release before it's published, which today install the same `.dmg` and `.msi` the smoke test checks.
 - What the providers' tools need beyond being installed, in `shogun doctor` and "Check Installation": the Java runtime behind Gradle and Maven, Docker's daemon running, and minimum versions; today they check that each tool is found and runs.
 
@@ -38,11 +37,6 @@ ShogunAi has to work the first time on a machine that isn't the one it's develop
 
 A UX review of the implemented v2 interface, done on `develop` at `aaf42f94` with sample data, concluded that the app should first answer "what needs me?" and "where is each agent?", and that today it answers neither at a glance. Its fixes are split into changes, in order:
 
-- The attention model (an OpenSpec change):
-  - "Needs you" splits into "Waiting for you", for an agent that is blocked or done, under a warning header, and "Unfinished", for uncommitted or unpushed work, under a neutral one. The main checkout and idle worktrees leave both groups but keep their ✎ mark.
-  - The sidebar's Active counter counts only "Waiting for you", and "Stopped" starts collapsed.
-  - "↑" means only commits not pushed to the upstream: the comparison with the base moves to the inspector, and a branch without an upstream shows a "not pushed" icon.
-  - A calm empty Active view: "Nothing needs you", with how many agents are working and "See all worktrees".
 - One row per multirepo change in Active, showing the worst state of its repositories, which expands into one child row per repository; the child rows don't repeat the branch.
 - A calmer list and inspector:
   - No inspector without a selection, with the summary moved to the view's header. The inspector docks when the content is at least 980 dp wide, and is an overlay below that.
@@ -53,17 +47,7 @@ A UX review of the implemented v2 interface, done on `develop` at `aaf42f94` wit
   - The Agent section is one line when no agent runs, and keeps the running agent apart from "Runs with".
   - On narrow windows the type prefix truncates first, so the task id always shows, and the rail's tiles use two letters that tell sibling projects apart.
   - Counts inside sentences use the interface font with tabular figures; lone figures stay in the data font.
-- Focusing an agent from its row: clicking the row's agent indicator, or pressing Enter on the row, focuses the agent's pane in its runner, and the tooltip says so.
-- The machine's entry point and its alarms:
-  - The status bar always starts with "Machine", and a gear at the bottom of the sidebar opens Settings.
-  - A missing or optional tool shows as neutral with its reason; the danger color is kept for real failures.
-  - The Gradle daemons view drops the state column when every value is unknown, explains why "Stop idle daemons" is disabled, and shows which worktree uses each daemon when that's known.
-- Quick fixes that don't need OpenSpec:
-  - The status bar, its tooltip and the view take the count of Gradle daemons from a single source; today they disagree.
-  - The guided tour's notice becomes one line in the sidebar's footer.
-  - A legible "New" badge.
-  - The command palette takes Settings and Preferences as synonyms and lists the worktrees for "open" when nothing is selected, drops fuzzy matches that aren't a subsequence of the visible name, and says in its footer, in the interface font, what ↵ and ⌘↵ do, taken from the action catalogue.
-  - Checking by hand two issues, fixed only if they reproduce: a project added with `shogun project add` not appearing until the app restarts, and ⌘A followed by delete in the palette removing a single character.
+- The rest of the Machine views (Maven daemons, emulators, simulators, DerivedData, Compose projects) get what the Gradle daemons view got: an unknown owner dimmed instead of blank, ghost buttons in their rows, and the reason a disabled action is disabled written next to it.
 
 ### 3. Orca, a second first-class runner
 

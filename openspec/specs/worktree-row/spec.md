@@ -20,8 +20,12 @@ A worktree's row SHALL have two lines and five cells, in this order: state badge
 The state badge SHALL be a circle in the color of the worktree's state with an icon inside that is distinct for each state, so the state can be told without seeing color. The "New" state SHALL be an outlined circle in the neutral status color with its icon in that color, not a filled circle in a brand or primary color. Hovering it SHALL show the state's name, and assistive technologies SHALL read the state's name.
 
 #### Scenario: Needs you
-- **WHEN** a worktree needs the user
-- **THEN** its badge shows the "needs you" icon in the warning color, and its tooltip and accessible name say "Needs you"
+- **WHEN** a worktree's agent is blocked or done
+- **THEN** its badge shows the "waiting for you" icon in the warning color, and its tooltip and accessible name say "Waiting for you"
+
+#### Scenario: Unfinished
+- **WHEN** a worktree has uncommitted changes and no agent
+- **THEN** its badge shows the "unfinished" icon in the neutral color, and its tooltip and accessible name say "Unfinished"
 
 #### Scenario: Same color, different icon
 - **WHEN** two states share a similar color
@@ -45,6 +49,14 @@ The execution cell SHALL show the worktree's agent on its first line and its emu
 #### Scenario: Nothing running
 - **WHEN** a worktree has no agent and no running device
 - **THEN** the execution cell is empty and keeps its width
+
+#### Scenario: Focus the agent from the row
+- **WHEN** Claude needs the user in a Herdr pane and the user clicks the row's agent indicator, in the full or the compact cell
+- **THEN** the row is selected and Claude's pane is focused in Herdr, as "Open in Herdr" does for that worktree
+
+#### Scenario: Focus an agent in Orca
+- **WHEN** Codex works in a terminal Orca reports and the user clicks the row's agent indicator
+- **THEN** the row is selected and the worktree's terminal is focused in Orca, as "Open in Orca" does for that worktree
 
 ### Requirement: Second line of the execution cell
 The execution cell's second line SHALL show, in this order, that the worktree holds the desktop turn or waits for it with its place in line, its emulator or simulator while booting or running, and its running headless app. When more than one applies, it SHALL show the first with a "+N" count, and its tooltip SHALL list them all.
@@ -104,11 +116,23 @@ The name cell's first line SHALL show the branch, or that the HEAD is detached, 
 - **THEN** the group tag and the folder are truncated before the project's name
 
 ### Requirement: Git cell
-The Git cell's first line SHALL show the number of uncommitted changes, and its second line the commits ahead of and behind the worktree's base, or that the branch is merged. The base's name, or the name of the branch it is merged into, SHALL be shown in the tooltip. While the status is loading, the cell SHALL show a loading indicator; when the status can't be read, a muted dash with the reason in its tooltip.
+The Git cell's first line SHALL show the number of uncommitted changes. Its second line SHALL show that the branch is merged, naming the branch it is merged into in the tooltip; otherwise the commits ahead of ("↑") and behind ("↓") its upstream, with their meaning in the tooltip; otherwise, for a branch with commits of its own and no upstream, a "not pushed" icon whose tooltip and accessible name say the branch isn't pushed. The second line SHALL NOT compare the branch with its base. While the status is loading, the cell SHALL show a loading indicator; when the status can't be read, a muted dash with the reason in its tooltip.
 
 #### Scenario: Changes and divergence
-- **WHEN** a worktree has 3 uncommitted changes and is 2 ahead of and 1 behind `develop`
-- **THEN** the first line shows 3 changes and the second shows 2 ahead and 1 behind, with `develop` on hover
+- **WHEN** a worktree has 3 uncommitted changes and is 2 ahead of and 1 behind its upstream
+- **THEN** the first line shows 3 changes and the second shows ↑2 ↓1, and hovering it says 2 commits aren't pushed and 1 isn't pulled
+
+#### Scenario: Recorded base
+- **WHEN** a worktree's branch has recorded base `epic/redesign`, is 2 ahead of it and even with its upstream
+- **THEN** the second line is empty, and the comparison with `epic/redesign` is only in the detail
+
+#### Scenario: Branch not pushed
+- **WHEN** a worktree's branch has 2 commits of its own and no upstream
+- **THEN** the second line shows the "not pushed" icon, and hovering it says the branch isn't pushed
+
+#### Scenario: New branch without upstream
+- **WHEN** a worktree's branch has no commits of its own and no upstream
+- **THEN** the second line is empty
 
 #### Scenario: Merged
 - **WHEN** a worktree's branch is merged into `develop`
@@ -117,10 +141,6 @@ The Git cell's first line SHALL show the number of uncommitted changes, and its 
 #### Scenario: Status unavailable
 - **WHEN** a worktree's status can't be read
 - **THEN** the Git cell shows a muted dash, and hovering it says the status is unavailable
-
-#### Scenario: Recorded base
-- **WHEN** a worktree's branch has recorded base `epic/redesign` and is 2 ahead of it
-- **THEN** the second line shows 2 ahead, with `epic/redesign` on hover
 
 #### Scenario: Merged into the recorded base
 - **WHEN** a worktree's branch is merged into its recorded base `epic/redesign` but not into `develop`
@@ -180,3 +200,18 @@ The worktree rows of the Active, All, project and multirepo views, by state and 
 #### Scenario: Keyboard in the multirepo view by change
 - **WHEN** a worktree row of a multirepo view by change has keyboard focus and the user presses Enter
 - **THEN** the worktree is selected and its detail is shown
+
+### Requirement: Enter focuses the selected worktree's agent
+In the worktree list, pressing Enter without modifiers SHALL focus the selected worktree's agent in its runner, as clicking its agent indicator does. When the selected worktree has no agent in a known runner, Enter SHALL keep its usual behavior on the focused row.
+
+#### Scenario: Enter on a worktree whose agent needs you
+- **WHEN** the selected worktree has Claude needing the user in Herdr and the user presses Enter in the list
+- **THEN** Claude's pane is focused in Herdr
+
+#### Scenario: Enter without a known runner
+- **WHEN** the selected worktree has no agent, or only agents whose runner is unknown, and the user presses Enter on a focused row
+- **THEN** nothing is focused in a runner and the focused row is selected as with a click
+
+#### Scenario: Focus fails
+- **WHEN** the user focuses an agent from the row and the runner reports an error
+- **THEN** the error is shown on the worktree as for "Open in Herdr" or "Open in Orca"

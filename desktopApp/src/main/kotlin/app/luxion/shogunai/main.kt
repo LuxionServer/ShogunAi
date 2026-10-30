@@ -115,6 +115,7 @@ internal fun shellViewModelOf(appContainer: AppContainer) = ShellViewModel(
     MultirepoCatalog(appContainer::knownMultirepos),
     appContainer::registerWorkspaceProject,
     appContainer::forgetMissingMultirepos,
+    appContainer::projectCatalogModifiedAt,
 )
 
 @OptIn(ExperimentalComposeUiApi::class)

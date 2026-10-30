@@ -29,8 +29,7 @@ Numerados en el orden en que se abordarán: el número es la prioridad.
 ShogunAi tiene que funcionar a la primera en una máquina que no es en la que se desarrolla, y cada regresión tiene que detectarse antes de que una versión llegue a nadie. Una demo en otro Mac mostró por qué: la app, abierta desde el Dock, recibe el `PATH` mínimo de macOS, así que dio por fuera del `PATH` un comando `shogun` instalado con Homebrew, el recorrido guiado se negó a empezar y los hooks de Claude Code aparecieron como inutilizables; y crear un worktree falló al copiar sus archivos locales. Ninguno de los dos fallos apareció en la máquina de desarrollo, cuya propia configuración los tapa. Por orden:
 
 - Tests que obligan al producto a cumplirlo:
-  - Subir hasta el 100% los suelos de cobertura que exige CI: las ramas de `core` (hoy 79%) y `cli` (83%), y las líneas (88%) y ramas (74%) de la app de escritorio fuera de sus composables, que cubren los tests end to end. Las líneas de `core` y `cli` ya están al 100%, y también los textos de la app de escritorio. La app de escritorio sube un paquete por cambio, en este orden: los ajustes de proyecto, los worktrees y su inspector, el shell y el icono de la barra de menús, las vistas de la máquina y los multirepos, los componentes compartidos y, por último, el cableado de la app, cuando su entorno del host se resuelva en un solo sitio.
-  - Que los tests end to end de la app de escritorio fijen si `shogun` está instalado, cuando el entorno del host se resuelva en un solo sitio: hoy los tests del recorrido y de los hooks siguen lo que tenga la máquina, porque en macOS siempre se busca en `/opt/homebrew/bin`, y "falta el comando" solo se cubre con dobles.
+  - Subir hasta el 100% los suelos de cobertura que exige CI: las ramas de `core` (hoy 79%) y `cli` (83%), y las líneas (88%) y ramas (74%) de la app de escritorio fuera de sus composables, que cubren los tests end to end. Las líneas de `core` y `cli` ya están al 100%, y también los textos de la app de escritorio. La app de escritorio sube un paquete por cambio, en este orden: los ajustes de proyecto, los worktrees y su inspector, el shell y el icono de la barra de menús, las vistas de la máquina y los multirepos, los componentes compartidos y, por último, el cableado de la app.
 - Lo que la prueba de humo de la app empaquetada dejó fuera: instalar el `.deb` en un equipo sin carpeta de menús del sistema (servidores, contenedores mínimos), donde hoy falla su script de post-instalación; y probar el Cask de Homebrew y el manifiesto de Scoop generados para una versión antes de publicarla, que hoy instalan los mismos `.dmg` y `.msi` que comprueba la prueba de humo.
 - Lo que las herramientas de los providers necesitan además de estar instaladas, en `shogun doctor` y «Comprobar instalación»: el runtime de Java de Gradle y Maven, el daemon de Docker en marcha y versiones mínimas; hoy comprueban que cada herramienta se encuentra y se ejecuta.
 
@@ -38,11 +37,6 @@ ShogunAi tiene que funcionar a la primera en una máquina que no es en la que se
 
 Una revisión de UX de la interfaz v2 ya implementada, hecha sobre `develop` en `aaf42f94` con datos de ejemplo, concluyó que la app debería responder primero «¿qué me necesita?» y «¿dónde está cada agente?», y que hoy no responde ninguna de las dos de un vistazo. Sus correcciones se reparten en cambios, por orden:
 
-- El modelo de atención (un cambio de OpenSpec):
-  - «Te necesitan» se divide en «Esperándote», para un agente bloqueado o terminado, bajo una cabecera de aviso, y «Sin terminar», para trabajo sin commitear o sin subir, bajo una neutra. El checkout principal y los worktrees inactivos salen de los dos grupos, pero conservan su marca ✎.
-  - El contador de Activos de la barra lateral cuenta solo «Esperándote», y «Parados» empieza plegado.
-  - «↑» significa solo commits no subidos al upstream: la comparación con la base pasa al inspector, y una rama sin upstream muestra un icono de «sin subir».
-  - Una vista de Activos vacía y tranquila: «Nada te necesita», con cuántos agentes están trabajando y «Ver todos los worktrees».
 - Una fila por cambio de multirepo en Activos, con el peor estado de sus repositorios, que se despliega en una fila hija por repositorio; las filas hijas no repiten la rama.
 - Una lista y un inspector más tranquilos:
   - Sin selección no hay inspector, y el resumen pasa a la cabecera de la vista. El inspector se acopla cuando el contenido mide al menos 980 dp de ancho, y por debajo es una capa superpuesta.
@@ -53,17 +47,7 @@ Una revisión de UX de la interfaz v2 ya implementada, hecha sobre `develop` en 
   - La sección Agente ocupa una línea cuando no hay ningún agente en marcha, y separa el agente en marcha de «Se ejecuta con».
   - En ventanas estrechas el prefijo del tipo se trunca primero, para que el id de la tarea se vea siempre, y las teselas del rail usan dos letras que distinguen proyectos hermanos.
   - Las cifras dentro de frases usan la fuente de la interfaz con cifras tabulares; las cifras sueltas siguen en la fuente de datos.
-- Enfocar un agente desde su fila: hacer clic en el indicador de agente de la fila, o pulsar Intro sobre ella, enfoca el panel del agente en su runner, y el tooltip lo dice.
-- La entrada a la máquina y sus alarmas:
-  - La barra de estado empieza siempre por «Máquina», y un engranaje al pie de la barra lateral abre los Ajustes.
-  - Una herramienta que falta o es opcional se muestra neutra con su motivo; el color de peligro queda para los fallos reales.
-  - La vista de daemons de Gradle quita la columna de estado cuando todos los valores son desconocidos, explica por qué «Parar los ociosos» está desactivado y muestra qué worktree usa cada daemon cuando se sabe.
-- Arreglos rápidos que no necesitan OpenSpec:
-  - La barra de estado, su tooltip y la vista toman el número de daemons de Gradle de una sola fuente; hoy no coinciden.
-  - El aviso del recorrido guiado pasa a ser una línea en el pie de la barra lateral.
-  - Una insignia «Nuevo» legible.
-  - La paleta de comandos toma Ajustes y Preferencias como sinónimos y lista los worktrees para «abrir» cuando no hay nada seleccionado, descarta las coincidencias aproximadas que no son una subsecuencia del nombre visible, y dice en su pie, en la fuente de la interfaz, qué hacen ↵ y ⌘↵, tomado del catálogo de acciones.
-  - Comprobar a mano dos problemas, que solo se arreglan si se reproducen: un proyecto añadido con `shogun project add` no aparece hasta reiniciar la app, y ⌘A seguido de borrar en la paleta borra un solo carácter.
+- El resto de vistas de Máquina (daemons de Maven, emuladores, simuladores, DerivedData, proyectos de Compose) reciben lo que recibió la de daemons de Gradle: un propietario desconocido atenuado en lugar de vacío, botones fantasma en sus filas y el motivo de una acción desactivada escrito junto a ella.
 
 ### 3. Orca, un segundo runner de primera clase
 

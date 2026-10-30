@@ -24,9 +24,11 @@ import androidx.compose.material.icons.automirrored.filled.ViewSidebar
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Icon
@@ -71,7 +73,7 @@ fun Sidebar(
     selectedProjectId: String?,
     isActiveSelected: Boolean,
     isAllSelected: Boolean,
-    activeCount: Int,
+    waitingCount: Int,
     totalWorktreeCount: Int,
     activityOf: (Project) -> ProjectActivity,
     rail: Boolean,
@@ -92,6 +94,8 @@ fun Sidebar(
     order: SidebarOrder = SidebarOrder(),
     onMoveEntry: (SidebarLevel, String, Int) -> Unit = { _, _, _ -> },
     onSortLevel: (SidebarLevel) -> Unit = {},
+    onOpenPreferences: () -> Unit = {},
+    footer: @Composable () -> Unit = {},
 ) {
     val strings = LocalStrings.current
     Column(
@@ -123,7 +127,7 @@ fun Sidebar(
                 RailViewItem(strings.allWorktrees, Icons.AutoMirrored.Filled.ViewList, selected = isAllSelected, onClick = onSelectAll)
             } else {
                 SectionLabel(strings.viewsTitle)
-                ViewRow(strings.activeWorktrees, Icons.Default.Bolt, activeCount, selected = isActiveSelected, onClick = onSelectActive)
+                ViewRow(strings.activeWorktrees, Icons.Default.Bolt, waitingCount.takeIf { it > 0 }, selected = isActiveSelected, onClick = onSelectActive)
                 ViewRow(strings.allWorktrees, Icons.AutoMirrored.Filled.ViewList, totalWorktreeCount, selected = isAllSelected, onClick = onSelectAll)
                 SectionLabel(strings.projectsTitle)
             }
@@ -208,6 +212,61 @@ fun Sidebar(
                 AddRow(strings.addMultirepo, Icons.Default.CreateNewFolder, onAddMultirepo)
             }
         }
+        footer()
+        SidebarFooter(rail, onOpenPreferences)
+    }
+}
+
+@Composable
+private fun SidebarFooter(rail: Boolean, onOpenPreferences: () -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.sm).padding(top = Spacing.xs).testTag("sidebar-footer"),
+        horizontalArrangement = if (rail) Arrangement.Center else Arrangement.Start,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        IconAction(
+            icon = Icons.Default.Settings,
+            label = LocalStrings.current.preferencesTitle,
+            onClick = onOpenPreferences,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
+fun SidebarFooterLine(
+    message: String,
+    details: String,
+    icon: ImageVector,
+    rail: Boolean,
+    onClick: () -> Unit,
+    onDismiss: () -> Unit,
+    dismissLabel: String,
+) {
+    val colors = MaterialTheme.colorScheme
+    if (rail) {
+        IconAction(icon = icon, label = details, onClick = onClick, tint = colors.primary)
+        return
+    }
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(start = Spacing.sm, end = Spacing.xs),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        WithTooltip(label = details, modifier = Modifier.weight(1f)) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(SidebarRowHeight)
+                    .interactive(onClick = onClick)
+                    .padding(horizontal = Spacing.sm),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+            ) {
+                Icon(icon, contentDescription = null, tint = colors.primary, modifier = Modifier.size(SidebarIconSize))
+                Text(message, style = MaterialTheme.typography.bodyMedium, color = colors.primary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        }
+        IconAction(icon = Icons.Default.Close, label = dismissLabel, onClick = onDismiss, tint = colors.onSurfaceVariant)
     }
 }
 
@@ -222,7 +281,7 @@ private fun SectionLabel(text: String) {
 }
 
 @Composable
-private fun ViewRow(label: String, icon: ImageVector, count: Int, selected: Boolean, onClick: () -> Unit) {
+private fun ViewRow(label: String, icon: ImageVector, count: Int?, selected: Boolean, onClick: () -> Unit) {
     val colors = MaterialTheme.colorScheme
     Row(
         modifier = Modifier
@@ -249,11 +308,13 @@ private fun ViewRow(label: String, icon: ImageVector, count: Int, selected: Bool
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f),
         )
-        Text(
-            count.toString(),
-            style = ShogunTheme.typography.dataSmall,
-            color = if (selected) colors.onSecondaryContainer else colors.onSurfaceVariant,
-        )
+        count?.let {
+            Text(
+                it.toString(),
+                style = ShogunTheme.typography.dataSmall,
+                color = if (selected) colors.onSecondaryContainer else colors.onSurfaceVariant,
+            )
+        }
     }
 }
 
@@ -336,9 +397,9 @@ private fun ActivityMarks(activity: ProjectActivity, selected: Boolean) {
             size = AgentIndicatorSize.SMALL,
         )
     }
-    if (activity.activeCount > 0) {
+    if (activity.waitingCount > 0) {
         Text(
-            activity.activeCount.toString(),
+            activity.waitingCount.toString(),
             style = ShogunTheme.typography.dataSmall,
             color = if (selected) colors.onSecondaryContainer else colors.onSurfaceVariant,
         )
@@ -401,9 +462,9 @@ private fun DisclosureToggle(collapsed: Boolean, onToggle: () -> Unit) {
 
 private val SidebarMarkSize = 16.dp
 
-data class ProjectActivity(val activeCount: Int, val agentNames: List<String>) {
+data class ProjectActivity(val waitingCount: Int, val agentNames: List<String>) {
     operator fun plus(other: ProjectActivity) =
-        ProjectActivity(activeCount + other.activeCount, (agentNames + other.agentNames).distinct())
+        ProjectActivity(waitingCount + other.waitingCount, (agentNames + other.agentNames).distinct())
 
     companion object {
         val NONE = ProjectActivity(0, emptyList())

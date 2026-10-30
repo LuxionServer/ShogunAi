@@ -92,6 +92,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.io.FileManager
+import app.luxion.shogunai.domain.io.HostEnvironment
 import app.luxion.shogunai.ui.worktree.DialogRepositoryApproval
 import app.luxion.shogunai.domain.io.LanguagePreferenceRepository
 import app.luxion.shogunai.domain.io.ProjectRepository
@@ -279,12 +280,15 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 
-class AppContainer {
-    private val hostEnvironment = SystemHostEnvironment.forDesktopApp().also { environment ->
-        Thread({ environment.path }, "host-environment-path").apply { isDaemon = true }.start()
+class AppContainer(private val hostEnvironment: HostEnvironment = SystemHostEnvironment.forDesktopApp()) {
+    init {
+        Thread({ hostEnvironment.path }, "host-environment-path").apply { isDaemon = true }.start()
     }
+
     val files = ShogunFiles(hostEnvironment.home)
     val projectRepository: ProjectRepository = JsonProjectRepository(files.projects)
+
+    fun projectCatalogModifiedAt(): Long? = fileManager.lastModifiedMillis(files.projects.toString())
     var loadedBranches: () -> Collection<String> = { emptyList() }
     private val redactor = Redactor(
         home = hostEnvironment.home,
@@ -656,8 +660,8 @@ class AppContainer {
             runCatching { androidSdk.deviceStates(androidSdk.locate(config.baseRepositoryPath)) }
         },
         startEmulator = { config, worktreePath -> startEmulatorShownInOrca(config, worktreePath) },
-        readPool = { kind, config, worktrees ->
-            runCatching { readPool.of(kind, config.baseRepositoryPath, worktrees) }
+        readPool = { kind, config, worktrees, listedGradleDaemons ->
+            runCatching { readPool.of(kind, config.baseRepositoryPath, worktrees, listedGradleDaemons) }
         },
         trimGradleDaemons = { worktrees -> trimGradleDaemons(worktrees) },
         resourceSettings = { resources.settings },
@@ -1100,7 +1104,7 @@ class MachineUseCases(
     val readEmulatorStates: suspend (ProjectConfig, List<Worktree>) -> Result<Map<String, WorktreeEmulator>>,
     val readRunningEmulators: suspend (ProjectConfig) -> Result<Map<String, EmulatorState>>,
     val startEmulator: suspend (ProjectConfig, String) -> Result<DeviceStart<WorktreeEmulator>>,
-    val readPool: suspend (ResourceKind, ProjectConfig, List<Worktree>?) -> Result<PoolUsage>,
+    val readPool: suspend (ResourceKind, ProjectConfig, List<Worktree>?, List<DaemonProcess>?) -> Result<PoolUsage>,
     val trimGradleDaemons: suspend (List<Worktree>?) -> Result<GradleTrim>,
     val resourceSettings: () -> ResourceSettings,
     val stopEmulator: suspend (ProjectConfig, String) -> Result<WorktreeEmulator?>,

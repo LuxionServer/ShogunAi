@@ -1,5 +1,7 @@
 package app.luxion.shogunai.ui.shell
 
+import kotlinx.coroutines.delay
+import kotlin.time.Duration
 import app.luxion.shogunai.ui.actions.ActionId
 import app.luxion.shogunai.ui.actions.ActionSpec
 import app.luxion.shogunai.ui.i18n.Strings
@@ -29,6 +31,7 @@ class ShellViewModel(
     val multirepoCatalog: MultirepoCatalog = MultirepoCatalog { emptyList() },
     private val registerWorkspaceProject: (Multirepo) -> Boolean = { false },
     private val forgetMissingMultirepos: () -> Unit = {},
+    private val catalogModifiedAt: () -> Long? = { null },
 ) : ViewModel() {
     var unreadableFiles by mutableStateOf<List<WorktreeError.LocalFileUnreadable>>(emptyList())
         private set
@@ -88,6 +91,16 @@ class ShellViewModel(
         pruneRecentProjects()
         if (destination?.let(::isAvailable) == false) select(fallbackDestination())
         if (destinationBeforeForm?.let(::isAvailable) == false) destinationBeforeForm = null
+    }
+
+    suspend fun watchCatalog(interval: Duration) {
+        var seen = catalogModifiedAt()
+        while (true) {
+            delay(interval)
+            val modifiedAt = catalogModifiedAt()
+            if (modifiedAt != seen) refresh()
+            seen = modifiedAt
+        }
     }
 
     fun reload() {
@@ -173,6 +186,8 @@ class ShellViewModel(
     fun selectActive() = requestLeave { select(ShellDestination.Active) }
 
     fun selectAll() = requestLeave { select(ShellDestination.All()) }
+
+    fun selectMachineOverview() = requestLeave { select(ShellDestination.MachineOverview) }
 
     fun selectMachine(resource: MachineResource) = requestLeave { select(ShellDestination.Machine(resource)) }
 

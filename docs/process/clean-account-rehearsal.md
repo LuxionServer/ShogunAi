@@ -55,7 +55,7 @@ Click "Take the tour" (or Help › ShogunAi Tour). See [Desktop app](../guide/de
 
 1. **Welcome**: it says what it will create and where (`~/.shogunai/tour`). Click "Start".
 2. **Command-line tool**: since `shogun` isn't installed, the step shows it as missing and offers "Install command-line tool". **Check**: it doesn't say the command is installed but not on the `PATH`, and it isn't skipped. Install it. **Check**: the step reports it as available, or shows the line to add to the shell profile when it linked it in `~/.local/bin` and that folder isn't on the login shell's `PATH`; in that case add the line, restart the app from the Dock and confirm the step no longer shows it.
-3. **Sample repository**: **Check**: it's created without errors, and the project "ShogunAi tour" appears with worktrees under every state ("New", "Needs you", "Stopped", "Merged", "Inactive", a locked one and "Folder missing").
+3. **Sample repository**: **Check**: it's created without errors, and the project "ShogunAi tour" appears with worktrees under every state ("New", "Unfinished", "Stopped", "Merged", "Inactive", a locked one and "Folder missing").
 4. **Open the tour's agent**: choose the terminal. **Check**: Terminal opens in the sample's main worktree and Claude Code starts with "Start the ShogunAi tour"; accept "Yes, I trust this folder". Go through at least the first two steps of the tour with the agent and check that it speaks the app's language and waits for you between steps.
 
 ## 5. The command and the hooks

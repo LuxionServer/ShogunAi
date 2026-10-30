@@ -8,6 +8,7 @@ import app.luxion.shogunai.domain.io.WorktreeReservations
 import app.luxion.shogunai.domain.model.AgentState
 import app.luxion.shogunai.domain.model.DaemonKind
 import app.luxion.shogunai.domain.model.DaemonOwner
+import app.luxion.shogunai.domain.model.DaemonProcess
 import app.luxion.shogunai.domain.model.DaemonState
 import app.luxion.shogunai.domain.model.EMULATOR_PORT_KEY
 import app.luxion.shogunai.domain.model.EmulatorState
@@ -84,8 +85,8 @@ class ReadResourcePoolUseCase(
         return usage(ResourceKind.IOS_SIMULATOR, holders)
     }
 
-    suspend fun gradleDaemons(worktrees: List<Worktree>?): PoolUsage {
-        val daemons = listGradleDaemons?.invoke(worktrees)?.getOrDefault(emptyList()).orEmpty()
+    suspend fun gradleDaemons(worktrees: List<Worktree>?, listed: List<DaemonProcess>? = null): PoolUsage {
+        val daemons = listGradleDaemons?.invoke(worktrees, listed = listed)?.getOrDefault(emptyList()).orEmpty()
             .filter { it.process.kind == DaemonKind.GRADLE }
         val holders = daemons.map { daemon ->
             val state = daemon.process.state
@@ -106,10 +107,15 @@ class ReadResourcePoolUseCase(
         return usage(ResourceKind.GRADLE_DAEMON, holders)
     }
 
-    suspend fun of(kind: ResourceKind, repositoryPath: String, worktrees: List<Worktree>? = null): PoolUsage = when (kind) {
+    suspend fun of(
+        kind: ResourceKind,
+        repositoryPath: String,
+        worktrees: List<Worktree>? = null,
+        listedGradleDaemons: List<DaemonProcess>? = null,
+    ): PoolUsage = when (kind) {
         ResourceKind.EMULATOR -> emulators(repositoryPath)
         ResourceKind.IOS_SIMULATOR -> simulators(repositoryPath)
-        ResourceKind.GRADLE_DAEMON -> gradleDaemons(worktrees)
+        ResourceKind.GRADLE_DAEMON -> gradleDaemons(worktrees, listedGradleDaemons)
     }
 
     private fun holder(

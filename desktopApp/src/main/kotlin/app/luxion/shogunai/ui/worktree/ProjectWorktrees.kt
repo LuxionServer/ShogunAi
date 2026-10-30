@@ -280,6 +280,8 @@ class ProjectWorktrees(
         get() = pendingRemoval?.deleteBranch ?: false
     val pendingRemovalRequiresForce: Boolean
         get() = pendingRemoval?.requiresForce ?: false
+    val pendingRemovalLock: WorktreeError.WorktreeLocked?
+        get() = pendingRemoval?.lock
     val pendingRemovalOpenInHerdr: Boolean
         get() = pendingRemoval?.worktree?.path in openInHerdrPaths
     val pendingRemovalHasOrcaTerminals: Boolean
@@ -819,7 +821,12 @@ class ProjectWorktrees(
                     }
                     .onFailure { failure ->
                         if (!force && failure.suggestsForceRetry()) {
-                            pendingRemoval = PendingRemoval(worktree, deleteBranch = branchToDelete != null, requiresForce = true)
+                            pendingRemoval = PendingRemoval(
+                                worktree,
+                                deleteBranch = branchToDelete != null,
+                                requiresForce = true,
+                                lock = failure as? WorktreeError.WorktreeLocked,
+                            )
                         } else {
                             removeError = failure
                         }
@@ -916,17 +923,37 @@ class ProjectWorktrees(
         if (worktree.path in openingInHerdr) return
         onUsed(worktree.path)
         val agent = resolveAgent(worktree, picked)
-        openingInHerdr = openingInHerdr + worktree.path
         val agentToFocus = agents.orEmpty()[worktree.path].orEmpty().agentToFocus()
+        inHerdr(worktree) {
+            if (agentToFocus != null) {
+                val (name, pane) = agentToFocus
+                focusHerdrPane(name, pane)
+            } else {
+                useCases.herdr.open(worktree, agent)
+            }
+        }
+    }
+
+    fun focusAgent(worktree: Worktree): Boolean {
+        val target = agentFocusTarget(agents.orEmpty()[worktree.path].orEmpty()) ?: return false
+        val pane = target.herdrPaneId
+        if (pane == null) {
+            openInOrca(worktree)
+        } else if (worktree.path !in openingInHerdr) {
+            onUsed(worktree.path)
+            inHerdr(worktree) { focusHerdrPane(target.agent, pane) }
+        }
+        return true
+    }
+
+    private suspend fun focusHerdrPane(agent: String, pane: String): Result<HerdrOpening> =
+        useCases.herdr.focusAgent(pane).map { HerdrOpening(HerdrOutcome.FOCUSED, pane, agent) }
+
+    private fun inHerdr(worktree: Worktree, open: suspend () -> Result<HerdrOpening>) {
+        openingInHerdr = openingInHerdr + worktree.path
         scope.launch {
             try {
-                val result = if (agentToFocus != null) {
-                    val (name, pane) = agentToFocus
-                    useCases.herdr.focusAgent(pane).map { HerdrOpening(HerdrOutcome.FOCUSED, pane, name) }
-                } else {
-                    useCases.herdr.open(worktree, agent)
-                }
-                result
+                open()
                     .onSuccess { opening ->
                         clearActionError(worktree.path)
                         success = WorktreeSuccess.OpenedInHerdr(
@@ -1263,11 +1290,13 @@ class ProjectWorktrees(
         val worktree: Worktree,
         val deleteBranch: Boolean,
         val requiresForce: Boolean = false,
+        val lock: WorktreeError.WorktreeLocked? = null,
     )
 }
 
 private fun Throwable.suggestsForceRetry(): Boolean =
-    this is WorktreeError.GitCommandFailed && errorOutput.contains("--force", ignoreCase = true)
+    this is WorktreeError.WorktreeLocked ||
+        this is WorktreeError.GitCommandFailed && errorOutput.contains("--force", ignoreCase = true)
 
 private const val COPIED_FEEDBACK_DURATION_MS = 2000L
 private const val MAX_PARALLEL_STATUS_READS = 4

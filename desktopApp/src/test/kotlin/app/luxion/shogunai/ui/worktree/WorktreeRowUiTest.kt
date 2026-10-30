@@ -6,6 +6,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.text.TextLayoutResult
@@ -14,11 +16,13 @@ import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performMouseInput
 import androidx.compose.ui.test.v2.runComposeUiTest
 import androidx.compose.ui.unit.dp
 import app.luxion.shogunai.domain.model.Divergence
 import app.luxion.shogunai.domain.model.AgentState
+import app.luxion.shogunai.domain.model.AgentStateSource
 import app.luxion.shogunai.domain.model.HeadlessAppProcess
 import app.luxion.shogunai.domain.model.HeadlessAppState
 import app.luxion.shogunai.domain.model.RunningAgent
@@ -40,9 +44,9 @@ class WorktreeRowUiTest {
 
     private val now = Instant.parse("2026-10-16T12:00:00Z")
 
-    private fun status(changes: Int = 0, mainBranch: Divergence = Divergence(2, 0)) = WorktreeStatus(
+    private fun status(changes: Int = 0, mainBranch: Divergence = Divergence(2, 0), upstream: Divergence? = Divergence(0, 0)) = WorktreeStatus(
         uncommittedChanges = changes,
-        upstream = Divergence(0, 0),
+        upstream = upstream,
         mainBranch = mainBranch,
         lastCommitAt = now.minus(Duration.ofHours(3)),
     )
@@ -76,7 +80,7 @@ class WorktreeRowUiTest {
     )
 
     @androidx.compose.runtime.Composable
-    private fun Row(model: WorktreeRowModel, compact: Boolean = false) {
+    private fun Row(model: WorktreeRowModel, compact: Boolean = false, onFocusAgent: () -> Unit = {}) {
         WorktreeRow(
             model = model,
             selected = false,
@@ -84,7 +88,34 @@ class WorktreeRowUiTest {
             compact = compact,
             onSelect = {},
             onCopyLaunchCommand = {},
+            onFocusAgent = onFocusAgent,
         )
+    }
+
+    @Test
+    fun `clicking the agent indicator focuses an agent in a known runner`() {
+        listOf(false, true).forEach { compact ->
+            runComposeUiTest {
+                var focused = 0
+                val agents = listOf(RunningAgent("claude", AgentState.BLOCKED, "w1:p1", AgentStateSource.HERDR))
+                setContent {
+                    MaterialTheme {
+                        Column(Modifier.width(900.dp)) { Row(model("feature/TASK-1", agents = agents), compact, onFocusAgent = { focused++ }) }
+                    }
+                }
+
+                onNodeWithContentDescription("Claude · needs you").performClick()
+
+                assertEquals(1, focused, "compact = $compact")
+            }
+        }
+    }
+
+    @Test
+    fun `the agent indicator of an agent without a known runner can't be clicked`() = runComposeUiTest {
+        setContent { MaterialTheme { Row(model("feature/TASK-1", agents = listOf(RunningAgent("claude"))), onFocusAgent = {}) } }
+
+        onNodeWithContentDescription("Claude · running", useUnmergedTree = true).assert(SemanticsMatcher.keyNotDefined(SemanticsActions.OnClick))
     }
 
     @Test
@@ -190,10 +221,25 @@ class WorktreeRowUiTest {
     }
 
     @Test
+    fun `a branch never pushed shows the not pushed icon with its meaning`() = runComposeUiTest {
+        setContent { MaterialTheme { Row(model("feature/TASK-1", status = status(upstream = null))) } }
+
+        onNodeWithTag(NotPushedTag, useUnmergedTree = true).assertIsDisplayed()
+        onNodeWithContentDescription("The branch isn't pushed: it has no upstream", useUnmergedTree = true).assertIsDisplayed()
+    }
+
+    @Test
+    fun `a pushed branch shows no not pushed icon`() = runComposeUiTest {
+        setContent { MaterialTheme { Row(model("feature/TASK-1")) } }
+
+        onNodeWithTag(NotPushedTag, useUnmergedTree = true).assertDoesNotExist()
+    }
+
+    @Test
     fun `the badge exposes the name of the state`() = runComposeUiTest {
         setContent { MaterialTheme { Row(model("feature/TASK-1", status = status(changes = 2))) } }
 
-        onNodeWithContentDescription("Needs you", useUnmergedTree = true).assertIsDisplayed()
+        onNodeWithContentDescription("Unfinished", useUnmergedTree = true).assertIsDisplayed()
     }
 
     @Test

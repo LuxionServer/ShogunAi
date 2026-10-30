@@ -55,7 +55,7 @@ Pulsa "Hacer el recorrido" (o Ayuda › Recorrido de ShogunAi). En [App de escri
 
 1. **Bienvenida**: dice qué va a crear y dónde (`~/.shogunai/tour`). Pulsa "Empezar".
 2. **Herramienta de línea de comandos**: como `shogun` no está instalado, el paso lo muestra como ausente y ofrece "Instalar herramienta de línea de comandos". **Comprueba**: no dice que el comando está instalado pero fuera del `PATH`, y no se salta. Instálalo. **Comprueba**: el paso lo da por disponible, o muestra la línea que añadir al perfil del shell cuando lo enlazó en `~/.local/bin` y esa carpeta no está en el `PATH` del shell de login; en ese caso añade la línea, reinicia la app desde el Dock y confirma que el paso ya no lo muestra.
-3. **Repositorio de ejemplo**: **Comprueba**: se crea sin errores y aparece el proyecto "ShogunAi tour" con worktrees en cada estado ("Nuevos", "Te necesitan", "Parados", "Fusionados", "Inactivos", uno bloqueado y "Carpeta no encontrada").
+3. **Repositorio de ejemplo**: **Comprueba**: se crea sin errores y aparece el proyecto "ShogunAi tour" con worktrees en cada estado ("Nuevos", "Sin terminar", "Parados", "Fusionados", "Inactivos", uno bloqueado y "Carpeta no encontrada").
 4. **Abrir el agente del recorrido**: elige el terminal. **Comprueba**: Terminal se abre en el worktree principal del ejemplo y Claude Code arranca con "Start the ShogunAi tour"; acepta "Yes, I trust this folder". Haz al menos los dos primeros pasos del recorrido con el agente y comprueba que habla el idioma de la app y te espera entre pasos.
 
 ## 5. El comando y los hooks

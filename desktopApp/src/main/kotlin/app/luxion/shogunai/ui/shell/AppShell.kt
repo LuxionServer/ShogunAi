@@ -1,5 +1,6 @@
 package app.luxion.shogunai.ui.shell
 
+import kotlin.time.Duration.Companion.seconds
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -64,6 +65,7 @@ import app.luxion.shogunai.ui.palette.PaletteCommand
 import app.luxion.shogunai.ui.palette.buildPaletteIndex
 import app.luxion.shogunai.ui.palette.platformShortcutLabel
 import app.luxion.shogunai.ui.palette.pruneRecent
+import app.luxion.shogunai.ui.machine.MachineOverviewView
 import app.luxion.shogunai.ui.machine.MachineView
 import app.luxion.shogunai.ui.worktree.InactivityPreferences
 import app.luxion.shogunai.ui.worktree.WorktreeBoard
@@ -137,6 +139,7 @@ fun AppShell(
     }
     val declaredMachine = machine.declared
     LaunchedEffect(declaredMachine) { machine.runSummaryTicks() }
+    LaunchedEffect(viewModel) { viewModel.watchCatalog(CatalogCheckInterval) }
     LaunchedEffect(viewModel.destination, board.isCatalogLoaded) {
         val destination = viewModel.destination as? ShellDestination.Machine
         machine.show(destination?.resource)
@@ -186,9 +189,9 @@ fun AppShell(
                     selectedProjectId = viewModel.destination?.referencedProjectId,
                     isActiveSelected = viewModel.destination == ShellDestination.Active,
                     isAllSelected = viewModel.destination == ShellDestination.All(),
-                    activeCount = board.activeCount,
+                    waitingCount = board.waitingCount,
                     totalWorktreeCount = board.totalWorktreeCount,
-                    activityOf = { project -> ProjectActivity(board.activeCountOf(project.id), board.agentNamesOf(project.id)) },
+                    activityOf = { project -> ProjectActivity(board.waitingCountOf(project.id), board.agentNamesOf(project.id)) },
                     rail = viewModel.isRail,
                     onSelectActive = viewModel::selectActive,
                     onSelectAll = viewModel::selectAll,
@@ -204,9 +207,9 @@ fun AppShell(
                             name = membership.name,
                             projects = members,
                             activity = members.fold(
-                                ProjectActivity(board.multirepoActivityCountOf(membership.folder), board.multirepoAgentsOf(membership.folder).map { it.name }),
+                                ProjectActivity(board.multirepoWaitingCountOf(membership.folder), board.multirepoAgentsOf(membership.folder).map { it.name }),
                             ) { total, project ->
-                                total + ProjectActivity(board.activeCountOf(project.id), board.agentNamesOf(project.id))
+                                total + ProjectActivity(board.waitingCountOf(project.id), board.agentNamesOf(project.id))
                             },
                             collapsed = membership.folder in viewModel.collapsedMultirepos,
                             labels = multirepoChildLabels(membership),
@@ -221,12 +224,13 @@ fun AppShell(
                     order = viewModel.sidebarOrder,
                     onMoveEntry = viewModel::moveSidebarEntry,
                     onSortLevel = viewModel::sortSidebarAlphabetically,
+                    onOpenPreferences = onOpenPreferences,
+                    footer = { TourNotice(appContainer.tour, viewModel.projects.isNotEmpty(), viewModel.isRail) },
                 )
                 VerticalDivider(modifier = Modifier.fillMaxHeight())
                 Column(modifier = Modifier.weight(1f).fillMaxHeight()) {
                     appContainer.updates.notice?.let { UpdateNotice(appContainer.updates, Modifier.padding(Spacing.md)) }
                     LaunchedEffect(Unit) { appContainer.claudeHooks.refresh() }
-                    TourNotice(appContainer.tour, viewModel.projects.isNotEmpty(), Modifier.padding(Spacing.md))
                     ClaudeHooksNotice(appContainer.claudeHooks, board.hasClaudeWithoutState, Modifier.padding(Spacing.md))
                     tourProjectShown(appContainer, viewModel)?.let { project ->
                         TourBanner(
@@ -262,15 +266,15 @@ fun AppShell(
                 }
             }
             val statusItems = machineStatusItems(machine.visibleResources, machine.summaries, machine.summaryFailures, LocalStrings.current)
-            if (statusItems.isNotEmpty()) {
-                HorizontalDivider()
-                MachineStatusBar(
-                    items = statusItems,
-                    selected = (viewModel.destination as? ShellDestination.Machine)?.resource,
-                    compact = viewModel.isRail,
-                    onSelect = viewModel::selectMachine,
-                )
-            }
+            HorizontalDivider()
+            MachineStatusBar(
+                items = statusItems,
+                selected = (viewModel.destination as? ShellDestination.Machine)?.resource,
+                compact = viewModel.isRail,
+                onSelect = viewModel::selectMachine,
+                overviewSelected = viewModel.destination == ShellDestination.MachineOverview,
+                onOpenOverview = viewModel::selectMachineOverview,
+            )
         }
     }
 
@@ -400,6 +404,11 @@ private fun ShellContent(appContainer: AppContainer, viewModel: ShellViewModel, 
         is ShellDestination.AddProject -> key(destination) {
             ProjectForm(appContainer, viewModel, existingProject = null, initialFolder = destination.folder, onRepositoryConfigWritten = refreshBoard)
         }
+        ShellDestination.MachineOverview -> MachineOverviewView(
+            items = machineStatusItems(machine.overviewResources, machine.overviewSummaries, machine.summaryFailures, LocalStrings.current),
+            providersDeclared = machine.declared.isNotEmpty(),
+            onOpen = viewModel::selectMachine,
+        )
         is ShellDestination.Machine -> MachineDestination(destination.resource, viewModel, board, machine)
         is ShellDestination.MultirepoView -> WorktreeView(destination, viewModel, board)
         is ShellDestination.MultirepoSettings -> key(destination) { MultirepoSettingsDestination(appContainer, viewModel, destination.folder) }
@@ -554,3 +563,5 @@ private fun tourProjectShown(appContainer: AppContainer, viewModel: ShellViewMod
     val projectId = (viewModel.destination as? ShellDestination.All)?.projectFilter ?: return null
     return viewModel.projects.firstOrNull { it.id == projectId }?.takeIf(appContainer.tourLocation::isTour)
 }
+
+private val CatalogCheckInterval = 5.seconds

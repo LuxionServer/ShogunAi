@@ -34,7 +34,7 @@ class LocalToolDetectorTest {
         }
         val locator = ExecutableLocator(
             os, "/home/dev", { listOf("/usr/bin") }, "C:\\Users\\dev\\AppData\\Local",
-            programFolders, listOf(".EXE", ".CMD"), { emptyList() }, { it in files },
+            programFolders, listOf(".EXE", ".CMD"), subfolders = { emptyList() }, isFile = { it in files },
         )
         return LocalToolDetector(
             executor = executor,
