@@ -203,6 +203,8 @@ class StringsTest {
         WorktreeError.EnvironmentFileTracked(".env"),
         WorktreeError.EnvironmentFileWriteFailed(".env", IOException("read-only")),
         WorktreeError.WorktreeFolderInUse("~/projects/TASK-123", true, listOf("git", "worktree", "remove", "~/projects/TASK-123"), 255, "error: failed to delete: Permission denied"),
+        WorktreeError.WorktreeLocked("~/projects/TASK-123", "orca-create-preparation:v1", listOf("git", "worktree", "remove", "~/projects/TASK-123"), 128, "fatal: cannot remove a locked working tree"),
+        WorktreeError.WorktreeLocked("~/projects/TASK-123", null, listOf("git", "worktree", "remove", "~/projects/TASK-123"), 128, "fatal: cannot remove a locked working tree"),
         WorktreeError.HerdrNotInstalled,
         WorktreeError.HerdrCommandFailed(listOf("herdr", "pane", "list"), "no herdr server is running"),
         WorktreeError.HerdrAgentNotStarted("w1:p2", "headroom wrap claude"),
@@ -239,6 +241,22 @@ class StringsTest {
         StateGroupKind.entries.forEach { kind ->
             assertNotEquals(kind.hint(EnglishStrings), kind.hint(SpanishStrings))
             assertNotEquals(kind.criterion(EnglishStrings), kind.criterion(SpanishStrings))
+        }
+    }
+
+    @Test
+    fun `the forced removal of a locked worktree names the lock and its reason`() {
+        assertEquals(
+            "\"~/projects/TASK-123\" is locked: orca-create-preparation:v1. Forcing the deletion overrides the lock.",
+            EnglishStrings.forceRemoveLockedMessage("~/projects/TASK-123", "orca-create-preparation:v1"),
+        )
+        assertEquals(
+            "\"~/projects/TASK-123\" está bloqueado. Forzar la eliminación se salta el bloqueo.",
+            SpanishStrings.forceRemoveLockedMessage("~/projects/TASK-123", null),
+        )
+        allStrings.forEach { strings ->
+            assertTrue(strings.forceRemoveLockedMessage("~/projects/TASK-123", null).contains("~/projects/TASK-123"))
+            assertTrue(strings.forceRemoveLockedMessage("~/projects/TASK-123", "preparing").contains("preparing"))
         }
     }
 
@@ -290,12 +308,26 @@ class StringsTest {
             WorktreeError.NoEmulatorPort(5554, 5584) to "5584",
             WorktreeError.EmulatorBootTimeout("emulator-5556", 180) to "emulator-5556",
             WorktreeError.EnvironmentFileTracked(".env") to ".env",
+            WorktreeError.WorktreeLocked("~/projects/TASK-123", "orca-create-preparation:v1", emptyList(), 128, "") to "orca-create-preparation:v1",
         )
         named.forEach { (error, expected) ->
             allStrings.forEach { strings ->
                 val description = strings.describe(error)
                 assertTrue((description.summary + description.nextStep).contains(expected), description.summary)
             }
+        }
+    }
+
+    @Test
+    fun `a locked worktree keeps Git's refusal in the technical details`() {
+        val command = listOf("git", "worktree", "remove", "~/projects/TASK-123")
+        val error = WorktreeError.WorktreeLocked("~/projects/TASK-123", null, command, 128, "fatal: cannot remove a locked working tree")
+
+        allStrings.forEach { strings ->
+            val details = strings.describe(error).details
+            assertEquals(command, details?.command)
+            assertEquals(128, details?.exitCode)
+            assertEquals("fatal: cannot remove a locked working tree", details?.output)
         }
     }
 

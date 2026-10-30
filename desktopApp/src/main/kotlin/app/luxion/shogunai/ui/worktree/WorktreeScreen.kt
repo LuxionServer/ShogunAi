@@ -296,11 +296,12 @@ private fun RemoveWorktreeDialog(holder: ProjectWorktrees) {
             }
         },
     ) {
+        val lock = holder.pendingRemovalLock
         Text(
-            if (requiresForce) {
-                strings.forceRemoveMessage(worktree.path)
-            } else {
-                strings.removeWorktreeMessage(worktree.path)
+            when {
+                lock != null -> strings.forceRemoveLockedMessage(worktree.path, lock.reason)
+                requiresForce -> strings.forceRemoveMessage(worktree.path)
+                else -> strings.removeWorktreeMessage(worktree.path)
             },
         )
         holder.removeError?.let { error -> ErrorNotice(error = error, onDismiss = null) }

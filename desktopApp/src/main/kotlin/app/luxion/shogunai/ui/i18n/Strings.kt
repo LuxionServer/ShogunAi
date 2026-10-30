@@ -270,6 +270,7 @@ interface Strings {
     fun removeWorktreeMessage(path: String): String
     val forceRemoveTitle: String
     fun forceRemoveMessage(path: String): String
+    fun forceRemoveLockedMessage(path: String, reason: String?): String
     fun alsoDeleteLocalBranch(branch: String): String
     val forceRemove: String
     val detachedHead: String

@@ -825,6 +825,62 @@ class ProjectWorktreesTest {
     }
 
     @Test
+    fun `a locked worktree offers the force retry with its lock reason and removes it forcing twice`() = runTest(dispatcher) {
+        val executed = mutableListOf<List<String>>()
+        val doublyForced = listOf("git", "worktree", "remove", "--force", "--force", worktreePath)
+        val viewModel = projectWorktrees(
+            useCases { command ->
+                executed += command
+                when (command) {
+                    listCommand -> success(command, porcelainOutput)
+                    removeCommand, forceRemoveCommand -> failure(
+                        command,
+                        exitCode = 128,
+                        stderr = "fatal: cannot remove a locked working tree, lock reason: orca-create-preparation:v1\n" +
+                            "use 'remove -f -f' to override or unlock first",
+                    )
+                    else -> success(command)
+                }
+            },
+        )
+        advanceUntilIdle()
+
+        viewModel.remove(worktree, branchToDelete = null)
+        advanceUntilIdle()
+
+        assertTrue(viewModel.pendingRemovalRequiresForce)
+        assertEquals("orca-create-preparation:v1", viewModel.pendingRemovalLock?.reason)
+        assertNull(viewModel.removeError)
+
+        viewModel.confirmPendingRemoval()
+        advanceUntilIdle()
+
+        assertTrue(doublyForced in executed)
+        assertNull(viewModel.worktreePendingRemoval)
+        assertTrue(viewModel.worktrees.none { it.path == worktreePath })
+    }
+
+    @Test
+    fun `a failure suggesting force carries no lock`() = runTest(dispatcher) {
+        val viewModel = projectWorktrees(
+            useCases { command ->
+                when (command) {
+                    listCommand -> success(command, porcelainOutput)
+                    removeCommand -> failure(command, stderr = "use --force to delete it")
+                    else -> success(command)
+                }
+            },
+        )
+        advanceUntilIdle()
+
+        viewModel.remove(worktree, branchToDelete = null)
+        advanceUntilIdle()
+
+        assertTrue(viewModel.pendingRemovalRequiresForce)
+        assertNull(viewModel.pendingRemovalLock)
+    }
+
+    @Test
     fun `a removal failing for a reason unrelated to force stays in the dialog with its error`() = runTest(dispatcher) {
         val viewModel = projectWorktrees(
             useCases { command ->
