@@ -40,7 +40,7 @@ class TourE2eTest {
         assertTrue(tourFolder.resolve("sample-repo").resolve(".git").exists())
         assertTrue(appContainer.projectRepository.list().any { it.name == TOUR_PROJECT_NAME })
         awaitText(TOUR_PROJECT_NAME)
-        awaitText("needs-you", substring = true)
+        awaitText("unfinished", substring = true)
 
         clickUntil(strings.tourEnd, "the end-tour confirmation") { onAllNodesWithText(strings.tourEnd).fetchSemanticsNodes().size > 1 }
         onAllNodesWithText(strings.tourEnd).onLast().performClick()

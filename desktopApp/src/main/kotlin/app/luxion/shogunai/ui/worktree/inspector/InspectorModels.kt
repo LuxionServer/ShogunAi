@@ -11,6 +11,7 @@ import app.luxion.shogunai.domain.model.WorktreeStatus
 import app.luxion.shogunai.domain.model.portKeyLabel
 import app.luxion.shogunai.domain.usecase.EnvironmentFormat
 import app.luxion.shogunai.domain.usecase.formatEnvironment
+import app.luxion.shogunai.domain.usecase.isUnpushedBranch
 import app.luxion.shogunai.ui.components.Property
 import app.luxion.shogunai.ui.components.SectionState
 import app.luxion.shogunai.ui.i18n.Strings
@@ -31,7 +32,7 @@ object InspectorSectionId {
 fun statusProperties(status: WorktreeStatus, mainBranchName: String?, now: Instant, strings: Strings): List<Property> =
     listOfNotNull(
         Property(strings.changesKey, status.uncommittedChanges.toString()),
-        status.upstream?.let { Property(strings.upstreamKey, it.bothArrows()) },
+        upstreamProperty(status, strings),
         baseProperty(status, mainBranchName, strings),
         when {
             status.isNotStarted -> Property(strings.lastCommitKey, strings.notStarted, isData = false)
@@ -39,6 +40,15 @@ fun statusProperties(status: WorktreeStatus, mainBranchName: String?, now: Insta
         },
         status.createdAt?.let { Property(strings.createdTitle, relativeTime(it, now, strings), isData = false) },
     )
+
+private fun upstreamProperty(status: WorktreeStatus, strings: Strings): Property? {
+    val upstream = status.upstream
+    return when {
+        upstream != null -> Property(strings.upstreamKey, upstream.bothArrows())
+        status.isUnpushedBranch -> Property(strings.upstreamKey, strings.notPushedLabel, isData = false)
+        else -> null
+    }
+}
 
 private fun baseProperty(status: WorktreeStatus, mainBranchName: String?, strings: Strings): Property? {
     val mergedInto = status.mergedInto(mainBranchName)
@@ -55,6 +65,7 @@ fun statusSummary(status: WorktreeStatus, strings: Strings): String? =
     listOfNotNull(
         status.uncommittedChanges.takeIf { it > 0 }?.let(strings::uncommittedChanges),
         status.upstream?.ahead?.takeIf { it > 0 }?.let { "↑$it" },
+        strings.notPushedLabel.takeIf { status.isUnpushedBranch },
     ).joinToString(" · ").ifEmpty { null }
 
 fun statusSectionState(state: WorktreeStatusState?, strings: Strings): SectionState = when (state) {

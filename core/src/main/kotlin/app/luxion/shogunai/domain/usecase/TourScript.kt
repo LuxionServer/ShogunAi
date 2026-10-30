@@ -36,7 +36,7 @@ object TourScript {
         |The app registered this repository as the project "ShogunAi tour", with a local bare remote (`origin`) and these worktrees in `${location.worktrees}`:
         |
         |- `new-idea`: a fresh branch with no commits of its own, shown under "New".
-        |- `needs-you`: uncommitted changes, shown under "Needs you".
+        |- `unfinished`: uncommitted changes, shown under "Unfinished".
         |- `pushed-work`: a commit pushed to `origin`, and `main` moved on after it, so it's behind; shown under "Stopped".
         |- `merged-fix`: its branch is merged into `main`, shown under "Merged".
         |- `old-experiment`: its last commit is months old, shown under "Inactive".

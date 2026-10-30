@@ -13,7 +13,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Inbox
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material3.Icon
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material.icons.filled.SearchOff
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Checkbox
@@ -24,6 +27,9 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
 import app.luxion.shogunai.domain.model.HerdrOutcome
 import app.luxion.shogunai.domain.model.OrcaOutcome
 import app.luxion.shogunai.domain.model.Project
@@ -331,12 +337,16 @@ private fun WorktreeContent(
         val narrow = maxWidth < WorktreeDetailOverlayThreshold
         val selected = board.selectedWorktree
         val list: @Composable (Modifier) -> Unit = { listModifier ->
-            if (board.isNothingActive) {
-                NothingActive(onNewWorktree = { board.openCreateDialog() }, onSeeAll = onSeeAll, modifier = listModifier)
+            val nothingWaiting = board.isNothingWaiting
+            if (nothingWaiting && board.isListEmpty) {
+                NothingNeedsYou(board.workingAgentCount, onSeeAll = onSeeAll, modifier = listModifier)
             } else if (board.hasNoMatch) {
                 NoMatch(onClear = board::clearTextFilter, modifier = listModifier)
             } else {
-                WorktreeListPane(board, onOpenProjectSettings, onOpenMachine, listModifier, onOpenGroup)
+                Column(listModifier) {
+                    if (nothingWaiting) NothingNeedsYouNotice(board.workingAgentCount, onSeeAll = onSeeAll)
+                    WorktreeListPane(board, onOpenProjectSettings, onOpenMachine, Modifier.weight(1f), onOpenGroup)
+                }
             }
         }
         if (narrow && selected != null) {
@@ -391,17 +401,43 @@ private fun ViewSummary(board: WorktreeBoard, modifier: Modifier) {
 }
 
 @Composable
-private fun NothingActive(onNewWorktree: () -> Unit, onSeeAll: () -> Unit, modifier: Modifier) {
+private fun NothingNeedsYou(workingAgents: Int, onSeeAll: () -> Unit, modifier: Modifier) {
     val strings = LocalStrings.current
     EmptyState(
-        icon = Icons.Default.Inbox,
-        title = strings.nothingActiveTitle,
-        message = strings.nothingActiveMessage,
-        action = StateAction(strings.newWorktree, onNewWorktree),
+        icon = Icons.Default.Check,
+        title = strings.nothingNeedsYou,
+        message = strings.agentsWorking(workingAgents),
         link = StateAction(strings.seeAllWorktrees, onSeeAll),
         modifier = modifier,
     )
 }
+
+@Composable
+internal fun NothingNeedsYouNotice(workingAgents: Int, onSeeAll: () -> Unit) {
+    val strings = LocalStrings.current
+    val colors = MaterialTheme.colorScheme
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.md, vertical = Spacing.xs).testTag(NothingNeedsYouTag),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+    ) {
+        Icon(Icons.Default.Check, contentDescription = null, tint = colors.onSurfaceVariant, modifier = Modifier.size(NoticeIconSize))
+        Text(strings.nothingNeedsYou, style = MaterialTheme.typography.bodyMedium, color = colors.onSurface, maxLines = 1)
+        Text(
+            strings.agentsWorking(workingAgents),
+            style = MaterialTheme.typography.bodySmall,
+            color = colors.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
+        NeutralTextButton(onClick = onSeeAll) { Text(strings.seeAllWorktrees) }
+    }
+}
+
+private val NoticeIconSize = 16.dp
+
+internal const val NothingNeedsYouTag = "nothing-needs-you"
 
 @Composable
 private fun NoMatch(onClear: () -> Unit, modifier: Modifier) {

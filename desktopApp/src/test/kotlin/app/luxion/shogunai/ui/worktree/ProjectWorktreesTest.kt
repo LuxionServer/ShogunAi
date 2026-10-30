@@ -2841,7 +2841,7 @@ class ProjectWorktreesTest {
             .sortedBy { it.boundsInRoot.top }
             .mapNotNull { it.config.getOrNull(SemanticsProperties.Text)?.joinToString() }
 
-        assertEquals(listOf("STATUS", "AGENT", "RESOURCES", "PROVISIONED FILES"), headings.filter { it == it.uppercase() })
+        assertEquals(listOf("STATUS", "AGENT", "RESOURCES", "PROVISIONED FILES"), headings.map { it.substringBefore(", ") }.filter { it == it.uppercase() })
     }
 
     @Test

@@ -73,7 +73,7 @@ fun Sidebar(
     selectedProjectId: String?,
     isActiveSelected: Boolean,
     isAllSelected: Boolean,
-    activeCount: Int,
+    waitingCount: Int,
     totalWorktreeCount: Int,
     activityOf: (Project) -> ProjectActivity,
     rail: Boolean,
@@ -127,7 +127,7 @@ fun Sidebar(
                 RailViewItem(strings.allWorktrees, Icons.AutoMirrored.Filled.ViewList, selected = isAllSelected, onClick = onSelectAll)
             } else {
                 SectionLabel(strings.viewsTitle)
-                ViewRow(strings.activeWorktrees, Icons.Default.Bolt, activeCount, selected = isActiveSelected, onClick = onSelectActive)
+                ViewRow(strings.activeWorktrees, Icons.Default.Bolt, waitingCount.takeIf { it > 0 }, selected = isActiveSelected, onClick = onSelectActive)
                 ViewRow(strings.allWorktrees, Icons.AutoMirrored.Filled.ViewList, totalWorktreeCount, selected = isAllSelected, onClick = onSelectAll)
                 SectionLabel(strings.projectsTitle)
             }
@@ -281,7 +281,7 @@ private fun SectionLabel(text: String) {
 }
 
 @Composable
-private fun ViewRow(label: String, icon: ImageVector, count: Int, selected: Boolean, onClick: () -> Unit) {
+private fun ViewRow(label: String, icon: ImageVector, count: Int?, selected: Boolean, onClick: () -> Unit) {
     val colors = MaterialTheme.colorScheme
     Row(
         modifier = Modifier
@@ -308,11 +308,13 @@ private fun ViewRow(label: String, icon: ImageVector, count: Int, selected: Bool
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f),
         )
-        Text(
-            count.toString(),
-            style = ShogunTheme.typography.dataSmall,
-            color = if (selected) colors.onSecondaryContainer else colors.onSurfaceVariant,
-        )
+        count?.let {
+            Text(
+                it.toString(),
+                style = ShogunTheme.typography.dataSmall,
+                color = if (selected) colors.onSecondaryContainer else colors.onSurfaceVariant,
+            )
+        }
     }
 }
 
@@ -395,9 +397,9 @@ private fun ActivityMarks(activity: ProjectActivity, selected: Boolean) {
             size = AgentIndicatorSize.SMALL,
         )
     }
-    if (activity.activeCount > 0) {
+    if (activity.waitingCount > 0) {
         Text(
-            activity.activeCount.toString(),
+            activity.waitingCount.toString(),
             style = ShogunTheme.typography.dataSmall,
             color = if (selected) colors.onSecondaryContainer else colors.onSurfaceVariant,
         )
@@ -460,9 +462,9 @@ private fun DisclosureToggle(collapsed: Boolean, onToggle: () -> Unit) {
 
 private val SidebarMarkSize = 16.dp
 
-data class ProjectActivity(val activeCount: Int, val agentNames: List<String>) {
+data class ProjectActivity(val waitingCount: Int, val agentNames: List<String>) {
     operator fun plus(other: ProjectActivity) =
-        ProjectActivity(activeCount + other.activeCount, (agentNames + other.agentNames).distinct())
+        ProjectActivity(waitingCount + other.waitingCount, (agentNames + other.agentNames).distinct())
 
     companion object {
         val NONE = ProjectActivity(0, emptyList())

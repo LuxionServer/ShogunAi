@@ -48,17 +48,16 @@ fun isInactive(
     now: Instant,
     inactiveAfter: Duration,
 ): Boolean {
-    if (worktree.isMain || status == null || !status.hasOwnCommits) return false
+    if (worktree.isMain || status == null || !status.hasOwnCommits || status.isMerged) return false
     val lastActivity = activityDate(worktree, status)?.at ?: return false
-    return status.uncommittedChanges == 0 &&
-        agents.isNullOrEmpty() &&
+    return agents.isNullOrEmpty() &&
         Duration.between(lastActivity, now) > inactiveAfter
 }
 
-enum class Activity { NeedsYou, AgentWorking, New, Stopped, Merged, Inactive, Missing, Idle, Unknown }
+enum class Activity { WaitingForYou, AgentWorking, Unfinished, New, Stopped, Merged, Inactive, Missing, Idle, Unknown }
 
 val Activity.isActive: Boolean
-    get() = this == Activity.NeedsYou || this == Activity.AgentWorking || this == Activity.New || this == Activity.Stopped
+    get() = this <= Activity.Stopped
 
 fun worktreeActivity(
     worktree: Worktree,
@@ -69,15 +68,15 @@ fun worktreeActivity(
 ): Activity {
     if (worktree.isPrunable) return Activity.Missing
     val deciding = agents.orEmpty().filter { it.state != AgentState.IDLE }
-    if (deciding.any { it.waitsForUser }) return Activity.NeedsYou
+    if (deciding.any { it.waitsForUser }) return Activity.WaitingForYou
     if (deciding.isNotEmpty()) return Activity.AgentWorking
     if (status == null) return Activity.Unknown
     return when {
-        status.uncommittedChanges > 0 || hasUnpushedCommits(status) -> Activity.NeedsYou
         worktree.isMain -> Activity.Idle
+        isInactive(worktree, status, agents, now, inactiveAfter) -> Activity.Inactive
+        status.uncommittedChanges > 0 || status.hasUnpushedCommits -> Activity.Unfinished
         !status.hasOwnCommits && !status.isMerged -> Activity.New
         status.isMerged -> Activity.Merged
-        isInactive(worktree, status, agents, now, inactiveAfter) -> Activity.Inactive
         else -> Activity.Stopped
     }
 }
@@ -85,12 +84,11 @@ fun worktreeActivity(
 val RunningAgent.waitsForUser: Boolean
     get() = state == AgentState.BLOCKED || state == AgentState.DONE
 
-private fun hasUnpushedCommits(status: WorktreeStatus): Boolean =
-    if (status.upstream != null) {
-        status.upstream.ahead > 0
-    } else {
-        (status.base?.ahead ?: 0) > 0
-    }
+val WorktreeStatus.hasUnpushedCommits: Boolean
+    get() = upstream?.let { it.ahead > 0 } ?: isUnpushedBranch
+
+val WorktreeStatus.isUnpushedBranch: Boolean
+    get() = upstream == null && hasOwnCommits && !isNotStarted && !isMerged
 
 internal fun normalizePath(path: String): String = path.replace('\\', '/').trimEnd('/')
 
