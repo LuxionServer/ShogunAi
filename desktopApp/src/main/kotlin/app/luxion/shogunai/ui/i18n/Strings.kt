@@ -174,7 +174,6 @@ interface Strings {
     val fetchFirstLabel: String
     val createWithoutFetching: String
     val otherBranchesGroup: String
-    val worktreesTitle: String
     val viewsTitle: String
     val allWorktrees: String
     val activeWorktrees: String
@@ -225,7 +224,8 @@ interface Strings {
     fun agentInRunner(runner: RunnerId): String
     val clickToFocus: String
     fun agentsUpdated(relative: String): String
-    val noAgentRunning: String
+    fun noAgentRunningRunsWith(runsWith: String): String
+    val runsWithKey: String
     fun copyValue(key: String): String
     val agentSectionTitle: String
     val resourcesTitle: String
@@ -317,7 +317,6 @@ interface Strings {
     val provisioningTitle: String
     val provisioningChecking: String
     val provisioningUnavailable: String
-    val provisioningUpToDate: String
     val provisionAction: String
     val copyAsEnv: String
     fun provisionDriftState(state: ProvisionDriftState): String

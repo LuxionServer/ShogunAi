@@ -145,7 +145,8 @@ fun Sidebar(
                     ContextMenuItem(strings.sortAlphabetically) { onSortLevel(level) },
                 )
             }
-            val projectItem: @Composable (Project, String, SidebarLevel, String, Int, Int, SidebarDragState) -> Unit = { project, label, level, key, index, size, drag ->
+            val topLevelTiles = railInitials(entries.filterIsInstance<SidebarEntry.ProjectEntry>().map { it.project.name })
+            val projectItem: @Composable (Project, String, String, SidebarLevel, String, Int, Int, SidebarDragState) -> Unit = { project, label, tile, level, key, index, size, drag ->
                 Box(itemWidth.reorderable(drag, key) { moved, target -> onMoveEntry(level, moved, target) }) {
                     ProjectContextMenu(
                         onEdit = { onEditProject(project) },
@@ -153,7 +154,7 @@ fun Sidebar(
                         reorderItems = reorderItems(level, key, index, size),
                     ) {
                         if (rail) {
-                            RailProjectItem(label, selected = project.id == selectedProjectId) { onSelectProject(project) }
+                            RailProjectItem(label, tile, selected = project.id == selectedProjectId) { onSelectProject(project) }
                         } else {
                             ProjectRow(label, activityOf(project), selected = project.id == selectedProjectId, nested = level is SidebarLevel.Folder) { onSelectProject(project) }
                         }
@@ -162,7 +163,7 @@ fun Sidebar(
             }
             entries.forEachIndexed { index, entry ->
                 when (entry) {
-                    is SidebarEntry.ProjectEntry -> projectItem(entry.project, entry.project.name, SidebarLevel.TopLevel, entry.key, index, entries.size, topLevelDrag)
+                    is SidebarEntry.ProjectEntry -> projectItem(entry.project, entry.project.name, topLevelTiles.getValue(entry.project.name), SidebarLevel.TopLevel, entry.key, index, entries.size, topLevelDrag)
                     is SidebarEntry.FolderEntry -> {
                         val folder = entry.multirepo
                         val folderLevel = SidebarLevel.Folder(folder.folder)
@@ -192,8 +193,10 @@ fun Sidebar(
                                 }
                             }
                             if (!folder.collapsed) {
+                                val folderTiles = railInitials(folder.projects.map(folder::labelOf))
                                 folder.projects.forEachIndexed { position, project ->
-                                    projectItem(project, folder.labelOf(project), folderLevel, project.id, position, folder.projects.size, folderDrag)
+                                    val label = folder.labelOf(project)
+                                    projectItem(project, label, folderTiles.getValue(label), folderLevel, project.id, position, folder.projects.size, folderDrag)
                                 }
                             }
                         }
@@ -515,7 +518,7 @@ fun sidebarEntries(projects: List<Project>, multirepos: List<SidebarMultirepo>, 
 }
 
 @Composable
-private fun RailProjectItem(label: String, selected: Boolean, onClick: () -> Unit) {
+private fun RailProjectItem(label: String, tile: String, selected: Boolean, onClick: () -> Unit) {
     val colors = MaterialTheme.colorScheme
     WithTooltip(label = label) {
         Box(
@@ -527,7 +530,7 @@ private fun RailProjectItem(label: String, selected: Boolean, onClick: () -> Uni
             contentAlignment = Alignment.Center,
         ) {
             Text(
-                label.take(1).uppercase(),
+                tile,
                 style = MaterialTheme.typography.titleSmall,
                 color = if (selected) colors.onSecondaryContainer else colors.onSurface,
             )

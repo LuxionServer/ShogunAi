@@ -74,11 +74,13 @@ fun statusSectionState(state: WorktreeStatusState?, strings: Strings): SectionSt
     is WorktreeStatusState.Loaded -> SectionState.Content
 }
 
-fun agentSectionState(agents: Map<String, List<RunningAgent>>?, worktree: Worktree, strings: Strings): SectionState = when {
+fun agentSectionState(agents: Map<String, List<RunningAgent>>?, worktree: Worktree, runsWith: String, strings: Strings): SectionState = when {
     agents == null -> SectionState.Loading
-    agents[worktree.path].isNullOrEmpty() -> SectionState.Empty(strings.noAgentRunning)
+    agents[worktree.path].isNullOrEmpty() -> SectionState.Empty(strings.noAgentRunningRunsWith(runsWith))
     else -> SectionState.Content
 }
+
+fun runsWithLabel(agent: String, runner: String): String = "$agent · $runner"
 
 fun environmentProperties(
     environment: WorktreeEnvironment?,
@@ -112,9 +114,9 @@ fun environmentSectionState(
 
 fun provisioningSectionState(worktree: Worktree, state: ProvisioningState?, strings: Strings): SectionState = when {
     worktree.isMain || worktree.isPrunable -> SectionState.NotApplicable
-    state == null || state == ProvisioningState.Checking -> SectionState.Loading
     state == ProvisioningState.Unavailable -> SectionState.Empty(strings.provisioningUnavailable)
-    else -> SectionState.Content
+    state is ProvisioningState.Checked && state.drift.isNotEmpty() -> SectionState.Content
+    else -> SectionState.NotApplicable
 }
 
 fun environmentAsDotenv(environment: WorktreeEnvironment): String =

@@ -67,10 +67,29 @@ sealed interface WorktreeDesktopTurn {
     data class Waiting(val position: Int) : WorktreeDesktopTurn
 }
 
-data class ExecutionCell(val agent: AgentIndicatorModel?, val device: DeviceLine?)
+data class ExecutionCell(val agent: AgentIndicatorModel?, val device: DeviceLine?) {
+    val isEmpty: Boolean
+        get() = agent == null && device == null
+}
 
-data class NameCell(val branch: String, val folder: String?, val origin: String?, val project: String?, val groupTag: String? = null) {
+data class NameCell(
+    val branch: String,
+    val folder: String?,
+    val origin: String?,
+    val project: String?,
+    val groupTag: String? = null,
+    val isMain: Boolean = false,
+) {
     val branchTooltip: String get() = listOfNotNull(branch, origin).joinToString("\n")
+    val branchParts: BranchParts get() = branchParts(branch)
+}
+
+data class BranchParts(val prefix: String?, val rest: String)
+
+fun branchParts(branch: String): BranchParts {
+    val cut = branch.lastIndexOf('/')
+    if (cut <= 0 || cut == branch.lastIndex) return BranchParts(null, branch)
+    return BranchParts(branch.substring(0, cut + 1), branch.substring(cut + 1))
 }
 
 enum class GitCellState { LOADING, UNAVAILABLE, READY }
@@ -85,7 +104,7 @@ data class GitCell(
     val notPushed: Boolean = false,
 )
 
-data class TimeCell(val activity: String?, val marks: List<String>, val compactActivity: String? = activity)
+data class TimeCell(val activity: String?, val isLocked: Boolean, val compactActivity: String? = activity)
 
 fun StateBadgeKind.label(strings: Strings): String = when (this) {
     StateBadgeKind.WAITING_FOR_YOU -> strings.groupWaitingForYou
@@ -146,19 +165,13 @@ fun worktreeRowModel(
     val kind = worktreeActivity(worktree, loaded, agents, now, inactiveAfter).badgeKind()
     return WorktreeRowModel(
         badge = StateBadge(kind, kind.label(strings)),
-        execution = ExecutionCell(
-            agent = agentIndicator(agents, agentsReadAt, now, strings, clickToFocus = true),
-            device = secondLine(desktopTurn, emulator, simulator, headlessApp, strings),
-        ),
+        execution = executionCell(agents, agentsReadAt, now, desktopTurn, emulator, simulator, headlessApp, strings, clickToFocus = true),
         name = nameCell(worktree, origin, projectName, strings).copy(groupTag = groupTag),
         git = gitCell(status, loaded, mainBranchName, strings),
         time = activityDate(worktree, loaded).let { date ->
             TimeCell(
                 activity = date?.let { activityLabel(it, now, strings) },
-                marks = listOfNotNull(
-                    strings.mainWorktree.takeIf { worktree.isMain },
-                    strings.locked.takeIf { worktree.isLocked },
-                ),
+                isLocked = worktree.isLocked,
                 compactActivity = date?.let { compactRelativeTime(it.at, now, strings) },
             )
         },
@@ -166,6 +179,21 @@ fun worktreeRowModel(
         alias = alias,
     )
 }
+
+fun executionCell(
+    agents: List<RunningAgent>,
+    agentsReadAt: Instant?,
+    now: Instant,
+    desktopTurn: WorktreeDesktopTurn?,
+    emulator: WorktreeEmulator?,
+    simulator: WorktreeSimulator?,
+    headlessApp: HeadlessAppProcess?,
+    strings: Strings,
+    clickToFocus: Boolean = false,
+): ExecutionCell = ExecutionCell(
+    agent = agentIndicator(agents, agentsReadAt, now, strings, clickToFocus),
+    device = secondLine(desktopTurn, emulator, simulator, headlessApp, strings),
+)
 
 internal fun activityLabel(date: ActivityDate, now: Instant, strings: Strings): String {
     val relative = relativeTime(date.at, now, strings)
@@ -180,9 +208,10 @@ private fun nameCell(worktree: Worktree, origin: WorktreeOrigin?, projectName: S
     val folder = worktree.path.replace('\\', '/').trimEnd('/').substringAfterLast('/')
     return NameCell(
         branch = branch,
-        folder = folder.takeIf { it != worktree.branch?.substringAfterLast('/') },
+        folder = folder.takeIf { !worktree.isMain && it != worktree.branch?.substringAfterLast('/') },
         origin = origin?.let { originLabel(it, strings) },
         project = projectName,
+        isMain = worktree.isMain,
     )
 }
 

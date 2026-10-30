@@ -1,5 +1,8 @@
 package app.luxion.shogunai.ui.worktree
 
+import app.luxion.shogunai.ui.theme.ShogunTheme
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
@@ -62,6 +65,7 @@ internal fun ViewHeaderRow(
     overflow: List<MenuEntry>,
     primary: ActionSpec?,
     onPerform: (ActionSpec) -> Unit,
+    summary: String? = null,
     icons: @Composable RowScope.() -> Unit = {},
 ) {
     val strings = LocalStrings.current
@@ -77,7 +81,18 @@ internal fun ViewHeaderRow(
                 horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                ViewTitle(title, modifier = Modifier.weight(1f, fill = false))
+                Column(modifier = Modifier.weight(1f, fill = false)) {
+                    ViewTitle(title)
+                    summary?.let {
+                        Text(
+                            it,
+                            style = ShogunTheme.typography.figures,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
                 if (isBusy) WithTooltip(strings.readingWorktreeStatus) { InlineProgress() }
             }
             HeaderFilter(filter, compact)

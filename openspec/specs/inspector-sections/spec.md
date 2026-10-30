@@ -6,7 +6,7 @@ Defines how a detail pane (the inspector) groups its information: sections with 
 ## Requirements
 
 ### Requirement: Section label and summary
-An inspector section SHALL show its name as an uppercase section label declared as a heading for assistive technologies, and, when it has one, SHALL show a short summary at the end of the label's line that stays visible while the section is collapsed.
+An inspector section SHALL show its name as an uppercase section label declared as a heading for assistive technologies, and, when it has one, SHALL show a short summary at the end of the label's line only while the section is collapsed, since the expanded content already shows it.
 
 #### Scenario: Heading semantics
 - **WHEN** the worktree detail shows its Status section
@@ -14,7 +14,11 @@ An inspector section SHALL show its name as an uppercase section label declared 
 
 #### Scenario: Summary while collapsed
 - **WHEN** the user collapses the Environment section of a worktree with 2 ports and 5 variables
-- **THEN** the section's content is hidden and its label still shows "2 ports · 5 vars" (or its translation)
+- **THEN** the section's content is hidden and its label shows "2 ports · 5 vars" (or its translation)
+
+#### Scenario: No summary while expanded
+- **WHEN** the Environment section of a worktree with 2 ports and 5 variables is expanded
+- **THEN** its label line shows no summary
 
 ### Requirement: Collapsible sections
 An inspector section SHALL be collapsible by clicking its label line or activating it with the keyboard, and SHALL announce whether it is expanded or collapsed. Sections SHALL start expanded.
@@ -24,7 +28,7 @@ An inspector section SHALL be collapsible by clicking its label line or activati
 - **THEN** the content is hidden after the first activation and shown again after the second
 
 ### Requirement: Four states of a section
-An inspector section SHALL show placeholder rows while its data hasn't been read yet, one muted sentence when it was read and has nothing to show, its content otherwise, and SHALL NOT be drawn when it doesn't apply to the worktree. Reloading SHALL keep the previous content.
+An inspector section SHALL show placeholder rows while its data hasn't been read yet, one muted sentence when it was read and has nothing to show, its content otherwise, and SHALL NOT be drawn when it doesn't apply to the worktree. A section MAY declare that it is drawn only when it has something that needs attention, and then SHALL NOT be drawn while loading or when it has nothing to show. Reloading SHALL keep the previous content.
 
 #### Scenario: Not read yet
 - **WHEN** a worktree is selected and its status hasn't been read yet
@@ -36,7 +40,11 @@ An inspector section SHALL show placeholder rows while its data hasn't been read
 
 #### Scenario: Empty
 - **WHEN** a worktree has no agent running
-- **THEN** the Agent section says no agent is running
+- **THEN** the Agent section says in one line that no agent is running
+
+#### Scenario: Drawn only when it needs attention
+- **WHEN** a linked worktree's provisioned files all match
+- **THEN** no Provisioning section is drawn
 
 ### Requirement: Properties as a key and value grid
 An inspector section's data SHALL be shown as a property list: one row per property with the key in the interface font and the value in the monospaced data font, keys aligned in one column. Values SHALL be selectable as text. A key or a value that doesn't fit its column SHALL be truncated and show its full text in a tooltip.
@@ -57,8 +65,8 @@ A property marked as copyable SHALL offer a copy action on its row that puts the
 - **THEN** `-TASK-123` is on the clipboard and the action shows "Copied" for 1.5 seconds
 
 ### Requirement: Fixed order of the inspector
-The worktree detail SHALL show, in this order: the header (branch, origin and path), the actions, the worktree's notices, then the sections Status, Agent, Environment, Resources and Provisioning. Resources SHALL group the devices, Compose, the headless app, the desktop turn and the disk. New information SHALL go into an existing section; a new section SHALL need at least three properties of its own.
+The worktree detail SHALL show, in this order: the header (branch, main chip, origin when it isn't ShogunAi, and path), the actions, the worktree's notices, then the sections Status, Agent, Environment, Resources and Provisioning. Resources SHALL group the devices, Compose, the headless app, the desktop turn and the disk. New information SHALL go into an existing section; a new section SHALL need at least three properties of its own.
 
 #### Scenario: Order of sections
-- **WHEN** a linked worktree with an agent, ports, a running emulator and provisioned files is selected
+- **WHEN** a linked worktree with an agent, ports, a running emulator and stale provisioned files is selected
 - **THEN** the section labels read Status, Agent, Environment, Resources and Provisioning from top to bottom

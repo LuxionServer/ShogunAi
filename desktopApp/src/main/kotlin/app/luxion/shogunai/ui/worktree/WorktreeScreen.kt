@@ -29,6 +29,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import app.luxion.shogunai.domain.model.HerdrOutcome
 import app.luxion.shogunai.domain.model.OrcaOutcome
@@ -201,6 +202,13 @@ private fun ViewHeader(board: WorktreeBoard, onOpenProjectSettings: (Project) ->
         overflow = viewOverflow(catalog, strings).toMenu(strings, performView),
         primary = catalog.primary,
         onPerform = { performView(it, null) },
+        summary = viewSummaryLine(
+            worktreeCount = shownHolders.sumOf { it.worktrees.size },
+            totalSize = shownHolders.sumOf { it.totalSize },
+            cleanupCandidateCount = shownHolders.sumOf { it.cleanupCandidates.size },
+            isLoading = shownHolders.any { it.loadState == ProjectLoadState.Loading },
+            strings = strings,
+        ),
     ) {
         filteredProject?.let { project ->
             IconAction(
@@ -334,7 +342,7 @@ private fun WorktreeContent(
     onOpenGroup: (GroupTag) -> Unit = {},
 ) {
     BoxWithConstraints(modifier) {
-        val narrow = maxWidth < WorktreeDetailOverlayThreshold
+        val docked = isInspectorDocked(maxWidth)
         val selected = board.selectedWorktree
         val list: @Composable (Modifier) -> Unit = { listModifier ->
             val nothingWaiting = board.isNothingWaiting
@@ -349,8 +357,14 @@ private fun WorktreeContent(
                 }
             }
         }
-        if (narrow && selected != null) {
-            Box(Modifier.fillMaxSize()) {
+        when {
+            selected == null -> list(Modifier.fillMaxSize())
+            docked -> Row(Modifier.fillMaxSize()) {
+                list(Modifier.weight(1f))
+                VerticalDivider()
+                SelectedDetail(board, selected, Modifier.width(WorktreeDetailWidth))
+            }
+            else -> Box(Modifier.fillMaxSize()) {
                 list(Modifier.fillMaxSize())
                 Box(
                     modifier = Modifier
@@ -359,16 +373,6 @@ private fun WorktreeContent(
                         .clickable(onClick = board::clearSelection),
                 )
                 SelectedDetail(board, selected, Modifier.align(Alignment.CenterEnd).width(WorktreeDetailWidth))
-            }
-        } else {
-            Row(Modifier.fillMaxSize()) {
-                list(Modifier.weight(1f))
-                VerticalDivider()
-                if (selected != null) {
-                    SelectedDetail(board, selected, Modifier.width(WorktreeDetailWidth))
-                } else if (!narrow) {
-                    ViewSummary(board, modifier = Modifier.width(WorktreeDetailWidth))
-                }
             }
         }
     }
@@ -385,18 +389,6 @@ private fun SelectedDetail(board: WorktreeBoard, selected: SelectedWorktree, mod
         desktopTurn = board.desktopTurn,
         openWithRequests = board.openWithRequests,
         modifier = modifier,
-    )
-}
-
-@Composable
-private fun ViewSummary(board: WorktreeBoard, modifier: Modifier) {
-    val holders = board.shownProjects.mapNotNull { board.holder(it.id) }
-    ProjectSummary(
-        worktreeCount = holders.sumOf { it.worktrees.size },
-        totalSize = holders.sumOf { it.totalSize },
-        cleanupCandidateCount = holders.sumOf { it.cleanupCandidates.size },
-        modifier = modifier,
-        isLoading = holders.any { it.loadState == ProjectLoadState.Loading },
     )
 }
 
@@ -451,7 +443,8 @@ private fun NoMatch(onClear: () -> Unit, modifier: Modifier) {
 }
 
 private val WorktreeDetailWidth = ShogunLayout.inspectorWidth
-private val WorktreeDetailOverlayThreshold = ShogunLayout.compactBreakpoint
+
+internal fun isInspectorDocked(contentWidth: Dp): Boolean = contentWidth >= ShogunLayout.inspectorDockMinWidth
 
 private fun Strings.successMessage(success: WorktreeSuccess): String = when (success) {
     is WorktreeSuccess.Created ->

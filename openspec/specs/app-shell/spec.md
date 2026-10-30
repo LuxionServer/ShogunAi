@@ -242,6 +242,21 @@ The manual order of each level SHALL be saved in the app's settings and restored
 - **WHEN** the user removes `api` after reordering and later adds a project named `api` again
 - **THEN** the new `api` is listed at the end of its level
 
+### Requirement: Rail tiles tell sibling projects apart
+In the compact rail, each project's tile SHALL show two uppercase letters: the initials of its first two words when its name has several words, otherwise its first two letters. When two projects at the same level of the sidebar would show the same letters, each SHALL use its first letter followed by a later letter of its name that the others don't have, when there is one. The tile's tooltip SHALL keep naming the project.
+
+#### Scenario: Different first letters
+- **WHEN** the rail shows the projects `api` and `web`
+- **THEN** their tiles read `AP` and `WE`
+
+#### Scenario: Same first two letters
+- **WHEN** the rail shows the projects `app` and `api`
+- **THEN** their tiles read `AP` and `AI`
+
+#### Scenario: Several words
+- **WHEN** the rail shows the project `main-repo`
+- **THEN** its tile reads `MR`
+
 ### Requirement: Preferences from the sidebar
 The sidebar SHALL end with a gear button, in both the expanded sidebar and the rail, labelled "Preferences" for its tooltip and assistive technologies, that opens the Preferences window like the menu and Cmd/Ctrl+Comma do.
 

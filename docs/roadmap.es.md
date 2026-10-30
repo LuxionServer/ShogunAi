@@ -38,15 +38,6 @@ ShogunAi tiene que funcionar a la primera en una máquina que no es en la que se
 Una revisión de UX de la interfaz v2 ya implementada, hecha sobre `develop` en `aaf42f94` con datos de ejemplo, concluyó que la app debería responder primero «¿qué me necesita?» y «¿dónde está cada agente?», y que hoy no responde ninguna de las dos de un vistazo. Sus correcciones se reparten en cambios, por orden:
 
 - Una fila por cambio de multirepo en Activos, con el peor estado de sus repositorios, que se despliega en una fila hija por repositorio; las filas hijas no repiten la rama.
-- Una lista y un inspector más tranquilos:
-  - Sin selección no hay inspector, y el resumen pasa a la cabecera de la vista. El inspector se acopla cuando el contenido mide al menos 980 dp de ancho, y por debajo es una capa superpuesta.
-  - La columna de ejecución se pliega cuando ninguna fila la usa.
-  - El origen solo se muestra cuando no es ShogunAi, y el checkout principal se muestra como su rama con un chip neutro «main».
-  - La ruta del worktree es relativa a la carpeta de worktrees, con puntos suspensivos en medio.
-  - El resumen de una sección solo se muestra mientras está plegada, y Provisionado solo aparece cuando algo está desfasado o ha fallado.
-  - La sección Agente ocupa una línea cuando no hay ningún agente en marcha, y separa el agente en marcha de «Se ejecuta con».
-  - En ventanas estrechas el prefijo del tipo se trunca primero, para que el id de la tarea se vea siempre, y las teselas del rail usan dos letras que distinguen proyectos hermanos.
-  - Las cifras dentro de frases usan la fuente de la interfaz con cifras tabulares; las cifras sueltas siguen en la fuente de datos.
 - El resto de vistas de Máquina (daemons de Maven, emuladores, simuladores, DerivedData, proyectos de Compose) reciben lo que recibió la de daemons de Gradle: un propietario desconocido atenuado en lugar de vacío, botones fantasma en sus filas y el motivo de una acción desactivada escrito junto a ella.
 
 ### 3. Orca, un segundo runner de primera clase

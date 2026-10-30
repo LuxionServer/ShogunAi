@@ -969,6 +969,22 @@ class WorktreeBoardTest {
     }
 
     @Test
+    fun `the execution column is used only while some row of the view runs something`() = runTest(dispatcher) {
+        val board = board()
+        board.updateGrouping(Grouping.BY_PROJECT)
+        advanceUntilIdle()
+
+        assertFalse(usesExecution(listItems(board), board, Instant.now(), EnglishStrings))
+
+        agentResult = Result.success(mapOf("/home/dev/projects/api-TASK-12" to listOf(RunningAgent("codex"))))
+        board.startWatching()
+        tick()
+        board.stopWatching()
+
+        assertTrue(usesExecution(listItems(board), board, Instant.now(), EnglishStrings))
+    }
+
+    @Test
     fun `agents are detected once per check and attributed across projects`() = runTest(dispatcher) {
         agentResult = Result.success(
             mapOf(

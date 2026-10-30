@@ -2805,10 +2805,15 @@ class ProjectWorktreesTest {
     fun `the detail shows the compose section and starts the services from it`() = runComposeUiTest {
         val actions = mutableListOf<ComposeAction>()
         val compose = composeSection(run = { _, action -> actions += action; Result.success(worktreeComposeName) })
-        val holder = loadedProjectWorktrees(useCases(listingResponder()).copy(compose = compose))
+        val stale = ProvisioningUseCases(
+            check = { Result.success(listOf(ProvisionDrift(".env", ProvisionDriftState.DIFFERS))) },
+            provision = { Result.success(ProvisionResult(emptyList())) },
+        )
+        val holder = loadedProjectWorktrees(useCases(listingResponder()).copy(compose = compose, provisioning = stale))
         setContent { MaterialTheme { WorktreeDetailPane(worktree, config, holder) } }
 
         waitUntil { onAllNodesWithText("Not started").fetchSemanticsNodes().isNotEmpty() }
+        waitUntil { onAllNodesWithText("PROVISIONED FILES").fetchSemanticsNodes().isNotEmpty() }
         onNodeWithText(worktreeComposeName).assertIsDisplayed()
         onNodeWithText("Not started").assertIsDisplayed()
         onNodeWithText("Build").assertIsDisplayed()
@@ -2833,10 +2838,15 @@ class ProjectWorktreesTest {
     @Test
     fun `the detail shows its sections in the inspector's fixed order`() = runComposeUiTest {
         val compose = composeSection(run = { _, _ -> Result.success(worktreeComposeName) })
-        val holder = loadedProjectWorktrees(useCases(listingResponder()).copy(compose = compose))
+        val stale = ProvisioningUseCases(
+            check = { Result.success(listOf(ProvisionDrift(".env", ProvisionDriftState.DIFFERS))) },
+            provision = { Result.success(ProvisionResult(emptyList())) },
+        )
+        val holder = loadedProjectWorktrees(useCases(listingResponder()).copy(compose = compose, provisioning = stale))
         setContent { MaterialTheme { WorktreeDetailPane(worktree, config, holder) } }
 
         waitUntil { onAllNodesWithText("Not started").fetchSemanticsNodes().isNotEmpty() }
+        waitUntil { onAllNodesWithText("PROVISIONED FILES").fetchSemanticsNodes().isNotEmpty() }
         val headings = onAllNodes(SemanticsMatcher.keyIsDefined(SemanticsProperties.Heading)).fetchSemanticsNodes()
             .sortedBy { it.boundsInRoot.top }
             .mapNotNull { it.config.getOrNull(SemanticsProperties.Text)?.joinToString() }

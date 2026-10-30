@@ -38,15 +38,6 @@ ShogunAi has to work the first time on a machine that isn't the one it's develop
 A UX review of the implemented v2 interface, done on `develop` at `aaf42f94` with sample data, concluded that the app should first answer "what needs me?" and "where is each agent?", and that today it answers neither at a glance. Its fixes are split into changes, in order:
 
 - One row per multirepo change in Active, showing the worst state of its repositories, which expands into one child row per repository; the child rows don't repeat the branch.
-- A calmer list and inspector:
-  - No inspector without a selection, with the summary moved to the view's header. The inspector docks when the content is at least 980 dp wide, and is an overlay below that.
-  - The execution column collapses when no row uses it.
-  - The origin shows only when it isn't ShogunAi, and the main checkout shows as its branch with a neutral "main" chip.
-  - The worktree path is relative to the worktrees folder, with an ellipsis in the middle.
-  - A section's summary shows only while the section is collapsed, and Provisioning appears only when something is stale or has failed.
-  - The Agent section is one line when no agent runs, and keeps the running agent apart from "Runs with".
-  - On narrow windows the type prefix truncates first, so the task id always shows, and the rail's tiles use two letters that tell sibling projects apart.
-  - Counts inside sentences use the interface font with tabular figures; lone figures stay in the data font.
 - The rest of the Machine views (Maven daemons, emulators, simulators, DerivedData, Compose projects) get what the Gradle daemons view got: an unknown owner dimmed instead of blank, ghost buttons in their rows, and the reason a disabled action is disabled written next to it.
 
 ### 3. Orca, a second first-class runner

@@ -48,6 +48,7 @@ fun InspectorSection(
     modifier: Modifier = Modifier,
     state: SectionState = SectionState.Content,
     summary: String? = null,
+    summaryIsData: Boolean = false,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     if (state == SectionState.NotApplicable) return
@@ -70,10 +71,10 @@ fun InspectorSection(
                 modifier = Modifier.size(SectionChevronSize),
             )
             Eyebrow(title, modifier = Modifier.weight(1f).semantics { heading() })
-            summary?.let {
+            summary?.takeIf { !expanded }?.let {
                 Text(
                     it,
-                    style = ShogunTheme.typography.dataSmall,
+                    style = if (summaryIsData) ShogunTheme.typography.dataSmall else ShogunTheme.typography.figures,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,

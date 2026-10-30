@@ -989,6 +989,8 @@ class ProjectWorktrees(
 
     val tools: ToolsPreferences get() = useCases.tools.preferences
 
+    val home: String get() = useCases.home
+
     val agentOptions: List<AgentLaunchConfig> get() = useCases.agents.options
     val hasAgentChoice: Boolean get() = useCases.agents.hasChoice
 

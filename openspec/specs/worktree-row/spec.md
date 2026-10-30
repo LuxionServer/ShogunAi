@@ -6,7 +6,7 @@ Defines the layout of a worktree's row in every worktree view, so every piece of
 ## Requirements
 
 ### Requirement: Fixed cells in two lines
-A worktree's row SHALL have two lines and five cells, in this order: state badge, execution, name, Git and time. Every cell except the name SHALL have a fixed width and keep it when it has nothing to show, so the same information sits at the same position in every row of a view. The name cell SHALL take the remaining width and truncate with an ellipsis, showing the full text in a tooltip.
+A worktree's row SHALL have two lines and five cells, in this order: state badge, execution, name, Git and time. Every cell except the name SHALL have a fixed width and keep it when it has nothing to show, so the same information sits at the same position in every row of a view. The execution cell SHALL be left out of every row of a view when no row of that view has anything to show in it, and shown again in every row as soon as one has. The name cell SHALL take the remaining width and truncate with an ellipsis, showing the full text in a tooltip.
 
 #### Scenario: Rows with different information
 - **WHEN** one row has an agent, an emulator and uncommitted changes, and the next row has none of them
@@ -15,6 +15,14 @@ A worktree's row SHALL have two lines and five cells, in this order: state badge
 #### Scenario: Long branch name
 - **WHEN** a branch name doesn't fit its cell
 - **THEN** it is cut with an ellipsis and its full name is shown on hover, and the other cells keep their positions
+
+#### Scenario: No row uses the execution cell
+- **WHEN** no worktree of the view has an agent, a running device, a desktop turn or a running headless app
+- **THEN** no row of the view has an execution cell, and the name cell starts right after the state badge
+
+#### Scenario: An agent starts
+- **WHEN** an agent starts in one worktree of a view whose rows had no execution cell
+- **THEN** every row of the view shows the execution cell again, at the same position
 
 ### Requirement: State badge
 The state badge SHALL be a circle in the color of the worktree's state with an icon inside that is distinct for each state, so the state can be told without seeing color. The "New" state SHALL be an outlined circle in the neutral status color with its icon in that color, not a filled circle in a brand or primary color. Hovering it SHALL show the state's name, and assistive technologies SHALL read the state's name.
@@ -81,7 +89,7 @@ When the list is too narrow to show the execution cell's labels, the cell SHALL 
 - **THEN** every row shows only the agent's icon and the device icon, Claude's icon still in the warning color, and hovering it says Claude needs you
 
 ### Requirement: Name cell
-The name cell's first line SHALL show the branch, or that the HEAD is detached, with the origin in its tooltip. Its second line SHALL only identify the row, separated by " · ": the group tag outside the multirepo view, the folder when it differs from the branch's last segment, and the project's name in views spanning several projects not grouped by project, truncated last. It SHALL NOT show the origin.
+The name cell's first line SHALL show the branch, or that the HEAD is detached, with the origin in its tooltip; for the main checkout it SHALL be followed by a neutral "main" chip. When the branch doesn't fit, its type prefix (the part up to its last `/`, such as `feature/`) SHALL be truncated before the rest, so the task id stays visible as long as it fits. Its second line SHALL only identify the row, separated by " · ": the group tag outside the multirepo view, the folder when it differs from the branch's last segment and the row isn't the main checkout, and the project's name in views spanning several projects not grouped by project, truncated last. It SHALL NOT show the origin.
 
 #### Scenario: Folder matches the branch
 - **WHEN** the branch is `feature/TASK-123` and the folder is `TASK-123`
@@ -94,6 +102,14 @@ The name cell's first line SHALL show the branch, or that the HEAD is detached, 
 #### Scenario: Origin in the tooltip
 - **WHEN** a worktree was created by ShogunAi
 - **THEN** its second line doesn't name the origin, and the branch's tooltip does
+
+#### Scenario: Main checkout
+- **WHEN** the main checkout of `main-repo` is on `develop` and is listed in "Active" grouped by state across projects
+- **THEN** its first line shows `develop` with a neutral "main" chip, and its second line shows `main-repo` once, not `main-repo · main-repo`
+
+#### Scenario: Narrow row keeps the task id
+- **WHEN** the branch `feature/TASK-123` doesn't fit its cell
+- **THEN** `feature/` is cut with an ellipsis first and `TASK-123` stays whole
 
 #### Scenario: Worktree in a group
 - **WHEN** the worktree belongs to the group `TASK-12` with `api`, and the view is `app`'s
@@ -147,7 +163,7 @@ The Git cell's first line SHALL show the number of uncommitted changes. Its seco
 - **THEN** the second line shows it as merged, with `epic/redesign` on hover
 
 ### Requirement: Time cell
-The time cell's first line SHALL show the worktree's activity date relative to now, saying what it measures. When the list is narrow it SHALL show the compact form of the elapsed time ("12 h", "2 d"), with the full text in a tooltip. Its second line SHALL show the worktree's fixed marks: main worktree and locked.
+The time cell's first line SHALL show the worktree's activity date relative to now, saying what it measures. When the list is narrow it SHALL show the compact form of the elapsed time ("12 h", "2 d"), with the full text in a tooltip. Its second line SHALL show a lock icon when the worktree is locked, with "Locked" as its tooltip and accessible name, and nothing otherwise.
 
 #### Scenario: Branch with commits
 - **WHEN** a worktree's branch has a commit of its own made 3 hours ago
@@ -167,7 +183,11 @@ The time cell's first line SHALL show the worktree's activity date relative to n
 
 #### Scenario: Locked main worktree
 - **WHEN** the row is the main worktree and it is locked
-- **THEN** the second line shows the main and locked marks
+- **THEN** the time cell's second line shows a lock icon whose tooltip reads "Locked", and the "main" chip is in the name cell
+
+#### Scenario: Main worktree
+- **WHEN** the row is the main worktree and it isn't locked
+- **THEN** the time cell's second line is empty, since the name cell shows the "main" chip
 
 ### Requirement: Row actions keep their place
 The row's hover action (copy the launch command) SHALL keep its fixed slot at the end of the row, and the row's context menu SHALL keep its current actions.
