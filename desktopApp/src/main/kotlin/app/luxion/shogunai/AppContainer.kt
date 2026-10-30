@@ -786,6 +786,7 @@ class AppContainer {
     }
 
     fun worktreeUseCases(config: ProjectConfig): WorktreeUseCases = WorktreeUseCases(
+        home = hostEnvironment.home,
         list = ListWorktreesUseCase(config, shellCommandExecutor, fileManager),
         create = CreateWorktreeUseCase(
             config,
@@ -1039,6 +1040,7 @@ data class WorktreeUseCases(
     val releaseResources: ReleaseResourcesUseCases = ReleaseResourcesUseCases.NONE,
     val agents: AgentUseCases = AgentUseCases.NONE,
     val headlessApp: HeadlessAppUseCases = HeadlessAppUseCases.NONE,
+    val home: String = "",
 )
 
 class ProvisioningUseCases(

@@ -18,6 +18,7 @@ import androidx.compose.material.icons.filled.DesktopMac
 import androidx.compose.material.icons.filled.DesktopWindows
 import androidx.compose.material.icons.filled.FiberNew
 import androidx.compose.material.icons.filled.FolderOff
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.PhoneIphone
@@ -49,6 +50,7 @@ import app.luxion.shogunai.ui.components.InlineProgress
 import app.luxion.shogunai.ui.components.MenuEntry
 import app.luxion.shogunai.ui.components.ProgressSize
 import app.luxion.shogunai.ui.components.Spacing
+import app.luxion.shogunai.ui.components.StatusChip
 import app.luxion.shogunai.ui.components.WithTooltip
 import app.luxion.shogunai.ui.components.interactive
 import app.luxion.shogunai.ui.i18n.LocalStrings
@@ -63,6 +65,7 @@ fun WorktreeRow(
     selected: Boolean,
     isCopied: Boolean,
     compact: Boolean = false,
+    showExecution: Boolean = true,
     aliasWidth: Dp = DefaultAliasColumnWidth,
     onSelect: () -> Unit,
     onCopyLaunchCommand: () -> Unit,
@@ -75,7 +78,7 @@ fun WorktreeRow(
             cells = listOfNotNull(
                 model.alias?.let { alias -> DataCell(ColumnSpec(width = aliasWidth)) { AliasCellView(alias) } },
                 DataCell(BadgeColumn) { StateBadgeCell(model.badge) },
-                DataCell(ExecutionColumn, Modifier.testTag(ExecutionTag)) { compact -> ExecutionCellView(model.execution, compact) },
+                if (showExecution) DataCell(ExecutionColumn, Modifier.testTag(ExecutionTag)) { compact -> ExecutionCellView(model.execution, compact) } else null,
                 DataCell(NameColumn) { NameCellView(model.name, onOpenGroupTag) },
                 DataCell(GitColumn, Modifier.testTag(GitTag)) { GitCellView(model.git) },
                 DataCell(TimeColumn, Modifier.testTag(TimeTag)) { compact -> TimeCellView(model.time, compact) },
@@ -141,6 +144,7 @@ internal const val ExecutionTag = "row-execution"
 internal const val AliasTag = "row-alias"
 internal const val GroupTagTag = "row-group-tag"
 internal const val SecondLineTag = "row-second-line"
+internal const val LockedTag = "row-locked"
 
 @Composable
 private fun AliasCellView(alias: String) {
@@ -257,16 +261,11 @@ private val SecondLineKind.icon: ImageVector
 private fun NameCellView(name: NameCell, onOpenGroupTag: () -> Unit) {
     val secondary = MaterialTheme.colorScheme.onSurfaceVariant
     Column {
-        WithTooltip(label = name.branchTooltip) {
-            CellLine {
-                Text(
-                    name.branch,
-                    style = ShogunTheme.typography.data,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.testTag(BranchTag),
-                )
+        CellLine {
+            WithTooltip(label = name.branchTooltip, modifier = Modifier.weight(1f, fill = false)) {
+                BranchText(name.branchParts, Modifier.testTag(BranchTag))
             }
+            if (name.isMain) StatusChip(Status.NEUTRAL, LocalStrings.current.mainWorktree)
         }
         CellLine(Modifier.testTag(SecondLineTag)) {
             name.groupTag?.let { tag ->
@@ -303,6 +302,17 @@ private fun NameCellView(name: NameCell, onOpenGroupTag: () -> Unit) {
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun BranchText(parts: BranchParts, modifier: Modifier = Modifier) {
+    val style = ShogunTheme.typography.data
+    Row(modifier, verticalAlignment = Alignment.CenterVertically) {
+        parts.prefix?.let { prefix ->
+            Text(prefix, style = style, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+        }
+        Text(parts.rest, style = style, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 
@@ -361,13 +371,17 @@ private fun TimeCellView(time: TimeCell, compact: Boolean) {
             if (compact && activity != null) WithTooltip(label = activity, content = text) else text()
         }
         CellLine {
-            Text(
-                time.marks.joinToString(" · "),
-                style = MaterialTheme.typography.bodySmall,
-                color = secondary,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            if (time.isLocked) {
+                val locked = LocalStrings.current.locked
+                WithTooltip(label = locked) {
+                    Icon(
+                        imageVector = Icons.Default.Lock,
+                        contentDescription = locked,
+                        tint = secondary,
+                        modifier = Modifier.size(CellIconSize).testTag(LockedTag),
+                    )
+                }
+            }
         }
     }
 }

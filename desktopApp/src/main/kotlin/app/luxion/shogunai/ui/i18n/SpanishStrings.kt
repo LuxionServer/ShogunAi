@@ -179,7 +179,6 @@ object SpanishStrings : Strings {
     override val createWithoutFetching = "Crear sin hacer fetch"
     override val selectBranchPlaceholder = "Selecciona una rama"
     override val otherBranchesGroup = "otras"
-    override val worktreesTitle = "Worktrees"
     override val viewsTitle = "Vistas"
     override val allWorktrees = "Todos los worktrees"
     override val activeWorktrees = "Activos"
@@ -283,7 +282,8 @@ object SpanishStrings : Strings {
         null -> "Solo se ha encontrado su proceso"
     }
     override fun agentsUpdated(relative: String) = "Actualizado $relative"
-    override val noAgentRunning = "No hay ningún agente en ejecución"
+    override fun noAgentRunningRunsWith(runsWith: String) = "Ningún agente en ejecución · se ejecuta con $runsWith"
+    override val runsWithKey = "Se ejecuta con"
     override fun copyValue(key: String) = "Copiar $key"
     override val agentSectionTitle = "Agente"
     override val resourcesTitle = "Recursos"
@@ -338,7 +338,7 @@ object SpanishStrings : Strings {
     override fun worktreesSummary(count: Int, totalSize: String) =
         (if (count == 1) "1 worktree" else "$count worktrees") + " · $totalSize"
     override fun cleanupCandidatesSummary(count: Int) = "$count para limpiar"
-    override val locked = "bloqueado"
+    override val locked = "Bloqueado"
     override val cleanUp = "Limpiar"
     override val copyPath = "Copiar ruta"
     override val statusTitle = "Estado"
@@ -346,7 +346,6 @@ object SpanishStrings : Strings {
     override val provisioningTitle = "Archivos provisionados"
     override val provisioningChecking = "Comprobando…"
     override val provisioningUnavailable = "No se pudieron comprobar los archivos"
-    override val provisioningUpToDate = "Los archivos están al día"
     override val provisionAction = "Provisionar"
     override val copyAsEnv = "Copiar como .env"
     override fun provisionDriftState(state: ProvisionDriftState) = when (state) {

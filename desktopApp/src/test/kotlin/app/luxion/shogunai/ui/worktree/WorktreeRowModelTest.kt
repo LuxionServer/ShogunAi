@@ -325,12 +325,45 @@ class WorktreeRowModelTest {
     }
 
     @Test
-    fun `the time cell marks the main and locked worktrees`() {
+    fun `the time cell says when a worktree is locked and no longer writes main`() {
         val main = worktree(path = "/home/dev/projects/main-repo", branch = "main", isMain = true, isLocked = true)
 
-        assertEquals(listOf("main", "locked"), model(worktree = main, origin = null).time.marks)
-        assertEquals(emptyList(), model().time.marks)
+        assertTrue(model(worktree = main, origin = null).time.isLocked)
+        assertFalse(model().time.isLocked)
         assertFalse(model().isFolderMissing)
+    }
+
+    @Test
+    fun `the main checkout shows its branch with the main mark and no folder`() {
+        val main = worktree(path = "/home/dev/projects/main-repo", branch = "develop", isMain = true)
+        val name = model(worktree = main, origin = null, projectName = "main-repo").name
+
+        assertTrue(name.isMain)
+        assertEquals("develop", name.branch)
+        assertNull(name.folder)
+        assertEquals("main-repo", name.project)
+        assertFalse(model().name.isMain)
+    }
+
+    @Test
+    fun `the type prefix of a branch is split from the rest`() {
+        assertEquals(BranchParts("feature/", "TASK-123"), branchParts("feature/TASK-123"))
+        assertEquals(BranchParts("epic/feature/", "TASK-7"), branchParts("epic/feature/TASK-7"))
+        assertEquals(BranchParts(null, "develop"), branchParts("develop"))
+        assertEquals(BranchParts(null, "/develop"), branchParts("/develop"))
+        assertEquals(BranchParts(null, "feature/"), branchParts("feature/"))
+        assertEquals(BranchParts("feature/", "TASK-123"), model().name.branchParts)
+    }
+
+    @Test
+    fun `an execution cell is empty without agents, devices, desktop turn or headless app`() {
+        val empty = executionCell(emptyList(), null, now, null, null, null, null, EnglishStrings)
+        val withAgent = executionCell(listOf(RunningAgent("claude")), null, now, null, null, null, null, EnglishStrings)
+        val holding = executionCell(emptyList(), null, now, WorktreeDesktopTurn.Waiting(2), null, null, null, EnglishStrings)
+
+        assertTrue(empty.isEmpty)
+        assertFalse(withAgent.isEmpty)
+        assertFalse(holding.isEmpty)
     }
 
     @Test

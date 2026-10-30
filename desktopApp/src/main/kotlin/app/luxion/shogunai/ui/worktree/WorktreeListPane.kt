@@ -113,6 +113,8 @@ fun WorktreeListPane(
             },
     ) {
         val compact = maxWidth < CompactListWidth
+        val strings = LocalStrings.current
+        val showExecution = usesExecution(items, board, Instant.now(), strings)
         val aliasWidth = aliasColumnWidth(
             items.mapNotNull { item ->
                 when (item) {
@@ -153,6 +155,7 @@ fun WorktreeListPane(
                             board, entry.project, entry.holder, entry.worktree,
                             projectName = entry.project.name.takeIf { board.shownProjects.size > 1 && !board.isMultirepoView },
                             compact = compact,
+                            showExecution = showExecution,
                             alias = board.aliasOf(entry.project.id),
                             aliasWidth = aliasWidth,
                             onOpenGroup = onOpenGroup,
@@ -167,14 +170,14 @@ fun WorktreeListPane(
                     }
                     is ListItem.ChangeRow -> item(key = item.key) {
                         val entry = item.aliased.entry
-                        WorktreeRowFor(board, entry.project, entry.holder, entry.worktree, projectName = null, compact = compact, alias = item.aliased.alias, aliasWidth = aliasWidth)
+                        WorktreeRowFor(board, entry.project, entry.holder, entry.worktree, projectName = null, compact = compact, showExecution = showExecution, alias = item.aliased.alias, aliasWidth = aliasWidth)
                         HorizontalDivider()
                     }
                     is ListItem.GroupState -> item(key = item.key) {
                         GroupState(item.group.holder, item.group.project.id, projectName = item.group.project.name.takeIf { item.showsProjectName })
                     }
                     is ListItem.WorktreeItem -> item(key = item.key) {
-                        WorktreeRowFor(board, item.group.project, item.group.holder, item.worktree, projectName = null, compact = compact, onOpenGroup = onOpenGroup)
+                        WorktreeRowFor(board, item.group.project, item.group.holder, item.worktree, projectName = null, compact = compact, showExecution = showExecution, onOpenGroup = onOpenGroup)
                         HorizontalDivider()
                     }
                 }
@@ -250,6 +253,28 @@ internal sealed interface ListItem {
         override val key = "change-row:${aliased.entry.project.id}:${aliased.entry.worktree.path}"
     }
 }
+
+internal fun usesExecution(items: List<ListItem>, board: WorktreeBoard, now: Instant, strings: Strings): Boolean =
+    items.mapNotNull { it.rowEntry() }.any { (holder, worktree) -> !executionCellOf(board, holder, worktree, now, strings).isEmpty }
+
+private fun ListItem.rowEntry(): Pair<ProjectWorktrees, Worktree>? = when (this) {
+    is ListItem.StateRow -> entry.holder to entry.worktree
+    is ListItem.ChangeRow -> aliased.entry.holder to aliased.entry.worktree
+    is ListItem.WorktreeItem -> group.holder to worktree
+    else -> null
+}
+
+private fun executionCellOf(board: WorktreeBoard, holder: ProjectWorktrees, worktree: Worktree, now: Instant, strings: Strings): ExecutionCell =
+    executionCell(
+        agents = holder.agents.orEmpty()[worktree.path].orEmpty(),
+        agentsReadAt = holder.agentsReadAt,
+        now = now,
+        desktopTurn = board.desktopTurn.rowTurn(worktree.path),
+        emulator = holder.emulators[worktree.path]?.takeIf { holder.isEmulatorRepository },
+        simulator = holder.simulators[worktree.path]?.takeIf { holder.isSimulatorRepository },
+        headlessApp = holder.headlessApps[worktree.path]?.takeIf { holder.isHeadlessAppRepository },
+        strings = strings,
+    )
 
 internal fun listItems(board: WorktreeBoard): List<ListItem> = when {
     board.isGroupedByChange -> changeListItems(board)
@@ -341,7 +366,7 @@ private fun ProjectGroupHeader(
             )
             Text(
                 strings.worktreeCount(if (board.isActiveView) group.worktrees.size else holder.worktrees.size),
-                style = ShogunTheme.typography.dataSmall,
+                style = ShogunTheme.typography.figures,
                 color = colors.onSurfaceVariant,
                 maxLines = 1,
             )
@@ -465,7 +490,7 @@ internal fun StateGroupHeader(
                     )
                 }
             }
-            Text(strings.worktreeCount(count), style = ShogunTheme.typography.dataSmall, color = colors.onSurfaceVariant, maxLines = 1)
+            Text(strings.worktreeCount(count), style = ShogunTheme.typography.figures, color = colors.onSurfaceVariant, maxLines = 1)
         }
         if (kind == StateGroupKind.MERGED) {
             DisabledReason(cleanUpBlockedReason.takeUnless { canCleanUp }) {
@@ -519,6 +544,7 @@ private fun WorktreeRowFor(
     worktree: Worktree,
     projectName: String?,
     compact: Boolean,
+    showExecution: Boolean,
     alias: String? = null,
     aliasWidth: Dp = DefaultAliasColumnWidth,
     onOpenGroup: (GroupTag) -> Unit = {},
@@ -548,6 +574,7 @@ private fun WorktreeRowFor(
         selected = board.selected == ref,
         isCopied = holder.copiedWorktreePath == worktree.path,
         compact = compact,
+        showExecution = showExecution,
         aliasWidth = aliasWidth,
         onSelect = { board.select(ref) },
         onCopyLaunchCommand = { holder.copyLaunchCommand(worktree) },
@@ -666,6 +693,6 @@ private fun UngroupedHeader(count: Int) {
         horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
     ) {
         GroupTitle(strings.ungrouped, modifier = Modifier.weight(1f))
-        Text(strings.worktreeCount(count), style = ShogunTheme.typography.dataSmall, color = colors.onSurfaceVariant)
+        Text(strings.worktreeCount(count), style = ShogunTheme.typography.figures, color = colors.onSurfaceVariant)
     }
 }

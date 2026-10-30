@@ -86,15 +86,64 @@ class WorktreeRowUiTest {
     )
 
     @androidx.compose.runtime.Composable
-    private fun Row(model: WorktreeRowModel, compact: Boolean = false) {
+    private fun Row(model: WorktreeRowModel, compact: Boolean = false, showExecution: Boolean = true) {
         WorktreeRow(
             model = model,
             selected = false,
             isCopied = false,
             compact = compact,
+            showExecution = showExecution,
             onSelect = {},
             onCopyLaunchCommand = {},
         )
+    }
+
+    @Test
+    fun `a view whose rows use no execution cell leaves it out`() = runComposeUiTest {
+        setContent { MaterialTheme { Column(Modifier.width(900.dp)) { Row(model("feature/TASK-2"), showExecution = false) } } }
+
+        assertEquals(0, onAllNodesWithTag(ExecutionTag, useUnmergedTree = true).fetchSemanticsNodes().size)
+        onNodeWithText("TASK-2", useUnmergedTree = true).assertIsDisplayed()
+    }
+
+    @Test
+    fun `a narrow row cuts the type prefix and keeps the task id whole`() = runComposeUiTest {
+        setContent {
+            MaterialTheme {
+                Column {
+                    Column(Modifier.width(450.dp)) { Row(model("feature/TASK-123"), showExecution = false) }
+                    Column(Modifier.width(900.dp)) { Row(model("fix/TASK-123"), showExecution = false) }
+                }
+            }
+        }
+
+        val (narrow, wide) = onAllNodesWithText("TASK-123", useUnmergedTree = true).fetchSemanticsNodes().map { it.size.width }
+        val prefix = onNodeWithText("feature/", useUnmergedTree = true).fetchSemanticsNode().size.width
+        assertEquals(wide, narrow)
+        assertTrue(prefix < narrow)
+    }
+
+    @Test
+    fun `the main checkout shows the main chip and a locked worktree a lock icon`() = runComposeUiTest {
+        val main = worktreeRowModel(
+            worktree = Worktree(path = "/home/dev/projects/main-repo", branch = "develop", isMain = true, isLocked = true),
+            status = WorktreeStatusState.Loaded(status()),
+            mainBranchName = "develop",
+            agents = emptyList(),
+            emulator = null,
+            simulator = null,
+            origin = null,
+            projectName = "main-repo",
+            inactiveAfter = Duration.ofDays(3),
+            now = now,
+            strings = EnglishStrings,
+        )
+        setContent { MaterialTheme { Column(Modifier.width(900.dp)) { Row(main) } } }
+
+        onNodeWithText(EnglishStrings.mainWorktree, useUnmergedTree = true).assertIsDisplayed()
+        onNodeWithText("main-repo", useUnmergedTree = true).assertIsDisplayed()
+        onNodeWithTag(LockedTag, useUnmergedTree = true).assertIsDisplayed()
+        onNodeWithContentDescription(EnglishStrings.locked, useUnmergedTree = true).assertExists()
     }
 
     @Test
