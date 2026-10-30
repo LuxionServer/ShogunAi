@@ -34,8 +34,7 @@ ShogunAi tiene que funcionar a la primera en una máquina que no es en la que se
   - Que los tests end to end de la app de escritorio fijen si `shogun` está instalado, cuando el entorno del host se resuelva en un solo sitio: hoy los tests del recorrido y de los hooks siguen lo que tenga la máquina, porque en macOS siempre se busca en `/opt/homebrew/bin`, y "falta el comando" solo se cubre con dobles.
   - Un test de regresión por cada bug corregido, escrito primero para reproducirlo, como ya lo tiene el falso aviso de «no está en el `PATH`».
 - Una prueba de humo de la app empaquetada en una máquina limpia en CI antes de cada versión: instalar el `.dmg` en un runner de macOS, abrir la app con el entorno que le da el Dock, instalar el comando y los hooks, añadir un proyecto con archivos locales, ejecutar `shogun new` y comprobar los archivos copiados. Una versión que no la pasa no se publica. Después, lo mismo en Windows y Linux con sus paquetes, que cubre también instalar el comando desde la app en Windows y en un equipo sin `~/.local/bin` en el `PATH`, y elegir una carpeta con el diálogo del sistema, que en Linux pasa por el portal del escritorio y, sin él, recurre al selector de Java.
-- Más comprobaciones en `shogun doctor` y «Comprobar instalación»: las herramientas de los providers que declara un repositorio (Xcode, el SDK de Android, Docker), y los multirepos con sus repositorios y grupos.
-- Un paso que ejecute `shogun doctor` en el [ensayo en una cuenta limpia](process/clean-account-rehearsal.md), para que un fallo allí llegue con qué está mal y cómo arreglarlo.
+- Lo que las herramientas de los providers necesitan además de estar instaladas, en `shogun doctor` y «Comprobar instalación»: el runtime de Java de Gradle y Maven, el daemon de Docker en marcha y versiones mínimas; hoy comprueban que cada herramienta se encuentra y se ejecuta.
 
 ### 2. Orca, un segundo runner de primera clase
 
