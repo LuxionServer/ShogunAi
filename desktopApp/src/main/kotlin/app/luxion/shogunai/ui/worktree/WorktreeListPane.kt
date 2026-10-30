@@ -64,6 +64,11 @@ import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.isAltPressed
+import androidx.compose.ui.input.key.isShiftPressed
+import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.isMetaPressed
+import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -116,6 +121,7 @@ fun WorktreeListPane(
                             board.selectPrevious()
                             true
                         }
+                        Key.Enter, Key.NumPadEnter -> !event.hasModifiers() && board.focusSelectedAgent()
                         else -> false
                     }
                 } else {
@@ -603,6 +609,10 @@ private fun WorktreeRowFor(
         onCopyLaunchCommand = { holder.copyLaunchCommand(worktree) },
         contextMenu = worktreeContextMenu(holder, worktree),
         onOpenGroupTag = { groupTag?.let(onOpenGroup) },
+        onFocusAgent = {
+            board.select(ref)
+            holder.focusAgent(worktree)
+        },
     )
 }
 
@@ -719,3 +729,5 @@ private fun UngroupedHeader(count: Int) {
         Text(strings.worktreeCount(count), style = ShogunTheme.typography.dataSmall, color = colors.onSurfaceVariant)
     }
 }
+
+private fun KeyEvent.hasModifiers(): Boolean = isMetaPressed || isCtrlPressed || isShiftPressed || isAltPressed

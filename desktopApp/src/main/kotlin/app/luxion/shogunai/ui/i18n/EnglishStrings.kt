@@ -4,6 +4,7 @@ import app.luxion.shogunai.domain.model.CheckState
 import app.luxion.shogunai.domain.model.InstallationCheck
 import app.luxion.shogunai.domain.model.InstallationReport
 import app.luxion.shogunai.domain.model.AgentStateSource
+import app.luxion.shogunai.domain.model.RunnerId
 import app.luxion.shogunai.ui.components.AgentPhase
 import app.luxion.shogunai.domain.model.ComposeResourceKind
 import app.luxion.shogunai.domain.model.ResourceLimits
@@ -283,6 +284,8 @@ object EnglishStrings : Strings {
     override fun agentLastMessage(message: String) = "Last message: $message"
     override fun portListening(label: String) = "$label (listening)"
     override val orcaPortsTitle = "Listening, seen by Orca"
+    override fun agentInRunner(runner: RunnerId) = "in ${runner.displayName}"
+    override val clickToFocus = "click to focus"
     override fun agentStateSource(source: AgentStateSource?) = if (source == null) "Only its process was found" else when (source) {
         AgentStateSource.HERDR -> "State from Herdr"
         AgentStateSource.ORCA -> "State from Orca"
@@ -608,7 +611,7 @@ object EnglishStrings : Strings {
         (if (count == 1) "1 idle Gradle daemon was stopped" else "$count idle Gradle daemons were stopped") +
             (if (limit == null) "" else " to stay within the limit of $limit") +
             (if (trims == 1) " at $lastTime" else " · $trims times, last at $lastTime")
-    override fun poolSummary(inUse: Int, limit: Int?) = if (limit == null) "$inUse" else "$inUse/$limit"
+    override fun poolSummary(inUse: Int, limit: Int?) = if (limit == null) "$inUse" else "$inUse of $limit"
     override val androidEmulatorsTitle = "Android emulators"
     override val iosSimulatorsTitle = "iOS simulators"
     override fun runningCount(count: Int) = "$count running"
@@ -827,7 +830,11 @@ object EnglishStrings : Strings {
     override val menuCommandPalette = "Command palette"
     override val paletteHint = "Search views, projects, worktrees and actions"
     override val paletteNoResults = "No results"
-    override val paletteCopyLaunchCommandHint = "Copy launch command"
+    override val paletteSettingsSynonym = "Settings"
+    override fun paletteOpenWorktree(worktree: String) = "Open $worktree"
+    override val paletteEnterOpen = "Open"
+    override val paletteEnterRun = "Run"
+    override val paletteEnterShowWorktree = "Show in All worktrees"
     override val paletteKindView = "View"
     override val paletteKindSetting = "Setting"
     override val paletteKindProject = "Project"
@@ -1001,7 +1008,8 @@ object EnglishStrings : Strings {
     override val tourExistingMessage = "The tour's sample already exists. Open it where you left it, or restart the tour to create it again from scratch."
     override val tourRestart = "Restart"
     override val tourOpenExisting = "Open"
-    override val tourNoticeMessage = "New: a guided tour of ShogunAi with a throwaway sample repository and an agent that walks you through every feature."
+    override val tourNoticeMessage = "New: take the guided tour"
+    override val tourNoticeDetails = "A guided tour of ShogunAi with a throwaway sample repository and an agent that walks you through every feature."
     override val tourBannerMessage = "This is the tour's throwaway sample. Its agent walks you through ShogunAi in the main worktree."
     override val tourOpenAgent = "Open the tour's agent"
     override val tourEnd = "End tour"

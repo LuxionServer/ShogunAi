@@ -12,7 +12,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -32,6 +35,7 @@ data class AgentIndicatorModel(
     val label: String,
     val moreCount: Int,
     val tooltip: String,
+    val focusable: Boolean = false,
 )
 
 enum class AgentIndicatorSize(val icon: Dp) {
@@ -46,11 +50,13 @@ fun AgentIndicator(
     modifier: Modifier = Modifier,
     compact: Boolean = false,
     size: AgentIndicatorSize = AgentIndicatorSize.MEDIUM,
+    onClick: (() -> Unit)? = null,
 ) {
     val description = if (model.moreCount > 0) "${model.label} +${model.moreCount}" else model.label
+    val clickable = onClick?.let { Modifier.semantics { role = Role.Button }.interactive(onClick = it) } ?: Modifier
     WithTooltip(label = model.tooltip, modifier = modifier) {
         Row(
-            modifier = Modifier.clearAndSetSemantics { contentDescription = description },
+            modifier = clickable.clearAndSetSemantics { contentDescription = description },
             horizontalArrangement = Arrangement.spacedBy(Spacing.xs),
             verticalAlignment = Alignment.CenterVertically,
         ) {

@@ -48,17 +48,10 @@ A UX review of the implemented v2 interface, done on `develop` at `aaf42f94` wit
   - The Agent section is one line when no agent runs, and keeps the running agent apart from "Runs with".
   - On narrow windows the type prefix truncates first, so the task id always shows, and the rail's tiles use two letters that tell sibling projects apart.
   - Counts inside sentences use the interface font with tabular figures; lone figures stay in the data font.
-- Focusing an agent from its row: clicking the row's agent indicator, or pressing Enter on the row, focuses the agent's pane in its runner, and the tooltip says so.
 - The machine's entry point and its alarms:
   - The status bar always starts with "Machine", and a gear at the bottom of the sidebar opens Settings.
   - A missing or optional tool shows as neutral with its reason; the danger color is kept for real failures.
   - The Gradle daemons view drops the state column when every value is unknown, explains why "Stop idle daemons" is disabled, and shows which worktree uses each daemon when that's known.
-- Quick fixes that don't need OpenSpec:
-  - The status bar, its tooltip and the view take the count of Gradle daemons from a single source; today they disagree.
-  - The guided tour's notice becomes one line in the sidebar's footer.
-  - A legible "New" badge.
-  - The command palette takes Settings and Preferences as synonyms and lists the worktrees for "open" when nothing is selected, drops fuzzy matches that aren't a subsequence of the visible name, and says in its footer, in the interface font, what ↵ and ⌘↵ do, taken from the action catalogue.
-  - Checking by hand two issues, fixed only if they reproduce: a project added with `shogun project add` not appearing until the app restarts, and ⌘A followed by delete in the palette removing a single character.
 
 ### 3. Orca, a second first-class runner
 

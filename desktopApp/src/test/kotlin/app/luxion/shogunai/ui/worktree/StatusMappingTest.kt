@@ -1,5 +1,7 @@
 package app.luxion.shogunai.ui.worktree
 
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import app.luxion.shogunai.domain.model.EmulatorState
 import app.luxion.shogunai.domain.model.SimulatorState
 import app.luxion.shogunai.ui.i18n.EnglishStrings
@@ -31,6 +33,11 @@ class StatusMappingTest {
     @Test
     fun `only the new state is drawn outlined`() {
         assertEquals(listOf(StateBadgeKind.NEW), StateBadgeKind.entries.filter { it.outlined })
+    }
+
+    @Test
+    fun `the new badge is a plus inside its outlined circle`() {
+        assertEquals(Icons.Default.Add, StateBadgeKind.NEW.icon())
     }
 
     @Test

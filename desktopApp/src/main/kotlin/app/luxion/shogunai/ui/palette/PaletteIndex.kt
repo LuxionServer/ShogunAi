@@ -21,7 +21,7 @@ fun buildPaletteIndex(
 ): List<PaletteItem> =
     viewItems(projects, machineResources, strings, shortcutLabel) +
         projects.flatMap { projectItems(it, strings) } +
-        worktrees.map { worktreeItem(it, strings) } +
+        worktrees.map { worktreeItem(it, strings, listedAsOpen = worktreeActions.isEmpty()) } +
         worktreeActionItems(worktreeActions, strings, shortcutLabel) +
         actionItems(projects, canCleanUp, strings, shortcutLabel)
 
@@ -40,7 +40,7 @@ private fun viewItems(
         id = "view:preferences",
         kind = PaletteKind.SETTING,
         title = strings.paletteViewPreferences,
-        keys = listOf(strings.paletteViewPreferences),
+        keys = listOf(strings.paletteViewPreferences, strings.paletteSettingsSynonym),
         context = strings.paletteKindSetting,
         shortcut = shortcutLabel(",", false),
         primary = PaletteAction.Run(PaletteCommand.OPEN_PREFERENCES),
@@ -106,14 +106,15 @@ private fun projectItems(project: Project, strings: Strings): List<PaletteItem> 
     ),
 )
 
-private fun worktreeItem(entry: PaletteWorktree, strings: Strings): PaletteItem {
+private fun worktreeItem(entry: PaletteWorktree, strings: Strings, listedAsOpen: Boolean): PaletteItem {
     val ref = WorktreeRef(entry.project.id, entry.worktree.path)
     val folder = entry.worktree.path.substringAfterLast('/')
+    val title = entry.worktree.branch ?: strings.detachedHead
     return PaletteItem(
         id = "worktree:${entry.project.id}:${entry.worktree.path}",
         kind = PaletteKind.WORKTREE,
-        title = entry.worktree.branch ?: strings.detachedHead,
-        keys = listOfNotNull(entry.worktree.branch, folder),
+        title = title,
+        keys = listOfNotNull(entry.worktree.branch, folder, strings.paletteOpenWorktree(title).takeIf { listedAsOpen }),
         contextKeys = listOf(entry.project.name),
         context = entry.project.name,
         indicator = entry.indicator,

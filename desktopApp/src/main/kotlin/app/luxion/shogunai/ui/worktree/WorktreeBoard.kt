@@ -948,6 +948,9 @@ class WorktreeBoard(
         if (textFilter.isNotEmpty()) clearTextFilter() else clearSelection()
     }
 
+    fun focusSelectedAgent(): Boolean =
+        selectedWorktree?.let { it.holder.focusAgent(it.worktree) } ?: false
+
     fun selectNext() = moveSelection(1)
 
     fun selectPrevious() = moveSelection(-1)

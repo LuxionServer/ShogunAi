@@ -18,9 +18,10 @@ class ListGradleDaemonsUseCase(
 ) {
     suspend operator fun invoke(
         worktrees: List<Worktree>?,
+        listed: List<DaemonProcess>? = null,
         sessionWorktrees: suspend () -> List<String> = { worktrees.orEmpty().map { it.path } },
     ): Result<List<GradleDaemon>> = runCatching {
-        val processes = source.list()
+        val processes = listed ?: source.list()
         val sessions = if (processes.any { it.holder?.client?.ancestors.orEmpty().isNotEmpty() }) sessionsByPid(sessionWorktrees()) else emptyMap()
         processes.map { process ->
             GradleDaemon(withSession(process, sessions), worktrees?.let { ownerOf(process, it) })
