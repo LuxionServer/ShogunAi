@@ -37,6 +37,7 @@ import app.luxion.shogunai.AppContainer
 import app.luxion.shogunai.domain.model.GroupedView
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.diagnostics.diagnosticsExceptionHandler
+import app.luxion.shogunai.ui.WindowActivity
 import app.luxion.shogunai.ui.components.EmptyState
 import app.luxion.shogunai.ui.components.ShogunDialog
 import app.luxion.shogunai.ui.components.DangerButton
@@ -109,6 +110,7 @@ fun AppShell(
             multirepoActions = appContainer.multirepoActions,
             runnerInUse = { appContainer.tools.defaultRunner ?: RunnerId.HERDR },
             desktopTurn = appContainer.desktopTurn,
+            cadence = appContainer::refreshCadence,
         )
     }
     LaunchedEffect(viewModel.memberships) { board.syncMultirepos(viewModel.memberships) }
@@ -132,6 +134,7 @@ fun AppShell(
             pathExists = appContainer.pathExists,
             onDevicesChanged = { projectId -> board.holder(projectId)?.refreshDevices() },
             desktopTurn = appContainer.desktopTurn,
+            cadence = appContainer::refreshCadence,
         )
     }
     val declaredMachine = machine.declared
@@ -141,11 +144,12 @@ fun AppShell(
         machine.show(destination?.resource)
         if (destination != null && board.isCatalogLoaded && destination.resource !in machine.visibleResources) viewModel.selectActive()
     }
-    LaunchedEffect(windowShown) {
-        board.setWindowActive(windowShown)
-        machine.setWindowActive(windowShown)
-    }
     val windowInfo = LocalWindowInfo.current
+    val windowActivity = WindowActivity.of(windowShown, windowInfo.isWindowFocused)
+    LaunchedEffect(windowActivity) {
+        board.setWindowActivity(windowActivity)
+        machine.setWindowActivity(windowActivity)
+    }
     LaunchedEffect(windowInfo) {
         snapshotFlow { windowInfo.isWindowFocused }
             .drop(1)
@@ -506,6 +510,7 @@ private fun ProjectForm(
             appContainer::multirepoNameOfWorkspace,
             appContainer::detectMobileSecrets,
             appContainer::listLocalFolder,
+            appContainer::listLocalFileCandidates,
         )
     }
     ProjectSettingsView(

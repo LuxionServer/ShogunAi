@@ -21,6 +21,7 @@ import app.luxion.shogunai.domain.io.GitHubClient
 import app.luxion.shogunai.domain.io.OrcaClient
 import app.luxion.shogunai.domain.io.OrcaWorkspaceStore
 import app.luxion.shogunai.domain.io.HerdrConfigSource
+import app.luxion.shogunai.domain.io.HostEnvironment
 import app.luxion.shogunai.domain.io.KmpTestWiring
 import app.luxion.shogunai.domain.io.MachineCapacity
 import app.luxion.shogunai.domain.io.PortProbe
@@ -60,6 +61,7 @@ import app.luxion.shogunai.domain.model.DerivedDataFolder
 import app.luxion.shogunai.domain.model.DerivedDataOwner
 import app.luxion.shogunai.domain.model.EmulatorState
 import app.luxion.shogunai.domain.model.AGENT_START_SECONDS
+import app.luxion.shogunai.domain.model.ClaudeComputerUse
 import app.luxion.shogunai.domain.model.OrcaComputerUse
 import app.luxion.shogunai.domain.model.OrcaEmulatorView
 import app.luxion.shogunai.domain.model.RunnerId
@@ -70,6 +72,7 @@ import app.luxion.shogunai.domain.model.runnerInUse
 import app.luxion.shogunai.domain.model.MainBranch
 import app.luxion.shogunai.domain.model.Multirepo
 import app.luxion.shogunai.domain.model.GradleDaemon
+import app.luxion.shogunai.domain.model.HoldingBuild
 import app.luxion.shogunai.domain.model.IOS_SIMULATOR_UDID
 import app.luxion.shogunai.domain.model.PoolHolder
 import app.luxion.shogunai.domain.model.PoolRelease
@@ -153,6 +156,11 @@ import app.luxion.shogunai.domain.usecase.usesFvm
 import app.luxion.shogunai.domain.usecase.PrepareWorktreeEnvironmentUseCase
 import app.luxion.shogunai.domain.usecase.ProviderContributions
 import app.luxion.shogunai.domain.usecase.CheckProvisionedFilesUseCase
+import app.luxion.shogunai.domain.usecase.CheckInstallationUseCase
+import app.luxion.shogunai.domain.usecase.CommandLineTool
+import app.luxion.shogunai.domain.usecase.InstallationReportText
+import app.luxion.shogunai.infrastructure.NioLauncherFiles
+import app.luxion.shogunai.infrastructure.PowerShellUserPath
 import app.luxion.shogunai.domain.usecase.ProvisionWorktreeUseCase
 import app.luxion.shogunai.domain.usecase.ReadEmulatorStatesUseCase
 import app.luxion.shogunai.domain.usecase.ReadAgentActivityUseCase
@@ -216,7 +224,9 @@ import app.luxion.shogunai.infrastructure.CliHerdrClient
 import app.luxion.shogunai.infrastructure.CliGitHubClient
 import app.luxion.shogunai.infrastructure.CliOrcaClient
 import app.luxion.shogunai.infrastructure.JsonOrcaWorkspaceStore
+import app.luxion.shogunai.infrastructure.ExecutableLocator
 import app.luxion.shogunai.infrastructure.FileClaudeSessionRegistry
+import app.luxion.shogunai.infrastructure.ShogunFiles
 import app.luxion.shogunai.infrastructure.SystemProcessEnvironmentReader
 import app.luxion.shogunai.infrastructure.DockerComposeProjectSource
 import app.luxion.shogunai.infrastructure.NioDesktopTurnStore
@@ -276,6 +286,11 @@ import java.time.Duration
 import java.time.Instant
 import java.util.Locale
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.currentCoroutineContext
@@ -312,41 +327,57 @@ class ShogunCli(
     private val readInput: () -> String = { "" },
     private val canonicalPath: (String) -> String = { File(it).canonicalPath },
     private val now: () -> Instant = Instant::now,
-    private val environmentVariable: (String) -> String? = System::getenv,
-    private val userHome: String = System.getProperty("user.home"),
-    private val herdr: HerdrClient = CliHerdrClient(executor, userHome = userHome),
-    private val toolPreferences: ToolPreferenceRepository = JsonToolPreferenceRepository(JsonSettingsFile(Path.of(userHome, ".shogunai", "settings.json"))),
+    private val environment: HostEnvironment,
+    private val files: ShogunFiles = ShogunFiles(environment.home),
+    private val findExecutable: (String) -> String? = ExecutableLocator(environment)::find,
+    private val herdr: HerdrClient = CliHerdrClient(executor, findExecutable),
+    private val toolPreferences: ToolPreferenceRepository = JsonToolPreferenceRepository(JsonSettingsFile(files.settings)),
     private val herdrAgentStartTimeout: kotlin.time.Duration = AGENT_START_SECONDS.seconds,
-    private val orca: OrcaClient = CliOrcaClient(executor, userHome = userHome),
-    private val gitHub: GitHubClient = CliGitHubClient(executor),
-    private val orcaWorkspaces: OrcaWorkspaceStore = JsonOrcaWorkspaceStore(Path.of(userHome, ".shogunai", "orca.json")),
+    private val orca: OrcaClient = CliOrcaClient(executor, findExecutable),
+    private val gitHub: GitHubClient = CliGitHubClient(executor, findExecutable),
+    private val orcaWorkspaces: OrcaWorkspaceStore = JsonOrcaWorkspaceStore(files.orcaWorkspaces),
     private val trust: RepositoryTrust = RepositoryTrust.NONE,
     private val readAnswer: () -> String? = { null },
-    private val sessionStore: AgentSessionStore = FileAgentSessionStore(),
+    private val sessionStore: AgentSessionStore = FileAgentSessionStore(files.agentSessions),
     private val agentProcessId: () -> Long? = ::claudeAncestorPid,
     private val mavenDaemonSource: MavenDaemonSource = ProcessMavenDaemonSource(executor),
     private val composeSource: ComposeProjectSource = DockerComposeProjectSource(executor),
-    private val composeRegistry: ComposeProjectRegistry = JsonComposeProjectRegistry(Path.of(userHome, ".shogunai", "compose-projects.json")),
-    private val multirepoSource: MultirepoSource = JsonMultirepoSource(Path.of(userHome, ".shogunai", "multirepos.json")),
-    private val appRequests: AppRequestChannel = FileAppRequestChannel(Path.of(userHome, ".shogunai", "app-requests")),
-    private val appLock: AppInstanceLock = FileAppInstanceLock(Path.of(userHome, ".shogunai", "app.lock")),
+    private val composeRegistry: ComposeProjectRegistry = JsonComposeProjectRegistry(files.composeProjects),
+    private val multirepoSource: MultirepoSource = JsonMultirepoSource(files.multirepos),
+    private val appRequests: AppRequestChannel = FileAppRequestChannel(files.appRequests),
+    private val appLock: AppInstanceLock = FileAppInstanceLock(files.appLock),
     private val appLauncher: AppLauncher = DesktopAppLauncher(),
     private val provisioningRecords: ProvisioningRecordStore = ProvisioningRecordStore.NONE,
     private val derivedDataSizes: DerivedDataSizeStore = DerivedDataSizeStore.NONE,
     private val packageCacheSource: PackageCacheSource = PackageCacheSource.NONE,
-    private val deviceWaitQueue: DeviceWaitQueue = NioDeviceWaitQueue(Path.of(userHome, ".shogunai")),
+    private val deviceWaitQueue: DeviceWaitQueue = NioDeviceWaitQueue(files.folder),
     private val processLiveness: ProcessLiveness = ProcessHandleLiveness(),
     private val deviceClock: () -> Instant = Instant::now,
     private val pauseWhileWaiting: suspend (Duration) -> Unit = { delay(it.toMillis()) },
-    private val headlessLauncher: HeadlessAppLauncher = GradleHeadlessAppLauncher(executor, Path.of(userHome, ".shogunai", "headless").toString()),
-    private val appWindows: AppWindowService = MacAppWindowService(executor, Path.of(userHome, ".shogunai", "headless").toString()),
+    private val headlessLauncher: HeadlessAppLauncher = GradleHeadlessAppLauncher(executor, files.headless.toString()),
+    private val appWindows: AppWindowService = MacAppWindowService(executor, files.headless.toString()),
     private val pauseWhileStartingApp: suspend (Long) -> Unit = { delay(it) },
-    private val desktopTurnStore: DesktopTurnStore = NioDesktopTurnStore(Path.of(userHome, ".shogunai")),
+    private val desktopTurnStore: DesktopTurnStore = NioDesktopTurnStore(files.folder),
     private val claudeSessions: ClaudeSessionRegistry = FileClaudeSessionRegistry(
-        ClaudeCodeHooks.claudeSessionsDirectory(environmentVariable(CLAUDE_CONFIG_DIR), userHome),
+        ClaudeCodeHooks.claudeSessionsDirectory(environment.variable(CLAUDE_CONFIG_DIR), environment.home),
     ),
     private val isClaudeProcessAlive: (Long) -> Boolean = ::isLiveClaudeProcess,
+    private val onShutdown: (Thread) -> () -> Unit = ::addJvmShutdownHook,
+    private val commandLineTool: CommandLineTool = CommandLineTool(
+        os = environment.os,
+        appLauncher = null,
+        home = environment.home,
+        pathFolders = { environment.path.folders },
+        userBinFolders = ExecutableLocator(environment).userBinFolders(),
+        findShogun = { findExecutable("shogun") },
+        files = NioLauncherFiles(),
+        userPath = PowerShellUserPath(executor),
+    ),
 ) {
+    private val userHome: String = environment.home
+
+    private fun environmentVariable(name: String): String? = environment.variable(name)
+
     private val orcaReader = OrcaWorktreeReader(orca, orcaWorkspaces, userHome)
 
     private val terminalApproval = RepositoryApproval { repository, subject ->
@@ -471,11 +502,11 @@ class ShogunCli(
             job.cancel()
             runBlocking { job.join() }
         }
-        Runtime.getRuntime().addShutdownHook(hook)
+        val removeHook = onShutdown(hook)
         try {
             return block()
         } finally {
-            runCatching { Runtime.getRuntime().removeShutdownHook(hook) }
+            removeHook()
         }
     }
 
@@ -498,6 +529,7 @@ class ShogunCli(
             CliCommand.HookWorktreeRemove -> hookWorktreeRemove()
             is CliCommand.Gradle -> gradle(command)
             is CliCommand.Stacks -> stacks(command)
+            is CliCommand.Doctor -> doctor(command)
             is CliCommand.Maven -> maven(command)
             is CliCommand.MavenStop -> mavenStop(command)
             is CliCommand.Compose -> compose(command)
@@ -563,12 +595,13 @@ class ShogunCli(
         }
         if (command.fetch) FetchRemoteUseCase(config, executor)().getOrThrow()
         val approval = if (command.json) RepositoryApproval.SKIP else terminalApproval
+        var startPoint: String? = null
         val created = if (command.branch != null) {
             CreateWorktreeFromBranchUseCase(
                 config, executor, fileManager, provisioningSource, prepareEnvironment, trust, approval, provisioningRecords,
             )(command.branch)
         } else {
-            val startPoint = resolveStartPoint(workingDirectory, command.from)
+            startPoint = resolveStartPoint(workingDirectory, command.from)
             CreateWorktreeUseCase(config, executor, fileManager, provisioningSource, prepareEnvironment, trust, approval, provisioningRecords)(
                 command.taskId.orEmpty(),
                 command.branchType,
@@ -592,6 +625,7 @@ class ShogunCli(
             return EXIT_OK
         }
         out.line(worktree.path)
+        startPoint?.let { noteStartCommit(it, command.from) }
         noteSkippedLinks(worktree.skippedLinks)
         podsLines(worktree.pods).forEach { err.line("shogun: $it") }
         worktree.flutter?.let { err.line("shogun: ${flutterPubGetLine(it)}") }
@@ -1153,6 +1187,11 @@ class ShogunCli(
         }
     }
 
+    private suspend fun noteStartCommit(commit: String, from: String?) {
+        val described = ResolveStartPointUseCase(executor).describe(workingDirectory, commit) ?: return
+        err.line(if (from != null) "shogun: branched from $from at $described" else "shogun: branched at $described")
+    }
+
     private suspend fun resolveBaseBranch(directory: String, from: String?): String? =
         ResolveBaseBranchUseCase(executor)(directory, from ?: "HEAD")
 
@@ -1230,26 +1269,40 @@ class ShogunCli(
         multirepoContext()?.takeIf { it.atFolder }?.let { return groupStatus(it, command.json) }
         val config = configFor(workingDirectory)
         val worktrees = ListWorktreesUseCase(config, executor)().getOrThrow()
-        val mainBranch = ResolveMainBranchUseCase(config, executor)().getOrNull()
         val readStatus = ReadWorktreeStatusUseCase(executor, fileManager)
         val herdrWorktreesRoot = herdrConfig.worktreesRoot()
-        val agents = DetectRunningAgentsUseCase(executor, herdr, sessionStore, claudeSessions = claudeSessions, orca = orcaReader)(config, worktrees.filterNot { it.isPrunable }).getOrNull().orEmpty()
-        val listeningPorts = orcaReader.ports(worktrees)
-        val desktop = readDesktopTurn().getOrElse { DesktopTurnState(holder = null, waiting = emptyList()) }
-        val bases = ReadBaseBranchesUseCase(config, executor)().getOrElse { emptyMap() }
-        val resolvedBases = ResolveRecordedBasesUseCase(config, executor)()
-        val entries = worktrees.map { worktree ->
-            val read = if (worktree.isPrunable) null else readStatus(worktree, mainBranch, worktree.branch?.let(resolvedBases::get) ?: mainBranch)
-            WorktreeEntry(
-                worktree,
-                read?.getOrNull(),
-                classifyOrigin(worktree, config, herdrWorktreesRoot, orcaReader.origins()),
-                read?.exceptionOrNull()?.let(::failureReason),
-                agents[worktree.path].orEmpty(),
-                desktop,
-                worktree.branch?.let(bases::get),
-                listeningPorts?.get(worktree.path),
-            )
+        val (mainBranch, entries) = coroutineScope {
+            val mainBranchRead = async { ResolveMainBranchUseCase(config, executor)().getOrNull() }
+            val agentsRead = async {
+                DetectRunningAgentsUseCase(executor, herdr, sessionStore, claudeSessions = claudeSessions, orca = orcaReader)(config, worktrees.filterNot { it.isPrunable }).getOrNull().orEmpty()
+            }
+            val desktopRead = async { readDesktopTurn().getOrElse { DesktopTurnState(holder = null, waiting = emptyList()) } }
+            val basesRead = async { ReadBaseBranchesUseCase(config, executor)().getOrElse { emptyMap() } }
+            val resolvedBasesRead = async { ResolveRecordedBasesUseCase(config, executor)() }
+            val mainBranch = mainBranchRead.await()
+            val resolvedBases = resolvedBasesRead.await()
+            val permits = Semaphore(MAX_CONCURRENT_STATUS_READS)
+            val reads = worktrees.map { worktree ->
+                async {
+                    if (worktree.isPrunable) null else permits.withPermit { readStatus(worktree, mainBranch, worktree.branch?.let(resolvedBases::get) ?: mainBranch) }
+                }
+            }.awaitAll()
+            val agents = agentsRead.await()
+            val desktop = desktopRead.await()
+            val bases = basesRead.await()
+            val listeningPorts = orcaReader.ports(worktrees)
+            mainBranch to worktrees.zip(reads) { worktree, read ->
+                WorktreeEntry(
+                    worktree,
+                    read?.getOrNull(),
+                    classifyOrigin(worktree, config, herdrWorktreesRoot, orcaReader.origins()),
+                    read?.exceptionOrNull()?.let(::failureReason),
+                    agents[worktree.path].orEmpty(),
+                    desktop,
+                    worktree.branch?.let(bases::get),
+                    listeningPorts?.get(worktree.path),
+                )
+            }
         }
         if (command.json) {
             printJson(statusJson(config.baseRepositoryPath, mainBranch?.name, entries))
@@ -2148,7 +2201,7 @@ class ShogunCli(
     private suspend fun gradle(command: CliCommand.Gradle): Int {
         val repository = ResolveRepositoryUseCase(executor)(workingDirectory).getOrNull()
         val worktrees = repository?.let { ListWorktreesUseCase(configFor(workingDirectory), executor)().getOrNull() }
-        val daemons = ListGradleDaemonsUseCase(daemonSource, fileManager)(worktrees).getOrThrow()
+        val daemons = ListGradleDaemonsUseCase(daemonSource, fileManager, sessionStore)(worktrees) { knownWorktreePaths(worktrees) }.getOrThrow()
         if (command.json) {
             printJson(gradleJson(daemons, attributed = worktrees != null))
             return EXIT_OK
@@ -2156,7 +2209,10 @@ class ShogunCli(
         if (daemons.isEmpty()) {
             out.line("No Gradle or Kotlin daemons running.")
         } else {
-            daemons.forEach { out.line(daemonLine(it, attributed = worktrees != null)) }
+            daemons.forEach { daemon ->
+                out.line(daemonLine(daemon, attributed = worktrees != null))
+                daemon.process.holder?.let { out.line(holderLine(it)) }
+            }
             out.line("total  memory=${formatMemory(totalResidentMemory(daemons))}  daemons=${daemons.size}")
         }
         if (repository != null && declaresGradle(repository) &&
@@ -2234,6 +2290,25 @@ class ShogunCli(
             },
         )
         return EXIT_OK
+    }
+
+    private suspend fun doctor(command: CliCommand.Doctor): Int {
+        val report = CheckInstallationUseCase(
+            executor = executor,
+            findExecutable = findExecutable,
+            path = { environment.path },
+            shell = environment.shell,
+            commandLineTool = commandLineTool::status,
+            hooks = claudeHooks,
+            hooksSettingsPath = userHooksSettingsPath(),
+            herdrLocation = herdr::location,
+            orcaLocation = orca::location,
+            projects = projectRepository,
+            fileManager = fileManager,
+            provisioningSource = provisioningSource,
+        )()
+        if (command.json) printJson(doctorJson(report)) else InstallationReportText.lines(report).forEach { out.line(it) }
+        return if (report.failed) EXIT_FAILURE else EXIT_OK
     }
 
     private suspend fun stacks(command: CliCommand.Stacks): Int {
@@ -2627,6 +2702,23 @@ class ShogunCli(
         return (listOf(process.pid.toString()) + details).joinToString("  ")
     }
 
+    private suspend fun knownWorktreePaths(current: List<Worktree>?): List<String> {
+        val others = projectRepository.list().flatMap { ListWorktreesUseCase(it.config, executor)().getOrNull().orEmpty() }
+        return (current.orEmpty() + others).map { it.path }.distinctBy { it.trimEnd('/') }
+    }
+
+    private fun holderLine(holder: HoldingBuild): String {
+        val client = holder.client
+        val build = when {
+            client == null -> "a build"
+            client.tasks.isEmpty() -> "pid ${client.pid}"
+            else -> "pid ${client.pid} (${client.tasks.joinToString(" ")})"
+        }
+        val running = holder.startedAt?.let { " for ${formatDuration(Duration.between(it, now()))}" }.orEmpty()
+        val session = client?.session?.let { ", session ${it.sessionId} of ${it.worktreePath}" }.orEmpty()
+        return "  held by $build in ${holder.directory}$running$session"
+    }
+
     private fun kindLabel(process: DaemonProcess): String =
         listOfNotNull(process.kind.label, process.gradleVersion).joinToString(" ")
 
@@ -2792,9 +2884,7 @@ class ShogunCli(
 
     private suspend fun hookDesktopTurn(): Int {
         val input = hookInput("desktop-turn") ?: return EXIT_USAGE
-        if (input.string("tool_name") != BASH_TOOL) return EXIT_OK
-        val command = (input["tool_input"] as? JsonObject)?.string("command") ?: return EXIT_OK
-        if (!OrcaComputerUse.drivesDesktop(command)) return EXIT_OK
+        if (!drivesDesktop(input)) return EXIT_OK
         try {
             val directory = input.string("cwd") ?: workingDirectory
             if (ResolveRepositoryUseCase(executor)(directory).isFailure) return EXIT_OK
@@ -2809,6 +2899,13 @@ class ShogunCli(
         return EXIT_OK
     }
 
+    private fun drivesDesktop(input: JsonObject): Boolean {
+        val tool = input.string("tool_name") ?: return false
+        if (tool != BASH_TOOL) return ClaudeComputerUse.drivesDesktop(tool)
+        val command = (input["tool_input"] as? JsonObject)?.string("command") ?: return false
+        return OrcaComputerUse.drivesDesktop(command)
+    }
+
     private fun desktopTurnDenial(taken: WorktreeError.DesktopTurnTaken): JsonObject = buildJsonObject {
         put(
             "hookSpecificOutput",
@@ -2818,7 +2915,7 @@ class ShogunCli(
                 put(
                     "permissionDecisionReason",
                     "${taken.summary}. Take your turn first with `shogun desktop acquire --wait`, run in the background " +
-                        "since it can wait up to 30 minutes, then run this command again.",
+                        "since it can wait up to 30 minutes, then try again.",
                 )
             },
         )
@@ -3116,6 +3213,7 @@ class ShogunCli(
         const val EXIT_USAGE = 2
         const val EXIT_DRIFT = 3
         const val EXIT_INTERRUPTED = 130
+        private const val MAX_CONCURRENT_STATUS_READS = 8
         private const val CLAUDE_CODE_WORKTREES = ".claude/worktrees"
         private const val CLAUDE_ENV_FILE = "CLAUDE_ENV_FILE"
         private const val COMPOSE_SESSION_HINT = "Start its Docker Compose services with `shogun compose up` (`--build` to rebuild)."
@@ -3168,3 +3266,8 @@ internal fun claudeAncestorPid(): Long? =
     generateSequence(ProcessHandle.current().parent().orElse(null)) { it.parent().orElse(null) }
         .firstOrNull { it.info().command().orElse("").substringAfterLast('/') == "claude" }
         ?.pid()
+
+private fun addJvmShutdownHook(hook: Thread): () -> Unit {
+    Runtime.getRuntime().addShutdownHook(hook)
+    return { runCatching { Runtime.getRuntime().removeShutdownHook(hook) } }
+}

@@ -1,5 +1,7 @@
 package app.luxion.shogunai.ui.machine
 
+import app.luxion.shogunai.domain.model.RefreshCadence
+import app.luxion.shogunai.ui.WindowActivity
 import app.luxion.shogunai.domain.model.PackageCacheSizes
 import app.luxion.shogunai.domain.model.CapacityProfile
 import app.luxion.shogunai.domain.model.DesktopTurn
@@ -82,6 +84,7 @@ class MachineResourcesTest {
     }
 
     private val idle = DaemonState.Idle(Instant.parse("2026-01-01T00:00:00Z"))
+    private val now = Instant.parse("2026-01-01T10:42:00Z")
 
     private fun project(id: String) = Project(
         id = id,
@@ -147,6 +150,7 @@ class MachineResourcesTest {
         },
         pools: Map<ResourceKind, PoolUsage> = emptyMap(),
         trim: GradleTrim = GradleTrim(limit = null),
+        nextTrim: () -> GradleTrim = { trim },
         settings: ResourceSettings = ResourceSettings(),
         derivedDataTrim: (Long) -> DerivedDataTrim = { DerivedDataTrim(it, 0L, 0L) },
         stopDaemons: suspend (List<Long>?) -> Result<DaemonStopReport> = { pids ->
@@ -178,7 +182,7 @@ class MachineResourcesTest {
         readRunningEmulators = { calls.recordDispatcher(); Result.success(running) },
         startEmulator = startEmulator,
         readPool = { kind, _, _ -> calls.recordDispatcher(); pools[kind]?.let { Result.success(it) } ?: Result.failure(IllegalStateException()) },
-        trimGradleDaemons = { calls.recordDispatcher(); calls.trims++; Result.success(trim) },
+        trimGradleDaemons = { calls.recordDispatcher(); calls.trims++; Result.success(nextTrim()) },
         resourceSettings = { settings },
         trimDerivedData = { quota, _, _ -> calls.derivedDataTrims += quota; Result.success(derivedDataTrim(quota)) },
         stopEmulator = { _, _ -> Result.success(null) },
@@ -201,6 +205,8 @@ class MachineResourcesTest {
         onDevicesChanged: suspend (String) -> Unit = {},
         desktopTurn: DesktopTurnWatch = DesktopTurnWatch.NONE,
         ioDispatcher: CoroutineDispatcher = dispatcher,
+        cadence: RefreshCadence = RefreshCadence.BALANCED,
+        clock: () -> Instant = { now },
     ) = MachineResources(
         scope = scope,
         useCases = useCases,
@@ -209,6 +215,8 @@ class MachineResourcesTest {
         onDevicesChanged = onDevicesChanged,
         desktopTurn = desktopTurn,
         ioDispatcher = ioDispatcher,
+        cadence = { cadence },
+        clock = clock,
     )
 
     @Test
@@ -562,7 +570,7 @@ class MachineResourcesTest {
             useCases(calls),
             listOf(machineProject("main-repo", listOf(mainWorktree), MachineResource.GRADLE_DAEMONS, MachineResource.ANDROID_EMULATORS)),
         )
-        machine.setWindowActive(false)
+        machine.setWindowActivity(WindowActivity.HIDDEN)
 
         val ticks = scope.launch { machine.runSummaryTicks() }
         runCurrent()
@@ -572,7 +580,7 @@ class MachineResourcesTest {
         assertEquals(0, calls.daemonListings)
         assertTrue(machine.summaries.isEmpty())
 
-        machine.setWindowActive(true)
+        machine.setWindowActivity(WindowActivity.FOCUSED)
         runCurrent()
         ticks.cancel()
 
@@ -592,12 +600,76 @@ class MachineResourcesTest {
         runCurrent()
         assertEquals(1, calls.daemonListings)
 
-        machine.setWindowActive(false)
+        machine.setWindowActivity(WindowActivity.HIDDEN)
         advanceTimeBy(30.seconds)
         runCurrent()
         assertEquals(1, calls.daemonListings)
 
-        machine.setWindowActive(true)
+        machine.setWindowActivity(WindowActivity.FOCUSED)
+        runCurrent()
+        machine.show(null)
+
+        assertEquals(2, calls.daemonListings)
+    }
+
+    private fun gradleMachine(calls: Calls, cadence: RefreshCadence) = machine(
+        useCases(calls),
+        listOf(machineProject("main-repo", listOf(mainWorktree), MachineResource.GRADLE_DAEMONS)),
+        cadence = cadence,
+    )
+
+    @Test
+    fun `the light cadence refreshes a shown view every fifteen seconds and the summaries every two minutes`() = machineTest {
+        val calls = Calls().apply { daemons = listOf(gradleDaemon(10, idle)) }
+        val machine = gradleMachine(calls, RefreshCadence.LIGHT)
+        machine.show(MachineResource.GRADLE_DAEMONS)
+        runCurrent()
+        advanceTimeBy(60.seconds)
+        runCurrent()
+        machine.show(null)
+        assertEquals(5, calls.daemonListings)
+
+        calls.daemonListings = 0
+        val ticks = scope.launch { machine.runSummaryTicks() }
+        runCurrent()
+        advanceTimeBy(119.seconds)
+        runCurrent()
+        assertEquals(1, calls.daemonListings)
+        advanceTimeBy(1.seconds)
+        runCurrent()
+        ticks.cancel()
+
+        assertEquals(2, calls.daemonListings)
+    }
+
+    @Test
+    fun `an unfocused window refreshes the shown view no more often than unfocused checks`() = machineTest {
+        val calls = Calls().apply { daemons = listOf(gradleDaemon(10, idle)) }
+        val machine = gradleMachine(calls, RefreshCadence.BALANCED)
+        machine.setWindowActivity(WindowActivity.UNFOCUSED)
+        machine.show(MachineResource.GRADLE_DAEMONS)
+        runCurrent()
+        advanceTimeBy(60.seconds)
+        runCurrent()
+        machine.show(null)
+
+        assertEquals(5, calls.daemonListings)
+    }
+
+    @Test
+    fun `losing focus waits for the next refresh and regaining it refreshes the shown view at once`() = machineTest {
+        val calls = Calls().apply { daemons = listOf(gradleDaemon(10, idle)) }
+        val machine = gradleMachine(calls, RefreshCadence.BALANCED)
+        machine.show(MachineResource.GRADLE_DAEMONS)
+        runCurrent()
+
+        machine.setWindowActivity(WindowActivity.UNFOCUSED)
+        runCurrent()
+        advanceTimeBy(10.seconds)
+        runCurrent()
+        assertEquals(1, calls.daemonListings)
+
+        machine.setWindowActivity(WindowActivity.FOCUSED)
         runCurrent()
         machine.show(null)
 
@@ -641,6 +713,21 @@ class MachineResourcesTest {
     }
 
     @Test
+    fun `a Gradle pool over its limit with no idle daemon is held by builds`() = machineTest {
+        val busy = usage(ResourceKind.GRADLE_DAEMON, 2, 1, 2, 3).let { pool ->
+            pool.copy(holders = pool.holders.map { it.copy(state = PoolHolderState.BUSY) })
+        }
+        val machine = machine(
+            useCases(Calls(), pools = mapOf(ResourceKind.GRADLE_DAEMON to busy)),
+            listOf(machineProject("api", listOf(apiWorktree), MachineResource.GRADLE_DAEMONS)),
+        )
+
+        machine.refreshSummaries()
+
+        assertTrue(machine.summaries.getValue(MachineResource.GRADLE_DAEMONS).poolHeldByBuilds)
+    }
+
+    @Test
     fun `starting an emulator that released another one leaves a notice until dismissed`() = machineTest {
         val release = PoolRelease(ResourceKind.EMULATOR, "/home/dev/projects/api-TASK-1", PoolReleaseReason.MAKE_ROOM, "api · TASK-1")
         val machine = machine(
@@ -677,7 +764,39 @@ class MachineResourcesTest {
         machine.refreshSummaries()
 
         assertEquals(1, calls.trims)
-        assertEquals(PoolNoticeContent.Trimmed(1, 2), machine.noticesOf(MachineResource.GRADLE_DAEMONS).single().content)
+        assertEquals(PoolNoticeContent.Trimmed(1, 2, 1, now), machine.noticesOf(MachineResource.GRADLE_DAEMONS).single().content)
+    }
+
+    @Test
+    fun `repeated trims accumulate into one report until it is dismissed`() = machineTest {
+        val calls = Calls()
+        var stopped = listOf(gradleDaemon(7, idle))
+        var time = now
+        val machine = machine(
+            useCases(calls, nextTrim = { GradleTrim(limit = 3, stopped = stopped) }),
+            listOf(machineProject("api", listOf(apiWorktree), MachineResource.GRADLE_DAEMONS)),
+            clock = { time },
+        )
+
+        machine.refreshSummaries()
+        val first = machine.noticesOf(MachineResource.GRADLE_DAEMONS).single()
+        stopped = listOf(gradleDaemon(8, idle), gradleDaemon(9, idle))
+        time = now.plusSeconds(30)
+        machine.refreshSummaries()
+        stopped = emptyList()
+        machine.refreshSummaries()
+        stopped = listOf(gradleDaemon(10, idle))
+        time = now.plusSeconds(90)
+        machine.refreshSummaries()
+
+        val accumulated = machine.noticesOf(MachineResource.GRADLE_DAEMONS).single()
+        assertEquals(first.id, accumulated.id)
+        assertEquals(PoolNoticeContent.Trimmed(4, 3, 3, now.plusSeconds(90)), accumulated.content)
+
+        machine.dismissNotices(MachineResource.GRADLE_DAEMONS)
+        machine.refreshSummaries()
+
+        assertEquals(PoolNoticeContent.Trimmed(1, 3, 1, now.plusSeconds(90)), machine.noticesOf(MachineResource.GRADLE_DAEMONS).single().content)
     }
 
     @Test

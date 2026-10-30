@@ -14,6 +14,7 @@ class FakeGitRepositories : ShellCommandExecutor {
         val mergedOnlyInto = mutableMapOf<String, String>()
         val recordedBases = linkedMapOf<String, String>()
         val dirty = mutableMapOf<String, Int>()
+        val unreadableStatus = mutableSetOf<String>()
         var failAdd: String? = null
     }
 
@@ -64,6 +65,7 @@ class FakeGitRepositories : ShellCommandExecutor {
                 repository.worktrees.remove(args.last().trimEnd('/'))
                 ok(command)
             }
+            args.take(1) == listOf("status") && directory in repository.unreadableStatus -> fail(command, "fatal: index file corrupt")
             args.take(1) == listOf("status") -> ok(command, " M file\n".repeat(repository.dirty[directory] ?: 0))
             args.take(1) == listOf("rev-list") && args.last().endsWith("@{upstream}...HEAD") -> fail(command)
             args.take(1) == listOf("rev-list") -> ok(command, if (readsAsMerged(repository, directory, args.last())) "3\t0" else "0\t2")

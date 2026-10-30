@@ -33,6 +33,8 @@ También puedes usar el run widget del IDE. Para probar el comando `shogun` sin 
 ./gradlew test
 ```
 
+También ejecuta los tests end-to-end de la app de escritorio, que manejan su interfaz contra repositorios Git reales en un home aislado bajo `desktopApp/build/e2e/`. Para ejecutar solo esos: `./gradlew :desktopApp:desktopE2eTest`; se niegan a correr desde la ejecución de tests por defecto de un IDE, que usaría tu home real.
+
 ## Orientarte en el código
 
 El proyecto es una app de escritorio Kotlin/JVM construida con Compose Multiplatform, más la herramienta de línea de comandos `shogun`, en tres módulos de Gradle. `core` contiene el dominio y la infraestructura, sin nada de UI; `desktopApp` contiene la UI Compose y lo cablea todo; `cli` es el comando:

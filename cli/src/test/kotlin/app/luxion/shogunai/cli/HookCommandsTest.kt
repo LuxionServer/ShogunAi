@@ -134,8 +134,7 @@ class HookCommandsTest {
         err = err,
         readInput = { input },
         canonicalPath = { it.trimEnd('/') },
-        environmentVariable = { environment[it] },
-        userHome = "/home/dev",
+        environment = hostEnvironment("/home/dev", environment),
         herdr = herdr,
         trust = trust,
         readAnswer = { "y" },
@@ -359,6 +358,14 @@ class HookCommandsTest {
         assertEquals(0, exitCode, err.toString())
         assertTrue(executor.ran("git", "merge-base", "--is-ancestor", "feature/TASK-123", "epic/redesign"))
         assertTrue(executor.ran("git", "branch", "-D", "--", "feature/TASK-123"))
+    }
+
+    @Test
+    fun `worktree-remove without a worktree path is a usage error`() {
+        val exitCode = cli(Executor(porcelain()), """{"cwd":"$base"}""").run(listOf("hook", "worktree-remove"))
+
+        assertEquals(2, exitCode)
+        assertTrue(err.contains("worktree_path"), err.toString())
     }
 
     @Test
@@ -642,6 +649,24 @@ class HookCommandsTest {
     }
 
     @Test
+    fun `orca setup keeps its exit code when the worktree can't be read for the Orca sync`() {
+        val inside = "$worktreesRoot/TASK-7"
+        val executor = Executor(porcelain(inside to "feature/TASK-7")) { command ->
+            when {
+                command.take(3) == listOf("git", "config", "--get-regexp") -> CommandResult(command, 0, "branch.feature/TASK-7.gh-merge-base epic/redesign\n", "")
+                command.lastOrNull() == "refs/remotes/origin/epic/redesign" -> throw app.luxion.shogunai.domain.executor.CommandExecutionException(command, java.io.IOException("git vanished"))
+                else -> null
+            }
+        }
+        val orca = FakeOrcaClient(psRows = listOf(OrcaWorktree(inside, createdByOrca = true, comment = "", workspaceStatus = "in-progress")))
+
+        val exitCode = cli(executor, "", environment = mapOf("ORCA_WORKTREE_PATH" to inside), orca = orca).run(listOf("hook", "orca", "setup"))
+
+        assertEquals(0, exitCode)
+        assertTrue(err.contains("couldn't update $inside in Orca"), err.toString())
+    }
+
+    @Test
     fun `orca setup prints no note inside the worktrees folder`() {
         val inside = "$worktreesRoot/TASK-7"
         val executor = Executor(porcelain(inside to "feature/TASK-7"))
@@ -820,6 +845,14 @@ class HookCommandsTest {
     }
 
     private fun recorded(store: FakeAgentSessionStore) = store.records[base].orEmpty().singleOrNull()
+
+    @Test
+    fun `agent-state outside any worktree of the repository records nothing and exits with 0`() {
+        val (exitCode, store) = runAgentState(stateInput("UserPromptSubmit", cwd = "/home/dev/elsewhere"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertTrue(store.records.isEmpty())
+    }
 
     @Test
     fun `agent-state records working on UserPromptSubmit`() {

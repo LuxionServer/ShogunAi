@@ -153,18 +153,41 @@ class OpenWorktreeInHerdrUseCaseTest {
         assertTrue(herdr.closed.isEmpty())
         assertTrue(herdr.focusedAgents.isEmpty())
         assertEquals(listOf("w1:p2" to "headroom wrap claude -n main-repo-task-8"), herdr.ran)
+        assertTrue(herdr.processReads.isEmpty())
     }
 
     @Test
-    fun `an already open worktree without an agent nor environment still gets a new pane`() = runTest {
+    fun `an already open worktree whose only pane is idle in it runs the agent in that pane`() = runTest {
         val herdr = FakeHerdrClient(alreadyOpen = setOf(task.path))
 
-        val opening = useCase(herdr)(task).getOrThrow()
+        val opening = useCase(
+            herdr,
+            provisioning("PORT" to "\${port}"),
+            registry = FakeClaudeSessionRegistry(started = herdr::startedClaudeSessions),
+        )(task).getOrThrow()
 
-        assertEquals(HerdrOutcome.STARTED_AGENT, opening.outcome)
-        assertEquals(FakeHerdrClient.Split("w1:p1", task.path, emptyList()), herdr.splits.single())
+        assertEquals(HerdrOpening(HerdrOutcome.STARTED_AGENT, "w1:p1", config.agentLaunchConfig.displayName, "main-repo-task-8"), opening)
+        assertTrue(herdr.splits.isEmpty())
         assertTrue(herdr.closed.isEmpty())
-        assertEquals(listOf("w1:p2" to "headroom wrap claude -n main-repo-task-8"), herdr.ran)
+        assertEquals(listOf("w1:p1" to "headroom wrap claude -n main-repo-task-8"), herdr.ran)
+        assertEquals(listOf("w1:p1"), herdr.processReads)
+    }
+
+    @Test
+    fun `an already open worktree whose only pane can't be reused gets a new agent pane with its environment`() = runTest {
+        val cases = listOf(
+            FakeHerdrClient(alreadyOpen = setOf(task.path), busyPanes = setOf("w1:p1")),
+            FakeHerdrClient(alreadyOpen = setOf(task.path), unknownProcessPanes = setOf("w1:p1")),
+            FakeHerdrClient(alreadyOpen = setOf(task.path), panes = listOf(HerdrPane("w1:p1", "w1", "/home/dev/projects/other"))),
+        )
+        cases.forEach { herdr ->
+            val opening = useCase(herdr, provisioning("PORT" to "\${port}"))(task).getOrThrow()
+
+            assertEquals(HerdrOpening(HerdrOutcome.STARTED_AGENT, "w1:p2", config.agentLaunchConfig.displayName), opening)
+            assertEquals(FakeHerdrClient.Split("w1:p1", task.path, listOf("PORT" to "20000")), herdr.splits.single())
+            assertTrue(herdr.closed.isEmpty())
+            assertEquals(listOf("w1:p2" to "headroom wrap claude -n main-repo-task-8"), herdr.ran)
+        }
     }
 
     @Test

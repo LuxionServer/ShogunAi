@@ -36,9 +36,9 @@ class Redactor(
         const val PATH_PLACEHOLDER = "<path>"
         const val USER = "<user>"
         const val MIN_NAME_LENGTH = 3
-        val STACK_FRAME = Regex("^\\s*(at |\\.\\.\\. \\d+ (more|common))")
-        val PATH = Regex("(?<![\\w:/.<>~-])(?:~|[A-Za-z]:[\\\\/]|/)[^\\s'\"`,;()\\[\\]{}]*")
-        val COMMON_NAMES = setOf(
+        private val STACK_FRAME = Regex("^\\s*(at |\\.\\.\\. \\d+ (more|common))")
+        private val PATH = Regex("(?<![\\w:/.<>~-])(?:~|[A-Za-z]:[\\\\/]|/)[^\\s'\"`,;()\\[\\]{}]*")
+        private val COMMON_NAMES = setOf(
             "app", "apps", "src", "main", "test", "tests", "core", "lib", "api", "web", "ios", "android",
             "build", "docs", "data", "common", "shared", "client", "server", "project", "repo", "demo",
         )

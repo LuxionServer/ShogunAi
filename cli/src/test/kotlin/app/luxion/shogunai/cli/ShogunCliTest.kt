@@ -59,7 +59,9 @@ import app.luxion.shogunai.domain.model.AgentState
 import app.luxion.shogunai.domain.model.ClaudeSession
 import app.luxion.shogunai.domain.model.SimulatorState
 import app.luxion.shogunai.domain.model.WorktreeError
+import app.luxion.shogunai.domain.model.GradleClient
 import app.luxion.shogunai.domain.model.GradleProvider
+import app.luxion.shogunai.domain.model.HoldingBuild
 import app.luxion.shogunai.domain.model.IosSimulatorProvider
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.ProjectConfig
@@ -67,6 +69,7 @@ import app.luxion.shogunai.domain.model.PackageCacheSizes
 import app.luxion.shogunai.domain.model.RepositoryProviders
 import app.luxion.shogunai.domain.model.RepositoryProvisioning
 import app.luxion.shogunai.domain.model.XcodeProvider
+import java.time.Duration
 import java.time.Instant
 import kotlinx.coroutines.runBlocking
 import app.luxion.shogunai.domain.model.HerdrPane
@@ -78,12 +81,14 @@ import app.luxion.shogunai.domain.model.OrcaPort
 import app.luxion.shogunai.domain.model.OrcaRepo
 import app.luxion.shogunai.domain.model.OrcaTerminal
 import app.luxion.shogunai.domain.model.OrcaWorktree
+import kotlinx.coroutines.delay
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.coroutines.delay
 import kotlin.test.Test
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.test.assertEquals
@@ -187,6 +192,7 @@ class ShogunCliTest {
         gitHub: FakeGitHubClient = FakeGitHubClient(),
         orcaWorkspaces: OrcaWorkspaceStore = OrcaWorkspaceStore.NONE,
         runner: FakeToolPreferenceRepository = FakeToolPreferenceRepository(),
+        onShutdown: (Thread) -> () -> Unit = { hook -> Runtime.getRuntime().addShutdownHook(hook); { Runtime.getRuntime().removeShutdownHook(hook) } },
     ) = ShogunCli(
         executor = executor,
         fileManager = fileManager,
@@ -216,8 +222,7 @@ class ShogunCliTest {
         herdrAgentStartTimeout = 100.milliseconds,
         trust = trust,
         readAnswer = { answer },
-        environmentVariable = { environment[it] },
-        userHome = "/home/dev",
+        environment = hostEnvironment("/home/dev", environment),
         sessionStore = sessionStore,
         mavenDaemonSource = mavenDaemons,
         composeSource = composeProjects,
@@ -226,6 +231,7 @@ class ShogunCliTest {
         claudeSessions = claudeSessions,
         packageCacheSource = { packageCaches },
         isClaudeProcessAlive = { true },
+        onShutdown = onShutdown,
     )
 
     private val gradleUserHome = "/home/dev/.gradle"
@@ -245,6 +251,33 @@ class ShogunCliTest {
 
         assertEquals(0, exitCode, err.toString())
         assertEquals("Maven  evidence=pom.xml  maven=suggested\n", out.toString())
+    }
+
+    @Test
+    fun `stacks names Docker Compose as text and JSON`() {
+        val fileManager = FakeFileManager(existing = listOf(base, "$base/compose.yaml"))
+
+        cli(repositoryExecutor(), fileManager = fileManager).run(listOf("stacks"))
+        val text = out.toString()
+        out.clear()
+        cli(repositoryExecutor(), fileManager = fileManager).run(listOf("stacks", "--json"))
+
+        assertTrue(text.startsWith("Docker Compose  evidence=compose.yaml"), text)
+        assertTrue(out.contains("\"stack\":\"docker-compose\""), out.toString())
+    }
+
+    @Test
+    fun `a shutdown while a command waits cancels it and exits with 130`() {
+        val slowGit = object : ShellCommandExecutor {
+            override suspend fun execute(command: List<String>, workingDirectory: String?): CommandResult {
+                delay(60_000)
+                return Executor.ok(command)
+            }
+        }
+
+        val exitCode = cli(slowGit, onShutdown = { hook -> hook.start(); {} }).run(listOf("status"))
+
+        assertEquals(130, exitCode)
     }
 
     @Test
@@ -430,6 +463,37 @@ class ShogunCliTest {
     }
 
     @Test
+    fun `maven stop json lists the daemons that failed to stop, and plain stop says when none run`() {
+        val daemons = FakeMavenDaemonSource(listOf(mavenDaemon(20, idleSinceTenMinutes)))
+        val refusing = repositoryExecutor { command, _ -> if (command.first() == "kill") Executor.fail(command, "Operation not permitted") else null }
+
+        val exitCode = cli(refusing, mavenDaemons = daemons).run(listOf("maven", "stop", "--json"))
+        val failure = jsonOut().getValue("failures").jsonArray.single().jsonObject
+        out.clear()
+        cli(repositoryExecutor()).run(listOf("maven", "stop"))
+
+        assertEquals(1, exitCode)
+        assertEquals("20", failure.getValue("pid").toString())
+        assertEquals("Operation not permitted", (failure.getValue("message") as JsonPrimitive).content)
+        assertEquals("No Maven daemons running.\n", out.toString())
+    }
+
+    @Test
+    fun `maven names daemons of other projects and daemons whose folder is unknown`() {
+        val daemons = FakeMavenDaemonSource(listOf(mavenDaemon(20, DaemonState.Busy, workingDirectory = "/home/dev/other"), mavenDaemon(21, DaemonState.Busy)))
+        val fileManager = FakeFileManager(existing = listOf(base, "/home/dev/other"))
+
+        cli(repositoryExecutor(), fileManager = fileManager, mavenDaemons = daemons).run(listOf("maven"))
+        val text = out.toString()
+        out.clear()
+        cli(repositoryExecutor(), fileManager = fileManager, mavenDaemons = daemons).run(listOf("maven", "--json"))
+
+        assertTrue(text.contains("21  memory=1.0 MB  state=busy  worktree=unknown"), text)
+        val worktrees = jsonOut().getValue("daemons").jsonArray.map { it.jsonObject.getValue("worktree") }
+        assertEquals(listOf<kotlinx.serialization.json.JsonElement>(JsonPrimitive("other-project"), JsonNull), worktrees)
+    }
+
+    @Test
     fun `maven json includes the state of each daemon`() {
         val daemons = FakeMavenDaemonSource(listOf(mavenDaemon(20, idleSinceTenMinutes, workingDirectory = "$merged/service")))
 
@@ -556,6 +620,60 @@ class ShogunCliTest {
         assertEquals(1, down)
         assertTrue(err.contains("docker-compose"), err.toString())
         assertTrue(projects.listings.isEmpty() && projects.downs.isEmpty())
+    }
+
+    @Test
+    fun `compose --json lists the projects with their owner and the leftovers`() {
+        val projects = FakeComposeProjectSource(
+            listOf(composeProject("main-repo-task-1", "$merged/compose.yaml"), composeProject("main-repo-task-9", "$worktreesRoot/TASK-9/compose.yaml")),
+            resources = listOf(leftover(ComposeResourceKind.VOLUME, "main-repo-task-9_db-data")),
+        )
+
+        val exitCode = cli(repositoryExecutor(), provisioning = composeDeclared, composeProjects = projects, composeRegistry = removedRegistry)
+            .run(listOf("compose", "--json"))
+
+        assertEquals(0, exitCode, err.toString())
+        val json = out.toString()
+        assertTrue(json.contains("{\"name\":\"main-repo-task-1\",\"status\":\"running(1)\",\"worktree\":\"$merged\"}"), json)
+        assertTrue(json.contains("\"worktree\":\"removed\""), json)
+        assertTrue(json.contains("\"leftovers\":[{\"kind\":\"volume\",\"name\":\"main-repo-task-9_db-data\""), json)
+    }
+
+    @Test
+    fun `compose down --json reports what was taken down, what failed, or that nothing was`() {
+        val projects = FakeComposeProjectSource(
+            listOf(composeProject("main-repo-task-9", "$worktreesRoot/TASK-9/compose.yaml"), composeProject("main-repo-task-8", "$worktreesRoot/TASK-8/compose.yaml")),
+            failingDowns = mapOf("main-repo-task-8" to "still in use"),
+        )
+
+        val exitCode = cli(repositoryExecutor(), provisioning = composeDeclared, composeProjects = projects).run(listOf("compose", "down", "--json"))
+        val taken = out.toString()
+        out.clear()
+        val nothing = cli(repositoryExecutor(), provisioning = composeDeclared).run(listOf("compose", "down", "--json"))
+
+        assertEquals(1, exitCode)
+        assertTrue(taken.contains("\"takenDown\":[\"main-repo-task-9\"]"), taken)
+        assertTrue(taken.contains("{\"name\":\"main-repo-task-8\",\"message\":\"still in use\"}"), taken)
+        assertEquals(0, nothing)
+        assertEquals("{\"takenDown\":[],\"failures\":[]}\n", out.toString())
+    }
+
+    @Test
+    fun `compose prune --json without --yes plans and plain prune with nothing says so`() {
+        val volume = leftover(ComposeResourceKind.VOLUME, "main-repo-task-9_db-data")
+        val projects = FakeComposeProjectSource(resources = listOf(volume))
+
+        val planned = cli(repositoryExecutor(), provisioning = composeDeclared, composeProjects = projects, composeRegistry = removedRegistry)
+            .run(listOf("compose", "prune", "--json"))
+        val plan = out.toString()
+        out.clear()
+        val nothing = cli(repositoryExecutor(), provisioning = composeDeclared).run(listOf("compose", "prune"))
+
+        assertEquals(0, planned)
+        assertTrue(plan.startsWith("{\"dryRun\":true,\"removed\":[],\"kept\":[{\"kind\":\"volume\""), plan)
+        assertTrue(projects.removals.isEmpty())
+        assertEquals(0, nothing)
+        assertEquals("Nothing to remove.\n", out.toString())
     }
 
     private fun cleanableExecutor() = repositoryExecutor()
@@ -808,6 +926,68 @@ class ShogunCliTest {
         )
     }
 
+    private val apps = "/home/dev/projects/worktrees/apps/task-123"
+
+    private fun heldDaemons(client: GradleClient?) = FakeGradleDaemonSource(
+        listOf(
+            gradleDaemon(10, DaemonState.Busy, lastBuildDirectory = merged, memoryBytes = 1_073_741_824)
+                .copy(holder = HoldingBuild(merged, Instant.parse("2026-10-16T08:46:00Z"), client)),
+            gradleDaemon(11, idleSinceTenMinutes, lastBuildDirectory = merged, memoryBytes = 1_073_741_824),
+        ),
+    )
+
+    private val heldSessions = FakeAgentSessionStore(
+        mapOf(apps to listOf(AgentSessionRecord("963d9441", "claude", AgentState.WORKING, 0, pid = 700))),
+    )
+
+    private val appsProject = Project("apps", "apps", ProjectConfig("/home/dev/projects/apps", "/home/dev/projects/worktrees/apps", emptyList()))
+
+    private fun appsExecutor() = repositoryExecutor { command, directory ->
+        if (command.take(3) == listOf("git", "worktree", "list") && directory == appsProject.config.baseRepositoryPath) {
+            Executor.ok(command, "worktree ${appsProject.config.baseRepositoryPath}\nHEAD abc\nbranch refs/heads/develop\n\nworktree $apps\nHEAD def\nbranch refs/heads/feature/TASK-123\n\n")
+        } else {
+            null
+        }
+    }
+
+    @Test
+    fun `gradle names the build holding a busy daemon and the session that started it`() {
+        val daemons = heldDaemons(GradleClient(81234, listOf("benchRun"), listOf(81200, 700, 500)))
+        val fileManager = FakeFileManager(existing = listOf(base, merged))
+
+        val exitCode = cli(appsExecutor(), projects = listOf(project, appsProject), fileManager = fileManager, daemons = daemons, sessionStore = heldSessions)
+            .run(listOf("gradle"))
+
+        assertEquals(0, exitCode, err.toString())
+        val lines = out.lines()
+        assertTrue(lines[0].startsWith("10  gradle 9.6.1  memory=1.0 GB  state=busy"), out.toString())
+        assertEquals("  held by pid 81234 (benchRun) in $merged for 2h14m, session 963d9441 of $apps", lines[1])
+        assertTrue(lines[2].startsWith("11  gradle 9.6.1"), out.toString())
+    }
+
+    @Test
+    fun `gradle shows the holding build without client when it can't be traced`() {
+        val exitCode = cli(repositoryExecutor(), fileManager = FakeFileManager(existing = listOf(base, merged)), daemons = heldDaemons(null)).run(listOf("gradle"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals("  held by a build in $merged for 2h14m", out.lines()[1])
+    }
+
+    @Test
+    fun `gradle shows a traced client without tasks, start or session by its pid`() {
+        val daemons = FakeGradleDaemonSource(
+            listOf(
+                gradleDaemon(10, DaemonState.Busy, lastBuildDirectory = merged)
+                    .copy(holder = HoldingBuild(merged, null, GradleClient(81234, emptyList(), listOf(700)))),
+            ),
+        )
+
+        val exitCode = cli(repositoryExecutor(), fileManager = FakeFileManager(existing = listOf(base, merged)), daemons = daemons).run(listOf("gradle"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals("  held by pid 81234 in $merged", out.lines()[1])
+    }
+
     @Test
     fun `gradle without daemons says so`() {
         val exitCode = cli(repositoryExecutor()).run(listOf("gradle"))
@@ -883,6 +1063,46 @@ class ShogunCliTest {
 
         assertEquals(0, exitCode)
         assertEquals("kept 4242  gradle  (busy)\n", out.toString())
+    }
+
+    @Test
+    fun `gradle stop json lists failures and kotlin daemons kept while a build runs, and plain stop says when none run`() {
+        val daemons = FakeGradleDaemonSource(listOf(gradleDaemon(10, idleSinceTenMinutes), gradleDaemon(12, DaemonState.Busy), kotlinDaemon(30)))
+        val refusing = repositoryExecutor { command, _ -> if (command.first() == "kill") Executor.fail(command, "Operation not permitted") else null }
+
+        val exitCode = cli(refusing, daemons = daemons).run(listOf("gradle", "stop", "--json"))
+        val json = jsonOut()
+        out.clear()
+        cli(repositoryExecutor()).run(listOf("gradle", "stop"))
+
+        assertEquals(1, exitCode)
+        assertEquals("10", json.getValue("failures").jsonArray.single().jsonObject.getValue("pid").toString())
+        assertTrue(json.getValue("kept").jsonArray.any { (it.jsonObject.getValue("reason") as JsonPrimitive).content == "build-running" }, json.toString())
+        assertEquals("No Gradle or Kotlin daemons running.\n", out.toString())
+    }
+
+    @Test
+    fun `gradle stop names why it kept a daemon and a kill that can't start fails the command`() {
+        val daemons = FakeGradleDaemonSource(listOf(gradleDaemon(12, DaemonState.Busy), gradleDaemon(13, DaemonState.Unknown), kotlinDaemon(30)))
+        val unstartable = repositoryExecutor { command, _ ->
+            if (command.first() == "kill") throw app.luxion.shogunai.domain.executor.CommandExecutionException(command, java.io.IOException("kill not found")) else null
+        }
+
+        cli(repositoryExecutor(), daemons = daemons).run(listOf("gradle", "stop"))
+        val kept = out.toString()
+        val exitCode = cli(unstartable, daemons = FakeGradleDaemonSource(listOf(gradleDaemon(10, idleSinceTenMinutes)))).run(listOf("gradle", "stop"))
+
+        assertTrue(kept.contains("kept 13  gradle  (state unknown)"), kept)
+        assertTrue(kept.contains("kept 30  kotlin  (a Gradle build is running)"), kept)
+        assertEquals(1, exitCode)
+        assertTrue(err.contains("shogun: Could not start the command: kill 10"), err.toString())
+    }
+
+    @Test
+    fun `idle times are shown in minutes, hours or days`() {
+        assertEquals("5m", ShogunCli.formatDuration(Duration.ofMinutes(5)))
+        assertEquals("2h05m", ShogunCli.formatDuration(Duration.ofMinutes(125)))
+        assertEquals("3d", ShogunCli.formatDuration(Duration.ofDays(3).plusHours(4)))
     }
 
     @Test
@@ -976,6 +1196,36 @@ class ShogunCliTest {
 
         assertEquals(0, exitCode, err.toString())
         assertTrue(executor.ran("git", "worktree", "add", "--no-track", "$worktreesRoot/TASK-123", "-b", "feature/TASK-123", "epic1234"))
+    }
+
+    @Test
+    fun `new reports the commit the branch starts from on standard error`() {
+        val executor = repositoryExecutor { command, _ ->
+            when (command) {
+                listOf("git", "rev-parse", "--verify", "--quiet", "origin/develop^{commit}") -> Executor.ok(command, "a41d2651\n")
+                listOf("git", "log", "-1", "--format=%h %s", "a41d2651") -> Executor.ok(command, "a41d265 Merge pull request #12\n")
+                else -> null
+            }
+        }
+
+        val exitCode = cli(executor).run(listOf("new", "TASK-123", "--from", "origin/develop"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals("$worktreesRoot/TASK-123\n", out.toString())
+        assertTrue(err.contains("branched from origin/develop at a41d265 Merge pull request #12"), err.toString())
+    }
+
+    @Test
+    fun `new without from reports the current HEAD's commit`() {
+        val executor = repositoryExecutor { command, _ ->
+            if (command == listOf("git", "log", "-1", "--format=%h %s", "abc123")) Executor.ok(command, "abc123 Add login\n") else null
+        }
+
+        assertEquals(0, cli(executor).run(listOf("new", "TASK-123")), err.toString())
+
+        assertEquals("$worktreesRoot/TASK-123\n", out.toString())
+        assertTrue(err.contains("branched at abc123 Add login"), err.toString())
+        assertFalse(err.contains("branched from"), err.toString())
     }
 
     private fun symbolicRefs(vararg refs: Pair<String, String>) = repositoryExecutor { command, _ ->
@@ -1144,6 +1394,8 @@ class ShogunCliTest {
 
         assertEquals(0, exitCode, err.toString())
         assertEquals("$worktreesRoot/hotfix-login\n", out.toString())
+        assertFalse(err.contains("branched"), err.toString())
+        assertFalse(executor.calls.any { it.first.take(2) == listOf("git", "log") })
     }
 
     @Test
@@ -1364,6 +1616,33 @@ class ShogunCliTest {
     }
 
     @Test
+    fun `provision check names a copied file that should be a link, as text or JSON`() {
+        val fileManager = FakeFileManager(existing = listOf(base, "$base/local.properties", "$merged/local.properties", "$base/token.txt", "$merged/.env", "$merged/token.txt"))
+        fileManager.contents["$base/.env"] = "KEY=1"
+        fileManager.contents["$base/local.properties"] = "A=1"
+        fileManager.contents["$merged/local.properties"] = "A=1"
+        fileManager.contents["$merged/.env"] = "KEY=1"
+
+        val exitCode = cli(linkingExecutor(), provisioning = linkingProvisioning, fileManager = fileManager, workingDirectory = merged)
+            .run(listOf("provision", "--check"))
+        val text = out.toString()
+        out.clear()
+        cli(linkingExecutor(), provisioning = linkingProvisioning, fileManager = fileManager, workingDirectory = merged).run(listOf("provision", "--check", "--json"))
+
+        assertEquals(3, exitCode, err.toString())
+        assertEquals("token.txt: not linked\n", text)
+        assertTrue(out.contains("\"not-linked\""), out.toString())
+    }
+
+    @Test
+    fun `provision check of a folder that isn't a worktree fails`() {
+        val exitCode = cli(linkingExecutor(), provisioning = linkingProvisioning).run(listOf("provision", "--check", "$worktreesRoot/unknown"))
+
+        assertEquals(1, exitCode)
+        assertTrue(err.contains("$worktreesRoot/unknown"), err.toString())
+    }
+
+    @Test
     fun `provision check prints nothing and exits with 0 when everything matches`() {
         val fileManager = FakeFileManager(existing = listOf(base, "$base/local.properties", "$merged/local.properties", "$base/token.txt", "$merged/.env", "$merged/token.txt"))
         fileManager.contents["$base/.env"] = "KEY=1"
@@ -1408,6 +1687,31 @@ class ShogunCliTest {
             ),
             out.lines().filter { it.isNotEmpty() },
         )
+    }
+
+    private class ConcurrencyRecordingExecutor(private val delegate: ShellCommandExecutor) : ShellCommandExecutor {
+        private var inFlight = 0
+        var maxInFlight = 0
+
+        override suspend fun execute(command: List<String>, workingDirectory: String?): CommandResult {
+            if ("status" !in command) return delegate.execute(command, workingDirectory)
+            inFlight++
+            maxInFlight = maxOf(maxInFlight, inFlight)
+            delay(10)
+            inFlight--
+            return delegate.execute(command, workingDirectory)
+        }
+    }
+
+    @Test
+    fun `status reads the worktrees concurrently and prints them in listing order`() {
+        val executor = ConcurrencyRecordingExecutor(repositoryExecutor())
+
+        val exitCode = cli(executor).run(listOf("status"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertTrue(executor.maxInFlight > 1, "max in flight: ${executor.maxInFlight}")
+        assertEquals(listOf(base, merged, dirty), out.lines().filter { it.isNotEmpty() }.map { it.substringBefore("  ") })
     }
 
     private fun statusUnreadable(path: String) = repositoryExecutor { command, directory ->
@@ -2209,7 +2513,7 @@ class ShogunCliTest {
     @Test
     fun `clean says when running agents couldn't be checked and goes on`() {
         val executor = repositoryExecutor { command, _ ->
-            if (command.first() == "lsof") Executor.fail(command, "lsof: not found", 127) else null
+            if (command.first() == "ps") Executor.fail(command, "ps: not found", 127) else null
         }
 
         val exitCode = cli(executor).run(listOf("clean"))
@@ -2581,6 +2885,45 @@ class ShogunCliTest {
     }
 
     @Test
+    fun `xcode trim json reports failed deletions and a missing quota`() {
+        val gigabyte = 1_073_741_824L
+        val orphan = FakeDerivedDataSource.derivedData("Gone-hash", "/home/dev/projects/gone/App.xcodeproj", 15 * gigabyte)
+        val (derivedData, provisioning) = trimSetup(12, orphan)
+        derivedData.failDeletionFor = setOf(orphan.path)
+
+        val failedExit = cli(repositoryExecutor(), provisioning = provisioning, derivedDataSource = derivedData).run(listOf("xcode", "trim", "--json"))
+        val failure = jsonOut().getValue("failures").jsonArray.single().jsonObject
+        out.clear()
+        resourceLimits.settings = ResourceSettings(derivedDataQuotaGigabytes = 12, derivedDataQuotaMode = DerivedDataQuotaMode.NONE)
+        val noQuotaExit = cli(repositoryExecutor(), provisioning = provisioning, derivedDataSource = derivedData).run(listOf("xcode", "trim", "--json"))
+
+        assertEquals(1, failedExit)
+        assertEquals(orphan.path, failure.getValue("path").jsonPrimitive.content)
+        assertEquals(0, noQuotaExit)
+        assertEquals(JsonNull, jsonOut().getValue("quotaBytes"))
+        assertEquals("none", jsonOut().getValue("quotaMode").jsonPrimitive.content)
+    }
+
+    @Test
+    fun `xcode clean json reports failed deletions, and an inactive provider as text or JSON`() {
+        val orphan = FakeDerivedDataSource.derivedData("Stuck-hash", "/home/dev/projects/gone/App.xcodeproj")
+        val derivedData = FakeDerivedDataSource(existing = listOf(orphan), failDeletionFor = setOf(orphan.path))
+
+        val failedExit = cli(repositoryExecutor(), provisioning = xcodeProvisioning(), derivedDataSource = derivedData).run(listOf("xcode", "clean", "--json"))
+        val failure = jsonOut().getValue("failures").jsonArray.single().jsonObject
+        out.clear()
+        cli(repositoryExecutor()).run(listOf("xcode", "clean"))
+        val inactive = out.toString()
+        out.clear()
+        cli(repositoryExecutor()).run(listOf("xcode", "clean", "--json"))
+
+        assertEquals(1, failedExit)
+        assertEquals("can't delete ${orphan.path}", failure.getValue("message").jsonPrimitive.content)
+        assertEquals("The Xcode provider isn't active.\n", inactive)
+        assertEquals(JsonPrimitive(false), jsonOut().getValue("active"))
+    }
+
+    @Test
     fun `xcode trim reports the provider is not active when not declared`() {
         resourceLimits.settings = ResourceSettings(derivedDataQuotaGigabytes = 5)
 
@@ -2617,6 +2960,33 @@ class ShogunCliTest {
         assertTrue(out.contains("removed $merged\n"), out.toString())
         assertTrue(out.contains("deleted DerivedData ${folder.path}\n"), out.toString())
         assertEquals(listOf(folder.path), derivedData.deleted)
+    }
+
+    @Test
+    fun `clean with delete derived data reports the folders it couldn't delete or list`() {
+        val mergedProject = "$merged/iosApp/iosApp.xcodeproj"
+        val folder = FakeDerivedDataSource.derivedData("Merged-hash", mergedProject)
+        val stuck = FakeDerivedDataSource(existing = listOf(folder), existingProjects = setOf(mergedProject), failDeletionFor = setOf(folder.path))
+        val unlistable = FakeDerivedDataSource(existing = listOf(folder), existingProjects = setOf(mergedProject))
+        fun removing(derivedData: FakeDerivedDataSource) = repositoryExecutor { command, _ ->
+            if (command.take(3) == listOf("git", "worktree", "remove")) {
+                derivedData.existingProjects -= mergedProject
+                if (derivedData === unlistable) derivedData.onFolders = { throw java.io.IOException("DerivedData is unreadable") }
+                Executor.ok(command)
+            } else {
+                null
+            }
+        }
+
+        val stuckExit = cli(removing(stuck), provisioning = xcodeProvisioning(), derivedDataSource = stuck).run(listOf("clean", "--yes", "--delete-derived-data", "--json"))
+        val stuckJson = out.toString()
+        out.clear()
+        val unlistableExit = cli(removing(unlistable), provisioning = xcodeProvisioning(), derivedDataSource = unlistable).run(listOf("clean", "--yes", "--delete-derived-data"))
+
+        assertEquals(1, stuckExit)
+        assertTrue(stuckJson.contains(folder.path) && stuckJson.contains("can't delete"), stuckJson)
+        assertEquals(1, unlistableExit)
+        assertTrue(err.contains("shogun: couldn't delete DerivedData: DerivedData is unreadable"), err.toString())
     }
 
     @Test
@@ -3130,11 +3500,12 @@ class ShogunCliTest {
 
         assertEquals(
             "opened $merged in Herdr with Claude (pane w1:p1)\n" +
-                "started Claude in $merged's open Herdr workspace (pane w1:p2)\n" +
-                "focused $merged in Herdr (already open, pane w1:p2)\n",
+                "started Claude in $merged's open Herdr workspace (pane w1:p1)\n" +
+                "focused $merged in Herdr (already open, pane w1:p1)\n",
             out.toString(),
         )
-        assertEquals(listOf("w1:p1" to "claude -n main-repo-task-1", "w1:p2" to "claude -n main-repo-task-1"), herdr.ran)
+        assertEquals(listOf("w1:p1" to "claude -n main-repo-task-1", "w1:p1" to "claude -n main-repo-task-1"), herdr.ran)
+        assertTrue(herdr.splits.isEmpty())
         assertTrue(herdr.closed.isEmpty())
     }
 
@@ -3214,7 +3585,7 @@ class ShogunCliTest {
         cli(repositoryExecutor(), herdr = herdr).run(listOf("open", "TASK-1", "--herdr", "--json"))
 
         assertEquals(
-            Json.parseToJsonElement("""{"path": "$merged", "branch": "feature/TASK-1", "herdr": "started-agent", "pane_id": "w1:p2", "agent": "Claude", "session_name": null}"""),
+            Json.parseToJsonElement("""{"path": "$merged", "branch": "feature/TASK-1", "herdr": "started-agent", "pane_id": "w1:p1", "agent": "Claude", "session_name": null}"""),
             Json.parseToJsonElement(out.toString()),
         )
     }
@@ -3504,6 +3875,14 @@ class ShogunCliTest {
     }
 
     @Test
+    fun `repair without a project has no worktrees folder to repair into`() {
+        val exitCode = cli(repositoryExecutor(), projects = emptyList()).run(listOf("repair"))
+
+        assertEquals(2, exitCode)
+        assertTrue(err.contains("has no ShogunAi project"), err.toString())
+    }
+
+    @Test
     fun `repair says so when nothing moved`() {
         val exitCode = cli(repositoryExecutor()).run(listOf("repair"))
 
@@ -3623,6 +4002,27 @@ class ShogunCliTest {
         assertTrue(executor.ran("cp", "-c", "-R", "$base/iosApp/Pods", "$merged/iosApp/Pods"))
         assertTrue(out.contains("iosApp/Pods (cloned from the base)\n"), out.toString())
         assertTrue(out.contains("macApp/Pods: pod install needed (the base has no pods)\n"), out.toString())
+    }
+
+    @Test
+    fun `provision names pods that differ from the base and pods that couldn't be cloned`() {
+        val executor = repositoryExecutor { command, _ ->
+            when {
+                command.lastOrNull() == ":(glob)**/Podfile.lock" -> Executor.ok(command, "iosApp/Podfile.lock\u0000macApp/Podfile.lock\u0000")
+                command.firstOrNull() == "cp" -> Executor.fail(command, "cp: clone failed")
+                else -> null
+            }
+        }
+        val fileManager = podsFileManager(merged).also {
+            it.writeText("$base/macApp/Pods/Manifest.lock", "PODFILE CHECKSUM: old")
+            it.contents["$merged/macApp/Podfile.lock"] = "PODFILE CHECKSUM: new"
+        }
+
+        val exitCode = cli(executor, provisioning = podsProvisioning, fileManager = fileManager, workingDirectory = merged).run(listOf("provision"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertTrue(out.contains("iosApp/Pods: pod install needed (the base's pods couldn't be cloned)"), out.toString())
+        assertTrue(out.contains("macApp/Pods: pod install needed (the base's pods differ from Podfile.lock)"), out.toString())
     }
 
     @Test
@@ -3965,7 +4365,7 @@ class ShogunCliTest {
         assertEquals(setOf("daemons", "totalMemoryBytes"), json.keys)
         assertEquals(JsonPrimitive(2_684_354_560L), json.getValue("totalMemoryBytes"))
         val first = json.getValue("daemons").jsonArray[0].jsonObject
-        assertEquals(setOf("pid", "kind", "version", "memoryBytes", "state", "idleSince", "worktree"), first.keys)
+        assertEquals(setOf("pid", "kind", "version", "memoryBytes", "state", "idleSince", "worktree", "holder"), first.keys)
         assertEquals(JsonPrimitive(10), first.getValue("pid"))
         assertEquals("idle", (first.getValue("state") as JsonPrimitive).content)
         assertEquals(merged, (first.getValue("worktree") as JsonPrimitive).content)
@@ -3973,6 +4373,40 @@ class ShogunCliTest {
         val kotlin = json.getValue("daemons").jsonArray[2].jsonObject
         assertEquals("kotlin", (kotlin.getValue("kind") as JsonPrimitive).content)
         assertEquals(JsonNull, kotlin.getValue("idleSince"))
+    }
+
+    @Test
+    fun `gradle json leaves an untraced holding build's start, client and session null`() {
+        val daemons = FakeGradleDaemonSource(
+            listOf(gradleDaemon(10, DaemonState.Busy, lastBuildDirectory = merged).copy(holder = HoldingBuild(merged, null, null))),
+        )
+
+        val exitCode = cli(repositoryExecutor(), fileManager = FakeFileManager(existing = listOf(base, merged)), daemons = daemons).run(listOf("gradle", "--json"))
+
+        assertEquals(0, exitCode, err.toString())
+        val holder = jsonOut().getValue("daemons").jsonArray[0].jsonObject.getValue("holder").jsonObject
+        assertEquals(merged, holder.getValue("directory").jsonPrimitive.content)
+        listOf("startedAt", "clientPid", "tasks", "session").forEach { assertEquals(JsonNull, holder.getValue(it), it) }
+    }
+
+    @Test
+    fun `gradle json adds the holding build of a busy daemon and null for an idle one`() {
+        val daemons = heldDaemons(GradleClient(81234, listOf("benchRun"), listOf(81200, 700, 500)))
+
+        val exitCode = cli(appsExecutor(), projects = listOf(project, appsProject), fileManager = FakeFileManager(existing = listOf(base, merged)), daemons = daemons, sessionStore = heldSessions)
+            .run(listOf("gradle", "--json"))
+
+        assertEquals(0, exitCode, err.toString())
+        val entries = jsonOut().getValue("daemons").jsonArray
+        val holder = entries[0].jsonObject.getValue("holder").jsonObject
+        assertEquals(merged, holder.getValue("directory").jsonPrimitive.content)
+        assertEquals("2026-10-16T08:46:00Z", holder.getValue("startedAt").jsonPrimitive.content)
+        assertEquals(JsonPrimitive(81234), holder.getValue("clientPid"))
+        assertEquals(listOf("benchRun"), holder.getValue("tasks").jsonArray.map { it.jsonPrimitive.content })
+        val session = holder.getValue("session").jsonObject
+        assertEquals("963d9441", session.getValue("id").jsonPrimitive.content)
+        assertEquals(apps, session.getValue("worktree").jsonPrimitive.content)
+        assertEquals(JsonNull, entries[1].jsonObject.getValue("holder"))
     }
 
     @Test
@@ -4210,6 +4644,44 @@ class ShogunCliTest {
 
         assertEquals(0, exitCode, err.toString())
         assertEquals("{}\n", files.writtenTexts.getValue(userSettings))
+    }
+
+    @Test
+    fun `hooks install --json previews without asking and applies with --yes`() {
+        val files = FakeFileManager(existing = listOf(base))
+        files.writeText(userSettings, """{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"shogun hook old-name"}]}]}}""")
+
+        val previewed = cli(repositoryExecutor(), fileManager = files).run(listOf("hooks", "install", "--json"))
+        val preview = out.toString()
+        out.clear()
+        val applied = cli(repositoryExecutor(), fileManager = files).run(listOf("hooks", "install", "--json", "--yes"))
+
+        assertEquals(0, previewed)
+        assertTrue(preview.contains("\"applied\":false"), preview)
+        assertTrue(preview.contains("\"replaced\":[{\"event\":\"Stop\",\"from\":[\"shogun hook old-name\"],\"to\":\"shogun hook agent-state\"}]"), preview)
+        assertTrue(preview.contains("{\"event\":\"WorktreeCreate\",\"command\":\"shogun hook worktree-create\"}"), preview)
+        assertFalse(err.contains("[y/N]"), err.toString())
+        assertEquals(0, applied)
+        assertTrue(out.contains("\"applied\":true"), out.toString())
+    }
+
+    @Test
+    fun `hooks already in place are reported up to date as text or JSON`() {
+        val files = FakeFileManager(existing = listOf(base))
+        cli(repositoryExecutor(), fileManager = files).run(listOf("hooks", "install", "--yes"))
+        out.clear()
+
+        cli(repositoryExecutor(), fileManager = files).run(listOf("hooks", "install"))
+        val installed = out.toString()
+        out.clear()
+        cli(repositoryExecutor(), fileManager = files).run(listOf("hooks", "install", "--json"))
+        val json = out.toString()
+        out.clear()
+        cli(repositoryExecutor(), fileManager = FakeFileManager(existing = listOf(base))).run(listOf("hooks", "uninstall"))
+
+        assertEquals("ShogunAi's hooks are already installed in $userSettings\n", installed)
+        assertTrue(json.contains("\"applied\":false,\"added\":[],\"removed\":[],\"replaced\":[]"), json)
+        assertEquals("There are no ShogunAi hooks in $userSettings\n", out.toString())
     }
 
     @Test

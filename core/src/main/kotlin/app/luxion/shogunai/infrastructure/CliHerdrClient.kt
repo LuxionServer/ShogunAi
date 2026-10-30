@@ -5,6 +5,7 @@ import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.io.HerdrClient
 import app.luxion.shogunai.domain.model.HerdrAgent
 import app.luxion.shogunai.domain.model.HerdrPane
+import app.luxion.shogunai.domain.model.HerdrPaneProcesses
 import app.luxion.shogunai.domain.model.HerdrWorkspace
 import app.luxion.shogunai.domain.model.AgentState
 import app.luxion.shogunai.domain.model.HerdrWorktreeOpening
@@ -15,17 +16,17 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
-import java.io.File
+import kotlinx.serialization.json.longOrNull
 
 class CliHerdrClient(
     private val executor: ShellCommandExecutor,
-    private val userHome: String = System.getProperty("user.home"),
+    private val findExecutable: (String) -> String?,
     private val osName: String = System.getProperty("os.name").orEmpty(),
-    private val isFile: (String) -> Boolean = { File(it).isFile },
-    private val findOnPath: (String) -> String? = { name -> ExecutableLocator().find(name) },
 ) : HerdrClient {
 
-    override fun isInstalled(): Boolean = executable().let { isFile(it) || findOnPath(it) != null }
+    override fun isInstalled(): Boolean = location() != null
+
+    override fun location(): String? = findExecutable(binaryName())
 
     override suspend fun openWorktree(repository: String, path: String, label: String): HerdrWorktreeOpening {
         val arguments = listOf("worktree", "open", "--cwd", repository, "--path", path, "--label", label, "--focus")
@@ -123,6 +124,18 @@ class CliHerdrClient(
         run(listOf("workspace", "focus", workspaceId))
     }
 
+    override suspend fun paneProcesses(paneId: String): HerdrPaneProcesses? {
+        val info = try {
+            run(listOf("pane", "process-info", "--pane", paneId)).field("process_info") as? JsonObject
+        } catch (error: WorktreeError) {
+            null
+        } ?: return null
+        val shellPid = info.long("shell_pid")
+        val foregroundProcessGroupId = info.long("foreground_process_group_id")
+        if (shellPid == null || foregroundProcessGroupId == null) return null
+        return HerdrPaneProcesses(shellPid, foregroundProcessGroupId)
+    }
+
     private fun agentState(status: String?): AgentState? = when (status) {
         "working" -> AgentState.WORKING
         "blocked" -> AgentState.BLOCKED
@@ -131,12 +144,7 @@ class CliHerdrClient(
         else -> null
     }
 
-    fun executable(): String {
-        val name = binaryName()
-        val candidates = USER_BIN_FOLDERS.map { "${userHome.trimEnd('/', '\\')}/$it/$name" } +
-            SYSTEM_BIN_FOLDERS.map { "$it/$name" }
-        return candidates.firstOrNull(isFile) ?: name
-    }
+    fun executable(): String = findExecutable(binaryName()) ?: binaryName()
 
     private fun binaryName(): String = if (osName.startsWith("Windows", ignoreCase = true)) "herdr.exe" else "herdr"
 
@@ -168,11 +176,9 @@ class CliHerdrClient(
 
     private fun JsonObject?.field(name: String): JsonElement? = this?.get(name)
 
+    private fun JsonObject.long(name: String): Long? =
+        (this[name] as? JsonPrimitive)?.takeUnless { it.isString }?.longOrNull
+
     private fun JsonObject.string(name: String): String? =
         (this[name] as? JsonPrimitive)?.takeIf { it.isString }?.content
-
-    companion object {
-        private val USER_BIN_FOLDERS = listOf(".local/bin", ".cargo/bin")
-        private val SYSTEM_BIN_FOLDERS = listOf("/opt/homebrew/bin", "/usr/local/bin")
-    }
 }

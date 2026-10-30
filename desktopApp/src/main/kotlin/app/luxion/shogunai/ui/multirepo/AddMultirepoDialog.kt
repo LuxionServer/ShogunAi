@@ -8,12 +8,13 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import app.luxion.shogunai.ui.FilePicker
+import app.luxion.shogunai.ui.LocalPathPicker
 import app.luxion.shogunai.ui.components.DialogSize
 import app.luxion.shogunai.ui.components.ErrorNotice
 import app.luxion.shogunai.ui.components.Field
@@ -29,6 +30,7 @@ import app.luxion.shogunai.ui.components.Spacing
 import app.luxion.shogunai.ui.components.handPointer
 import app.luxion.shogunai.ui.i18n.LocalStrings
 import app.luxion.shogunai.ui.theme.ShogunTheme
+import kotlinx.coroutines.launch
 
 private val AliasFieldWidth = 140.dp
 
@@ -37,9 +39,10 @@ fun AddMultirepoDialog(
     state: AddMultirepoState,
     onDismiss: () -> Unit,
     onAdded: (String) -> Unit,
-    pickFolder: (String, String) -> String? = FilePicker::pickDirectory,
+    pickFolder: suspend (String, String) -> String? = LocalPathPicker.current::pickDirectory,
 ) {
     val strings = LocalStrings.current
+    val scope = rememberCoroutineScope()
     ShogunDialog(
         title = strings.addMultirepo,
         onDismissRequest = { if (!state.isSaving) onDismiss() },
@@ -60,7 +63,7 @@ fun AddMultirepoDialog(
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f),
             )
-            SecondaryButton(onClick = { pickFolder(state.folder.orEmpty(), strings.addMultirepo)?.let(state::choose) }, enabled = !state.isSaving) {
+            SecondaryButton(onClick = { scope.launch { pickFolder(state.folder.orEmpty(), strings.addMultirepo)?.let(state::choose) } }, enabled = !state.isSaving) {
                 Text(strings.chooseFolder)
             }
         }
@@ -69,8 +72,9 @@ fun AddMultirepoDialog(
 }
 
 @Composable
-private fun AddMultirepoContent(state: AddMultirepoState, pickFolder: (String, String) -> String?) {
+private fun AddMultirepoContent(state: AddMultirepoState, pickFolder: suspend (String, String) -> String?) {
     val strings = LocalStrings.current
+    val scope = rememberCoroutineScope()
     val secondary = MaterialTheme.colorScheme.onSurfaceVariant
     if (state.folder == null) {
         Text(strings.addMultirepoExplanation, style = MaterialTheme.typography.bodyMedium, color = secondary)
@@ -141,7 +145,7 @@ private fun AddMultirepoContent(state: AddMultirepoState, pickFolder: (String, S
             }
         }
     }
-    NeutralTextButton(onClick = { pickFolder(state.folder.orEmpty(), strings.addRepositoryFromElsewhere)?.let(state::addFromElsewhere) }) {
+    NeutralTextButton(onClick = { scope.launch { pickFolder(state.folder.orEmpty(), strings.addRepositoryFromElsewhere)?.let(state::addFromElsewhere) } }) {
         Text(strings.addRepositoryFromElsewhere)
     }
     state.notRepository?.let { Text(strings.notARepository(it), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }

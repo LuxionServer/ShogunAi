@@ -13,7 +13,7 @@ import kotlin.io.path.exists
 import kotlin.io.path.readText
 
 class JsonComposeProjectRegistry(
-    private val storagePath: Path = Path.of(System.getProperty("user.home"), ".shogunai", "compose-projects.json"),
+    private val storagePath: Path,
 ) : ComposeProjectRegistry {
     private val json = Json {
         prettyPrint = true

@@ -1,18 +1,25 @@
 package app.luxion.shogunai.domain.usecase
 
+import app.luxion.shogunai.domain.FakeAgentSessionStore
 import app.luxion.shogunai.domain.FakeFileManager
 import app.luxion.shogunai.domain.FakeGradleDaemonSource
 import app.luxion.shogunai.domain.FakeGradleDaemonSource.Companion.gradleDaemon
 import app.luxion.shogunai.domain.FakeGradleDaemonSource.Companion.kotlinDaemon
+import app.luxion.shogunai.domain.model.AgentSessionRecord
+import app.luxion.shogunai.domain.model.AgentSessionRef
+import app.luxion.shogunai.domain.model.AgentState
 import app.luxion.shogunai.domain.model.DaemonOwner
 import app.luxion.shogunai.domain.model.DaemonState
+import app.luxion.shogunai.domain.model.GradleClient
 import app.luxion.shogunai.domain.model.GradleDaemon
+import app.luxion.shogunai.domain.model.HoldingBuild
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.WorktreeError
 import kotlinx.coroutines.test.runTest
 import java.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNull
 
@@ -56,6 +63,58 @@ class ListGradleDaemonsUseCaseTest {
         )
     }
 
+    private val apps = "/home/dev/projects/worktrees/apps/task-123"
+    private val api = "/home/dev/projects/worktrees/api/task-123"
+    private val startedAt = Instant.parse("2026-10-16T19:02:00Z")
+
+    private fun held(ancestors: List<Long>) = gradleDaemon(7, DaemonState.Busy, lastBuildDirectory = api).copy(
+        holder = HoldingBuild(api, startedAt, GradleClient(81234, listOf("benchRun"), ancestors)),
+    )
+
+    private val sessions = FakeAgentSessionStore(
+        mapOf(apps to listOf(AgentSessionRecord("963d9441", "claude", AgentState.WORKING, 0, pid = 700))),
+    )
+
+    @Test
+    fun `a holding build started by an agent session names that session and its worktree`() = runTest {
+        val useCase = ListGradleDaemonsUseCase(FakeGradleDaemonSource(listOf(held(listOf(81200, 700, 500)))), FakeFileManager(existing), sessions)
+
+        val client = useCase(worktrees) { listOf(api, apps) }.getOrThrow().single().process.holder?.client
+
+        assertEquals(AgentSessionRef("963d9441", "claude", apps), client?.session)
+        assertEquals(listOf("benchRun"), client?.tasks)
+    }
+
+    @Test
+    fun `sessions are looked up in the given worktrees by default`() = runTest {
+        val useCase = ListGradleDaemonsUseCase(FakeGradleDaemonSource(listOf(held(listOf(81200, 700, 500)))), FakeFileManager(existing), sessions)
+
+        val client = useCase(worktrees + Worktree(path = apps, branch = "feature/TASK-123")).getOrThrow().single().process.holder?.client
+
+        assertEquals(AgentSessionRef("963d9441", "claude", apps), client?.session)
+    }
+
+    @Test
+    fun `a holding build from a terminal has no session`() = runTest {
+        val useCase = ListGradleDaemonsUseCase(FakeGradleDaemonSource(listOf(held(listOf(81200, 500)))), FakeFileManager(existing), sessions)
+
+        val holder = useCase(worktrees) { listOf(api, apps) }.getOrThrow().single().process.holder
+
+        assertEquals(HoldingBuild(api, startedAt, GradleClient(81234, listOf("benchRun"), listOf(81200, 500))), holder)
+    }
+
+    @Test
+    fun `sessions are not read without a traceable client`() = runTest {
+        var asked = false
+        val daemon = gradleDaemon(7, DaemonState.Busy).copy(holder = HoldingBuild(api, startedAt, null))
+        val useCase = ListGradleDaemonsUseCase(FakeGradleDaemonSource(listOf(daemon)), FakeFileManager(existing), sessions)
+
+        val holder = useCase(worktrees) { asked = true; listOf(apps) }.getOrThrow().single().process.holder
+
+        assertEquals(HoldingBuild(api, startedAt, null), holder)
+        assertFalse(asked)
+    }
+
     @Test
     fun `leaves daemons unattributed outside a repository`() = runTest {
         val source = FakeGradleDaemonSource(listOf(gradleDaemon(1, idle, lastBuildDirectory = sibling.path)))
@@ -83,5 +142,12 @@ class ListGradleDaemonsUseCaseTest {
         val pids = idleDaemonsOfRemovedWorktrees(daemons, worktrees, listOf(sibling.path, nested.path))
 
         assertEquals(listOf(1L, 3L), pids)
+    }
+
+    @Test
+    fun `total memory adds the resident memory of every daemon`() {
+        val daemons = listOf(GradleDaemon(kotlinDaemon(1, memoryBytes = 300L), null), GradleDaemon(kotlinDaemon(2, memoryBytes = 200L), null))
+
+        assertEquals(500L, totalResidentMemory(daemons))
     }
 }

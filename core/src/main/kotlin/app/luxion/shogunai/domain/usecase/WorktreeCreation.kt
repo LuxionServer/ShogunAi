@@ -56,11 +56,24 @@ internal suspend fun checkLocalFilesAndResolve(
     fileManager: FileManager,
     provisioningSource: RepositoryProvisioningSource,
 ): ProvisionedFiles {
-    val missing = missingLocalEntries(config, fileManager)
-    val provisioned = resolveProvisionedFiles(config, executor, fileManager, provisioningSource)
-    val unavailable = missing + unavailableProvisionedFiles(config, fileManager, provisioned, missing.map { it.path }.toSet())
+    val (provisioned, unavailable) = checkLocalFiles(config, executor, fileManager, provisioningSource)
     if (unavailable.isNotEmpty()) throw WorktreeError.LocalFilesUnavailable(config.baseRepositoryPath, unavailable)
     return provisioned
+}
+
+internal data class LocalFilesCheck(val provisioned: ProvisionedFiles, val unavailable: List<UnavailableLocalFile>) {
+    val checked: Int get() = (provisioned.copied + provisioned.linked).distinct().size + provisioned.linkedFolders.size
+}
+
+internal suspend fun checkLocalFiles(
+    config: ProjectConfig,
+    executor: ShellCommandExecutor,
+    fileManager: FileManager,
+    provisioningSource: RepositoryProvisioningSource,
+): LocalFilesCheck {
+    val missing = missingLocalEntries(config, fileManager)
+    val provisioned = resolveProvisionedFiles(config, executor, fileManager, provisioningSource)
+    return LocalFilesCheck(provisioned, missing + unavailableProvisionedFiles(config, fileManager, provisioned, missing.map { it.path }.toSet()))
 }
 
 private fun missingLocalEntries(config: ProjectConfig, fileManager: FileManager): List<UnavailableLocalFile> =
@@ -133,7 +146,7 @@ internal suspend fun resolveProvisionedFiles(
     )
 }
 
-private suspend fun listUntrackedFiles(
+internal suspend fun listUntrackedFiles(
     config: ProjectConfig,
     executor: ShellCommandExecutor,
     patterns: List<String>,

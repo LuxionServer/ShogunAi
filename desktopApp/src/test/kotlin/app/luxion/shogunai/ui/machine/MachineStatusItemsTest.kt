@@ -62,6 +62,21 @@ class MachineStatusItemsTest {
     }
 
     @Test
+    fun `a gradle pool held by running builds says so without warning`() {
+        val item = items(
+            listOf(MachineResource.GRADLE_DAEMONS),
+            mapOf(
+                MachineResource.GRADLE_DAEMONS to
+                    MachineSummary(10, 1_288_490_189L, poolInUse = 9, poolLimit = 3, poolHeldByBuilds = true),
+            ),
+        ).single()
+
+        assertEquals("9/3", item.figure)
+        assertNull(item.attention)
+        assertEquals("Gradle daemons: 10 · 1.2 GB · 9/3 · over the limit: builds running", item.tooltip)
+    }
+
+    @Test
     fun `without a limit the figure is the count`() {
         val item = items(
             listOf(MachineResource.IOS_SIMULATORS),

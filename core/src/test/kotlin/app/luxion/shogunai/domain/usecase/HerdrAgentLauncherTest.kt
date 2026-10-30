@@ -68,6 +68,37 @@ class HerdrAgentLauncherTest {
         assertTrue(herdr.focusedAgents.isEmpty())
     }
 
+    @Test
+    fun `the workspace's only pane idle in the folder is reusable`() = runTest {
+        val herdr = FakeHerdrClient(panes = listOf(HerdrPane("w1:p1", "w1", "$folder/")))
+
+        assertEquals("w1:p1", HerdrAgentLauncher(herdr).reusablePane("w1", folder))
+        assertEquals(listOf("w1:p1"), herdr.processReads)
+    }
+
+    @Test
+    fun `a pane that may be in use is not reusable`() = runTest {
+        val idle = HerdrPane("w1:p1", "w1", folder)
+        val cases = mapOf(
+            "two panes" to FakeHerdrClient(panes = listOf(idle, HerdrPane("w1:p2", "w1", folder))),
+            "live agent" to FakeHerdrClient(panes = listOf(idle.copy(agent = "claude", agentStatus = "idle"))),
+            "another folder" to FakeHerdrClient(panes = listOf(idle.copy(directory = "/home/dev/projects/other"))),
+            "no folder" to FakeHerdrClient(panes = listOf(idle.copy(directory = null))),
+            "no pane" to FakeHerdrClient(panes = listOf(HerdrPane("w2:p1", "w2", folder))),
+        )
+        cases.forEach { (case, herdr) ->
+            assertNull(HerdrAgentLauncher(herdr).reusablePane("w1", folder), case)
+            assertTrue(herdr.processReads.isEmpty(), case)
+        }
+        listOf(
+            FakeHerdrClient(panes = listOf(idle), busyPanes = setOf("w1:p1")),
+            FakeHerdrClient(panes = listOf(idle), unknownProcessPanes = setOf("w1:p1")),
+        ).forEach { herdr ->
+            assertNull(HerdrAgentLauncher(herdr).reusablePane("w1", folder))
+            assertEquals(listOf("w1:p1"), herdr.processReads)
+        }
+    }
+
     private val folder = "/home/dev/projects/main-repo-worktrees/TASK-123"
     private val dead = 1L
 

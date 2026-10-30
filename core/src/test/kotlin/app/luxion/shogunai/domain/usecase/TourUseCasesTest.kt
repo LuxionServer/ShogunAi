@@ -2,6 +2,7 @@ package app.luxion.shogunai.domain.usecase
 
 import app.luxion.shogunai.domain.FakeProjectRepository
 import app.luxion.shogunai.domain.FakeShellCommandExecutor
+import app.luxion.shogunai.domain.executor.CommandExecutionException
 import app.luxion.shogunai.domain.model.AppLanguage
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.WorktreeError
@@ -27,7 +28,7 @@ class TourUseCasesTest {
     private val home: Path = Files.createTempDirectory("tour-home")
     private val location = TourLocation(home.toString())
     private val fileManager = NioFileManager()
-    private val executor = ProcessBuilderShellCommandExecutor()
+    private val executor = ProcessBuilderShellCommandExecutor(path = null)
 
     @AfterTest
     fun cleanUp() {
@@ -102,6 +103,20 @@ class TourUseCasesTest {
         assertEquals("fatal: broken", error.detail)
         assertFalse(Path.of(location.root).exists())
         assertTrue(projects.list().isEmpty())
+    }
+
+    @Test
+    fun `un comando de Git que no arranca no deja carpeta ni proyecto`() = runTest {
+        val projects = FakeProjectRepository()
+        val failing = FakeShellCommandExecutor { command ->
+            if ("worktree" in command) throw CommandExecutionException(command, java.io.IOException("git not found")) else FakeShellCommandExecutor.success(command)
+        }
+
+        val error = CreateTourUseCase(failing, fileManager, projects, location)(AppLanguage.ENGLISH).exceptionOrNull()
+
+        assertIs<WorktreeError.TourCreationFailed>(error)
+        assertEquals("git not found", error.detail)
+        assertFalse(Path.of(location.root).exists())
     }
 
     @Test

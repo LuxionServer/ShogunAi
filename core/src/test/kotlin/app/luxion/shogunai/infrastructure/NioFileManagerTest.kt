@@ -2,6 +2,9 @@ package app.luxion.shogunai.infrastructure
 
 import app.luxion.shogunai.domain.io.DirectoryListing
 import app.luxion.shogunai.domain.model.UnavailableReason
+import java.net.StandardProtocolFamily
+import java.net.UnixDomainSocketAddress
+import java.nio.channels.ServerSocketChannel
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import kotlin.io.path.createSymbolicLinkPointingTo
@@ -9,9 +12,16 @@ import kotlin.io.path.createDirectories
 import kotlin.io.path.createTempDirectory
 import kotlin.io.path.exists
 import kotlin.io.path.writeBytes
+import app.luxion.shogunai.domain.io.SymbolicLinksNotSupported
+import java.nio.file.AccessDeniedException
+import java.nio.file.FileSystemException
+import java.nio.file.attribute.PosixFilePermissions
+import org.junit.Assume.assumeTrue
+import kotlin.test.assertFailsWith
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNull
@@ -61,6 +71,41 @@ class NioFileManagerTest {
         fileManager.deleteRecursively(folder.toString())
 
         assertFalse(Files.exists(folder))
+    }
+
+    @Test
+    fun `retries a delete that a process still holds until it lets go`() {
+        if (System.getProperty("os.name").startsWith("Windows")) return
+        val folder = root.resolve("sample-repo")
+        val held = folder.resolve("held").createDirectories()
+        held.resolve("index.lock").writeBytes("x".toByteArray())
+        held.toFile().setWritable(false)
+        var pauses = 0
+        val retrying = NioFileManager(deleteAttempts = 3, pauseBeforeRetry = {
+            pauses++
+            held.toFile().setWritable(true)
+        })
+
+        retrying.deleteRecursively(folder.toString())
+
+        assertFalse(Files.exists(folder))
+        assertEquals(1, pauses)
+    }
+
+    @Test
+    fun `gives up after the last attempt with the file system's error`() {
+        if (System.getProperty("os.name").startsWith("Windows")) return
+        val held = root.resolve("sample-repo/held").createDirectories()
+        held.resolve("index.lock").writeBytes("x".toByteArray())
+        held.toFile().setWritable(false)
+        var pauses = 0
+
+        try {
+            assertFailsWith<FileSystemException> { NioFileManager(deleteAttempts = 3, pauseBeforeRetry = { pauses++ }).deleteRecursively(root.resolve("sample-repo").toString()) }
+            assertEquals(2, pauses)
+        } finally {
+            held.toFile().setWritable(true)
+        }
     }
 
     @Test
@@ -239,6 +284,48 @@ class NioFileManagerTest {
     }
 
     @Test
+    fun `a file system without symbolic links or without the privilege reports them unsupported`() {
+        val unsupported = NioFileManager { _, _ -> throw UnsupportedOperationException("no links") }
+        val unprivileged = NioFileManager { link, _ -> throw FileSystemException(link.toString(), null, "A required privilege is not held by the client") }
+        val other = NioFileManager { link, _ -> throw FileSystemException(link.toString(), null, "disk full") }
+        val link = root.resolve("link").toString()
+
+        assertFailsWith<SymbolicLinksNotSupported> { unsupported.createSymbolicLink("target", link) }
+        assertFailsWith<SymbolicLinksNotSupported> { unprivileged.createSymbolicLink("target", link) }
+        assertFailsWith<FileSystemException> { other.createSymbolicLink("target", link) }
+    }
+
+    @Test
+    fun `lists the names in a folder sorted and nothing for a missing folder`() {
+        root.resolve("b.txt").writeBytes(ByteArray(0))
+        root.resolve("a").createDirectories()
+
+        assertEquals(listOf("a", "b.txt"), fileManager.listNames(root.toString()))
+        assertNull(fileManager.listNames(root.resolve("missing").toString()))
+    }
+
+    @Test
+    fun `unreadable entries are skipped by every walk and unreadable properties read as empty`() {
+        assumeTrue(root.fileSystem.supportedFileAttributeViews().contains("posix"))
+        val locked = root.resolve("locked").createDirectories()
+        locked.resolve("inside.txt").writeBytes(ByteArray(3))
+        root.resolve("open.txt").writeBytes(ByteArray(2))
+        val properties = root.resolve("app.properties")
+        properties.writeBytes("a=1".toByteArray())
+        Files.setPosixFilePermissions(locked, emptySet())
+        Files.setPosixFilePermissions(properties, emptySet())
+        try {
+            assertEquals(listOf("open.txt"), fileManager.listTree(root.toString()).files.filter { it.endsWith(".txt") })
+            assertEquals(5L, fileManager.directorySize(root.toString()))
+            assertTrue(fileManager.modificationStamps(root.toString()).none { it.first.endsWith("inside.txt") })
+            assertEquals(emptyMap(), fileManager.readProperties(properties.toString()))
+        } finally {
+            Files.setPosixFilePermissions(locked, PosixFilePermissions.fromString("rwx------"))
+            Files.setPosixFilePermissions(properties, PosixFilePermissions.fromString("rw-------"))
+        }
+    }
+
+    @Test
     fun `a readable file or folder has no unavailable reason`() {
         val file = root.resolve("local.properties").also { Files.writeString(it, "sdk.dir=/opt/android") }
 
@@ -272,6 +359,19 @@ class NioFileManagerTest {
     }
 
     @Test
+    fun `a read-only folder keeps its files from being deleted`() {
+        assumeTrue(root.fileSystem.supportedFileAttributeViews().contains("posix"))
+        val folder = root.resolve("sealed").createDirectories()
+        folder.resolve("file.txt").writeBytes(ByteArray(1))
+        Files.setPosixFilePermissions(folder, PosixFilePermissions.fromString("r-x------"))
+        try {
+            assertFailsWith<AccessDeniedException> { fileManager.deleteRecursively(folder.toString()) }
+        } finally {
+            Files.setPosixFilePermissions(folder, PosixFilePermissions.fromString("rwx------"))
+        }
+    }
+
+    @Test
     fun `a folder entry that can't be read is listed as unreadable`() {
         val keys = root.resolve("keys").createDirectories()
         Files.writeString(keys.resolve("a.pem"), "a")
@@ -284,6 +384,17 @@ class NioFileManagerTest {
             assertIs<UnavailableReason.Unreadable>(fileManager.unavailableReason(private.toString()))
         } finally {
             private.toFile().setReadable(true, false)
+        }
+    }
+
+    @Test
+    fun `a file that can't be opened as a file is unavailable naming why`() {
+        assumeTrue(root.fileSystem.supportedFileAttributeViews().contains("posix"))
+        val socket = root.resolve("agent.sock")
+        ServerSocketChannel.open(StandardProtocolFamily.UNIX).use { server ->
+            server.bind(UnixDomainSocketAddress.of(socket))
+
+            assertIs<UnavailableReason.Unreadable>(fileManager.unavailableReason(socket.toString()))
         }
     }
 }

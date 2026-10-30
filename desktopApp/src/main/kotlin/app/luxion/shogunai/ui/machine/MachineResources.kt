@@ -4,6 +4,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import app.luxion.shogunai.MachineUseCases
+import app.luxion.shogunai.ui.WindowActivity
+import app.luxion.shogunai.ui.machineViewInterval
 import app.luxion.shogunai.domain.model.CapacityProfile
 import app.luxion.shogunai.domain.model.DaemonKind
 import app.luxion.shogunai.domain.model.DaemonProcess
@@ -29,6 +31,7 @@ import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.PoolUsage
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.ProjectConfig
+import app.luxion.shogunai.domain.model.RefreshCadence
 import app.luxion.shogunai.domain.model.ResourceKind
 import app.luxion.shogunai.domain.model.SimulatorDevice
 import app.luxion.shogunai.domain.model.SimulatorState
@@ -39,6 +42,7 @@ import app.luxion.shogunai.domain.usecase.ProjectOwner
 import app.luxion.shogunai.domain.usecase.ResourceAcquisition
 import app.luxion.shogunai.domain.usecase.ProjectWorktreeSet
 import app.luxion.shogunai.domain.usecase.attributeToProjects
+import java.time.Instant
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -46,17 +50,13 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
-import kotlin.time.Duration
-import kotlin.time.Duration.Companion.seconds
 
 enum class MachineResource { GRADLE_DAEMONS, ANDROID_EMULATORS, IOS_SIMULATORS, XCODE_DERIVED_DATA, MAVEN_DAEMONS, COMPOSE_PROJECTS, DESKTOP_TURN }
 
@@ -74,6 +74,7 @@ data class MachineSummary(
     val bytes: Long? = null,
     val poolInUse: Int? = null,
     val poolLimit: Int? = null,
+    val poolHeldByBuilds: Boolean = false,
     val calculating: Boolean = false,
     val quotaBytes: Long? = null,
     val quotaAutomatic: Boolean = false,
@@ -82,7 +83,7 @@ data class MachineSummary(
 
 sealed interface PoolNoticeContent {
     data class Released(val kind: ResourceKind, val released: String, val forWorktree: String) : PoolNoticeContent
-    data class Trimmed(val count: Int, val limit: Int?) : PoolNoticeContent
+    data class Trimmed(val count: Int, val limit: Int?, val trims: Int, val lastAt: Instant) : PoolNoticeContent
 }
 
 data class PoolNotice(val id: Long, val resource: MachineResource, val content: PoolNoticeContent)
@@ -129,13 +130,13 @@ class MachineResources(
     private val projects: () -> List<MachineProject>,
     private val pathExists: (String) -> Boolean,
     private val onDevicesChanged: suspend (projectId: String) -> Unit = {},
-    private val processInterval: Duration = PROCESS_INTERVAL,
-    private val summaryInterval: Duration = SUMMARY_INTERVAL,
+    private val cadence: suspend () -> RefreshCadence = { RefreshCadence.BALANCED },
     val desktopTurn: DesktopTurnWatch = DesktopTurnWatch.NONE,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
+    private val clock: () -> Instant = Instant::now,
 ) {
     private var shownJob: Job? = null
-    private val windowActive = MutableStateFlow(true)
+    private val windowActivity = MutableStateFlow(WindowActivity.FOCUSED)
     var shown by mutableStateOf<MachineResource?>(null)
         private set
 
@@ -385,14 +386,15 @@ class MachineResources(
         scope.launch { load(resource, remeasure = true) }
     }
 
-    fun setWindowActive(active: Boolean) {
-        windowActive.value = active
+    fun setWindowActivity(activity: WindowActivity) {
+        windowActivity.value = activity
     }
 
     suspend fun runSummaryTicks() {
         while (true) {
-            if (windowActive.value) refreshSummaries() else trimGradleDaemonsWhileHidden()
-            withTimeoutOrNull(summaryInterval) { windowActive.drop(1).first { it } }
+            val activity = windowActivity.value
+            if (activity.isShown) refreshSummaries() else trimGradleDaemonsWhileHidden()
+            withTimeoutOrNull(cadence().summaries) { windowActivity.first { it.isShown && !activity.isShown } }
         }
     }
 
@@ -413,7 +415,13 @@ class MachineResources(
             if (daemons.isSuccess) loadPool(ResourceKind.GRADLE_DAEMON)
             record(MachineResource.GRADLE_DAEMONS, daemons) { listed ->
                 val pool = pools[ResourceKind.GRADLE_DAEMON]
-                MachineSummary(listed.size, listed.sumOf { it.residentMemoryBytes }, pool?.inUse, pool?.effectiveLimit)
+                MachineSummary(
+                    listed.size,
+                    listed.sumOf { it.residentMemoryBytes },
+                    pool?.inUse,
+                    pool?.effectiveLimit,
+                    poolHeldByBuilds = pool?.let(::buildsHoldingPool) != null,
+                )
             }
         }
         if (MachineResource.MAVEN_DAEMONS in resources) {
@@ -471,7 +479,23 @@ class MachineResources(
 
     private suspend fun trimGradleDaemons() {
         val trim = io { useCases.trimGradleDaemons(null) }.getOrNull() ?: return
-        if (trim.stopped.isNotEmpty()) addNotice(MachineResource.GRADLE_DAEMONS, PoolNoticeContent.Trimmed(trim.stopped.size, trim.limit))
+        if (trim.stopped.isNotEmpty()) recordTrim(trim.stopped.size, trim.limit)
+    }
+
+    private fun recordTrim(stopped: Int, limit: Int?) {
+        val existing = notices.firstOrNull { it.resource == MachineResource.GRADLE_DAEMONS && it.content is PoolNoticeContent.Trimmed }
+        val previous = existing?.content as? PoolNoticeContent.Trimmed
+        val content = PoolNoticeContent.Trimmed(
+            count = (previous?.count ?: 0) + stopped,
+            limit = limit,
+            trims = (previous?.trims ?: 0) + 1,
+            lastAt = clock(),
+        )
+        if (existing == null) {
+            addNotice(MachineResource.GRADLE_DAEMONS, content)
+        } else {
+            notices = notices.map { if (it.id == existing.id) it.copy(content = content) else it }
+        }
     }
 
     private suspend fun runLoader(resource: MachineResource) {
@@ -480,9 +504,18 @@ class MachineResources(
             return
         }
         while (true) {
-            windowActive.first { it }
+            val activity = windowActivity.first { it.isShown }
             load(resource)
-            delay(processInterval)
+            awaitNextLoad(activity)
+        }
+    }
+
+    private suspend fun awaitNextLoad(loadedWhile: WindowActivity) {
+        var activity = loadedWhile
+        while (true) {
+            val changed = withTimeoutOrNull(cadence().machineViewInterval(activity)) { windowActivity.first { it != activity } } ?: return
+            if (changed != WindowActivity.UNFOCUSED) return
+            activity = changed
         }
     }
 
@@ -899,8 +932,6 @@ class MachineResources(
     }
 
     companion object {
-        val PROCESS_INTERVAL = 5.seconds
-        val SUMMARY_INTERVAL = 30.seconds
         private const val DAEMONS_KEY = "daemons"
         private const val MAVEN_DAEMONS_KEY = "mavenDaemons"
         private const val DERIVED_DATA_KEY = "derivedData"

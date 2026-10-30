@@ -1,0 +1,1 @@
+{"id":"cli:pane:process_info","result":{"process_info":{"foreground_process_group_id":12517,"foreground_processes":[{"argv":["claude"],"argv0":"claude","cmdline":"claude","cwd":"/home/dev/projects/worktrees/TASK-9","name":"claude","pid":12517}],"pane_id":"w2:p1","shell_pid":12511},"type":"pane_process_info"}}

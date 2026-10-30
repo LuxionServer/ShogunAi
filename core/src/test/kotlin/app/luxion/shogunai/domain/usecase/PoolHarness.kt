@@ -45,7 +45,7 @@ class PoolHarness(
 
     val trim get() = TrimGradleDaemonsUseCase(ListGradleDaemonsUseCase(daemons, files), StopGradleDaemonsUseCase(daemons, git), limits)
 
-    val contributions = MachineProviderContributions(simulators, { simulatorSettings })
+    val contributions = MachineProviderContributions(simulators, { simulatorSettings }, userHome = "/home/dev")
 
     val resolve get() = ResolveWorktreeEnvironmentUseCase(git, source, store, portProbe, contributions, trust = FakeRepositoryTrust(approvesEverything = true))
 

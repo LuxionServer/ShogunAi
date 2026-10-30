@@ -120,7 +120,7 @@ class ProjectAndAppCommandsTest {
         err = err,
         canonicalPath = { it.trimEnd('/') },
         now = { now },
-        userHome = "/home/dev",
+        environment = hostEnvironment(),
         appRequests = channel,
         appLock = FakeLock(appRunning),
         appLauncher = launcher(appAvailable),
@@ -220,6 +220,13 @@ class ProjectAndAppCommandsTest {
         cli().run(listOf("project", "list", "--json"))
 
         assertEquals(0, Json.parseToJsonElement(out.toString()).jsonObject.getValue("projects").jsonArray.size)
+    }
+
+    @Test
+    fun `project list json names each project with its repository`() {
+        cli(FakeProjectRepository(listOf(registered))).run(listOf("project", "list", "--json"))
+
+        assertEquals("{\"projects\":[{\"id\":\"${registered.id}\",\"name\":\"${registered.name}\",\"repository\":\"$base\"}]}\n", out.toString())
     }
 
     @Test

@@ -10,6 +10,7 @@ import app.luxion.shogunai.domain.model.RecentWorktree
 import app.luxion.shogunai.domain.model.RunnerId
 import app.luxion.shogunai.domain.model.TerminalId
 import app.luxion.shogunai.domain.model.ThemeMode
+import app.luxion.shogunai.domain.model.SidebarOrder
 import app.luxion.shogunai.domain.model.SortedView
 import app.luxion.shogunai.domain.model.WindowBounds
 import app.luxion.shogunai.domain.model.WorktreeSort
@@ -393,5 +394,39 @@ class JsonSettingsFileTest {
         settingsFile.update { it.copy(worktreeAgents = mapOf("/home/dev/projects/TASK-1" to "Codex")) }
 
         assertEquals(mapOf("/home/dev/projects/TASK-1" to "Codex"), settingsFile.read().worktreeAgents)
+    }
+
+    @Test
+    fun `collapsed multirepos and the sidebar order are kept`() {
+        val order = SidebarOrder(topLevel = listOf("multirepo:/projects/product", "project:main-repo"), multirepos = mapOf("/projects/product" to listOf("app", "api")))
+
+        shellRepository.saveCollapsedMultirepos(setOf("/projects/b", "/projects/a"))
+        shellRepository.saveSidebarOrder(order)
+
+        val reloaded = JsonShellPreferenceRepository(JsonSettingsFile(storagePath))
+        assertEquals(setOf("/projects/a", "/projects/b"), reloaded.loadCollapsedMultirepos())
+        assertEquals(order, reloaded.loadSidebarOrder())
+    }
+
+    @Test
+    fun `the multirepo grouping and the sort of every view are kept apart`() {
+        shellRepository.saveGrouping(GroupedView.MULTIREPO, Grouping.BY_PROJECT)
+        SortedView.entries.forEachIndexed { index, view -> shellRepository.saveSort(view, WorktreeSort.entries[index % WorktreeSort.entries.size]) }
+
+        val reloaded = JsonShellPreferenceRepository(JsonSettingsFile(storagePath))
+        assertEquals(Grouping.BY_PROJECT, reloaded.loadGrouping(GroupedView.MULTIREPO))
+        SortedView.entries.forEachIndexed { index, view -> assertEquals(WorktreeSort.entries[index % WorktreeSort.entries.size], reloaded.loadSort(view)) }
+    }
+
+    @Test
+    fun `a settings path that can't be read as text reports the problem until acknowledged`() {
+        Files.createDirectories(storagePath)
+
+        assertEquals(ThemeMode.SYSTEM, themeRepository.load())
+        assertEquals(storagePath.toString(), settingsFile.lastReadProblem?.path)
+
+        settingsFile.acknowledgeReadProblem()
+
+        assertNull(settingsFile.lastReadProblem)
     }
 }

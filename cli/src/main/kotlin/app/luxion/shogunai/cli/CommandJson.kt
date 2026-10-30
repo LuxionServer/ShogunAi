@@ -15,9 +15,12 @@ import app.luxion.shogunai.domain.model.DerivedDataListing
 import app.luxion.shogunai.domain.model.DerivedDataOwner
 import app.luxion.shogunai.domain.model.DerivedDataTrim
 import app.luxion.shogunai.domain.model.DetectedStack
+import app.luxion.shogunai.domain.model.InstallationReport
+import app.luxion.shogunai.domain.usecase.InstallationReportText
 import app.luxion.shogunai.domain.model.Stack
 import app.luxion.shogunai.domain.model.EmulatorState
 import app.luxion.shogunai.domain.model.GradleDaemon
+import app.luxion.shogunai.domain.model.HoldingBuild
 import app.luxion.shogunai.domain.model.PoolUsage
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.ReleaseRecord
@@ -325,12 +328,30 @@ fun gradleJson(daemons: List<GradleDaemon>, attributed: Boolean): JsonObject = b
                         put("state", process.state.jsonLabel)
                         put("idleSince", (process.state as? DaemonState.Idle)?.since?.toString())
                         put("worktree", daemon.owner.takeIf { attributed }?.jsonLabel)
+                        put("holder", process.holder?.let(::holdingBuildJson) ?: JsonNull)
                     },
                 )
             }
         },
     )
     put("totalMemoryBytes", totalResidentMemory(daemons))
+}
+
+private fun holdingBuildJson(holder: HoldingBuild): JsonObject = buildJsonObject {
+    put("directory", holder.directory)
+    put("startedAt", holder.startedAt?.toString())
+    put("clientPid", holder.client?.pid)
+    put("tasks", holder.client?.let { client -> buildJsonArray { client.tasks.forEach { add(JsonPrimitive(it)) } } } ?: JsonNull)
+    put(
+        "session",
+        holder.client?.session?.let { session ->
+            buildJsonObject {
+                put("id", session.sessionId)
+                put("agent", session.agent)
+                put("worktree", session.worktreePath)
+            }
+        } ?: JsonNull,
+    )
 }
 
 fun mavenJson(daemons: List<MavenDaemon>, attributed: Boolean): JsonObject = buildJsonObject {
@@ -581,12 +602,11 @@ private val DaemonState.jsonLabel: String
         DaemonState.Untracked -> "untracked"
     }
 
-private val DaemonOwner?.jsonLabel: String?
+private val DaemonOwner.jsonLabel: String
     get() = when (this) {
         is DaemonOwner.Worktree -> path
         DaemonOwner.RemovedWorktree -> "removed"
         DaemonOwner.OtherProject -> "other-project"
-        null -> null
     }
 
 fun xcodeJson(active: Boolean, listing: DerivedDataListing?): JsonObject = buildJsonObject {
@@ -673,9 +693,9 @@ fun xcodeTrimJson(active: Boolean, trim: DerivedDataTrim?): JsonObject = buildJs
 fun emulatorJson(
     worktree: String,
     emulator: WorktreeEmulator?,
-    acquisition: ResourceAcquisition? = null,
-    releaseRecord: ReleaseRecord? = null,
-    orcaView: OrcaEmulatorView? = null,
+    acquisition: ResourceAcquisition?,
+    releaseRecord: ReleaseRecord?,
+    orcaView: OrcaEmulatorView?,
 ): JsonObject = buildJsonObject {
     put("worktree", worktree)
     put("serial", emulator?.serial)
@@ -710,9 +730,9 @@ private val EmulatorState.jsonLabel: String
 fun simulatorJson(
     worktree: String,
     simulator: WorktreeSimulator?,
-    acquisition: ResourceAcquisition? = null,
-    releaseRecord: ReleaseRecord? = null,
-    orcaView: OrcaEmulatorView? = null,
+    acquisition: ResourceAcquisition?,
+    releaseRecord: ReleaseRecord?,
+    orcaView: OrcaEmulatorView?,
 ): JsonObject = buildJsonObject {
     put("worktree", worktree)
     put("udid", simulator?.udid)
@@ -963,4 +983,23 @@ fun projectListJson(projects: List<Project>): JsonObject = buildJsonObject {
             }
         },
     )
+}
+
+fun doctorJson(report: InstallationReport): JsonObject = buildJsonObject {
+    put(
+        "checks",
+        buildJsonArray {
+            report.checks.forEach { check ->
+                add(
+                    buildJsonObject {
+                        put("id", check.finding.id)
+                        put("state", check.state.name.lowercase())
+                        put("summary", InstallationReportText.summary(check))
+                        put("fix", InstallationReportText.fix(check))
+                    },
+                )
+            }
+        },
+    )
+    put("failed", report.failed)
 }

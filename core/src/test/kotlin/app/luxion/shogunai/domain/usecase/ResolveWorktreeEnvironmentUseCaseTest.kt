@@ -7,6 +7,8 @@ import app.luxion.shogunai.domain.FakeRepositoryProvisioningSource
 import app.luxion.shogunai.domain.FakeShellCommandExecutor
 import app.luxion.shogunai.domain.FakeAppleSimulators
 import app.luxion.shogunai.domain.FakeFileManager
+import app.luxion.shogunai.domain.executor.CommandResult
+import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.io.FileManager
 import app.luxion.shogunai.domain.io.RepositoryTrust
 import app.luxion.shogunai.domain.model.EmulatorProvider
@@ -53,7 +55,7 @@ class ResolveWorktreeEnvironmentUseCaseTest {
             ),
         )
 
-    private fun gitExecutor() = object : app.luxion.shogunai.domain.executor.ShellCommandExecutor {
+    private fun gitExecutor() = object : ShellCommandExecutor {
         override suspend fun execute(command: List<String>, workingDirectory: String?) =
             FakeShellCommandExecutor.success(command, "${adminDirectories.getValue(workingDirectory!!)}\n$common\n")
     }
@@ -64,32 +66,63 @@ class ResolveWorktreeEnvironmentUseCaseTest {
         probe: FakePortProbe = FakePortProbe(),
     ) = ResolveWorktreeEnvironmentUseCase(gitExecutor(), source, store, probe, trust = FakeRepositoryTrust(approvesEverything = true))
 
+    private class CountingGitExecutor(private val delegate: ShellCommandExecutor) :
+        ShellCommandExecutor {
+        var gitReads = 0
+
+        override suspend fun execute(command: List<String>, workingDirectory: String?): CommandResult {
+            gitReads++
+            return delegate.execute(command, workingDirectory)
+        }
+    }
+
+    private fun cachedResolver(executor: CountingGitExecutor, cache: WorktreeEnvironmentCache) = ResolveWorktreeEnvironmentUseCase(
+        executor,
+        declaring("PORT" to "\${port}"),
+        FakeEnvironmentStateStore(),
+        FakePortProbe(),
+        cache = cache,
+        trust = FakeRepositoryTrust(approvesEverything = true),
+    )
+
     @Test
     fun `a cache reads the git directories of a worktree once until it is invalidated`() = runTest {
-        var gitReads = 0
-        val counting = object : app.luxion.shogunai.domain.executor.ShellCommandExecutor {
-            override suspend fun execute(command: List<String>, workingDirectory: String?): app.luxion.shogunai.domain.executor.CommandResult {
-                gitReads++
-                return gitExecutor().execute(command, workingDirectory)
-            }
-        }
-        val cache = WorktreeEnvironmentCache()
-        val resolve = ResolveWorktreeEnvironmentUseCase(
-            counting,
-            declaring("PORT" to "\${port}"),
-            FakeEnvironmentStateStore(),
-            FakePortProbe(),
-            cache = cache,
-            trust = FakeRepositoryTrust(approvesEverything = true),
-        )
+        val executor = CountingGitExecutor(gitExecutor())
+        val cache = WorktreeEnvironmentCache(gitEntryOf = { "gitdir: /home/dev/projects/main-repo/.git/worktrees/TASK-1" })
+        val resolve = cachedResolver(executor, cache)
 
         resolve(repository, task, reserve = false).getOrThrow()
         resolve(repository, task, reserve = false).getOrThrow()
-        assertEquals(1, gitReads)
+        assertEquals(1, executor.gitReads)
 
         cache.invalidate()
         resolve(repository, task, reserve = false).getOrThrow()
-        assertEquals(2, gitReads)
+        assertEquals(2, executor.gitReads)
+    }
+
+    @Test
+    fun `a cached worktree whose git entry changed is resolved again`() = runTest {
+        val executor = CountingGitExecutor(gitExecutor())
+        var gitEntry = "gitdir: /home/dev/projects/main-repo/.git/worktrees/TASK-1"
+        val resolve = cachedResolver(executor, WorktreeEnvironmentCache(gitEntryOf = { gitEntry }))
+
+        resolve.directoriesOf(task)
+        gitEntry = "gitdir: /home/dev/projects/main-repo/.git/worktrees/TASK-11"
+        resolve.directoriesOf(task)
+        resolve.directoriesOf(task)
+
+        assertEquals(2, executor.gitReads)
+    }
+
+    @Test
+    fun `a worktree without a git entry is not cached`() = runTest {
+        val executor = CountingGitExecutor(gitExecutor())
+        val resolve = cachedResolver(executor, WorktreeEnvironmentCache(gitEntryOf = { null }))
+
+        resolve.directoriesOf(task)
+        resolve.directoriesOf(task)
+
+        assertEquals(2, executor.gitReads)
     }
 
     @Test
@@ -313,6 +346,7 @@ class ResolveWorktreeEnvironmentUseCaseTest {
         FakeAppleSimulators(),
         { SimulatorSettings() },
         gradleJvmArgsFor = { "-Xmx6g -Dfile.encoding=UTF-8" },
+        userHome = "/home/dev",
     )
 
     private fun withGradleContributions(source: FakeRepositoryProvisioningSource) =

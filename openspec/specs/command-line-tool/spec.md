@@ -29,11 +29,15 @@ Every command SHALL work on the Git repository that contains the current directo
 - **THEN** the command runs and does not fail for lack of a repository
 
 ### Requirement: Create a worktree from the command line
-`shogun new <task-id> [--fix] [--from <ref>]` SHALL create a worktree on a new `feature/` (or `fix/`) branch, and `shogun new --branch <branch>` one from an existing local branch, with the same folder, provisioning, validation and rollback as the desktop app. The new branch SHALL start at `<ref>` when `--from` is given, and otherwise at the HEAD of the worktree containing the current directory. On success it SHALL print the worktree's absolute path alone on standard output.
+`shogun new <task-id> [--fix] [--from <ref>]` SHALL create a worktree on a new `feature/` (or `fix/`) branch, and `shogun new --branch <branch>` one from an existing local branch, with the same folder, provisioning, validation and rollback as the desktop app. The new branch SHALL start at `<ref>` when `--from` is given, and otherwise at the HEAD of the worktree containing the current directory. On success it SHALL print the worktree's absolute path alone on standard output and, for a new branch, the commit it starts at, with its short hash and subject, and the `--from` ref when given, on standard error.
 
 #### Scenario: New branch
 - **WHEN** the user runs `shogun new TASK-123` in a repository with a project
 - **THEN** a worktree on `feature/TASK-123` is created in the project's worktrees folder, provisioned, and its path is the only line on standard output
+
+#### Scenario: Start commit reported
+- **WHEN** the user runs `shogun new TASK-123 --from origin/develop` and `origin/develop` points to `a41d265 Merge pull request #12`
+- **THEN** standard error says the branch starts from `origin/develop` at `a41d265 Merge pull request #12`, and standard output has only the path
 
 #### Scenario: New branch from a linked worktree
 - **WHEN** the user runs `shogun new TASK-123` inside a linked worktree whose HEAD is on `epic/redesign`, while the main checkout is on `develop`
@@ -53,7 +57,7 @@ Every command SHALL work on the Git repository that contains the current directo
 
 #### Scenario: Existing branch
 - **WHEN** the user runs `shogun new --branch hotfix/login`
-- **THEN** a worktree for the existing branch is created and provisioned, and its path is printed
+- **THEN** a worktree for the existing branch is created and provisioned, its path is printed, and no start commit is reported
 
 #### Scenario: No project and no worktrees folder
 - **WHEN** the repository has no project in the desktop app and the user runs `shogun new TASK-123` without `--worktrees-root`
@@ -209,11 +213,19 @@ The `shogun` command SHALL be available from each release: on macOS and Linux th
 - **THEN** the worktree and its branch are removed
 
 ### Requirement: List Gradle daemons from the command line
-`shogun gradle` SHALL print one line per Gradle or Kotlin daemon with its process id, kind, Gradle version, memory, state and, inside a Git repository, its worktree, followed by the total memory. It SHALL work outside a Git repository. Inside a repository that declares the Gradle provider it SHALL also print the build cache notice when it applies.
+`shogun gradle` SHALL print one line per Gradle or Kotlin daemon with its process id, kind, Gradle version, memory, state and, inside a Git repository, its worktree, followed by the total memory. Under each busy daemon with a holding build it SHALL print the build: the client's process id and tasks when known, its directory, how long it has been running and the agent session and worktree that started it when known. `shogun gradle --json` SHALL add a `holder` object to each daemon, or `null`. It SHALL work outside a Git repository. Inside a repository that declares the Gradle provider it SHALL also print the build cache notice when it applies.
 
 #### Scenario: Daemons running
 - **WHEN** the user runs `shogun gradle` in a repository while an idle and a busy Gradle daemon are running
 - **THEN** each one has a line with its state and worktree, and the total memory is printed
+
+#### Scenario: Busy daemon held by another session
+- **WHEN** a daemon is busy with `./gradlew benchRun` in the `api` worktree, started two hours ago by the session of the `apps` worktree, and the user runs `shogun gradle`
+- **THEN** under the daemon's line a line names the client's process id, `benchRun`, the `api` worktree's directory, about two hours, and the `apps` worktree's session
+
+#### Scenario: Holder in JSON
+- **WHEN** the user runs `shogun gradle --json` while a daemon is busy and another is idle
+- **THEN** the busy daemon has a `holder` with its directory, start time, client process id, tasks and session when known, and the idle one has `"holder": null`
 
 #### Scenario: No daemons
 - **WHEN** no daemon is running
@@ -708,7 +720,7 @@ A command run with `--json` SHALL never ask a question. When the repository isn'
 
 #### Scenario: Open without an agent
 - **WHEN** the user runs `shogun open TASK-123 --herdr` and Herdr has the worktree open but no pane of it has a live agent
-- **THEN** the agent is started in a new pane of that workspace, the output says the agent was started in the existing workspace and names the agent and the pane, and the command exits with code 0
+- **THEN** the agent is started in that workspace, in its only pane when that pane is idle in the worktree or in a new pane otherwise, the output says the agent was started in the existing workspace and names the agent and the pane, and the command exits with code 0
 
 #### Scenario: Agent doesn't start
 - **WHEN** Herdr doesn't detect the agent in the pane within the time limit
@@ -740,7 +752,7 @@ A command run with `--json` SHALL never ask a question. When the repository isn'
 
 #### Scenario: Started agent as JSON
 - **WHEN** the user runs `shogun open TASK-123 --herdr --json` and the agent is started in the existing workspace
-- **THEN** the object's `herdr` is `started-agent`, with the new pane's `pane_id` and the agent's name
+- **THEN** the object's `herdr` is `started-agent`, with the `pane_id` of the pane the agent runs in, reused or new, and the agent's name
 
 #### Scenario: Focused as JSON
 - **WHEN** the user runs `shogun open TASK-123 --herdr --json` and a live `claude` agent is focused
@@ -1034,11 +1046,15 @@ With `--yes`, `shogun clean --down-compose-projects` SHALL also take down the Co
 - **THEN** the command says it needs a worktree and exits with code 1
 
 ### Requirement: Tell the agent how to check its desktop app
-When the repository declares the desktop app provider on macOS, the context printed by `shogun hook session-start` SHALL say to check the app with `shogun headless start` and the Hot Reload MCP instead of computer use, to capture it with `shogun headless capture` instead of the MCP's screenshot, to re-read the tree after each view change, to hide it again with `shogun headless start` after `restart`, what still needs the desktop, and that for it the agent takes the desktop turn with `shogun desktop acquire --wait` first.
+When the repository declares the desktop app provider on macOS, the context printed by `shogun hook session-start` SHALL say in one line to check the app hidden with `shogun headless start` instead of computer use, and to read `shogun guide resources` for how to drive and capture it. `shogun guide resources` SHALL keep the full rule: drive it with the Hot Reload MCP, capture it with `shogun headless capture` instead of the MCP's screenshot, re-read the tree after each view change, hide it again with `shogun headless start` after `restart`, and say what still needs the desktop and that for it the agent takes the desktop turn with `shogun desktop acquire --wait` first.
 
 #### Scenario: Context with the provider
 - **WHEN** a Claude Code session starts on macOS in a worktree of a repository that declares the provider
-- **THEN** the context mentions `shogun headless start`, `shogun headless capture`, not to use the MCP's `take_screenshot`, hiding again after `restart`, what still needs the desktop and `shogun desktop acquire --wait` for it
+- **THEN** the context has one line that mentions `shogun headless start` and `shogun guide resources`
+
+#### Scenario: Full rule in the guide
+- **WHEN** the user runs `shogun guide resources` on macOS in a worktree of a repository that declares the provider
+- **THEN** the output mentions `shogun headless capture`, not to use the MCP's `take_screenshot`, hiding again after `restart`, what still needs the desktop and `shogun desktop acquire --wait` for it
 
 #### Scenario: Context on another platform
 - **WHEN** a session starts on Linux in a worktree of a repository that declares the provider
@@ -1114,3 +1130,21 @@ With `--yes`, `shogun clean --stop-maven-daemons` SHALL also stop the idle Maven
 #### Scenario: Orca unavailable
 - **WHEN** Orca isn't installed or isn't running
 - **THEN** every worktree's JSON entry has `listeningPorts` `null`, and no line has `listening=`
+
+### Requirement: Read worktree statuses concurrently in status
+`shogun status` SHALL read the statuses of the repository's worktrees, the running agents and the recorded base branches concurrently, with a bounded number of reads at a time, and SHALL print the same lines and JSON, in the same order, as reading them one after another.
+
+#### Scenario: Many worktrees
+- **WHEN** a repository has 11 worktrees and `shogun status` runs
+- **THEN** several worktree statuses are read at the same time, and the lines appear in the order the worktrees are listed
+
+#### Scenario: One worktree fails
+- **WHEN** one worktree's status can't be read while the others can
+- **THEN** its line reports the failure as before, and the other lines are unaffected
+
+### Requirement: Output is UTF-8
+The command SHALL write standard output and standard error in UTF-8 whatever the system's locale or code page, including when they are redirected to a file or a pipe.
+
+#### Scenario: A path with accents reaches a script intact
+- **WHEN** `shogun new` runs in a repository whose path contains `ñ`, with its output redirected and a locale or code page that isn't UTF-8
+- **THEN** the printed path is the worktree's path encoded in UTF-8

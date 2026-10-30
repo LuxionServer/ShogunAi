@@ -65,6 +65,7 @@ plugins:
             Command-line tool: Línea de comandos
             Development process: Proceso de desarrollo
             Branches: Ramas
+            Clean account rehearsal: Ensayo en una cuenta limpia
             Design decisions: Decisiones de diseño
             Roadmap: Roadmap
             Using with agents: Uso con agentes
@@ -77,6 +78,7 @@ plugins:
             Multirepos and groups: Multirepos y grupos
             Desktop app in the background: App de escritorio en segundo plano
             Release: Proceso de release
+            Idle cost benchmark: Benchmark del coste en reposo
 
 nav:
   - Home: index.md
@@ -100,5 +102,7 @@ nav:
       - Branches: process/branching.md
       - OpenSpec: process/openspec.md
       - Release: process/release.md
+      - Idle cost benchmark: process/benchmark.md
+      - Clean account rehearsal: process/clean-account-rehearsal.md
   - Design decisions: decisions/index.md
   - Roadmap: roadmap.md

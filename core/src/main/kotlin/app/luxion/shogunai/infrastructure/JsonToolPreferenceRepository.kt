@@ -6,7 +6,7 @@ import app.luxion.shogunai.domain.model.RunnerId
 import app.luxion.shogunai.domain.model.TerminalId
 
 class JsonToolPreferenceRepository(
-    private val settingsFile: JsonSettingsFile = JsonSettingsFile(),
+    private val settingsFile: JsonSettingsFile,
 ) : ToolPreferenceRepository {
 
     override fun loadTerminal(): TerminalId? = settingsFile.read().terminal

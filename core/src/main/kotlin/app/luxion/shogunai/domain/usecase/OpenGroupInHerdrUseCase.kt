@@ -54,7 +54,8 @@ class OpenMultirepoAgentInHerdrUseCase(
         val sessionName = multirepoSessionName(multirepo)
         if (open != null) {
             launcher.focusLiveAgent(open.workspaceId, multirepo.folder, sessionName)?.let { return@runCatching it }
-            val pane = herdr.splitPane(open.paneId, multirepo.folder, emptyList())
+            val pane = launcher.reusablePane(open.workspaceId, multirepo.folder)
+                ?: herdr.splitPane(open.paneId, multirepo.folder, emptyList())
             return@runCatching launcher.launch(
                 open.workspaceId, pane, agent.resolvedCommand(), agent.displayName, HerdrOutcome.STARTED_AGENT, sessionName, multirepo.folder,
             )

@@ -226,4 +226,13 @@ class TrimDerivedDataUseCaseTest {
         assertEquals(listOf("Old"), result.released.map { it.folder.path.substringAfterLast('/') })
         assertEquals(20 * gb, result.usageAfter)
     }
+
+    @Test
+    fun `a trim is real unless asked for a dry run`() = runTest {
+        val source = source(folder("A", project1, 1, daysAgo(30)))
+
+        val result = useCase(source)(quotaBytes = null, worktrees, emptySet()).getOrThrow()
+
+        assertFalse(result.dryRun)
+    }
 }

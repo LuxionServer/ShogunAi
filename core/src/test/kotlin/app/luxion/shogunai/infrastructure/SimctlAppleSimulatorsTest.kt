@@ -75,6 +75,18 @@ class SimctlAppleSimulatorsTest {
     }
 
     @Test
+    fun `runtimes and devices are read from simctl's JSON listings`() = runTest {
+        val executor = FakeShellCommandExecutor { command ->
+            FakeShellCommandExecutor.success(command, if (command.last() == "runtimes") runtimesJson else devicesJson)
+        }
+        val simulators = SimctlAppleSimulators(executor, osName = "Mac OS X")
+
+        assertEquals(parseRuntimes(runtimesJson), simulators.runtimes())
+        assertEquals(parseDevices(devicesJson), simulators.devices())
+        assertTrue(executor.executed("xcrun", "simctl", "list", "-j", "devices"))
+    }
+
+    @Test
     fun `creates, boots, shuts down and deletes through simctl`() = runTest {
         val executor = FakeShellCommandExecutor { command ->
             if (command.getOrNull(2) == "create") FakeShellCommandExecutor.success(command, "NEW-UDID\n") else FakeShellCommandExecutor.success(command)

@@ -26,7 +26,7 @@ class LocalFilesPreflightRegressionTest {
     private val root: Path = Files.createTempDirectory("preflight")
     private val repository: Path = root.resolve("main-repo")
     private val worktrees: Path = root.resolve("worktrees")
-    private val git = RecordingExecutor(ProcessBuilderShellCommandExecutor())
+    private val git = RecordingExecutor(ProcessBuilderShellCommandExecutor(path = null))
 
     @AfterTest
     fun cleanUp() {

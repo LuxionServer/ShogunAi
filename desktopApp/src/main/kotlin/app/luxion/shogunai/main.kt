@@ -21,12 +21,15 @@ import androidx.compose.ui.input.key.isMetaPressed
 import androidx.compose.ui.input.key.isShiftPressed
 import androidx.compose.ui.input.key.type
 import app.luxion.shogunai.ui.actions.ActionId
+import app.luxion.shogunai.ui.LocalPathPicker
+import app.luxion.shogunai.ui.NativeFolderPicker
 import app.luxion.shogunai.ui.isMacOs
 import androidx.compose.ui.platform.LocalClipboard
 import app.luxion.shogunai.diagnostics.SecondaryWindowErrorHandler
 import app.luxion.shogunai.diagnostics.UiFreezeWatchdog
 import app.luxion.shogunai.diagnostics.asWindowExceptionHandlerFactory
 import app.luxion.shogunai.diagnostics.copyDiagnosticReport
+import app.luxion.shogunai.ui.shell.InstallationCheckWindow
 import app.luxion.shogunai.diagnostics.diagnosticsExceptionHandler
 import app.luxion.shogunai.diagnostics.installUncaughtExceptionLogging
 import app.luxion.shogunai.domain.io.DiagnosticsLog
@@ -99,6 +102,16 @@ fun main(args: Array<String>) {
     openWindow()
 }
 
+internal fun shellViewModelOf(appContainer: AppContainer) = ShellViewModel(
+    appContainer.projectRepository,
+    appContainer.shellPreferenceRepository,
+    appContainer::settingsProblem,
+    appContainer::acknowledgeSettingsProblem,
+    MultirepoCatalog(appContainer::knownMultirepos),
+    appContainer::registerWorkspaceProject,
+    appContainer::forgetMissingMultirepos,
+)
+
 @OptIn(ExperimentalComposeUiApi::class)
 private fun openWindow() = application {
     val appContainer = remember { AppContainer() }
@@ -111,6 +124,7 @@ private fun openWindow() = application {
     var preferencesOpen by remember { mutableStateOf(false) }
     var preferencesFrontRequests by remember { mutableIntStateOf(0) }
     var aboutOpen by remember { mutableStateOf(false) }
+    var installationCheckOpen by remember { mutableStateOf(false) }
     val openPreferences: () -> Unit = {
         if (preferencesOpen) preferencesFrontRequests++ else preferencesOpen = true
     }
@@ -123,6 +137,11 @@ private fun openWindow() = application {
     val aboutErrorHandlers = SecondaryWindowErrorHandler(
         appContainer.diagnosticsLog,
         onClosed = { aboutOpen = false },
+        onReport = reportSecondaryWindowError,
+    ).asWindowExceptionHandlerFactory()
+    val installationCheckErrorHandlers = SecondaryWindowErrorHandler(
+        appContainer.diagnosticsLog,
+        onClosed = { installationCheckOpen = false },
         onReport = reportSecondaryWindowError,
     ).asWindowExceptionHandlerFactory()
     val updateScope = rememberCoroutineScope { diagnosticsHandler }
@@ -182,13 +201,13 @@ private fun openWindow() = application {
     LaunchedEffect(trayPreferences.isIconShown) {
         if (!trayPreferences.isIconShown) windowVisible = true
     }
-    val appInstanceLock = remember { FileAppInstanceLock() }
+    val appInstanceLock = remember { FileAppInstanceLock(appContainer.files.appLock) }
     val servesAppRequests = remember { appInstanceLock.acquire() }
     DisposableEffect(Unit) { onDispose { appInstanceLock.release() } }
     val shellViewModelForRequests = shellViewModelHolder.value
     LaunchedEffect(shellViewModelForRequests, servesAppRequests) {
         if (!servesAppRequests || shellViewModelForRequests == null) return@LaunchedEffect
-        val requests = FileAppRequestChannel()
+        val requests = FileAppRequestChannel(appContainer.files.appRequests)
         val handler = AppRequestHandler(shellViewModelForRequests, showMainWindow)
         while (true) {
             val pending = withContext(Dispatchers.IO) { requests.receive(System.currentTimeMillis()) }
@@ -283,17 +302,7 @@ private fun openWindow() = application {
             }
         }
         SideEffect { mainWindowHolder.value = window }
-        val shellViewModel = viewModel {
-            ShellViewModel(
-                appContainer.projectRepository,
-                appContainer.shellPreferenceRepository,
-                appContainer::settingsProblem,
-                appContainer::acknowledgeSettingsProblem,
-                MultirepoCatalog(appContainer::knownMultirepos),
-                appContainer::registerWorkspaceProject,
-                appContainer::forgetMissingMultirepos,
-            )
-        }
+        val shellViewModel = viewModel { shellViewModelOf(appContainer) }
         SideEffect { shellViewModelHolder.value = shellViewModel }
         val clipboard = LocalClipboard.current
         val reportScope = rememberCoroutineScope { diagnosticsHandler }
@@ -335,11 +344,13 @@ private fun openWindow() = application {
             onPreferences = openPreferences,
             onCheckForUpdates = checkForUpdates,
             onTour = appContainer.tour::start,
+            onCheckInstallation = { installationCheckOpen = true },
             onCopyDiagnosticReport = copyDiagnosticReport,
             onAbout = { aboutOpen = true },
             onQuit = requestQuit,
         )
-        CompositionLocalProvider(LocalShownErrorLog provides appContainer.shownErrorLog) {
+        val pathPicker = remember(window) { NativeFolderPicker(owner = { window }) }
+        CompositionLocalProvider(LocalShownErrorLog provides appContainer.shownErrorLog, LocalPathPicker provides pathPicker) {
             AppearanceScope(appearance) {
                 AppShell(
                     appContainer,
@@ -360,6 +371,14 @@ private fun openWindow() = application {
             LocalWindowExceptionHandlerFactory provides preferencesErrorHandlers,
         ) {
             PreferencesWindow(appearance, appContainer.tools, appContainer.resources, appContainer.claudeHooks, appContainer.updates, trayPreferences, inactivityPreferences, preferencesFrontRequests, onClose = { preferencesOpen = false })
+        }
+    }
+    if (installationCheckOpen) {
+        CompositionLocalProvider(
+            LocalShownErrorLog provides appContainer.shownErrorLog,
+            LocalWindowExceptionHandlerFactory provides installationCheckErrorHandlers,
+        ) {
+            InstallationCheckWindow(appearance, appContainer.installationCheck, appContainer.diagnosticReport::build, onClose = { installationCheckOpen = false })
         }
     }
     if (aboutOpen) {

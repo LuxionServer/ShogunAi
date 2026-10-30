@@ -160,6 +160,17 @@ class CleanUpWorktreesUseCaseTest {
         assertTrue(executor.executedCommands.none { it.getOrNull(1) == "branch" })
     }
 
+    @Test
+    fun `a failing prune reports every missing worktree`() = runTest {
+        val executor = executor(mapOf(listOf("git", "worktree", "prune") to { command -> failure(command, exitCode = 1, stderr = "fatal: locked") }))
+
+        val report = CleanUpWorktreesUseCase(config, executor)(listOf(first, missing), mainBranch, deleteBranches = false).getOrThrow()
+
+        assertEquals(listOf(first.path), report.removed)
+        assertEquals(listOf(missing.path), report.failures.map { it.path })
+        assertIs<WorktreeError.GitCommandFailed>(report.failures.single().error)
+    }
+
     private fun desktopTurns(store: FakeDesktopTurnStore, queue: FakeDeviceWaitQueue) = ReleaseDesktopTurnUseCase(
         DesktopTurnLedger(store, FakeEnvironmentStateStore(), queue, FakeProcessLiveness(), { path -> "/home/dev/projects/main-repo/.git/worktrees/${path.substringAfterLast('/')}" }),
     )

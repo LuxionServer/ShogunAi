@@ -30,3 +30,7 @@ data class HerdrPane(
         const val UNKNOWN_AGENT_STATUS = "unknown"
     }
 }
+
+data class HerdrPaneProcesses(val shellPid: Long?, val foregroundProcessGroupId: Long?) {
+    val atPrompt: Boolean get() = shellPid != null && shellPid == foregroundProcessGroupId
+}

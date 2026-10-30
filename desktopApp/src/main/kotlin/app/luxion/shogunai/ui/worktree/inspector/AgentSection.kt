@@ -7,6 +7,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import app.luxion.shogunai.domain.model.RunningAgent
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.ui.components.AgentIndicator
+import app.luxion.shogunai.ui.components.AgentIndicatorSize
 import app.luxion.shogunai.ui.components.InspectorSection
 import app.luxion.shogunai.ui.i18n.LocalStrings
 import app.luxion.shogunai.ui.theme.ShogunTheme
@@ -23,7 +24,7 @@ fun AgentSection(worktree: Worktree, agents: Map<String, List<RunningAgent>>?, r
         state = agentSectionState(agents, worktree, strings),
     ) {
         running.forEach { agent ->
-            agentIndicator(listOf(agent), readAt, Instant.now(), strings)?.let { AgentIndicator(it) }
+            agentIndicator(listOf(agent), readAt, Instant.now(), strings)?.let { AgentIndicator(it, size = AgentIndicatorSize.LARGE) }
             agent.activity?.let { activity ->
                 agentActivityLines(activity, strings).forEach { line ->
                     Text(

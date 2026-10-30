@@ -58,31 +58,40 @@ class DetectRunningAgentsUseCase(
     }
 
     private suspend fun scanProcesses(searches: List<AgentSearch>, worktrees: List<Worktree>, exact: Set<String>): ProcessScan {
-        val processes = run("lsof", "-d", "cwd", "-F", "pcn").let(::parseLsofWorkingDirectories)
-        val worktreeByPid = processes.mapNotNull { (pid, cwd) ->
-            attributedWorktree(cwd, worktrees, exact)?.let { pid to it.path }
-        }.toMap()
-        if (worktreeByPid.isEmpty()) return ProcessScan()
-
-        val executables = run("ps", "-o", "pid=,comm=", "-p", worktreeByPid.keys.joinToString(","))
-            .let(::parsePsExecutables)
         val agentNamesByPath = searches.flatMap { search ->
             val names = KNOWN_AGENTS + search.agentCommands.mapNotNull(::agentName)
             search.worktrees.map { it.path to names }
         }.toMap()
+        val agentNames = agentNamesByPath.values.flatten().toSet()
+        val candidates = run("ps", "-A", "-o", "pid=,comm=")
+            .let(::parsePsExecutables)
+            .map { (pid, executable) -> pid to executable.substringAfterLast('/') }
+            .filter { (_, name) -> name in agentNames }
+        if (candidates.isEmpty()) return ProcessScan()
 
-        val agents = executables.mapNotNull { (pid, executable) ->
-            val name = executable.substringAfterLast('/')
-            val path = worktreeByPid[pid]
-            if (path != null && name in agentNamesByPath[path].orEmpty()) path to RunningAgent(name) else null
-        }
-            .groupBy({ it.first }, { it.second })
+        val worktreeByPid = workingDirectories(candidates.map { it.first })
+            .mapNotNull { (pid, cwd) -> attributedWorktree(cwd, worktrees, exact)?.let { pid to it.path } }
+            .toMap()
+        val attributed = candidates.mapNotNull { (pid, name) -> worktreeByPid[pid]?.let { Triple(pid, name, it) } }
+        val agents = attributed
+            .filter { (_, name, path) -> name in agentNamesByPath[path].orEmpty() }
+            .groupBy({ it.third }, { RunningAgent(it.second) })
             .mapValues { (_, agents) -> agents.distinct() }
-        val claudePids = executables
-            .filter { (_, executable) -> executable.substringAfterLast('/') == CLAUDE }
-            .mapNotNull { (pid, _) -> pid.toLongOrNull() }
+        val claudePids = attributed
+            .filter { (_, name, _) -> name == CLAUDE }
+            .mapNotNull { (pid, _, _) -> pid.toLongOrNull() }
             .toSet()
         return ProcessScan(agents, claudePids)
+    }
+
+    private suspend fun workingDirectories(pids: List<String>): List<Pair<String, String>> {
+        val command = listOf("lsof", "-a", "-d", "cwd", "-F", "pcn", "-p", pids.joinToString(","))
+        val result = executor.executeWithin(command, CommandTimeouts.LISTING)
+        if (!result.isSuccess && result.exitCode != LSOF_SOME_NOT_FOUND) {
+            throw WorktreeError.ProcessListingFailed(result.command, result.exitCode)
+        }
+        val requested = pids.toSet()
+        return parseLsofWorkingDirectories(result.stdout).filter { (pid, _) -> pid in requested }
     }
 
     private fun withSessionStates(scan: ProcessScan, worktrees: List<Worktree>): Map<String, List<RunningAgent>> {
@@ -248,9 +257,10 @@ class DetectRunningAgentsUseCase(
 
     private companion object {
         const val CLAUDE = "claude"
+        const val LSOF_SOME_NOT_FOUND = 1
         const val TRANSCRIPT_GRACE_MILLIS = 1_000L
         const val UNKNOWN_PID_MAX_AGE_MILLIS = 12 * 60 * 60 * 1_000L
-        val KNOWN_AGENTS = setOf("claude", "codex", "gemini", "cursor-agent", "opencode", "aider", "copilot")
+        private val KNOWN_AGENTS = setOf("claude", "codex", "gemini", "cursor-agent", "opencode", "aider", "copilot")
         const val HERDR_TIMEOUT_MILLIS = 5_000L
         const val HERDR_BACK_OFF_MILLIS = 30_000L
     }

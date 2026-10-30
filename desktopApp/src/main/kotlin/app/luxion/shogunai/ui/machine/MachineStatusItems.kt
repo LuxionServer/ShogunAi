@@ -37,6 +37,7 @@ fun machineStatusItems(
         val details = listOfNotNull(
             summary?.takeUnless { it.calculating }?.text(resource, strings) ?: strings.notMeasuredYet.takeIf { failure == null },
             warning,
+            strings.overLimitBuildsRunning.takeIf { summary?.poolHeldByBuilds == true },
             failure?.reason(strings),
         )
         MachineStatusItem(
@@ -79,7 +80,7 @@ private fun MachineSummary.figure(resource: MachineResource, strings: Strings): 
 }
 
 private fun MachineSummary.warning(resource: MachineResource, strings: Strings): String? = when {
-    poolKindOf(resource) != null && poolInUse != null && poolLimit != null && poolInUse > poolLimit -> strings.overLimit
+    poolKindOf(resource) != null && poolInUse != null && poolLimit != null && poolInUse > poolLimit && !poolHeldByBuilds -> strings.overLimit
     resource == MachineResource.XCODE_DERIVED_DATA && !calculating && bytes != null && quotaBytes != null && bytes > quotaBytes -> strings.overQuota
     else -> null
 }

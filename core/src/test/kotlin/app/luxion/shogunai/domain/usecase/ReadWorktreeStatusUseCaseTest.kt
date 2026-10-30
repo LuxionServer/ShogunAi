@@ -315,4 +315,12 @@ class ReadWorktreeStatusUseCaseTest {
 
         assertNull(status.createdAt)
     }
+
+    @Test
+    fun `a git file without a gitdir line leaves the creation time empty`() = runTest {
+        val files = FakeFileManager()
+        files.writtenTexts["${worktree.path}/.git"] = "not a pointer\n"
+
+        assertNull(ReadWorktreeStatusUseCase(executor(), files)(worktree, mainBranch).getOrThrow().createdAt)
+    }
 }
