@@ -203,6 +203,8 @@ class StringsTest {
         WorktreeError.EnvironmentFileTracked(".env"),
         WorktreeError.EnvironmentFileWriteFailed(".env", IOException("read-only")),
         WorktreeError.WorktreeFolderInUse("~/projects/TASK-123", true, listOf("git", "worktree", "remove", "~/projects/TASK-123"), 255, "error: failed to delete: Permission denied"),
+        WorktreeError.WorktreeLocked("~/projects/TASK-123", "orca-create-preparation:v1", listOf("git", "worktree", "remove", "~/projects/TASK-123"), 128, "fatal: cannot remove a locked working tree"),
+        WorktreeError.WorktreeLocked("~/projects/TASK-123", null, listOf("git", "worktree", "remove", "~/projects/TASK-123"), 128, "fatal: cannot remove a locked working tree"),
         WorktreeError.HerdrNotInstalled,
         WorktreeError.HerdrCommandFailed(listOf("herdr", "pane", "list"), "no herdr server is running"),
         WorktreeError.HerdrAgentNotStarted("w1:p2", "headroom wrap claude"),
@@ -226,9 +228,36 @@ class StringsTest {
     ).map { WorktreeError.GitCommandFailed(listOf("git", "worktree", "add"), 128, it) }
 
     @Test
+    fun `the upstream arrows explain what is not pushed and not pulled in both languages`() {
+        assertEquals("1 commit not pushed · 3 commits not pulled", EnglishStrings.upstreamArrows(1, 3))
+        assertEquals("2 commits not pushed", EnglishStrings.upstreamArrows(2, 0))
+        assertEquals("1 commit not pulled", EnglishStrings.upstreamArrows(0, 1))
+        assertEquals("1 commit sin subir · 3 commits sin traer", SpanishStrings.upstreamArrows(1, 3))
+        assertEquals("2 commits sin subir", SpanishStrings.upstreamArrows(2, 0))
+        assertEquals("1 commit sin traer", SpanishStrings.upstreamArrows(0, 1))
+        assertEquals("in sync with its upstream", EnglishStrings.upstreamArrows(0, 0))
+        assertEquals("al día con su upstream", SpanishStrings.upstreamArrows(0, 0))
+    }
+
+    @Test
+    fun `the working agents are counted in both languages`() {
+        assertEquals(listOf("No agents working", "1 agent working", "3 agents working"), listOf(0, 1, 3).map(EnglishStrings::agentsWorking))
+        assertEquals(listOf("Ningún agente trabajando", "1 agente trabajando", "3 agentes trabajando"), listOf(0, 1, 3).map(SpanishStrings::agentsWorking))
+    }
+
+    @Test
+    fun `the inactive criterion reads well for a single day in both languages`() {
+        assertEquals("No agent running and no activity in the last day, even with uncommitted or unpushed work.", EnglishStrings.groupInactiveCriterion(1))
+        assertEquals("Sin agente en marcha y sin actividad en el último día, aunque tenga trabajo sin commit o sin subir.", SpanishStrings.groupInactiveCriterion(1))
+        assertEquals("Sin agente en marcha y sin actividad en los últimos 3 días, aunque tenga trabajo sin commit o sin subir.", SpanishStrings.groupInactiveCriterion(3))
+    }
+
+    @Test
     fun `every state group has its own hint and criterion in both languages`() {
-        assertEquals("agent waiting, uncommitted or unpushed", StateGroupKind.NEEDS_YOU.hint(EnglishStrings))
-        assertEquals("agente esperando, sin commit o sin subir", StateGroupKind.NEEDS_YOU.hint(SpanishStrings))
+        assertEquals("agent blocked or done", StateGroupKind.WAITING_FOR_YOU.hint(EnglishStrings))
+        assertEquals("agente bloqueado o terminado", StateGroupKind.WAITING_FOR_YOU.hint(SpanishStrings))
+        assertEquals("uncommitted or unpushed", StateGroupKind.UNFINISHED.hint(EnglishStrings))
+        assertEquals("sin commit o sin subir", StateGroupKind.UNFINISHED.hint(SpanishStrings))
         allStrings.forEach { strings ->
             val hints = StateGroupKind.entries.map { it.hint(strings) }
             val criteria = StateGroupKind.entries.map { it.criterion(strings) }
@@ -239,6 +268,22 @@ class StringsTest {
         StateGroupKind.entries.forEach { kind ->
             assertNotEquals(kind.hint(EnglishStrings), kind.hint(SpanishStrings))
             assertNotEquals(kind.criterion(EnglishStrings), kind.criterion(SpanishStrings))
+        }
+    }
+
+    @Test
+    fun `the forced removal of a locked worktree names the lock and its reason`() {
+        assertEquals(
+            "\"~/projects/TASK-123\" is locked: orca-create-preparation:v1. Forcing the deletion overrides the lock.",
+            EnglishStrings.forceRemoveLockedMessage("~/projects/TASK-123", "orca-create-preparation:v1"),
+        )
+        assertEquals(
+            "\"~/projects/TASK-123\" está bloqueado. Forzar la eliminación se salta el bloqueo.",
+            SpanishStrings.forceRemoveLockedMessage("~/projects/TASK-123", null),
+        )
+        allStrings.forEach { strings ->
+            assertTrue(strings.forceRemoveLockedMessage("~/projects/TASK-123", null).contains("~/projects/TASK-123"))
+            assertTrue(strings.forceRemoveLockedMessage("~/projects/TASK-123", "preparing").contains("preparing"))
         }
     }
 
@@ -290,12 +335,26 @@ class StringsTest {
             WorktreeError.NoEmulatorPort(5554, 5584) to "5584",
             WorktreeError.EmulatorBootTimeout("emulator-5556", 180) to "emulator-5556",
             WorktreeError.EnvironmentFileTracked(".env") to ".env",
+            WorktreeError.WorktreeLocked("~/projects/TASK-123", "orca-create-preparation:v1", emptyList(), 128, "") to "orca-create-preparation:v1",
         )
         named.forEach { (error, expected) ->
             allStrings.forEach { strings ->
                 val description = strings.describe(error)
                 assertTrue((description.summary + description.nextStep).contains(expected), description.summary)
             }
+        }
+    }
+
+    @Test
+    fun `a locked worktree keeps Git's refusal in the technical details`() {
+        val command = listOf("git", "worktree", "remove", "~/projects/TASK-123")
+        val error = WorktreeError.WorktreeLocked("~/projects/TASK-123", null, command, 128, "fatal: cannot remove a locked working tree")
+
+        allStrings.forEach { strings ->
+            val details = strings.describe(error).details
+            assertEquals(command, details?.command)
+            assertEquals(128, details?.exitCode)
+            assertEquals("fatal: cannot remove a locked working tree", details?.output)
         }
     }
 

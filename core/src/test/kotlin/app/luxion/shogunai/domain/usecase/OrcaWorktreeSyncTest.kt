@@ -59,7 +59,8 @@ class OrcaWorktreeSyncTest {
     fun `every state maps to its board column`() {
         assertEquals("todo", orcaBoardStatus(Activity.New))
         assertEquals("in-progress", orcaBoardStatus(Activity.AgentWorking))
-        assertEquals("in-progress", orcaBoardStatus(Activity.NeedsYou))
+        assertEquals("in-progress", orcaBoardStatus(Activity.WaitingForYou))
+        assertEquals("in-progress", orcaBoardStatus(Activity.Unfinished))
         assertEquals("in-review", orcaBoardStatus(Activity.Stopped))
         assertEquals("in-review", orcaBoardStatus(Activity.Inactive))
         assertEquals("completed", orcaBoardStatus(Activity.Merged))
@@ -70,17 +71,17 @@ class OrcaWorktreeSyncTest {
 
     @Test
     fun `the comment summarises what needs attention`() {
-        val comment = orcaComment(Activity.NeedsYou, status(uncommitted = 3, upstream = Divergence(2, 0)), emptyList())
+        val comment = orcaComment(Activity.Unfinished, status(uncommitted = 3, upstream = Divergence(2, 0)), emptyList())
 
-        assertEquals("ShogunAi: needs you · 3 uncommitted changes · 2 commits not pushed · 2 ahead of develop", comment)
+        assertEquals("ShogunAi: unfinished · 3 uncommitted changes · 2 commits not pushed · 2 ahead of develop", comment)
     }
 
     @Test
     fun `the comment uses the singular and names a waiting agent and an unpushed branch`() {
         val blocked = RunningAgent("claude", AgentState.BLOCKED)
-        val comment = orcaComment(Activity.NeedsYou, status(uncommitted = 1, upstream = null, base = Divergence(1, 1)), listOf(blocked))
+        val comment = orcaComment(Activity.WaitingForYou, status(uncommitted = 1, upstream = null, base = Divergence(1, 1)), listOf(blocked))
 
-        assertEquals("ShogunAi: needs you · agent waiting · 1 uncommitted change · branch not pushed · 1 ahead of develop · 1 behind develop", comment)
+        assertEquals("ShogunAi: waiting for you · agent waiting · 1 uncommitted change · branch not pushed · 1 ahead of develop · 1 behind develop", comment)
     }
 
     @Test
@@ -229,7 +230,7 @@ class OrcaWorktreeSyncTest {
     fun `an unpushed branch isn't looked up`() = runTest {
         val github = FakeGitHubClient(pullRequests = mapOf("feature/TASK-1" to 42))
 
-        sync(github = github).sync(listOf(item(Activity.NeedsYou, status(upstream = null))), listOf(row()))
+        sync(github = github).sync(listOf(item(Activity.Unfinished, status(upstream = null))), listOf(row()))
 
         assertTrue(github.pullRequestLookups.isEmpty())
     }
@@ -252,7 +253,7 @@ class OrcaWorktreeSyncTest {
         val github = FakeGitHubClient(issues = setOf(123))
         val issueWorktree = Worktree(path, "feature/123-login")
 
-        sync(orca, github = github).sync(listOf(item(Activity.NeedsYou, status(upstream = null), target = issueWorktree)), listOf(row()))
+        sync(orca, github = github).sync(listOf(item(Activity.Unfinished, status(upstream = null), target = issueWorktree)), listOf(row()))
 
         assertEquals(123, orca.updates.single().second.issue)
     }
@@ -262,9 +263,9 @@ class OrcaWorktreeSyncTest {
         val orca = FakeOrcaClient()
         val github = FakeGitHubClient(issues = setOf(7))
 
-        sync(orca, github = github).sync(listOf(item(Activity.NeedsYou, status(upstream = null), target = Worktree(path, "feature/123-login"))), listOf(row()))
-        sync(orca, github = github).sync(listOf(item(Activity.NeedsYou, status(upstream = null), target = Worktree(path, "feature/7-login"))), listOf(row(issue = 3)))
-        sync(orca, github = github).sync(listOf(item(Activity.NeedsYou, status(upstream = null), target = Worktree(path, "feature/TASK-123"))), listOf(row()))
+        sync(orca, github = github).sync(listOf(item(Activity.Unfinished, status(upstream = null), target = Worktree(path, "feature/123-login"))), listOf(row()))
+        sync(orca, github = github).sync(listOf(item(Activity.Unfinished, status(upstream = null), target = Worktree(path, "feature/7-login"))), listOf(row(issue = 3)))
+        sync(orca, github = github).sync(listOf(item(Activity.Unfinished, status(upstream = null), target = Worktree(path, "feature/TASK-123"))), listOf(row()))
 
         assertTrue(orca.updates.all { it.second.issue == null })
         assertEquals(listOf(path to 123), github.issueLookups)

@@ -73,11 +73,11 @@ The tour SHALL create a Git repository at `~/.shogunai/tour/sample-repo` with ma
 - **THEN** the dialog shows the command and its error output, leaves no project registered and removes the partly created folder
 
 ### Requirement: Worktrees in every state
-The sample repository SHALL have worktrees that the app shows under each Git-derived state: "New", "Needs you" (uncommitted changes), "Stopped" (pushed commits of its own, behind `main`), "Merged", "Inactive" (last commit older than the longest inactivity period the preferences allow), a locked worktree and "Folder missing".
+The sample repository SHALL have worktrees that the app shows under each Git-derived state: "New", "Unfinished" (uncommitted changes), "Stopped" (pushed commits of its own, behind `main`), "Merged", "Inactive" (last commit older than the longest inactivity period the preferences allow), a locked worktree and "Folder missing".
 
 #### Scenario: All worktrees by state
 - **WHEN** the tour project's view is grouped by state after the sample is created
-- **THEN** it shows worktrees under "Needs you", "New", "Stopped", "Merged", "Inactive" and "Folder missing", and one row has the "locked" label
+- **THEN** it shows worktrees under "Unfinished", "New", "Stopped", "Merged", "Inactive" and "Folder missing", and one row has the "locked" label
 
 ### Requirement: The tour's script
 The sample repository SHALL contain an `AGENTS.md` with the tour's script and a `CLAUDE.md` that includes it. The script SHALL tell the agent to speak the language the app is set to, to cover status, cleanup, provisioning, the command line, hooks, environment and providers one step at a time, waiting for the user before each next step, and to change nothing outside `~/.shogunai/tour`.

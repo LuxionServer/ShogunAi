@@ -307,6 +307,10 @@ private fun englishWorktreeTexts(error: WorktreeError, gitCause: GitFailureCause
         "A program is using the folder of ${error.path}.",
         "Close any terminal, editor or sync client using it and remove the worktree again.${if (error.unregistered) " Git already unregistered it, so removing it again finishes the job." else ""}",
     )
+    is WorktreeError.WorktreeLocked -> ErrorTexts(
+        "${error.path} is locked${error.reason?.let { " ($it)" }.orEmpty()}.",
+        "Remove it forcing it to override the lock, or unlock it with git worktree unlock.",
+    )
     is WorktreeError.AgentRunningInWorktree -> ErrorTexts(
         "${error.agents.joinToString()} is running in ${error.path}.",
         "Stop it first, or remove the worktree forcing it.",

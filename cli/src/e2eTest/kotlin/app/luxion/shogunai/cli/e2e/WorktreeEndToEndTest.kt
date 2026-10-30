@@ -122,6 +122,22 @@ class WorktreeEndToEndTest {
     }
 
     @Test
+    fun `remove refuses a locked worktree unless forced`() {
+        sandbox.shogunSucceeds(repository, "project", "add")
+        sandbox.shogunSucceeds(repository, "new", "TASK-1")
+        val worktree = worktreesRoot.resolve("TASK-1")
+        sandbox.git(repository, "worktree", "lock", "--reason", "preparing", worktree.toString())
+
+        val refused = sandbox.shogun(repository, "remove", "TASK-1")
+        assertTrue(refused.exitCode != 0, refused.describe())
+        assertTrue(refused.stderr.contains("is locked (preparing); use --force"), refused.describe())
+        assertTrue(worktree.exists())
+
+        sandbox.shogunSucceeds(repository, "remove", "TASK-1", "--force")
+        assertFalse(worktree.exists())
+    }
+
+    @Test
     fun `clean lists a merged worktree and removes it with its branch`() {
         sandbox.shogunSucceeds(repository, "project", "add")
         sandbox.shogunSucceeds(repository, "new", "TASK-1")

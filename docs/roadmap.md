@@ -37,11 +37,6 @@ ShogunAi has to work the first time on a machine that isn't the one it's develop
 
 A UX review of the implemented v2 interface, done on `develop` at `aaf42f94` with sample data, concluded that the app should first answer "what needs me?" and "where is each agent?", and that today it answers neither at a glance. Its fixes are split into changes, in order:
 
-- The attention model (an OpenSpec change):
-  - "Needs you" splits into "Waiting for you", for an agent that is blocked or done, under a warning header, and "Unfinished", for uncommitted or unpushed work, under a neutral one. The main checkout and idle worktrees leave both groups but keep their ✎ mark.
-  - The sidebar's Active counter counts only "Waiting for you", and "Stopped" starts collapsed.
-  - "↑" means only commits not pushed to the upstream: the comparison with the base moves to the inspector, and a branch without an upstream shows a "not pushed" icon.
-  - A calm empty Active view: "Nothing needs you", with how many agents are working and "See all worktrees".
 - One row per multirepo change in Active, showing the worst state of its repositories, which expands into one child row per repository; the child rows don't repeat the branch.
 - The rest of the Machine views (Maven daemons, emulators, simulators, DerivedData, Compose projects) get what the Gradle daemons view got: an unknown owner dimmed instead of blank, ghost buttons in their rows, and the reason a disabled action is disabled written next to it.
 

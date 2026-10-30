@@ -14,9 +14,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Bedtime
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.DesktopMac
 import androidx.compose.material.icons.filled.DesktopWindows
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FolderOff
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Pause
@@ -140,6 +142,7 @@ private val TimeColumn = ColumnSpec(width = 172.dp, compact = CompactBehavior.Sh
 
 internal const val BranchTag = "row-branch"
 internal const val GitTag = "row-git"
+internal const val NotPushedTag = "row-git-not-pushed"
 internal const val TimeTag = "row-time"
 internal const val ExecutionTag = "row-execution"
 internal const val AliasTag = "row-alias"
@@ -168,7 +171,8 @@ internal fun StateBadgeKind.color(): Color = ShogunTheme.status.of(status).color
 private fun StateBadgeKind.onColor(): Color = if (outlined) color() else ShogunTheme.status.of(status).onColor
 
 internal fun StateBadgeKind.icon(): ImageVector = when (this) {
-    StateBadgeKind.NEEDS_YOU -> Icons.Default.PriorityHigh
+    StateBadgeKind.WAITING_FOR_YOU -> Icons.Default.PriorityHigh
+    StateBadgeKind.UNFINISHED -> Icons.Default.Edit
     StateBadgeKind.AGENT_WORKING -> Icons.Default.PlayArrow
     StateBadgeKind.NEW -> Icons.Default.Add
     StateBadgeKind.STOPPED -> Icons.Default.Pause
@@ -338,9 +342,25 @@ private fun GitCellView(git: GitCell) {
             }
             GitCellState.READY -> {
                 CellLine { git.changes?.let { TooltipText(it, git.changesTooltip, Status.WARNING) } }
-                CellLine { git.secondLine?.let { TooltipText(it, git.secondLineTooltip, null) } }
+                CellLine {
+                    git.secondLine?.let { TooltipText(it, git.secondLineTooltip, null) }
+                    if (git.notPushed) NotPushedIcon()
+                }
             }
         }
+    }
+}
+
+@Composable
+private fun NotPushedIcon() {
+    val label = LocalStrings.current.branchNotPushed
+    WithTooltip(label = label) {
+        Icon(
+            Icons.Default.CloudOff,
+            contentDescription = label,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(CellIconSize).testTag(NotPushedTag),
+        )
     }
 }
 

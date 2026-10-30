@@ -115,6 +115,21 @@ class InspectorModelsTest {
     }
 
     @Test
+    fun `a branch with commits of its own and no upstream says it isn't pushed`() {
+        val unpushed = WorktreeStatus(0, null, Divergence(3, 0), now.minus(Duration.ofHours(1)))
+
+        assertEquals(Property("Upstream", "not pushed", isData = false), statusProperties(unpushed, "develop", now, EnglishStrings)[1])
+        assertEquals("not pushed", statusSummary(unpushed, EnglishStrings))
+    }
+
+    @Test
+    fun `a new branch without upstream has no upstream property`() {
+        val fresh = WorktreeStatus(0, null, Divergence(0, 0), now.minus(Duration.ofHours(1)))
+
+        assertEquals(listOf("Changes", "vs develop"), statusProperties(fresh, "develop", now, EnglishStrings).map { it.key }.take(2))
+    }
+
+    @Test
     fun `section states distinguish loading, empty and not applicable`() {
         assertEquals(SectionState.Loading, statusSectionState(null, EnglishStrings))
         assertEquals(SectionState.Empty("Status unavailable"), statusSectionState(WorktreeStatusState.Unavailable, EnglishStrings))

@@ -52,7 +52,7 @@ The system SHALL let the user create a new worktree in the "New worktree" dialog
 - **THEN** the dialog shows a loading indicator and its inputs, the mode toggle and its "Create worktree" and "Cancel" actions are disabled, preventing a duplicate submission until the call completes
 
 ### Requirement: Remove a worktree
-The system SHALL let the user remove a non-main worktree, using `RemoveWorktreeUseCase`, with an option to also delete its local branch. The removal SHALL be started from the worktree's detail, its row's context menu or the delete shortcut. Starting it SHALL always show a confirmation dialog before any Git command runs, with a checkbox labeled to delete the local branch as well, unchecked by default; the branch is only deleted if the user checks it, as a separate step after the worktree is removed. When the removal fails because the worktree has uncommitted or untracked changes, the system SHALL update the same dialog to offer a force retry, reusing the user's branch-deletion choice, instead of leaving the user with no recourse. While `RemoveWorktreeUseCase` is running (initial attempt or force retry), the dialog SHALL show a loading indicator and disable both its confirm and cancel actions until the call completes.
+The system SHALL let the user remove a non-main worktree, using `RemoveWorktreeUseCase`, with an option to also delete its local branch. The removal SHALL be started from the worktree's detail, its row's context menu or the delete shortcut. Starting it SHALL always show a confirmation dialog before any Git command runs, with a checkbox labeled to delete the local branch as well, unchecked by default; the branch is only deleted if the user checks it, as a separate step after the worktree is removed. When the removal fails because the worktree has uncommitted or untracked changes, or because it is locked, the system SHALL update the same dialog to offer a force retry, reusing the user's branch-deletion choice, instead of leaving the user with no recourse. While `RemoveWorktreeUseCase` is running (initial attempt or force retry), the dialog SHALL show a loading indicator and disable both its confirm and cancel actions until the call completes.
 
 #### Scenario: Confirmation dialog shown before removing
 - **WHEN** the user activates "Delete worktree" for a non-main worktree from its detail, its context menu or the shortcut
@@ -77,6 +77,10 @@ The system SHALL let the user remove a non-main worktree, using `RemoveWorktreeU
 #### Scenario: Removal fails because the worktree has uncommitted or untracked changes
 - **WHEN** `RemoveWorktreeUseCase` returns a failed `Result` whose `WorktreeError.GitCommandFailed` indicates the worktree needs `--force` to be removed
 - **THEN** the same confirmation dialog updates to ask whether to force-delete the worktree, preserving the "delete local branch" checkbox state the user had chosen, instead of only showing the raw error message
+
+#### Scenario: Removal fails because the worktree is locked
+- **WHEN** `RemoveWorktreeUseCase` returns a failed `Result` with `WorktreeError.WorktreeLocked`
+- **THEN** the same confirmation dialog updates to ask whether to force-delete the worktree, saying it is locked and showing the lock reason Git gave, preserving the "delete local branch" checkbox state
 
 #### Scenario: User confirms force removal
 - **WHEN** the user confirms the force-delete state of the dialog shown after a failed removal
@@ -461,3 +465,18 @@ A local files entry that is a pattern SHALL NOT produce `WorktreeError.LocalFile
 #### Scenario: Pattern and missing file
 - **WHEN** the local files include the pattern `*.p12`, which matches nothing, and the file `local.properties`, which doesn't exist in the base repository
 - **THEN** creation fails with `WorktreeError.LocalFilesUnavailable` listing only `local.properties`
+
+### Requirement: Locked worktrees are removed only when forced
+`RemoveWorktreeUseCase` SHALL report a removal refused because the worktree is locked as `WorktreeError.WorktreeLocked`, with the lock reason Git gives (none when the lock has no reason), instead of `WorktreeError.GitCommandFailed`. When the removal is forced and Git refuses it because the worktree is locked, it SHALL retry with `--force` given twice, which overrides the lock. A removal that isn't forced SHALL never override a lock.
+
+#### Scenario: Locked without force
+- **WHEN** `git worktree remove <path>` fails with "cannot remove a locked working tree, lock reason: orca-create-preparation:v1"
+- **THEN** `RemoveWorktreeUseCase` returns `WorktreeError.WorktreeLocked` with that path and the reason `orca-create-preparation:v1`, and runs no other removal command
+
+#### Scenario: Locked with force
+- **WHEN** a forced removal runs `git worktree remove --force <path>` and Git refuses it because the worktree is locked
+- **THEN** `RemoveWorktreeUseCase` runs `git worktree remove --force --force <path>` and the worktree is removed
+
+#### Scenario: Unlocked with force
+- **WHEN** a forced removal of a worktree that isn't locked succeeds with `git worktree remove --force <path>`
+- **THEN** no command with `--force` twice runs

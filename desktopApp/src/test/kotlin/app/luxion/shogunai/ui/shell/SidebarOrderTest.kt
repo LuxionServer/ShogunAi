@@ -229,7 +229,7 @@ class SidebarOrderTest {
             selectedProjectId = null,
             isActiveSelected = false,
             isAllSelected = false,
-            activeCount = 0,
+            waitingCount = 0,
             totalWorktreeCount = 0,
             activityOf = { ProjectActivity.NONE },
             rail = false,

@@ -127,7 +127,7 @@ class MultirepoViewUiTest {
         setContent {
             MaterialTheme {
                 ChangeGroupHeaderView(
-                    group = group(StateBadgeKind.NEEDS_YOU),
+                    group = group(StateBadgeKind.WAITING_FOR_YOU),
                     catalog = context(addableAliases = listOf("docs"), cleanUpBlocked = "api isn't merged"),
                     onToggle = {},
                     onAction = {},
@@ -137,7 +137,7 @@ class MultirepoViewUiTest {
 
         onNodeWithText("TASK-1").assertIsDisplayed()
         onNode(hasText("feature/TASK-1", substring = true)).assertIsDisplayed()
-        onNodeWithText("Needs you").assertIsDisplayed()
+        onNodeWithText("Waiting for you").assertIsDisplayed()
         onNodeWithText("Open all in Herdr").assertIsEnabled()
         onNodeWithText("Clean up group").assertDoesNotExist()
     }
@@ -147,7 +147,7 @@ class MultirepoViewUiTest {
         val agent = agentIndicator(listOf(RunningAgent("claude", AgentState.BLOCKED)), null, now, EnglishStrings)
         setContent {
             MaterialTheme {
-                ChangeGroupHeaderView(group = group(StateBadgeKind.NEEDS_YOU), catalog = context(), onToggle = {}, onAction = {}, agent = agent)
+                ChangeGroupHeaderView(group = group(StateBadgeKind.WAITING_FOR_YOU), catalog = context(), onToggle = {}, onAction = {}, agent = agent)
             }
         }
 
