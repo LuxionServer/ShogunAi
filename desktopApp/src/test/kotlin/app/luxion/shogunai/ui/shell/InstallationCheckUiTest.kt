@@ -182,6 +182,7 @@ class InstallationCheckUiTest {
         assertEquals("3 avisos; ShogunAi funciona, pero revisa lo de abajo.", SpanishStrings.installationOverview(report(CheckState.WARNING, CheckState.WARNING, CheckState.WARNING)))
         assertEquals("1 problema impide que ShogunAi funcione.", SpanishStrings.installationOverview(report(CheckState.FAILED)))
         assertEquals("2 problemas impiden que ShogunAi funcione y hay 2 avisos.", SpanishStrings.installationOverview(report(CheckState.FAILED, CheckState.FAILED, CheckState.WARNING, CheckState.WARNING)))
+        assertEquals("1 problema impide que ShogunAi funcione y hay 1 aviso.", SpanishStrings.installationOverview(report(CheckState.FAILED, CheckState.WARNING)))
     }
 
     @Test
