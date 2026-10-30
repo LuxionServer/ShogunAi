@@ -58,7 +58,6 @@ A UX review of the implemented v2 interface, done on `develop` at `aaf42f94` wit
   - The status bar always starts with "Machine", and a gear at the bottom of the sidebar opens Settings.
   - A missing or optional tool shows as neutral with its reason; the danger color is kept for real failures.
   - The Gradle daemons view drops the state column when every value is unknown, explains why "Stop idle daemons" is disabled, and shows which worktree uses each daemon when that's known.
-- A tidier toolbar that fits in one row: the filter; "View ▾" with the project, grouping, order and Reload (also on ⌘R); "Clean up N" only when there is something to clean up; and New worktree. On narrow windows the filter becomes an icon and New worktree becomes "+".
 - Quick fixes that don't need OpenSpec:
   - The status bar, its tooltip and the view take the count of Gradle daemons from a single source; today they disagree.
   - The guided tour's notice becomes one line in the sidebar's footer.
