@@ -82,7 +82,7 @@ fun postCreateFailureJson(failure: WorktreeError.PostCreateCommandFailed?): Json
             put("exitCode", it.exitCode)
             put("stderr", it.errorOutput)
         }
-    } ?: JsonNull
+    }.orJsonNull()
 
 fun newJson(
     path: String,
@@ -326,9 +326,9 @@ fun gradleJson(daemons: List<GradleDaemon>, attributed: Boolean): JsonObject = b
                         put("version", process.gradleVersion)
                         put("memoryBytes", process.residentMemoryBytes)
                         put("state", process.state.jsonLabel)
-                        put("idleSince", (process.state as? DaemonState.Idle)?.since?.toString())
+                        put("idleSince", (process.state as? DaemonState.Idle)?.let { it.since.toString() })
                         put("worktree", daemon.owner.takeIf { attributed }?.jsonLabel)
-                        put("holder", process.holder?.let(::holdingBuildJson) ?: JsonNull)
+                        put("holder", process.holder?.let(::holdingBuildJson).orJsonNull())
                     },
                 )
             }
@@ -341,7 +341,7 @@ private fun holdingBuildJson(holder: HoldingBuild): JsonObject = buildJsonObject
     put("directory", holder.directory)
     put("startedAt", holder.startedAt?.toString())
     put("clientPid", holder.client?.pid)
-    put("tasks", holder.client?.let { client -> buildJsonArray { client.tasks.forEach { add(JsonPrimitive(it)) } } } ?: JsonNull)
+    put("tasks", holder.client?.let { client -> buildJsonArray { client.tasks.forEach { add(JsonPrimitive(it)) } } }.orJsonNull())
     put(
         "session",
         holder.client?.session?.let { session ->
@@ -350,7 +350,7 @@ private fun holdingBuildJson(holder: HoldingBuild): JsonObject = buildJsonObject
                 put("agent", session.agent)
                 put("worktree", session.worktreePath)
             }
-        } ?: JsonNull,
+        }.orJsonNull(),
     )
 }
 
@@ -364,7 +364,7 @@ fun mavenJson(daemons: List<MavenDaemon>, attributed: Boolean): JsonObject = bui
                         put("pid", daemon.pid)
                         put("memoryBytes", daemon.process.residentMemoryBytes)
                         put("state", daemon.process.state.jsonLabel)
-                        put("idleSince", (daemon.process.state as? DaemonState.Idle)?.since?.toString())
+                        put("idleSince", (daemon.process.state as? DaemonState.Idle)?.let { it.since.toString() })
                         put("worktree", daemon.owner.takeIf { attributed }?.jsonLabel)
                     },
                 )
@@ -618,7 +618,7 @@ fun xcodeJson(active: Boolean, listing: DerivedDataListing?): JsonObject = build
                 add(
                     buildJsonObject {
                         put("path", it.folder.path)
-                        put("sizeBytes", it.folder.sizeBytes ?: 0L)
+                        put("sizeBytes", it.folder.sizeOrZero())
                         put("sourcePackagesBytes", it.folder.packagesBytes)
                         put("worktree", (it.owner as DerivedDataOwner.Worktree).path)
                     },
@@ -627,10 +627,10 @@ fun xcodeJson(active: Boolean, listing: DerivedDataListing?): JsonObject = build
         },
     )
     put("orphans", derivedDataFolders(listing?.orphans.orEmpty()))
-    put("unavailableVolumeFolders", listing?.folders?.count { it.owner == DerivedDataOwner.UnavailableVolume } ?: 0)
+    put("unavailableVolumeFolders", listing?.folders.orEmpty().count { it.owner == DerivedDataOwner.UnavailableVolume })
     put("compilationCacheBytes", listing?.compilationCacheBytes)
-    put("swiftPmCacheBytes", listing?.packageCaches?.swiftPmBytes)
-    put("cocoaPodsCacheBytes", listing?.packageCaches?.cocoaPodsBytes)
+    put("swiftPmCacheBytes", listing?.let { it.packageCaches.swiftPmBytes })
+    put("cocoaPodsCacheBytes", listing?.let { it.packageCaches.cocoaPodsBytes })
 }
 
 private fun derivedDataFolders(folders: List<DerivedDataFolder>): JsonArray = buildJsonArray {
@@ -638,12 +638,14 @@ private fun derivedDataFolders(folders: List<DerivedDataFolder>): JsonArray = bu
         add(
             buildJsonObject {
                 put("path", it.path)
-                put("sizeBytes", it.sizeBytes ?: 0L)
+                put("sizeBytes", it.sizeOrZero())
                 put("sourcePackagesBytes", it.packagesBytes)
             },
         )
     }
 }
+
+internal fun DerivedDataFolder.sizeOrZero(): Long = sizeBytes ?: 0L
 
 fun xcodeCleanJson(active: Boolean, deletion: DerivedDataDeletion?): JsonObject = buildJsonObject {
     put("active", active)
@@ -666,7 +668,7 @@ fun xcodeCleanJson(active: Boolean, deletion: DerivedDataDeletion?): JsonObject 
 
 fun xcodeTrimJson(active: Boolean, trim: DerivedDataTrim?): JsonObject = buildJsonObject {
     put("active", active)
-    put("quotaMode", trim?.quotaMode?.name?.lowercase())
+    put("quotaMode", trim?.let { it.quotaMode.name.lowercase() })
     put("quotaBytes", trim?.quotaBytes)
     put("dryRun", trim?.dryRun ?: false)
     put("usageBeforeBytes", trim?.usageBefore ?: 0L)
@@ -699,7 +701,7 @@ fun emulatorJson(
 ): JsonObject = buildJsonObject {
     put("worktree", worktree)
     put("serial", emulator?.serial)
-    put("state", emulator?.state?.jsonLabel)
+    put("state", emulator?.let { it.state.jsonLabel })
     put("acquired", emulator != null)
     acquisition?.let { put("acquiredNow", it.acquiredNow) }
     acquisition?.let { put("released", strings(it.releases.mapNotNull { release -> release.worktreePath })) }
@@ -737,7 +739,7 @@ fun simulatorJson(
     put("worktree", worktree)
     put("udid", simulator?.udid)
     put("name", simulator?.name)
-    put("state", simulator?.state?.jsonLabel)
+    put("state", simulator?.let { it.state.jsonLabel })
     put("acquired", simulator != null)
     acquisition?.let { put("acquiredNow", it.acquiredNow) }
     acquisition?.let { put("released", strings(it.releases.mapNotNull { release -> release.worktreePath })) }

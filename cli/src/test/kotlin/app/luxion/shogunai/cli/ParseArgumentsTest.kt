@@ -2,6 +2,7 @@ package app.luxion.shogunai.cli
 
 import app.luxion.shogunai.domain.model.BranchType
 import app.luxion.shogunai.domain.model.RunnerId
+import app.luxion.shogunai.domain.model.WorkflowTopic
 import app.luxion.shogunai.domain.usecase.EnvironmentFormat
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -388,5 +389,91 @@ class ParseArgumentsTest {
     fun `headless and desktop take a worktree path and start can stay visible`() {
         assertEquals(CliCommand.Headless(HeadlessAction.START, "/w/a", visible = true), command("headless", "start", "/w/a", "--visible"))
         assertEquals(CliCommand.Desktop(DesktopAction.STATUS, "/w/a"), command("desktop", "status", "/w/a"))
+    }
+
+    @Test
+    fun `options a group created with repos doesn't take`() {
+        assertEquals("--branch doesn't apply to a group created with --repos", usageError("new", "--repos", "api", "--branch", "feature/x"))
+        assertEquals("--from doesn't apply to a group created with --repos", usageError("new", "TASK-1", "--repos", "api", "--from", "develop"))
+        assertEquals("--worktrees-root doesn't apply to a group created with --repos", usageError("new", "TASK-1", "--repos", "api", "--worktrees-root", "/wt"))
+        assertEquals(listOf("api", "app"), (command("new", "TASK-1", "--repos", "api,app") as CliCommand.New).repos)
+    }
+
+    @Test
+    fun `trust takes yes, revoke and one path`() {
+        assertEquals(CliCommand.Trust("/repo", yes = true, revoke = false), command("trust", "-y", "/repo"))
+        assertEquals(CliCommand.Trust(null, yes = false, revoke = true), command("trust", "--revoke"))
+        assertEquals("'trust' takes at most one path", usageError("trust", "/a", "/b"))
+    }
+
+    @Test
+    fun `compose usage errors`() {
+        assertEquals("unknown option '--build' for 'compose build'", usageError("compose", "build", "--build"))
+        assertEquals("unknown option '--bogus' for 'compose up'", usageError("compose", "up", "--bogus"))
+        assertEquals("'compose up' takes at most one worktree; pass Compose arguments after --", usageError("compose", "up", "/a", "/b"))
+        assertEquals("unknown option '--bogus' for 'compose down'", usageError("compose", "down", "--bogus"))
+        assertEquals("'compose down' takes at most one worktree", usageError("compose", "down", "/a", "/b"))
+        assertEquals("unknown argument '--bogus' for 'compose prune'", usageError("compose", "prune", "--bogus"))
+        assertEquals(CliCommand.ComposePrune(volumes = true, confirmed = true), command("compose", "prune", "--volumes", "-y"))
+        assertEquals(CliCommand.ComposePrune(confirmed = true), command("compose", "prune", "--yes"))
+    }
+
+    @Test
+    fun `stop takes positive process ids`() {
+        assertEquals(CliCommand.GradleStop(listOf(12)), command("gradle", "stop", "12"))
+        assertEquals("'gradle stop' takes process ids, got '0'", usageError("gradle", "stop", "0"))
+        assertEquals(CliCommand.MavenStop(listOf(12)), command("maven", "stop", "12"))
+        assertEquals("'maven stop' takes process ids, got '0'", usageError("maven", "stop", "0"))
+    }
+
+    @Test
+    fun `hooks needs an action and takes yes`() {
+        assertEquals("'hooks' needs an action: install, uninstall or status", usageError("hooks"))
+        assertEquals(CliCommand.Hooks(HooksAction.INSTALL, project = false, yes = true), command("hooks", "install", "-y"))
+        assertEquals(CliCommand.Hooks(HooksAction.INSTALL, project = false, yes = true), command("hooks", "install", "--yes"))
+    }
+
+    @Test
+    fun `guide usage errors`() {
+        assertEquals("unknown option '--bogus' for 'guide'", usageError("guide", "--bogus"))
+        val topic = WorkflowTopic.entries.first().id
+        assertEquals("'guide' takes a single topic, got '$topic' and '$topic'", usageError("guide", topic, topic))
+        assertEquals("--migrate can't be combined with a topic or --plain", usageError("guide", "--migrate", "--plain"))
+        assertEquals("--migrate can't be combined with a topic or --plain", usageError("guide", "--migrate", topic))
+        assertEquals(CliCommand.GuideBlock(GuideAction.INSTALL, null, project = true, file = null, yes = true), command("guide", "install", "--project", "-y"))
+        assertEquals(CliCommand.GuideBlock(GuideAction.INSTALL, null, project = true, file = null, yes = true), command("guide", "install", "--project", "--yes"))
+    }
+
+    @Test
+    fun `device and app usage errors`() {
+        assertEquals("unknown option '--bogus' for 'simulator'", usageError("simulator", "start", "--bogus"))
+        assertEquals("'simulator start' takes at most one path", usageError("simulator", "start", "/a", "/b"))
+        assertEquals("--device and --runtime only apply to 'simulator start'", usageError("simulator", "stop", "--device", "iPhone"))
+        assertEquals("--device and --runtime only apply to 'simulator start'", usageError("simulator", "stop", "--runtime", "iOS"))
+        assertEquals(CliCommand.SimulatorGradleInit(install = true, confirmed = true), command("simulator", "gradle-init", "install", "-y"))
+        assertEquals(CliCommand.SimulatorGradleInit(install = true, confirmed = true), command("simulator", "gradle-init", "install", "--yes"))
+        assertEquals("unknown option '--bogus' for 'emulator'", usageError("emulator", "start", "--bogus"))
+        assertEquals("'emulator start' takes at most one path", usageError("emulator", "start", "/a", "/b"))
+        assertEquals("--avd and --no-window only apply to 'emulator start'", usageError("emulator", "stop", "--avd", "Pixel"))
+        assertEquals("--avd and --no-window only apply to 'emulator start'", usageError("emulator", "stop", "--no-window"))
+        assertEquals("'headless' needs an action: start, stop, status or capture", usageError("headless"))
+        assertEquals("--visible and --fresh only apply to 'headless start'", usageError("headless", "stop", "--visible"))
+        assertEquals("--visible and --fresh only apply to 'headless start'", usageError("headless", "stop", "--fresh"))
+        assertEquals("'desktop' needs an action: acquire, release or status", usageError("desktop"))
+    }
+
+    @Test
+    fun `multirepo usage errors`() {
+        assertEquals(
+            "'multirepo' needs an action: init, show, trust, name, add-repo, remove-repo, defaults, agent, workspace, env, worktrees-root or delete",
+            usageError("multirepo"),
+        )
+        assertEquals("unknown option '--bogus' for 'multirepo show'", usageError("multirepo", "show", "--bogus"))
+        assertEquals("unknown option '--yes' for 'multirepo show'", usageError("multirepo", "show", "--yes"))
+        assertEquals("unknown option '--alias' for 'multirepo show'", usageError("multirepo", "show", "--alias", "api"))
+        assertEquals("unknown option '--no-headroom' for 'multirepo show'", usageError("multirepo", "show", "--no-headroom"))
+        assertEquals("usage: shogun multirepo workspace set [--alias <alias>] [--default] | clear | detect", usageError("multirepo", "workspace"))
+        assertEquals("usage: shogun multirepo trust [<folder>] [--yes | --revoke]", usageError("multirepo", "trust", "/a", "/b"))
+        assertEquals(CliCommand.Multirepo(MultirepoAction.Defaults(listOf("api", "app"))), command("multirepo", "defaults", "api,,app"))
     }
 }

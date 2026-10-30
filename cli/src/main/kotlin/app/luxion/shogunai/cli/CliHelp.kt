@@ -280,9 +280,8 @@ internal object CliHelp {
 """.trimIndent(),
     )
 
-    fun forCommand(name: String): String? = sections[name]?.let { section ->
-        "Usage: shogun $name [options]\n\n" + section.lines().joinToString("\n") { "  $it".trimEnd() } + "\n"
-    }
+    fun forCommand(name: String): String =
+        "Usage: shogun $name [options]\n\n" + sections.getValue(name).lines().joinToString("\n") { "  $it".trimEnd() } + "\n"
 
     val commandNames: Set<String> = sections.keys - setOf("help", "version")
 

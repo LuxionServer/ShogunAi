@@ -191,7 +191,7 @@ class ShogunCliTest {
         orca: FakeOrcaClient = FakeOrcaClient(installed = false),
         gitHub: FakeGitHubClient = FakeGitHubClient(),
         orcaWorkspaces: OrcaWorkspaceStore = OrcaWorkspaceStore.NONE,
-        runner: FakeToolPreferenceRepository = FakeToolPreferenceRepository(),
+        runner: app.luxion.shogunai.domain.io.ToolPreferenceRepository = FakeToolPreferenceRepository(),
         onShutdown: (Thread) -> () -> Unit = { hook -> Runtime.getRuntime().addShutdownHook(hook); { Runtime.getRuntime().removeShutdownHook(hook) } },
     ) = ShogunCli(
         executor = executor,
@@ -4793,5 +4793,843 @@ class ShogunCliTest {
         val pubGet = jsonOut().getValue("flutter").jsonObject.getValue("pubGet").jsonObject
         assertEquals("needed", pubGet.getValue("status").jsonPrimitive.content)
         assertEquals("exited with code 69: pub failed", pubGet.getValue("reason").jsonPrimitive.content)
+    }
+
+    private fun failingProjects(error: Exception) = object : ProjectRepository {
+        override fun list(): List<Project> = throw error
+        override fun save(project: Project) = Unit
+        override fun delete(id: String) = Unit
+    }
+
+    @Test
+    fun `an unexpected failure without a readable message names its type`() {
+        assertEquals(1, cli(repositoryExecutor(), projectRepository = failingProjects(IllegalStateException())).run(listOf("status")))
+        assertEquals(1, cli(repositoryExecutor(), projectRepository = failingProjects(IllegalStateException(" \n "))).run(listOf("status")))
+
+        assertEquals("shogun: IllegalStateException\nshogun: IllegalStateException\n", err.toString())
+    }
+
+    @Test
+    fun `new counts several skipped post-creation commands`() {
+        val provisioning = FakeRepositoryProvisioningSource(
+            byRepository = mapOf(base to RepositoryProvisioning(postCreateCommands = listOf(listOf("npm", "install"), listOf("npm", "run", "build")))),
+        )
+
+        assertEquals(0, cli(linkingExecutor(), provisioning = provisioning).run(listOf("new", "TASK-123")), err.toString())
+
+        assertTrue(err.contains("skipped 2 post-creation commands not approved on this machine"), err.toString())
+    }
+
+    @Test
+    fun `trust of another repository names its environment file`() {
+        val provisioning = FakeRepositoryProvisioningSource(
+            byRepository = mapOf(base to RepositoryProvisioning(environment = EnvironmentDeclaration(envFile = ".env.local"))),
+        )
+
+        assertEquals(0, cli(repositoryExecutor(), provisioning = provisioning, workingDirectory = "/tmp").run(listOf("trust", base, "--yes")), err.toString())
+
+        assertTrue(out.contains("Environment file: .env.local\n"), out.toString())
+    }
+
+    @Test
+    fun `trust json revokes even an unreadable declaration and approves only what isn't approved yet`() {
+        val unreadable = FakeRepositoryProvisioningSource(unreadable = setOf(base))
+        val approved = FakeRepositoryTrust(mapOf(base to RepositoryApprovalSubject(installCommands)))
+
+        assertEquals(0, cli(repositoryExecutor(), provisioning = unreadable).run(listOf("trust", "--revoke", "--json")))
+        assertEquals(JsonPrimitive(false), jsonOut().getValue("changed"))
+        out.clear()
+        assertEquals(0, cli(linkingExecutor(), provisioning = linkingProvisioning, trust = approved).run(listOf("trust", "--yes", "--json")))
+        assertEquals(JsonPrimitive(false), jsonOut().getValue("changed"))
+        assertEquals(JsonPrimitive(true), jsonOut().getValue("approved"))
+        out.clear()
+        assertEquals(0, cli(linkingExecutor(), provisioning = linkingProvisioning, trust = FakeRepositoryTrust()).run(listOf("trust", "--revoke", "--json")))
+        assertEquals(JsonPrimitive(false), jsonOut().getValue("changed"))
+    }
+
+    private fun mainBranchUnreadable() = repositoryExecutor { command, _ ->
+        if (command.take(2) == listOf("git", "symbolic-ref")) throw CommandExecutionException(command, IllegalStateException("git timed out")) else null
+    }
+
+    @Test
+    fun `status still lists the worktrees when the main branch can't be read`() {
+        assertEquals(0, cli(mainBranchUnreadable()).run(listOf("status", "--json")), err.toString())
+
+        assertEquals(JsonNull, jsonOut().getValue("mainBranch"))
+    }
+
+    @Test
+    fun `base json of a detached worktree has no branch nor base`() {
+        val executor = repositoryExecutor { command, _ ->
+            if (command.take(3) == listOf("git", "worktree", "list")) Executor.ok(command, porcelain.replace("branch refs/heads/feature/TASK-1", "detached")) else null
+        }
+
+        assertEquals(1, cli(executor, workingDirectory = merged).run(listOf("base", "--json")))
+
+        assertEquals(JsonNull, jsonOut().getValue("branch"))
+    }
+
+    @Test
+    fun `remove says when running agents couldn't be checked and goes on`() {
+        val executor = repositoryExecutor { command, _ ->
+            if (command.first() == "ps") Executor.fail(command, "ps: not found", 127) else null
+        }
+
+        assertEquals(0, cli(executor).run(listOf("remove", "TASK-1")), err.toString())
+
+        assertTrue(err.contains("couldn't check for running agents, so none were taken into account"), err.toString())
+    }
+
+    @Test
+    fun `remove of a detached worktree deletes no branch`() {
+        val executor = repositoryExecutor { command, _ ->
+            if (command.take(3) == listOf("git", "worktree", "list")) Executor.ok(command, porcelain.replace("branch refs/heads/feature/TASK-1", "detached")) else null
+        }
+
+        assertEquals(0, cli(executor).run(listOf("remove", merged, "--delete-branch")), err.toString())
+
+        assertFalse(executor.calls.any { it.first.take(2) == listOf("git", "branch") })
+        assertEquals("removed $merged\n", out.toString())
+    }
+
+    @Test
+    fun `remove with force-delete-branch deletes the branch`() {
+        val executor = repositoryExecutor()
+
+        assertEquals(0, cli(executor).run(listOf("remove", "TASK-1", "--force-delete-branch")), err.toString())
+
+        assertTrue(executor.calls.any { it.first.take(3) == listOf("git", "branch", "-D") }, executor.calls.toString())
+    }
+
+    @Test
+    fun `remove passes on a Git failure other than local changes`() {
+        val executor = repositoryExecutor { command, _ ->
+            if (command.take(3) == listOf("git", "worktree", "remove")) Executor.fail(command, "fatal: permission denied") else null
+        }
+
+        assertEquals(1, cli(executor).run(listOf("remove", "TASK-1")))
+
+        assertTrue(err.contains("permission denied"), err.toString())
+    }
+
+    @Test
+    fun `remove reports a failing Herdr close`() {
+        val herdr = FakeHerdrClient(openWorkspaces = mapOf(merged to "w1"), closeFailures = mapOf("w1" to IllegalStateException("herdr is busy")))
+
+        assertEquals(0, cli(repositoryExecutor(), herdr = herdr).run(listOf("remove", "TASK-1")), err.toString())
+
+        assertTrue(err.contains("herdr is busy"), err.toString())
+    }
+
+    @Test
+    fun `open falls back to the default runner when the chosen one can't be read`() {
+        val runner = object : app.luxion.shogunai.domain.io.ToolPreferenceRepository by FakeToolPreferenceRepository() {
+            override fun loadRunner(): RunnerId? = throw IllegalStateException("settings are unreadable")
+        }
+
+        assertEquals(0, cli(repositoryExecutor(), runner = runner).run(listOf("open", "TASK-1")), err.toString())
+    }
+
+    @Test
+    fun `open in orca names an agent it started in an open terminal`() {
+        val orca = FakeOrcaClient(repos = listOf(OrcaRepo("r1", base)), terminals = mapOf(merged to listOf(OrcaTerminal("term_9", merged))))
+
+        assertEquals(0, cli(repositoryExecutor(), orca = orca).run(listOf("open", "TASK-1", "--orca")), err.toString())
+
+        assertTrue(out.contains("opened $merged in Orca with "), out.toString())
+    }
+
+    @Test
+    fun `a target whose path can't be canonicalized is matched as given`() {
+        val canonicalPath: (String) -> String = { if (it == merged) throw java.io.IOException("unreadable") else it.trimEnd('/') }
+
+        assertEquals(0, cli(repositoryExecutor(), canonicalPath = canonicalPath).run(listOf("remove", merged)), err.toString())
+    }
+
+    @Test
+    fun `clean still offers the merged worktrees when the main branch can't be read`() {
+        assertEquals(0, cli(mainBranchUnreadable()).run(listOf("clean")), err.toString())
+    }
+
+    @Test
+    fun `clean compares a detached worktree with the main branch and names a missing folder`() {
+        val executor = repositoryExecutor { command, _ ->
+            if (command.take(3) == listOf("git", "worktree", "list")) {
+                Executor.ok(command, porcelain.replace("branch refs/heads/feature/TASK-1", "detached\nprunable gitdir file points to non-existent location"))
+            } else {
+                null
+            }
+        }
+
+        assertEquals(0, cli(executor).run(listOf("clean")), err.toString())
+
+        assertTrue(out.contains("would remove $merged (folder missing)"), out.toString())
+    }
+
+    @Test
+    fun `the dry run hint repeats compose volumes`() {
+        cli(repositoryExecutor()).run(listOf("clean", "--down-compose-projects", "--compose-volumes"))
+
+        assertTrue(out.contains("--down-compose-projects --compose-volumes --yes"), out.toString())
+    }
+
+    @Test
+    fun `a failure reason falls back to the message or the type when Git says nothing`() {
+        val blankGit = repositoryExecutor { command, directory ->
+            if (directory == merged && "status" in command) Executor.fail(command, " ", 128) else null
+        }
+
+        cli(blankGit).run(listOf("status"))
+
+        assertTrue(out.contains("$merged  feature/TASK-1  origin=shogunai  status-unavailable ("), out.toString())
+    }
+
+    @Test
+    fun `a failure without a message or a named type leaves the reason empty`() {
+        val executor = repositoryExecutor { command, directory ->
+            if (directory == merged && "status" in command) throw object : RuntimeException() {} else null
+        }
+
+        cli(executor).run(listOf("status"))
+
+        assertTrue(out.contains("$merged  feature/TASK-1  origin=shogunai  status-unavailable ()"), out.toString())
+    }
+
+    @Test
+    fun `remove of a worktree whose folder is missing doesn't look for agents`() {
+        val executor = repositoryExecutor { command, _ ->
+            if (command.take(3) == listOf("git", "worktree", "list")) {
+                Executor.ok(command, porcelain.replace("branch refs/heads/feature/TASK-1", "branch refs/heads/feature/TASK-1\nprunable gitdir file points to non-existent location"))
+            } else {
+                null
+            }
+        }
+
+        assertEquals(0, cli(executor).run(listOf("remove", "TASK-1")), err.toString())
+
+        assertFalse(executor.calls.any { it.first.first() == "ps" })
+    }
+
+    @Test
+    fun `remove passes on a failure that isn't Git's`() {
+        val executor = repositoryExecutor { command, _ ->
+            if (command.take(3) == listOf("git", "worktree", "remove")) throw CommandExecutionException(command, IllegalStateException("git is missing")) else null
+        }
+
+        assertEquals(1, cli(executor).run(listOf("remove", "TASK-1", "--force")))
+    }
+
+    @Test
+    fun `remove exits with 1 when it can't release the worktree's resources`() {
+        val exitCode = cli(repositoryExecutor(), provisioning = FakeRepositoryProvisioningSource(unreadable = setOf(base))).run(listOf("remove", "TASK-1", "--force"))
+
+        assertEquals(1, exitCode)
+        assertTrue(err.contains("couldn't read the repository's providers"), err.toString())
+    }
+
+    @Test
+    fun `open in orca says when it focused the running agent`() {
+        val orca = FakeOrcaClient(
+            repos = listOf(OrcaRepo("r1", base)),
+            terminals = mapOf(merged to listOf(OrcaTerminal("term_9", merged))),
+            agents = mapOf("term_9" to "claude"),
+        )
+
+        assertEquals(0, cli(repositoryExecutor(), orca = orca).run(listOf("open", "TASK-1", "--orca")), err.toString())
+
+        assertTrue(out.contains("focused $merged's running agent in Orca (terminal term_9)"), out.toString())
+    }
+
+    @Test
+    fun `open in orca says when it started the agent`() {
+        val orca = FakeOrcaClient(repos = listOf(OrcaRepo("r1", base)))
+
+        assertEquals(0, cli(repositoryExecutor(), orca = orca).run(listOf("open", "TASK-1", "--orca")), err.toString())
+
+        assertTrue(out.contains("opened $merged in Orca with "), out.toString())
+    }
+
+    @Test
+    fun `clean compares a detached worktree with the main branch`() {
+        val executor = repositoryExecutor { command, _ ->
+            if (command.take(3) == listOf("git", "worktree", "list")) Executor.ok(command, porcelain.replace("branch refs/heads/feature/TASK-1", "detached")) else null
+        }
+
+        assertEquals(0, cli(executor).run(listOf("clean")), err.toString())
+
+        assertTrue(out.contains("would remove $merged"), out.toString())
+    }
+
+    private val notMerged = repositoryExecutor { command, directory ->
+        if ("rev-list" in command && directory == merged) Executor.ok(command, "0\t1") else null
+    }
+
+    @Test
+    fun `clean with delete derived data and nothing to remove still deletes the orphans`() {
+        val orphan = FakeDerivedDataSource.derivedData("Gone-hash", "/home/dev/projects/gone/App.xcodeproj")
+        val derivedData = FakeDerivedDataSource(existing = listOf(orphan))
+
+        assertEquals(0, cli(notMerged, provisioning = xcodeProvisioning(), derivedDataSource = derivedData).run(listOf("clean", "--yes", "--delete-derived-data")), err.toString())
+
+        assertEquals(listOf(orphan.path), derivedData.deleted)
+    }
+
+    @Test
+    fun `clean with delete derived data skips it without the Xcode provider or DerivedData`() {
+        val orphan = FakeDerivedDataSource.derivedData("Gone-hash", "/home/dev/projects/gone/App.xcodeproj")
+        val unsupported = FakeDerivedDataSource(supported = false, existing = listOf(orphan))
+        val undeclared = FakeDerivedDataSource(existing = listOf(orphan))
+
+        cli(repositoryExecutor(), provisioning = xcodeProvisioning(), derivedDataSource = unsupported).run(listOf("clean", "--yes", "--delete-derived-data"))
+        cli(repositoryExecutor(), derivedDataSource = undeclared).run(listOf("clean", "--yes", "--delete-derived-data"))
+
+        assertTrue(unsupported.deleted.isEmpty() && undeclared.deleted.isEmpty())
+    }
+
+    @Test
+    fun `clean with delete derived data goes on when DerivedData can't be listed`() {
+        val derivedData = FakeDerivedDataSource().also { it.onFolders = { throw java.io.IOException("DerivedData is unreadable") } }
+
+        cli(notMerged, provisioning = xcodeProvisioning(), derivedDataSource = derivedData).run(listOf("clean", "--delete-derived-data"))
+
+        assertTrue(err.contains("shogun: couldn't list DerivedData: DerivedData is unreadable"), err.toString())
+        assertTrue(out.contains("Nothing to clean up."), out.toString())
+    }
+
+    @Test
+    fun `clean down compose projects reports what it couldn't take down, a missing Docker and json`() {
+        val failing = FakeComposeProjectSource(listOf(composeProject("main-repo-task-1", "$merged/compose.yaml")), failingDowns = mapOf("main-repo-task-1" to "container is busy"))
+        val noDocker = FakeComposeProjectSource(unavailable = "docker isn't running")
+        val working = FakeComposeProjectSource(listOf(composeProject("main-repo-task-1", "$merged/compose.yaml")))
+
+        cli(cleanableExecutor(), provisioning = composeDeclared, composeProjects = failing).run(listOf("clean", "--yes", "--down-compose-projects"))
+        cli(cleanableExecutor(), provisioning = composeDeclared, composeProjects = noDocker).run(listOf("clean", "--yes", "--down-compose-projects"))
+        out.clear()
+        cli(cleanableExecutor(), provisioning = composeDeclared, composeProjects = working).run(listOf("clean", "--yes", "--down-compose-projects", "--json"))
+
+        assertTrue(err.contains("couldn't take down Compose project main-repo-task-1: container is busy"), err.toString())
+        assertTrue(err.contains("Docker isn't available (docker isn't running)"), err.toString())
+        assertEquals(listOf("main-repo-task-1"), jsonOut().getValue("providers").jsonObject.getValue("composeProjectsDown").jsonArray.map { it.jsonPrimitive.content })
+    }
+
+    private val simulatorsDeclared = FakeRepositoryProvisioningSource(
+        byRepository = mapOf(base to RepositoryProvisioning(providers = RepositoryProviders(iosSimulator = IosSimulatorProvider()))),
+    )
+
+    @Test
+    fun `clean delete simulators goes on when the simulators can't be read or deleted`() {
+        environmentStore.resourcesByAdminDirectory["$base/.git/worktrees/TASK-1"] = mapOf("ios-simulator" to "SIM-MERGED")
+        appleSimulators.addExisting("SIM-MERGED", "ShogunAi · main-repo · TASK-1")
+        appleSimulators.devicesFailure = IllegalStateException("simctl is broken")
+
+        cli(environmentExecutor(), provisioning = simulatorsDeclared).run(listOf("clean", "--yes", "--delete-simulators"))
+
+        assertTrue(err.contains("shogun: couldn't read simulators: simctl is broken"), err.toString())
+        assertTrue(err.contains("shogun: couldn't look for orphaned simulators: simctl is broken"), err.toString())
+        appleSimulators.devicesFailure = null
+        appleSimulators.deleteFailure = IllegalStateException("simctl can't delete")
+        err.clear()
+        cli(environmentExecutor(), provisioning = simulatorsDeclared).run(listOf("clean", "--yes", "--delete-simulators"))
+        assertTrue(err.contains("shogun: couldn't delete simulators: simctl can't delete"), err.toString())
+    }
+
+    @Test
+    fun `clean delete simulators with no simulator deletes nothing`() {
+        assertEquals(0, cli(environmentExecutor(), provisioning = simulatorsDeclared).run(listOf("clean", "--yes", "--delete-simulators")), err.toString())
+
+        assertTrue(appleSimulators.deleted.isEmpty())
+    }
+
+    @Test
+    fun `a failure without a message is named by its type`() {
+        val executor = repositoryExecutor { command, directory ->
+            if (directory == merged && "status" in command) throw UnsupportedOperationException() else null
+        }
+
+        cli(executor).run(listOf("status"))
+
+        assertTrue(out.contains("$merged  feature/TASK-1  origin=shogunai  status-unavailable (UnsupportedOperationException)"), out.toString())
+    }
+
+    @Test
+    fun `provision names the pods of a repository's root folder`() {
+        val executor = repositoryExecutor { command, _ ->
+            if (command.lastOrNull() == ":(glob)**/Podfile.lock") Executor.ok(command, "Podfile.lock\u0000") else null
+        }
+
+        assertEquals(0, cli(executor, provisioning = podsProvisioning, fileManager = podsFileManager(merged), workingDirectory = merged).run(listOf("provision")), err.toString())
+
+        assertTrue(out.contains("Pods: pod install needed (the base has no pods)\n"), out.toString())
+    }
+
+    @Test
+    fun `provision says when the pods couldn't be prepared`() {
+        val executor = repositoryExecutor { command, _ ->
+            if (command.lastOrNull() == ":(glob)**/Podfile.lock") throw CommandExecutionException(command, IllegalStateException("git is missing")) else null
+        }
+
+        assertEquals(0, cli(executor, provisioning = podsProvisioning, fileManager = podsFileManager(merged), workingDirectory = merged).run(listOf("provision")), err.toString())
+
+        assertTrue(out.contains("couldn't prepare the pods: "), out.toString())
+    }
+
+    private fun failingInstallThenListing(listing: (List<String>) -> CommandResult): Executor {
+        var installed = false
+        return linkingExecutor { command ->
+            installed = true
+            Executor.fail(command, stderr = "ENOTFOUND", exitCode = 2)
+        }.let { linking ->
+            Executor { command, directory ->
+                if (installed && command.take(3) == listOf("git", "worktree", "list")) listing(command) else runBlocking { linking.execute(command, directory) }
+            }
+        }
+    }
+
+    @Test
+    fun `new json leaves the branch null when the failed worktree can't be listed again`() {
+        val unlisted = failingInstallThenListing { Executor.fail(it, "fatal: boom") }
+        val missing = failingInstallThenListing { Executor.ok(it, porcelain) }
+        val detached = failingInstallThenListing { Executor.ok(it, porcelain + "\n\nworktree $worktreesRoot/TASK-123\nHEAD 4444444444444444444444444444444444444444\ndetached\n") }
+
+        listOf(unlisted, missing, detached).forEach { executor ->
+            out.clear()
+            assertEquals(1, cli(executor, provisioning = linkingProvisioning, trust = approvedInstall).run(listOf("new", "TASK-123", "--json")))
+            assertEquals(JsonNull, jsonOut().getValue("branch"))
+        }
+    }
+
+    private fun emulatorsOfWorktrees() = repositoryExecutor { command, directory ->
+        if ("--git-dir" in command) {
+            val admin = when (directory) {
+                merged -> "$base/.git/worktrees/TASK-1"
+                dirty -> "$base/.git/worktrees/spike"
+                else -> "$base/.git"
+            }
+            Executor.ok(command, "$admin\n$base/.git\n")
+        } else {
+            null
+        }
+    }
+
+    private val emulatorsDeclared = FakeRepositoryProvisioningSource(
+        byRepository = mapOf(base to RepositoryProvisioning(providers = RepositoryProviders(emulator = EmulatorProvider()))),
+    )
+
+    @Test
+    fun `clean stop emulators goes on when the emulators can't be read or stopped and skips a stopped one`() {
+        environmentStore.portsByAdminDirectory["$base/.git/worktrees/TASK-1"] = mapOf("emulator" to 5556)
+        androidSdk.missing = true
+
+        assertEquals(0, cli(emulatorsOfWorktrees(), provisioning = emulatorsDeclared).run(listOf("clean", "--yes", "--stop-emulators")), err.toString())
+        assertTrue(err.contains("shogun: couldn't read emulators: "), err.toString())
+
+        androidSdk.missing = false
+        androidSdk.states["emulator-5556"] = EmulatorState.STOPPED
+        out.clear()
+        cli(emulatorsOfWorktrees(), provisioning = emulatorsDeclared).run(listOf("clean", "--stop-emulators"))
+        assertFalse(out.contains("would stop emulator"), out.toString())
+
+        androidSdk.states["emulator-5556"] = EmulatorState.RUNNING
+        androidSdk.stopFailure = IllegalStateException("adb is gone")
+        err.clear()
+        cli(emulatorsOfWorktrees(), provisioning = emulatorsDeclared).run(listOf("clean", "--yes", "--stop-emulators"))
+        assertTrue(err.contains("shogun: couldn't stop emulators: adb is gone"), err.toString())
+    }
+
+    @Test
+    fun `clean stop daemons goes on when the daemons can't be listed or stopped`() {
+        val gradle = FakeGradleDaemonSource(failure = WorktreeError.ProcessListingFailed(listOf("jps"), 1))
+        val maven = FakeMavenDaemonSource(failure = WorktreeError.ProcessListingFailed(listOf("ps"), 1))
+
+        cli(repositoryExecutor(), daemons = gradle, mavenDaemons = maven).run(listOf("clean", "--yes", "--stop-gradle-daemons", "--stop-maven-daemons"))
+
+        assertTrue(err.contains("shogun: couldn't list Gradle daemons: "), err.toString())
+        assertTrue(err.contains("shogun: couldn't list Maven daemons: "), err.toString())
+    }
+
+    @Test
+    fun `clean stop daemons says when stopping them failed`() {
+        val gradle = FakeGradleDaemonSource(listOf(gradleDaemon(10, idleSinceTenMinutes, lastBuildDirectory = merged)), laterFailure = WorktreeError.ProcessListingFailed(listOf("jps"), 1))
+        val maven = FakeMavenDaemonSource(listOf(mavenDaemon(20, idleSinceTenMinutes, workingDirectory = merged)), laterFailure = WorktreeError.ProcessListingFailed(listOf("ps"), 1))
+
+        cli(repositoryExecutor(), daemons = gradle, mavenDaemons = maven).run(listOf("clean", "--yes", "--stop-gradle-daemons", "--stop-maven-daemons", "--json"))
+
+        assertTrue(err.contains("shogun: couldn't stop Gradle daemons: "), err.toString())
+        assertTrue(err.contains("shogun: couldn't stop Maven daemons: "), err.toString())
+        assertEquals(emptyList(), jsonOut().getValue("providers").jsonObject.getValue("gradleDaemonsStopped").jsonArray.toList())
+    }
+
+    @Test
+    fun `compose commands need the provider, also when the declaration can't be read`() {
+        val unreadable = FakeRepositoryProvisioningSource(unreadable = setOf(base))
+
+        assertEquals(1, cli(repositoryExecutor(), provisioning = unreadable).run(listOf("compose")))
+        assertEquals(1, cli(repositoryExecutor()).run(listOf("compose", "up")))
+        assertEquals(1, cli(repositoryExecutor()).run(listOf("compose", "prune")))
+
+        assertEquals(3, err.lines().count { it.contains("doesn't declare the docker-compose provider") }, err.toString())
+    }
+
+    @Test
+    fun `compose names a project without a status as unknown and prunes leftovers without volumes plainly`() {
+        val projects = FakeComposeProjectSource(
+            listOf(ComposeProject("main-repo-task-1", "", listOf("$merged/compose.yaml"))),
+            resources = listOf(leftover(ComposeResourceKind.NETWORK, "main-repo-task-9_default")),
+        )
+
+        assertEquals(0, cli(repositoryExecutor(), provisioning = composeDeclared, composeProjects = projects, composeRegistry = removedRegistry).run(listOf("compose")), err.toString())
+
+        assertTrue(out.contains("main-repo-task-1  status=unknown  worktree=$merged"), out.toString())
+        assertTrue(out.contains("Run 'shogun compose prune' to see what it removes"), out.toString())
+    }
+
+    @Test
+    fun `compose up prints Compose's standard output and reports a failure in json`() {
+        val projects = FakeComposeProjectSource(standardOutput = "api listening")
+        val failing = FakeComposeProjectSource(failingRun = "port is already allocated")
+
+        assertEquals(0, cli(environmentExecutor(), provisioning = composeDeclared, composeProjects = projects, workingDirectory = merged).run(listOf("compose", "up")))
+        assertTrue(out.contains("api listening\n"), out.toString())
+        out.clear()
+        assertEquals(1, cli(environmentExecutor(), provisioning = composeDeclared, composeProjects = failing, workingDirectory = merged).run(listOf("compose", "up", "--json")))
+        assertEquals(JsonPrimitive(false), jsonOut().getValue("succeeded"))
+    }
+
+    @Test
+    fun `compose prune without yes plans the volumes too with volumes and says how when only volumes are left`() {
+        val volume = leftover(ComposeResourceKind.VOLUME, "main-repo-task-9_db-data")
+
+        cli(repositoryExecutor(), provisioning = composeDeclared, composeProjects = FakeComposeProjectSource(resources = listOf(volume)), composeRegistry = removedRegistry).run(listOf("compose", "prune"))
+        assertTrue(out.contains("Run 'shogun compose prune --volumes --yes' to remove the volumes."), out.toString())
+        out.clear()
+        cli(repositoryExecutor(), provisioning = composeDeclared, composeProjects = FakeComposeProjectSource(resources = listOf(volume)), composeRegistry = removedRegistry).run(listOf("compose", "prune", "--volumes"))
+        assertTrue(out.contains("would remove volume main-repo-task-9_db-data"), out.toString())
+    }
+
+    @Test
+    fun `compose down with nothing to take down answers in json`() {
+        assertEquals(0, cli(repositoryExecutor(), provisioning = composeDeclared).run(listOf("compose", "down", "--json")), err.toString())
+
+        assertEquals(emptyList(), jsonOut().getValue("takenDown").jsonArray.toList())
+    }
+
+    @Test
+    fun `clean without yes lists no Compose project when Docker isn't available`() {
+        val projects = FakeComposeProjectSource(unavailable = "docker isn't running")
+
+        assertEquals(0, cli(cleanableExecutor(), provisioning = composeDeclared, composeProjects = projects).run(listOf("clean", "--down-compose-projects")), err.toString())
+
+        assertFalse(out.contains("would take down"), out.toString())
+    }
+
+    private val listingFails = repositoryExecutor { command, _ ->
+        if (command.take(3) == listOf("git", "worktree", "list")) Executor.fail(command, "fatal: boom") else null
+    }
+
+    @Test
+    fun `gradle and maven list the daemons unattributed when the worktrees can't be listed`() {
+        val gradle = FakeGradleDaemonSource(listOf(gradleDaemon(10, DaemonState.Unknown, lastBuildDirectory = merged)))
+        val maven = FakeMavenDaemonSource(listOf(mavenDaemon(20, DaemonState.Unknown, workingDirectory = merged)))
+
+        assertEquals(0, cli(listingFails, daemons = gradle).run(listOf("gradle", "--json")), err.toString())
+        assertEquals(JsonNull, jsonOut().getValue("daemons").jsonArray.single().jsonObject.getValue("worktree"))
+        out.clear()
+        assertEquals(0, cli(listingFails, mavenDaemons = maven).run(listOf("maven", "--json")), err.toString())
+        assertEquals(JsonNull, jsonOut().getValue("daemons").jsonArray.single().jsonObject.getValue("worktree"))
+    }
+
+    @Test
+    fun `maven names daemons of removed worktrees, other projects and unknown states`() {
+        val project = project.copy(config = project.config.copy(worktreesRoot = ""))
+        val maven = FakeMavenDaemonSource(
+            listOf(
+                mavenDaemon(20, DaemonState.Unknown, workingDirectory = "$worktreesRoot/TASK-9"),
+                mavenDaemon(21, DaemonState.Untracked, workingDirectory = "/home/dev/elsewhere"),
+            ),
+        )
+
+        assertEquals(0, cli(repositoryExecutor(), projects = listOf(project), mavenDaemons = maven).run(listOf("maven")), err.toString())
+
+        assertTrue(out.lines().any { it.startsWith("20  ") && it.contains("state=unknown") && it.contains("worktree=removed") }, out.toString())
+        assertTrue(out.lines().any { it.startsWith("21  ") && it.contains("worktree=other-project") }, out.toString())
+    }
+
+    @Test
+    fun `maven without a worktrees folder nor linked worktrees attributes nothing to removed worktrees`() {
+        val project = project.copy(config = project.config.copy(worktreesRoot = ""))
+        val onlyMain = repositoryExecutor { command, _ ->
+            if (command.take(3) == listOf("git", "worktree", "list")) Executor.ok(command, "worktree $base\nHEAD 1111111111111111111111111111111111111111\nbranch refs/heads/main\n") else null
+        }
+        val topLevel = repositoryExecutor { command, _ ->
+            if (command.take(3) == listOf("git", "worktree", "list")) {
+                Executor.ok(command, "worktree $base\nHEAD 1111111111111111111111111111111111111111\nbranch refs/heads/main\n\nworktree /TASK-1\nHEAD 2222222222222222222222222222222222222222\nbranch refs/heads/feature/TASK-1\n")
+            } else {
+                null
+            }
+        }
+        val maven = FakeMavenDaemonSource(listOf(mavenDaemon(20, DaemonState.Unknown, workingDirectory = "$worktreesRoot/TASK-9")))
+
+        assertEquals(0, cli(onlyMain, projects = listOf(project), mavenDaemons = maven).run(listOf("maven")), err.toString())
+        assertEquals(0, cli(topLevel, projects = listOf(project), mavenDaemons = maven).run(listOf("maven")), err.toString())
+
+        assertFalse(out.contains("worktree=removed"), out.toString())
+    }
+
+    @Test
+    fun `maven stop names a process that isn't a Maven daemon`() {
+        assertEquals(1, cli(repositoryExecutor()).run(listOf("maven", "stop", "99")))
+
+        assertTrue(err.contains("shogun: 99 isn't a Maven daemon"), err.toString())
+    }
+
+    @Test
+    fun `status lines show detached and missing worktrees, the upstream and agents without details`() {
+        val executor = repositoryExecutor { command, directory ->
+            when {
+                command.take(3) == listOf("git", "worktree", "list") ->
+                    Executor.ok(command, porcelain.replace("branch refs/heads/worktree-spike\nlocked claude session", "detached\nprunable gitdir file points to non-existent location") + "\n\nworktree $worktreesRoot/TASK-2\nHEAD 4444444444444444444444444444444444444444\ndetached\n")
+                "rev-list" in command && command.last() == "@{upstream}...HEAD" && directory == merged -> Executor.ok(command, "1\t0")
+                command.first() == "lsof" -> Executor.ok(command, "p4242\nn$merged\n")
+                command.first() == "ps" -> Executor.ok(command, "4242 /usr/local/bin/claude\n")
+                else -> null
+            }
+        }
+
+        assertEquals(0, cli(executor).run(listOf("status")), err.toString())
+
+        val lines = out.lines()
+        assertTrue(lines.any { it.startsWith("$dirty  (detached)") && it.endsWith("folder-missing") }, out.toString())
+        assertTrue(lines.any { it.startsWith("$worktreesRoot/TASK-2  (detached)") }, out.toString())
+        assertTrue(lines.any { it.startsWith(merged) && it.contains("agents=claude") && it.contains("ahead=0 behind=1  base-ahead") }, out.toString())
+    }
+
+    @Test
+    fun `paths that can't be canonicalized are compared as given`() {
+        val canonicalPath: (String) -> String = { throw java.io.IOException("unreadable") }
+
+        assertEquals(1, cli(repositoryExecutor(), canonicalPath = canonicalPath, workingDirectory = merged).run(listOf("base")))
+        assertTrue(err.contains("no base is recorded for feature/TASK-1"), err.toString())
+    }
+
+    @Test
+    fun `gradle names daemons in an unknown state and of other projects`() {
+        val daemons = FakeGradleDaemonSource(listOf(gradleDaemon(10, DaemonState.Unknown, lastBuildDirectory = "/home/dev/elsewhere")))
+
+        val fileManager = FakeFileManager(existing = listOf(base, "/home/dev/elsewhere"))
+
+        assertEquals(0, cli(repositoryExecutor(), daemons = daemons, fileManager = fileManager).run(listOf("gradle")), err.toString())
+
+        assertTrue(out.lines().any { it.startsWith("10  ") && it.contains("state=unknown") && it.contains("worktree=other-project") }, out.toString())
+    }
+
+    @Test
+    fun `gradle outside a repository and with an unlistable project still lists the daemons`() {
+        val outside = Executor { command, directory -> if (directory == "/tmp" || directory == "/home/dev/projects/other") Executor.fail(command, "fatal: not a git repository", 128) else null }
+        val other = Project("other", "Other", ProjectConfig(baseRepositoryPath = "/home/dev/projects/other", worktreesRoot = "", secretFiles = emptyList()))
+        val holder = HoldingBuild("/home/dev/elsewhere", null, GradleClient(99, listOf("build"), ancestors = listOf(1L)))
+        val daemons = FakeGradleDaemonSource(listOf(gradleDaemon(10, DaemonState.Busy, lastBuildDirectory = "/home/dev/elsewhere").copy(holder = holder)))
+        val fileManager = FakeFileManager(existing = listOf(base, "/home/dev/elsewhere"))
+
+        assertEquals(0, cli(outside, projects = listOf(other, project), workingDirectory = "/tmp", daemons = daemons, fileManager = fileManager).run(listOf("gradle")), err.toString())
+
+        assertTrue(out.lines().any { it.startsWith("10  ") }, out.toString())
+    }
+
+    @Test
+    fun `hooks uninstall asks before removing them and hooks status outside a repository shows the user scope only`() {
+        val files = FakeFileManager(existing = listOf(base))
+        cli(repositoryExecutor(), fileManager = files).run(listOf("hooks", "install", "--yes"))
+        err.clear()
+
+        assertEquals(0, cli(repositoryExecutor(), fileManager = files, answer = "y").run(listOf("hooks", "uninstall")))
+        assertTrue(err.contains("Remove them? [y/N] "), err.toString())
+        out.clear()
+        val outside = Executor { command, _ -> Executor.fail(command, "fatal: not a git repository", 128) }
+        assertEquals(0, cli(outside, fileManager = files, workingDirectory = "/tmp").run(listOf("hooks", "status")), err.toString())
+        assertEquals(1, out.lines().count { it.isNotBlank() }, out.toString())
+    }
+
+    @Test
+    fun `gradle and xcode treat an unreadable declaration as no provider`() {
+        val unreadable = FakeRepositoryProvisioningSource(unreadable = setOf(base))
+
+        assertEquals(0, cli(repositoryExecutor(), provisioning = unreadable).run(listOf("gradle")), err.toString())
+        assertEquals(0, cli(repositoryExecutor(), provisioning = unreadable).run(listOf("xcode")), err.toString())
+
+        assertFalse(out.contains(ShogunCli.BUILD_CACHE_NOTICE), out.toString())
+        assertTrue(out.contains("The Xcode provider isn't active."), out.toString())
+    }
+
+    @Test
+    fun `gradle reminds a repository declaring Gradle to turn on the build cache`() {
+        assertEquals(0, cli(repositoryExecutor(), provisioning = declaring(RepositoryProviders(gradle = GradleProvider()))).run(listOf("gradle")), err.toString())
+
+        assertTrue(out.contains(ShogunCli.BUILD_CACHE_NOTICE), out.toString())
+    }
+
+    private val outsideRepository = Executor { command, _ -> Executor.fail(command, "fatal: not a git repository", 128) }
+
+    @Test
+    fun `xcode commands outside a repository or without DerivedData say the provider isn't active`() {
+        val unsupported = FakeDerivedDataSource(supported = false)
+
+        listOf(listOf("xcode"), listOf("xcode", "clean"), listOf("xcode", "trim")).forEach { args ->
+            assertEquals(0, cli(outsideRepository, workingDirectory = "/tmp").run(args), err.toString())
+            assertEquals(0, cli(repositoryExecutor(), provisioning = xcodeProvisioning(), derivedDataSource = unsupported).run(args), err.toString())
+        }
+        assertEquals(0, cli(outsideRepository, workingDirectory = "/tmp").run(listOf("xcode", "trim", "--json")), err.toString())
+
+        assertEquals(6, out.lines().count { it == "The Xcode provider isn't active." }, out.toString())
+    }
+
+    @Test
+    fun `xcode counts folders without a measured size or packages as empty`() {
+        val project = "$base/iosApp/iosApp.xcodeproj"
+        val main = FakeDerivedDataSource.derivedData("Main-hash", project, sizeBytes = null)
+        val gone = FakeDerivedDataSource.derivedData("Gone-hash", "/home/dev/projects/gone/Gone.xcodeproj", sizeBytes = null)
+        val derivedData = FakeDerivedDataSource(existing = listOf(main, gone), existingProjects = setOf(project), cacheBytes = null)
+        derivedData.failSizeFor = setOf(main.path, gone.path)
+
+        assertEquals(0, cli(repositoryExecutor(), provisioning = xcodeProvisioning(), derivedDataSource = derivedData).run(listOf("xcode")), err.toString())
+
+        assertTrue(out.lines().contains("$base  0 B"), out.toString())
+        assertTrue(out.lines().contains("orphans: 1 (0 B)"), out.toString())
+        assertTrue(out.lines().contains("compilation cache: 0 B"), out.toString())
+    }
+
+    @Test
+    fun `xcode trim uses the default settings when they can't be read`() {
+        resourceLimits.loadFailure = IllegalStateException("settings are unreadable")
+
+        assertEquals(0, cli(repositoryExecutor(), provisioning = xcodeProvisioning(), derivedDataSource = FakeDerivedDataSource()).run(listOf("xcode", "trim")), err.toString())
+    }
+
+    @Test
+    fun `xcode trim keeps the folders of worktrees whose agents work or wait and reports what it couldn't delete`() {
+        val gigabyte = 1_073_741_824L
+        val orphan = FakeDerivedDataSource.derivedData("Gone-hash", "/home/dev/projects/gone/App.xcodeproj", null)
+        val stuck = FakeDerivedDataSource.derivedData("Stuck-hash", "/home/dev/projects/stuck/App.xcodeproj", 2 * gigabyte)
+        val working = FakeDerivedDataSource.derivedData("Merged-hash", "$merged/App.xcodeproj", 10 * gigabyte)
+        val waiting = FakeDerivedDataSource.derivedData("Spike-hash", "$dirty/App.xcodeproj", 10 * gigabyte)
+        val (derivedData, provisioning) = trimSetup(1, orphan, stuck, working, waiting)
+        derivedData.existingProjects = setOf("$merged/App.xcodeproj", "$dirty/App.xcodeproj")
+        derivedData.failDeletionFor = setOf(stuck.path)
+        val agents = repositoryExecutor { command, _ ->
+            when (command.first()) {
+                "lsof" -> Executor.ok(command, "p4242\ncclaude\nfcwd\nn$merged\np4243\ncclaude\nfcwd\nn$dirty\np4244\ncclaude\nfcwd\nn$base\n")
+                "ps" -> Executor.ok(command, "4242 /home/dev/.local/bin/claude\n4243 /home/dev/.local/bin/claude\n4244 /home/dev/.local/bin/claude\n")
+                else -> null
+            }
+        }
+        val sessions = FakeAgentSessionStore(
+            mapOf(
+                merged to listOf(AgentSessionRecord("s1", "claude", AgentState.WORKING, now.toEpochMilli(), null, 4242L)),
+                dirty to listOf(AgentSessionRecord("s2", "claude", AgentState.BLOCKED, now.toEpochMilli(), null, 4243L)),
+                base to listOf(AgentSessionRecord("s3", "claude", AgentState.DONE, now.toEpochMilli(), null, 4244L)),
+            ),
+        )
+
+        val exitCode = cli(agents, provisioning = provisioning, derivedDataSource = derivedData, sessionStore = sessions).run(listOf("xcode", "trim"))
+
+        assertEquals(1, exitCode)
+        assertTrue(out.contains("released ${orphan.path}  0 B"), out.toString())
+        assertTrue(out.contains("quota still exceeded; worktrees in use: "), out.toString())
+        assertTrue(err.contains("couldn't delete ${stuck.path}"), err.toString())
+    }
+
+    @Test
+    fun `xcode trim goes on when running agents or another project's worktrees can't be read`() {
+        val other = Project("other", "Other", ProjectConfig(baseRepositoryPath = "/home/dev/projects/other", worktreesRoot = "", secretFiles = emptyList()))
+        val failing = repositoryExecutor { command, directory ->
+            when {
+                command.first() == "ps" -> throw CommandExecutionException(command, IllegalStateException("ps is missing"))
+                directory == "/home/dev/projects/other" && command.take(3) == listOf("git", "worktree", "list") -> Executor.fail(command, "fatal: boom")
+                else -> null
+            }
+        }
+        val (derivedData, provisioning) = trimSetup(12)
+
+        assertEquals(0, cli(failing, projects = listOf(project, other), provisioning = provisioning, derivedDataSource = derivedData).run(listOf("xcode", "trim")), err.toString())
+    }
+
+    @Test
+    fun `stacks shows a stack without providers by its evidence alone`() {
+        val fileManager = FakeFileManager(existing = listOf(base, "$base/Package.swift"))
+
+        cli(repositoryExecutor(), fileManager = fileManager, derivedDataSource = FakeDerivedDataSource(supported = false)).run(listOf("stacks"))
+
+        assertEquals("Xcode  evidence=Package.swift\n", out.toString())
+    }
+
+    @Test
+    fun `stop with nothing running says so and names what it couldn't stop`() {
+        assertEquals(0, cli(repositoryExecutor()).run(listOf("gradle", "stop")), err.toString())
+        assertEquals(0, cli(repositoryExecutor()).run(listOf("maven", "stop")), err.toString())
+
+        assertTrue(out.contains("No Maven daemons running."), out.toString())
+    }
+
+    @Test
+    fun `compose down with nothing to take down says so`() {
+        assertEquals(0, cli(repositoryExecutor(), provisioning = composeDeclared).run(listOf("compose", "down")), err.toString())
+
+        assertEquals("No Compose projects to take down.\n", out.toString())
+    }
+
+    @Test
+    fun `xcode trim counts and releases folders whose size can't be measured as empty`() {
+        val orphan = FakeDerivedDataSource.derivedData("Gone-hash", "/home/dev/projects/gone/App.xcodeproj", null)
+        val big = FakeDerivedDataSource.derivedData("Big-hash", "/home/dev/projects/big/App.xcodeproj", 20 * 1_073_741_824L)
+        val (derivedData, provisioning) = trimSetup(1, orphan, big)
+        derivedData.failSizeFor = setOf(orphan.path)
+
+        assertEquals(0, cli(repositoryExecutor(), provisioning = provisioning, derivedDataSource = derivedData).run(listOf("xcode", "trim")), err.toString())
+
+        assertTrue(out.contains("released ${orphan.path}  0 B"), out.toString())
+    }
+
+    @Test
+    fun `stop without process ids reports what it stopped, kept or couldn't stop`() {
+        val gradle = FakeGradleDaemonSource(listOf(gradleDaemon(10, idleSinceTenMinutes), gradleDaemon(11, DaemonState.Busy), gradleDaemon(12, idleSinceTenMinutes)))
+        val maven = FakeMavenDaemonSource(listOf(mavenDaemon(20, idleSinceTenMinutes), mavenDaemon(21, DaemonState.Busy), mavenDaemon(22, idleSinceTenMinutes)))
+        val killing = repositoryExecutor { command, _ -> if (command == listOf("kill", "12") || command == listOf("kill", "22")) Executor.fail(command, "operation not permitted") else null }
+
+        assertEquals(1, cli(killing, daemons = gradle).run(listOf("gradle", "stop")))
+        assertEquals(1, cli(killing, mavenDaemons = maven).run(listOf("maven", "stop")))
+        assertEquals(1, cli(repositoryExecutor(), daemons = gradle).run(listOf("gradle", "stop", "99")))
+
+        assertFalse(out.contains("No Gradle or Kotlin daemons running.") || out.contains("No Maven daemons running."), out.toString())
+        assertTrue(err.contains("shogun: 99 isn't a Gradle or Kotlin daemon"), err.toString())
+    }
+
+    @Test
+    fun `clean deletes orphaned simulators even when no worktree is removed`() {
+        appleSimulators.addExisting("SIM-ORPHAN", "ShogunAi · main-repo · TASK-0")
+        val executor = repositoryExecutor { command, directory ->
+            when {
+                "rev-list" in command && directory == merged -> Executor.ok(command, "0\t1")
+                command.contains("--path-format=absolute") && directory != null -> {
+                    val admin = if (directory == base) "$base/.git" else "$base/.git/worktrees/${directory.substringAfterLast('/')}"
+                    Executor.ok(command, "$admin\n$base/.git\n")
+                }
+                else -> null
+            }
+        }
+
+        assertEquals(0, cli(executor, provisioning = simulatorsDeclared).run(listOf("clean", "--yes", "--delete-simulators")), err.toString())
+
+        assertEquals(listOf("SIM-ORPHAN"), appleSimulators.deleted)
+    }
+
+    @Test
+    fun `stop without process ids says nothing is running only when it neither stopped, kept nor failed one`() {
+        val killing = repositoryExecutor { command, _ -> if (command.first() == "kill") Executor.fail(command, "operation not permitted") else null }
+
+        cli(repositoryExecutor(), daemons = FakeGradleDaemonSource(listOf(gradleDaemon(11, DaemonState.Busy)))).run(listOf("gradle", "stop"))
+        cli(killing, daemons = FakeGradleDaemonSource(listOf(gradleDaemon(12, idleSinceTenMinutes)))).run(listOf("gradle", "stop"))
+        cli(repositoryExecutor(), mavenDaemons = FakeMavenDaemonSource(listOf(mavenDaemon(21, DaemonState.Busy)))).run(listOf("maven", "stop"))
+        cli(killing, mavenDaemons = FakeMavenDaemonSource(listOf(mavenDaemon(22, idleSinceTenMinutes)))).run(listOf("maven", "stop"))
+
+        assertFalse(out.contains("No Gradle or Kotlin daemons running.") || out.contains("No Maven daemons running."), out.toString())
     }
 }

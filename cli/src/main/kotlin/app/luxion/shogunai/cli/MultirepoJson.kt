@@ -15,7 +15,6 @@ import app.luxion.shogunai.domain.usecase.GroupRepositoryOutcome
 import app.luxion.shogunai.domain.usecase.GroupWorktreeState
 import app.luxion.shogunai.domain.usecase.MultirepoState
 import app.luxion.shogunai.domain.usecase.RegisteredMultirepo
-import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonArray
@@ -33,7 +32,7 @@ fun multirepoJson(multirepo: Multirepo, configs: Map<String, ProjectConfig?>, ba
                 put("alias", repository.alias)
                 put("path", repository.path)
                 put("project", configs[repository.alias] != null)
-                put("worktreesFolder", configs[repository.alias]?.worktreesRoot?.ifBlank { null })
+                put("worktreesFolder", configs[repository.alias]?.let { it.worktreesRoot.ifBlank { null } })
                 put("base", bases[repository.alias])
                 put("workspace", repository == multirepo.workspaceRepository)
                 put("detected", repository == multirepo.workspaceRepository && multirepo.workspaceDetected)
@@ -119,7 +118,7 @@ fun groupCreationJson(creation: GroupCreation): JsonObject = buildJsonObject {
                     result.skippedPostCreateCommands.forEach { command -> add(buildJsonArray { command.forEach { add(JsonPrimitive(it)) } }) }
                 })
                 put("skippedVariables", buildJsonArray { result.skippedVariables.forEach { add(JsonPrimitive(it)) } })
-                put("error", result.error?.message?.let(::JsonPrimitive) ?: JsonNull)
+                put("error", result.error?.message)
             })
         }
     })
@@ -222,7 +221,7 @@ fun groupOpenJson(branch: String, runner: RunnerId, openings: List<GroupRunnerOp
                 put("alias", opening.alias)
                 put("path", opening.path)
                 val opened = opening.result.getOrNull()
-                put("result", opened?.outcome?.jsonValue ?: "failed")
+                put("result", if (opened == null) "failed" else opened.outcome.jsonValue)
                 put(runner.handleKey, opened?.handle)
                 put("agent", opened?.agent)
                 put("session_name", opened?.sessionName)
@@ -231,7 +230,7 @@ fun groupOpenJson(branch: String, runner: RunnerId, openings: List<GroupRunnerOp
                     put("simulator", opened?.simulator)
                     put("devicesSkipped", opened?.devicesSkipped ?: false)
                 }
-                put("error", opening.result.exceptionOrNull()?.message?.let(::JsonPrimitive) ?: JsonNull)
+                put("error", opening.result.exceptionOrNull()?.message)
             })
         }
     })

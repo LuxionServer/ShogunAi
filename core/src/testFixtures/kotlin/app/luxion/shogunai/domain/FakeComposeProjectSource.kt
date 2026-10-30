@@ -15,6 +15,7 @@ class FakeComposeProjectSource(
     var resources: List<ComposeResource> = emptyList(),
     var failingRemovals: Map<String, String> = emptyMap(),
     var failingRun: String? = null,
+    var standardOutput: String? = null,
 ) : ComposeProjectSource {
 
     val listings = mutableListOf<Unit>()
@@ -43,6 +44,7 @@ class FakeComposeProjectSource(
         runs += ComposeRun(project, action, workingDirectory, environment)
         unavailable?.let { return Result.failure(WorktreeError.DockerUnavailable(it)) }
         onOutput(OutputLine(OutputChannel.ERROR, "Container $project-api Started"))
+        standardOutput?.let { onOutput(OutputLine(OutputChannel.STANDARD, it)) }
         return failingRun?.let { Result.failure(WorktreeError.ComposeCommandFailed(project, it)) } ?: Result.success(Unit)
     }
 
