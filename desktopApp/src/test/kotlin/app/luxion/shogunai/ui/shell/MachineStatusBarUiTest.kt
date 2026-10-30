@@ -115,4 +115,35 @@ class MachineStatusBarUiTest {
         assertTrue(onAllNodesWithText("Gradle", useUnmergedTree = true).fetchSemanticsNodes().isEmpty())
         assertEquals(1, onAllNodesWithText("9 of 3", useUnmergedTree = true).fetchSemanticsNodes().size)
     }
+
+    @Test
+    fun `with nothing declared the bar shows only Machine, which opens the overview`() = runComposeUiTest {
+        var overview by mutableStateOf(false)
+        setContent {
+            MaterialTheme {
+                MachineStatusBar(emptyList(), selected = null, compact = false, onSelect = {}, overviewSelected = overview, onOpenOverview = { overview = true })
+            }
+        }
+
+        assertEquals(1, onAllNodesWithText("Machine", useUnmergedTree = true).fetchSemanticsNodes().size)
+        val machine = onNodeWithTag("machine-status-overview")
+        machine.assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button))
+        machine.performClick()
+        waitForIdle()
+
+        assertTrue(overview)
+        machine.assertIsSelected()
+    }
+
+    @Test
+    fun `the compact Machine item keeps its icon and its tooltip`() = runComposeUiTest {
+        setContent {
+            MaterialTheme {
+                MachineStatusBar(items, selected = null, compact = true, onSelect = {})
+            }
+        }
+
+        assertTrue(onAllNodesWithText("Machine", useUnmergedTree = true).fetchSemanticsNodes().isEmpty())
+        onNodeWithContentDescription("Machine: the daemons, devices and caches every worktree shares").assertIsDisplayed()
+    }
 }

@@ -67,6 +67,7 @@ import app.luxion.shogunai.ui.palette.PaletteCommand
 import app.luxion.shogunai.ui.palette.buildPaletteIndex
 import app.luxion.shogunai.ui.palette.platformShortcutLabel
 import app.luxion.shogunai.ui.palette.pruneRecent
+import app.luxion.shogunai.ui.machine.MachineOverviewView
 import app.luxion.shogunai.ui.machine.MachineView
 import app.luxion.shogunai.ui.worktree.InactivityPreferences
 import app.luxion.shogunai.ui.worktree.WorktreeBoard
@@ -225,6 +226,7 @@ fun AppShell(
                     order = viewModel.sidebarOrder,
                     onMoveEntry = viewModel::moveSidebarEntry,
                     onSortLevel = viewModel::sortSidebarAlphabetically,
+                    onOpenPreferences = onOpenPreferences,
                     footer = { TourNotice(appContainer.tour, viewModel.projects.isNotEmpty(), viewModel.isRail) },
                 )
                 VerticalDivider(modifier = Modifier.fillMaxHeight())
@@ -266,15 +268,15 @@ fun AppShell(
                 }
             }
             val statusItems = machineStatusItems(machine.visibleResources, machine.summaries, machine.summaryFailures, LocalStrings.current)
-            if (statusItems.isNotEmpty()) {
-                HorizontalDivider()
-                MachineStatusBar(
-                    items = statusItems,
-                    selected = (viewModel.destination as? ShellDestination.Machine)?.resource,
-                    compact = viewModel.isRail,
-                    onSelect = viewModel::selectMachine,
-                )
-            }
+            HorizontalDivider()
+            MachineStatusBar(
+                items = statusItems,
+                selected = (viewModel.destination as? ShellDestination.Machine)?.resource,
+                compact = viewModel.isRail,
+                onSelect = viewModel::selectMachine,
+                overviewSelected = viewModel.destination == ShellDestination.MachineOverview,
+                onOpenOverview = viewModel::selectMachineOverview,
+            )
         }
     }
 
@@ -404,6 +406,11 @@ private fun ShellContent(appContainer: AppContainer, viewModel: ShellViewModel, 
         is ShellDestination.AddProject -> key(destination) {
             ProjectForm(appContainer, viewModel, existingProject = null, initialFolder = destination.folder, onRepositoryConfigWritten = refreshBoard)
         }
+        ShellDestination.MachineOverview -> MachineOverviewView(
+            items = machineStatusItems(machine.overviewResources, machine.overviewSummaries, machine.summaryFailures, LocalStrings.current),
+            providersDeclared = machine.declared.isNotEmpty(),
+            onOpen = viewModel::selectMachine,
+        )
         is ShellDestination.Machine -> MachineDestination(destination.resource, viewModel, board, machine)
         is ShellDestination.MultirepoView -> WorktreeView(destination, viewModel, board)
         is ShellDestination.MultirepoSettings -> key(destination) { MultirepoSettingsDestination(appContainer, viewModel, destination.folder) }

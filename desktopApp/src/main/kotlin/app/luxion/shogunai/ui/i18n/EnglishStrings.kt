@@ -1018,6 +1018,17 @@ object EnglishStrings : Strings {
     override val daemonStopBlockedGradleBusy = "Kotlin daemons are stopped only when no Gradle daemon is busy"
     override val stopIdleBlockedStopping = "Daemons are being stopped"
     override val stopIdleBlockedNoneIdle = "No daemon is idle"
+    override fun stopIdleAllBusy(count: Int) = if (count == 1) "It's busy, it isn't idle" else "All $count are busy, none is idle"
+    override fun stopIdleAllUnknown(count: Int) =
+        if (count == 1) "Its state is unknown, it can't be stopped safely" else "The state of all $count is unknown, none can be stopped safely"
+    override fun stopIdleBusyAndUnknown(busy: Int, unknown: Int) =
+        (if (busy == 1) "1 is busy" else "$busy are busy") + " and the state of $unknown is unknown, none is idle"
+    override fun gradleBuildCacheOffIn(projects: Int) =
+        "Gradle's build cache is off in $projects projects: add org.gradle.caching=true to their gradle.properties so a new worktree reuses what other worktrees already built."
+    override val ownerUnknown = "unknown"
+    override val machineOverviewTooltip = "Machine: the daemons, devices and caches every worktree shares"
+    override val machineOverviewNoProviders =
+        "No saved project declares a provider yet. Declare one in a project's settings (Gradle, Android emulators, iOS simulators, Xcode, Maven or Docker Compose) to see its daemons, devices and caches here."
 }
 
 internal fun String?.asSuffix(): String = if (isNullOrBlank()) "" else ": $this"

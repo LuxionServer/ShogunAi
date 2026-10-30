@@ -1,20 +1,27 @@
 package app.luxion.shogunai.ui.machine
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import app.luxion.shogunai.domain.model.DaemonKind
 import app.luxion.shogunai.domain.model.DaemonState
@@ -23,6 +30,8 @@ import app.luxion.shogunai.ui.components.DisabledReason
 import app.luxion.shogunai.ui.components.InlineProgress
 import app.luxion.shogunai.ui.components.Notice
 import app.luxion.shogunai.ui.components.NoticeKind
+import app.luxion.shogunai.ui.components.GhostButton
+import app.luxion.shogunai.ui.components.NeutralTextButton
 import app.luxion.shogunai.ui.components.SecondaryButton
 import app.luxion.shogunai.ui.components.Spacing
 import app.luxion.shogunai.ui.i18n.LocalStrings
@@ -50,16 +59,8 @@ fun GradleDaemonsView(machine: MachineResources, onOpenWorktree: (String, String
                 MachineDataText("${project.project.name} · $settings")
             }
         }
-        machine.gradleProjects.filterNot { it.gradleBuildCacheEnabled }.forEach { project ->
-            Row(verticalAlignment = Alignment.Top) {
-                Icon(
-                    Icons.Default.Info,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(end = Spacing.sm).size(18.dp),
-                )
-                MachineSecondaryText("${project.project.name}: ${strings.gradleBuildCacheOff}")
-            }
+        buildCacheNotice(machine.gradleProjects.filterNot { it.gradleBuildCacheEnabled }.map { it.project.name }, strings)?.let { notice ->
+            BuildCacheNotice(notice)
         }
     }
 }
@@ -82,7 +83,11 @@ private fun LoadedDaemons(daemons: List<MachineDaemon>, machine: MachineResource
         Row(verticalAlignment = Alignment.CenterVertically) {
             if (machine.isStoppingDaemons) InlineProgress(modifier = Modifier.padding(end = Spacing.sm))
             val stopIdleBlock = stopIdleBlock(daemons, machine.isStoppingDaemons)
-            DisabledReason(stopIdleBlock?.describe(strings)) {
+            val stopIdleReason = stopIdleBlock?.let { stopIdleReason(daemons, it, strings) }
+            if (stopIdleBlock == DaemonStopBlock.NONE_IDLE && stopIdleReason != null) {
+                MachineStateText(stopIdleReason, Modifier.padding(end = Spacing.sm).testTag("stop-idle-reason"))
+            }
+            DisabledReason(stopIdleReason) {
                 SecondaryButton(
                     onClick = machine::stopIdleGradleDaemons,
                     enabled = stopIdleBlock == null,
@@ -90,23 +95,59 @@ private fun LoadedDaemons(daemons: List<MachineDaemon>, machine: MachineResource
             }
         }
     }
+    val showsState = showsDaemonState(daemons)
     daemons.forEach { daemon ->
         HorizontalDivider()
         MachineRow(
-            machineCell(MachineMainColumn) { MachineDataText(daemonTitle(daemon, strings)) },
-            machineCell(MachineSizeColumn) { MachineDataText(formatSize(daemon.process.residentMemoryBytes)) },
-            machineCell(MachineDaemonStateColumn) { MachineStateText(daemonStateText(daemon, strings)) },
-            machineCell(MachineOwnerColumn) { OwnerCell(daemon.owner, machine::projectName, onOpenWorktree) },
-            machineActionCell {
-                val stopBlock = daemon.stopBlock(daemons, machine.isStoppingDaemons)
-                DisabledReason(stopBlock?.describe(strings)) {
-                    SecondaryButton(
-                        onClick = { machine.stopGradleDaemon(daemon.process.pid) },
-                        enabled = stopBlock == null,
-                    ) { Text(strings.stopDaemon) }
-                }
-            },
+            *listOfNotNull(
+                machineCell(MachineMainColumn) { MachineDataText(daemonTitle(daemon, strings)) },
+                machineCell(MachineSizeColumn) { MachineDataText(formatSize(daemon.process.residentMemoryBytes)) },
+                machineCell(MachineDaemonStateColumn) { MachineStateText(daemonStateText(daemon, strings)) }.takeIf { showsState },
+                machineCell(MachineOwnerColumn) { DaemonOwnerCell(daemon, machine, onOpenWorktree) },
+                machineActionCell {
+                    val stopBlock = daemon.stopBlock(daemons, machine.isStoppingDaemons)
+                    DisabledReason(stopBlock?.describe(strings)) {
+                        GhostButton(
+                            onClick = { machine.stopGradleDaemon(daemon.process.pid) },
+                            enabled = stopBlock == null,
+                        ) { Text(strings.stopDaemon) }
+                    }
+                },
+            ).toTypedArray(),
         )
+    }
+}
+
+@Composable
+private fun DaemonOwnerCell(daemon: MachineDaemon, machine: MachineResources, onOpenWorktree: (String, String) -> Unit) {
+    if (daemon.owner == null) {
+        MachineStateText(LocalStrings.current.ownerUnknown, Modifier.testTag("daemon-owner-unknown"))
+    } else {
+        OwnerCell(daemon.owner, machine::projectName, onOpenWorktree)
+    }
+}
+
+@Composable
+private fun BuildCacheNotice(notice: BuildCacheNotice) {
+    val strings = LocalStrings.current
+    var expanded by remember { mutableStateOf(false) }
+    Row(verticalAlignment = Alignment.Top) {
+        Icon(
+            Icons.Default.Info,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(end = Spacing.sm).size(18.dp),
+        )
+        Column {
+            MachineSecondaryText(notice.message)
+            if (notice.projects.isNotEmpty()) {
+                NeutralTextButton(onClick = { expanded = !expanded }) {
+                    Icon(if (expanded) Icons.Default.ExpandMore else Icons.Default.ChevronRight, contentDescription = null)
+                    Text(strings.noticeDetails(notice.projects.size))
+                }
+                if (expanded) notice.projects.forEach { MachineDataText(it) }
+            }
+        }
     }
 }
 
@@ -152,6 +193,30 @@ fun stopIdleBlock(daemons: List<MachineDaemon>, stopping: Boolean): DaemonStopBl
     stopping -> DaemonStopBlock.STOPPING
     daemons.none { it.isStoppable(daemons) } -> DaemonStopBlock.NONE_IDLE
     else -> null
+}
+
+fun showsDaemonState(daemons: List<MachineDaemon>): Boolean =
+    daemons.any { it.process.state == DaemonState.Busy || it.process.state is DaemonState.Idle }
+
+fun stopIdleReason(daemons: List<MachineDaemon>, block: DaemonStopBlock, strings: Strings): String {
+    if (block != DaemonStopBlock.NONE_IDLE) return block.describe(strings)
+    val gradle = daemons.filter { it.process.kind == DaemonKind.GRADLE }
+    val busy = gradle.count { it.process.state == DaemonState.Busy }
+    val unknown = gradle.size - busy
+    return when {
+        gradle.isEmpty() -> block.describe(strings)
+        unknown == 0 -> strings.stopIdleAllBusy(busy)
+        busy == 0 -> strings.stopIdleAllUnknown(unknown)
+        else -> strings.stopIdleBusyAndUnknown(busy, unknown)
+    }
+}
+
+data class BuildCacheNotice(val message: String, val projects: List<String>)
+
+fun buildCacheNotice(projectNames: List<String>, strings: Strings): BuildCacheNotice? = when (projectNames.size) {
+    0 -> null
+    1 -> BuildCacheNotice("${projectNames.single()}: ${strings.gradleBuildCacheOff}", emptyList())
+    else -> BuildCacheNotice(strings.gradleBuildCacheOffIn(projectNames.size), projectNames)
 }
 
 fun DaemonStopBlock.describe(strings: Strings): String = when (this) {

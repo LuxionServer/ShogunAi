@@ -52,10 +52,7 @@ A UX review of the implemented v2 interface, done on `develop` at `aaf42f94` wit
   - The Agent section is one line when no agent runs, and keeps the running agent apart from "Runs with".
   - On narrow windows the type prefix truncates first, so the task id always shows, and the rail's tiles use two letters that tell sibling projects apart.
   - Counts inside sentences use the interface font with tabular figures; lone figures stay in the data font.
-- The machine's entry point and its alarms:
-  - The status bar always starts with "Machine", and a gear at the bottom of the sidebar opens Settings.
-  - A missing or optional tool shows as neutral with its reason; the danger color is kept for real failures.
-  - The Gradle daemons view drops the state column when every value is unknown, explains why "Stop idle daemons" is disabled, and shows which worktree uses each daemon when that's known.
+- The rest of the Machine views (Maven daemons, emulators, simulators, DerivedData, Compose projects) get what the Gradle daemons view got: an unknown owner dimmed instead of blank, ghost buttons in their rows, and the reason a disabled action is disabled written next to it.
 
 ### 3. Orca, a second first-class runner
 

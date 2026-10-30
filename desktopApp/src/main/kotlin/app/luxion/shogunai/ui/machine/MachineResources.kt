@@ -147,8 +147,13 @@ class MachineResources(
 
     val summaries: Map<MachineResource, MachineSummary>
         get() {
-            val turn = desktopTurn.state
             if (!desktopTurn.isActive) return providerSummaries
+            return overviewSummaries
+        }
+
+    val overviewSummaries: Map<MachineResource, MachineSummary>
+        get() {
+            val turn = desktopTurn.state
             return providerSummaries + (MachineResource.DESKTOP_TURN to MachineSummary(turn.waiting.size, holder = turn.holder?.displayName))
         }
 
@@ -255,6 +260,9 @@ class MachineResources(
             val resources = declared + setOfNotNull(MachineResource.DESKTOP_TURN.takeIf { desktopTurn.isActive || shown == MachineResource.DESKTOP_TURN })
             return MachineResource.entries.filter { it in resources }
         }
+
+    val overviewResources: List<MachineResource>
+        get() = MachineResource.entries.filter { it == MachineResource.DESKTOP_TURN || it in visibleResources }
 
     fun ownerOfPath(worktreePath: String): ProjectOwner = attributeToProjects(worktreePath, worktreeSets, pathExists)
 

@@ -257,6 +257,7 @@ class MachineResourcesTest {
         )
 
         assertEquals(listOf(MachineResource.GRADLE_DAEMONS), machine.visibleResources)
+        assertEquals(setOf(MachineResource.GRADLE_DAEMONS, MachineResource.DESKTOP_TURN), machine.overviewResources.toSet())
     }
 
     @Test
@@ -264,6 +265,8 @@ class MachineResourcesTest {
         val machine = machine(useCases(Calls()), listOf(machineProject("main-repo", listOf(mainWorktree))))
 
         assertTrue(machine.visibleResources.isEmpty())
+        assertEquals(listOf(MachineResource.DESKTOP_TURN), machine.overviewResources)
+        assertEquals(MachineSummary(0), machine.overviewSummaries[MachineResource.DESKTOP_TURN])
     }
 
     @Test

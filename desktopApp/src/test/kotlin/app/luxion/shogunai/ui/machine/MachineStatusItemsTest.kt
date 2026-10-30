@@ -119,6 +119,20 @@ class MachineStatusItemsTest {
 
     @Test
     fun `a failed read is shown in danger with its reason and the last figure`() {
+        val failure = WorktreeError.ProcessListingFailed(listOf("jps", "-l"), 1)
+        val item = items(
+            listOf(MachineResource.GRADLE_DAEMONS),
+            mapOf(MachineResource.GRADLE_DAEMONS to MachineSummary(2, 0)),
+            mapOf(MachineResource.GRADLE_DAEMONS to failure),
+        ).single()
+
+        assertEquals(Status.DANGER, item.attention)
+        assertEquals("2", item.figure)
+        assertTrue(item.tooltip.startsWith("Gradle daemons: 2 · 0 B · "))
+    }
+
+    @Test
+    fun `docker not running is neutral with its reason and the last figure`() {
         val failure = WorktreeError.DockerUnavailable("failed to connect to the docker API at unix:///home/dev/.docker/run/docker.sock")
         val item = items(
             listOf(MachineResource.COMPOSE_PROJECTS),
@@ -126,9 +140,38 @@ class MachineStatusItemsTest {
             mapOf(MachineResource.COMPOSE_PROJECTS to failure),
         ).single()
 
-        assertEquals(Status.DANGER, item.attention)
+        assertNull(item.attention)
         assertEquals("2", item.figure)
         assertEquals("Compose projects: 2 projects · Docker isn't available. Start Docker and try again.", item.tooltip)
+    }
+
+    @Test
+    fun `a missing android sdk is neutral with a dash and its reason`() {
+        val item = items(
+            listOf(MachineResource.ANDROID_EMULATORS),
+            failures = mapOf(MachineResource.ANDROID_EMULATORS to WorktreeError.AndroidSdkNotFound(listOf("ANDROID_HOME (unset)"))),
+        ).single()
+
+        assertNull(item.attention)
+        assertNull(item.figure)
+        assertTrue(item.tooltip.startsWith("Android emulators: "))
+        assertTrue(item.summary.isNotBlank())
+    }
+
+    @Test
+    fun `only the tools a machine may lack count as missing`() {
+        assertTrue(WorktreeError.AndroidSdkNotFound(emptyList()).isMissingTool())
+        assertTrue(WorktreeError.DockerUnavailable(null).isMissingTool())
+        assertTrue(WorktreeError.IosSimulatorsNotSupported.isMissingTool())
+        assertTrue(!WorktreeError.ProcessListingFailed(listOf("jps"), 1).isMissingTool())
+        assertTrue(!IllegalStateException("boom").isMissingTool())
+    }
+
+    @Test
+    fun `a free desktop says nobody holds it`() {
+        val item = items(listOf(MachineResource.DESKTOP_TURN), mapOf(MachineResource.DESKTOP_TURN to MachineSummary(0))).single()
+
+        assertEquals("Desktop: Nobody holds the desktop.", item.tooltip)
     }
 
     @Test

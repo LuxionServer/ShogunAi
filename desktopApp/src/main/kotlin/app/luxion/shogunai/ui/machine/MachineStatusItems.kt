@@ -9,10 +9,13 @@ import app.luxion.shogunai.ui.worktree.formatSize
 data class MachineStatusItem(
     val resource: MachineResource,
     val name: String,
+    val title: String,
     val figure: String?,
-    val tooltip: String,
+    val summary: String,
     val attention: Status?,
-)
+) {
+    val tooltip: String get() = "$title: $summary"
+}
 
 val MachineStatusOrder: List<MachineResource> = listOf(
     MachineResource.DESKTOP_TURN,
@@ -43,15 +46,19 @@ fun machineStatusItems(
         MachineStatusItem(
             resource = resource,
             name = resource.statusName(strings),
+            title = resource.title(strings),
             figure = summary?.figure(resource, strings),
-            tooltip = "${resource.title(strings)}: ${details.joinToString(" · ")}",
+            summary = details.joinToString(" · "),
             attention = when {
-                failure != null -> Status.DANGER
+                failure != null && !failure.isMissingTool() -> Status.DANGER
                 warning != null -> Status.WARNING
                 else -> null
             },
         )
     }
+
+fun Throwable.isMissingTool(): Boolean =
+    this is WorktreeError.AndroidSdkNotFound || this is WorktreeError.DockerUnavailable || this is WorktreeError.IosSimulatorsNotSupported
 
 private fun Throwable.reason(strings: Strings): String {
     val described = strings.describe(this)

@@ -80,6 +80,14 @@ class ShellViewModelTest {
     }
 
     @Test
+    fun `selecting the machine overview saves it and it is restored`() {
+        viewModel().selectMachineOverview()
+
+        assertEquals("machine", preferences.lastDestination)
+        assertEquals(ShellDestination.MachineOverview, viewModel().destination)
+    }
+
+    @Test
     fun `selecting active saves it and allows creating a worktree`() {
         val viewModel = viewModel()
         viewModel.selectProject(api)

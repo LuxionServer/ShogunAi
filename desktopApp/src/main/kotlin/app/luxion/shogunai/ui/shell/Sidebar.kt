@@ -28,6 +28,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Icon
@@ -93,6 +94,7 @@ fun Sidebar(
     order: SidebarOrder = SidebarOrder(),
     onMoveEntry: (SidebarLevel, String, Int) -> Unit = { _, _, _ -> },
     onSortLevel: (SidebarLevel) -> Unit = {},
+    onOpenPreferences: () -> Unit = {},
     footer: @Composable () -> Unit = {},
 ) {
     val strings = LocalStrings.current
@@ -211,6 +213,23 @@ fun Sidebar(
             }
         }
         footer()
+        SidebarFooter(rail, onOpenPreferences)
+    }
+}
+
+@Composable
+private fun SidebarFooter(rail: Boolean, onOpenPreferences: () -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.sm).padding(top = Spacing.xs).testTag("sidebar-footer"),
+        horizontalArrangement = if (rail) Arrangement.Center else Arrangement.Start,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        IconAction(
+            icon = Icons.Default.Settings,
+            label = LocalStrings.current.preferencesTitle,
+            onClick = onOpenPreferences,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 
