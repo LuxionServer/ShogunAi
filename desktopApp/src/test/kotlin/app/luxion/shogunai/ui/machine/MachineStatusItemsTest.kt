@@ -45,7 +45,7 @@ class MachineStatusItemsTest {
         ).single()
 
         assertEquals("Emulators", item.name)
-        assertEquals("1/2", item.figure)
+        assertEquals("1 of 2", item.figure)
         assertNull(item.attention)
     }
 
@@ -53,12 +53,12 @@ class MachineStatusItemsTest {
     fun `a pool over its limit warns and says so in the tooltip`() {
         val item = items(
             listOf(MachineResource.GRADLE_DAEMONS),
-            mapOf(MachineResource.GRADLE_DAEMONS to MachineSummary(10, 1_288_490_189L, poolInUse = 9, poolLimit = 3)),
+            mapOf(MachineResource.GRADLE_DAEMONS to MachineSummary(9, 1_288_490_189L, poolInUse = 9, poolLimit = 3)),
         ).single()
 
-        assertEquals("9/3", item.figure)
+        assertEquals("9 of 3", item.figure)
         assertEquals(Status.WARNING, item.attention)
-        assertEquals("Gradle daemons: 10 · 1.2 GB · 9/3 · over the limit", item.tooltip)
+        assertEquals("Gradle daemons: 9 of 3 · 1.2 GB · over the limit", item.tooltip)
     }
 
     @Test
@@ -67,13 +67,13 @@ class MachineStatusItemsTest {
             listOf(MachineResource.GRADLE_DAEMONS),
             mapOf(
                 MachineResource.GRADLE_DAEMONS to
-                    MachineSummary(10, 1_288_490_189L, poolInUse = 9, poolLimit = 3, poolHeldByBuilds = true),
+                    MachineSummary(9, 1_288_490_189L, poolInUse = 9, poolLimit = 3, poolHeldByBuilds = true),
             ),
         ).single()
 
-        assertEquals("9/3", item.figure)
+        assertEquals("9 of 3", item.figure)
         assertNull(item.attention)
-        assertEquals("Gradle daemons: 10 · 1.2 GB · 9/3 · over the limit: builds running", item.tooltip)
+        assertEquals("Gradle daemons: 9 of 3 · 1.2 GB · over the limit: builds running", item.tooltip)
     }
 
     @Test

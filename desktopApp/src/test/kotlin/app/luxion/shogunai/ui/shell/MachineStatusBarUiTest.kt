@@ -37,7 +37,7 @@ class MachineStatusBarUiTest {
 
     private val items = machineStatusItems(
         listOf(MachineResource.GRADLE_DAEMONS, MachineResource.XCODE_DERIVED_DATA),
-        mapOf(MachineResource.GRADLE_DAEMONS to MachineSummary(10, 1_288_490_189L, poolInUse = 9, poolLimit = 3)),
+        mapOf(MachineResource.GRADLE_DAEMONS to MachineSummary(9, 1_288_490_189L, poolInUse = 9, poolLimit = 3)),
         emptyMap(),
         EnglishStrings,
     )
@@ -51,7 +51,7 @@ class MachineStatusBarUiTest {
             }
         }
 
-        val gradle = onNodeWithContentDescription("Gradle daemons: 10 · 1.2 GB · 9/3 · over the limit")
+        val gradle = onNodeWithContentDescription("Gradle daemons: 9 of 3 · 1.2 GB · over the limit")
         gradle.assertIsDisplayed()
         gradle.assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button))
         gradle.performClick()
@@ -81,7 +81,7 @@ class MachineStatusBarUiTest {
         val gradle = onNodeWithTag("machine-status-GRADLE_DAEMONS")
         gradle.performMouseInput { moveTo(center) }
         mainClock.advanceTimeBy(1000)
-        val tooltip = onNodeWithText("Gradle daemons: 10 · 1.2 GB · 9/3 · over the limit").getBoundsInRoot()
+        val tooltip = onNodeWithText("Gradle daemons: 9 of 3 · 1.2 GB · over the limit").getBoundsInRoot()
         assertTrue(tooltip.bottom <= gradle.getBoundsInRoot().top)
 
         gradle.performMouseInput { click(center) }
@@ -100,7 +100,7 @@ class MachineStatusBarUiTest {
 
         onNodeWithContentDescription("Xcode DerivedData: not measured yet").assertIsDisplayed()
         assertEquals(1, onAllNodesWithText("Gradle", useUnmergedTree = true).fetchSemanticsNodes().size)
-        assertEquals(1, onAllNodesWithText("9/3", useUnmergedTree = true).fetchSemanticsNodes().size)
+        assertEquals(1, onAllNodesWithText("9 of 3", useUnmergedTree = true).fetchSemanticsNodes().size)
         assertEquals(1, onAllNodesWithText("–", useUnmergedTree = true).fetchSemanticsNodes().size)
     }
 
@@ -113,6 +113,6 @@ class MachineStatusBarUiTest {
         }
 
         assertTrue(onAllNodesWithText("Gradle", useUnmergedTree = true).fetchSemanticsNodes().isEmpty())
-        assertEquals(1, onAllNodesWithText("9/3", useUnmergedTree = true).fetchSemanticsNodes().size)
+        assertEquals(1, onAllNodesWithText("9 of 3", useUnmergedTree = true).fetchSemanticsNodes().size)
     }
 }

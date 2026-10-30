@@ -62,12 +62,6 @@ A UX review of the implemented v2 interface, done on `develop` at `aaf42f94` wit
   - The Gradle daemons view drops the state column when every value is unknown, explains why "Stop idle daemons" is disabled, and shows which worktree uses each daemon when that's known.
 - New worktree's default start (a small OpenSpec change, already decided): the dialog starts from the main checkout's current branch, as `shogun new` does, instead of the project's main branch, fixing the spec and the desktop app guide with it.
 - A tidier toolbar that fits in one row: the filter; "View ▾" with the project, grouping, order and Reload (also on ⌘R); "Clean up N" only when there is something to clean up; and New worktree. On narrow windows the filter becomes an icon and New worktree becomes "+".
-- Quick fixes that don't need OpenSpec:
-  - The status bar, its tooltip and the view take the count of Gradle daemons from a single source; today they disagree.
-  - The guided tour's notice becomes one line in the sidebar's footer.
-  - A legible "New" badge.
-  - The command palette takes Settings and Preferences as synonyms and lists the worktrees for "open" when nothing is selected, drops fuzzy matches that aren't a subsequence of the visible name, and says in its footer, in the interface font, what ↵ and ⌘↵ do, taken from the action catalogue.
-  - Checking by hand two issues, fixed only if they reproduce: a project added with `shogun project add` not appearing until the app restarts, and ⌘A followed by delete in the palette removing a single character.
 
 ### 3. Orca, a second first-class runner
 
