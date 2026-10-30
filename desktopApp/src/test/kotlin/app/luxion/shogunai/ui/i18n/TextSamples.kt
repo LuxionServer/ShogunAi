@@ -14,7 +14,7 @@ import kotlin.reflect.full.primaryConstructor
 
 object TextSamples {
 
-    private const val MAX_COMBINATIONS = 5_000
+    private const val MAX_COMBINATIONS = 10_000
 
     private val holders = PoolHolderState.entries.map { state ->
         PoolHolder(ResourceKind.EMULATOR, "/worktrees/TASK-${state.ordinal}", "/projects/main-repo/.git/worktrees/TASK-${state.ordinal}", state, false, null)

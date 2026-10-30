@@ -5,6 +5,10 @@ import app.luxion.shogunai.domain.model.CheckState
 import app.luxion.shogunai.domain.model.InstallationCheck
 import app.luxion.shogunai.domain.model.InstallationFinding
 import app.luxion.shogunai.domain.model.InstallationReport
+import app.luxion.shogunai.domain.model.MULTIREPO_FILE_NAME
+import app.luxion.shogunai.domain.model.MultirepoProblem
+import app.luxion.shogunai.domain.model.ProviderToolId
+import app.luxion.shogunai.domain.model.ProviderToolProblem
 import app.luxion.shogunai.domain.model.UnavailableLocalFile
 import app.luxion.shogunai.domain.model.UnavailableReason
 import app.luxion.shogunai.domain.usecase.CommandLineToolState
@@ -69,6 +73,13 @@ internal fun spanishInstallationSummary(check: InstallationCheck): String = when
         finding.checked == 0 -> "${finding.project}: ningún archivo local que copiar o enlazar"
         else -> "${finding.project}: ${spanishFiles(finding.checked)} ${if (finding.checked == 1) "disponible" else "disponibles"}"
     }
+    is InstallationFinding.ProviderTool -> spanishProviderSummary(finding)
+    is InstallationFinding.MultirepoCheck -> when {
+        finding.problems.isEmpty() ->
+            "Multirepo ${finding.name}: ${finding.repositories.joinToString()}; ${spanishCount(finding.groups, "grupo", "grupos")}"
+        finding.problems.singleOrNull() == MultirepoProblem.DeclarationMissing -> "Multirepo ${finding.name}: ${finding.folder} ya no tiene $MULTIREPO_FILE_NAME"
+        else -> "Multirepo ${finding.name}: ${spanishCount(finding.problems.size, "problema", "problemas")} en ${finding.folder}"
+    }
 }
 
 internal fun spanishInstallationFix(check: InstallationCheck): String? {
@@ -93,6 +104,8 @@ internal fun spanishInstallationFix(check: InstallationCheck): String? {
             finding.detail != null -> "Comprueba que ${finding.basePath} es un repositorio Git que puedes leer."
             else -> (finding.unavailable.map(::spanishLocalFileProblem) + spanishLocalFilesFix(finding.unavailable)).joinToString("\n")
         }
+        is InstallationFinding.ProviderTool -> finding.problem?.let { spanishProviderFix(finding.tool, it) }
+        is InstallationFinding.MultirepoCheck -> finding.problems.takeIf { it.isNotEmpty() }?.joinToString("\n") { spanishMultirepoFix(finding, it) }
     }
 }
 
@@ -111,3 +124,50 @@ private fun spanishLocalFileProblem(file: UnavailableLocalFile): String = when (
 }
 
 private fun spanishFiles(count: Int): String = if (count == 1) "1 archivo local" else "$count archivos locales"
+
+private fun spanishProviderSummary(finding: InstallationFinding.ProviderTool): String {
+    val subject = "${finding.project}: ${finding.tool.displayName}"
+    return when (val problem = finding.problem) {
+        null -> when (finding.tool) {
+            ProviderToolId.ANDROID_SDK -> "$subject está en ${finding.location} (${spanishCount(finding.installed ?: 0, "dispositivo virtual", "dispositivos virtuales")})"
+            ProviderToolId.IOS_SIMULATOR -> "$subject tiene ${spanishCount(finding.installed ?: 0, "runtime de iOS", "runtimes de iOS")}"
+            else -> "$subject está en ${finding.location}"
+        }
+        is ProviderToolProblem.NotFound -> "$subject no está instalado; lo necesita el proveedor ${finding.tool.provider} (se ha buscado en ${(problem.searched + problem.commands.map { "$it en el PATH" }).joinToString()})"
+        is ProviderToolProblem.Unusable -> "$subject${finding.location?.let { " en $it" }.orEmpty()} no funciona${problem.detail.asSuffix()}"
+        ProviderToolProblem.NeedsMacOs -> "${finding.project}: el proveedor ${finding.tool.provider} necesita macOS con Xcode"
+        ProviderToolProblem.NoAndroidVirtualDevice -> "$subject en ${finding.location} no tiene ningún dispositivo virtual de Android"
+        ProviderToolProblem.NoIosRuntime -> "${finding.project}: no hay ningún runtime de simulador de iOS instalado"
+        is ProviderToolProblem.ProvidersUnreadable -> "${finding.project}: no se han podido leer sus proveedores${problem.detail.asSuffix()}"
+    }
+}
+
+private fun spanishProviderFix(tool: ProviderToolId, problem: ProviderToolProblem): String = when (problem) {
+    ProviderToolProblem.NeedsMacOs -> "Usa el proveedor ${tool.provider} en un Mac con Xcode, o ignora este aviso en otros sistemas."
+    ProviderToolProblem.NoAndroidVirtualDevice -> "Crea un dispositivo virtual en el Device Manager de Android Studio."
+    ProviderToolProblem.NoIosRuntime -> "Instala un runtime de iOS desde Ajustes › Componentes de Xcode."
+    is ProviderToolProblem.ProvidersUnreadable -> "Corrige el .shogunai.json del repositorio para que sea válido."
+    is ProviderToolProblem.NotFound, is ProviderToolProblem.Unusable -> when (tool) {
+        ProviderToolId.GRADLE -> "Añade el wrapper de Gradle (gradlew) al repositorio, o instala Gradle desde https://gradle.org/install/."
+        ProviderToolId.MAVEN -> "Añade el wrapper de Maven (mvnw) al repositorio, o instala Maven desde https://maven.apache.org/install.html."
+        ProviderToolId.ANDROID_SDK -> "Instala el SDK de Android y su emulador con Android Studio (https://developer.android.com/studio), o define ANDROID_HOME con su ubicación."
+        ProviderToolId.IOS_SIMULATOR, ProviderToolId.XCODE -> "Instala Xcode desde la App Store y selecciónalo con sudo xcode-select -s /Applications/Xcode.app."
+        ProviderToolId.COCOAPODS -> "Instala CocoaPods desde https://cocoapods.org."
+        ProviderToolId.DOCKER_COMPOSE -> "Instala Docker con su plugin Compose, por ejemplo Docker Desktop desde https://docs.docker.com/get-docker/."
+        ProviderToolId.FLUTTER -> "Instala Flutter (https://docs.flutter.dev/get-started/install), o FVM si el repositorio lo usa, y comprueba que está en tu PATH."
+        ProviderToolId.PROVIDERS -> "Corrige el .shogunai.json del repositorio para que sea válido."
+    }
+}
+
+private fun spanishMultirepoFix(finding: InstallationFinding.MultirepoCheck, problem: MultirepoProblem): String = when (problem) {
+    MultirepoProblem.DeclarationMissing -> "Restaura ${finding.folder}; si no, ShogunAi olvidará el multirepo la próxima vez que arranque."
+    is MultirepoProblem.InvalidDeclaration -> "${problem.path}${problem.detail.asSuffix()}. Corrígelo."
+    is MultirepoProblem.RepositoryMissing ->
+        "${problem.alias}: ${problem.path} no es un repositorio Git. Restáuralo, o cambia su ruta en ${finding.folder}/$MULTIREPO_FILE_NAME."
+    MultirepoProblem.NotTrusted -> "No es de confianza en este equipo. Revísalo y ejecuta shogun multirepo trust ${finding.folder}."
+    is MultirepoProblem.ListingFailed -> "No se han podido listar los worktrees de ${problem.alias}${problem.detail.asSuffix()}. Comprueba que es un repositorio Git que puedes leer."
+    is MultirepoProblem.GroupWorktreeMissing ->
+        "Grupo ${problem.branch}: la carpeta ${problem.path} de su worktree de ${problem.alias} no existe. Restáurala, o ejecuta git worktree prune en ${problem.alias}."
+}
+
+private fun spanishCount(count: Int, one: String, many: String): String = if (count == 1) "1 $one" else "$count $many"

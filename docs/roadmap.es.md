@@ -29,15 +29,45 @@ Numerados en el orden en que se abordarán: el número es la prioridad.
 ShogunAi tiene que funcionar a la primera en una máquina que no es en la que se desarrolla, y cada regresión tiene que detectarse antes de que una versión llegue a nadie. Una demo en otro Mac mostró por qué: la app, abierta desde el Dock, recibe el `PATH` mínimo de macOS, así que dio por fuera del `PATH` un comando `shogun` instalado con Homebrew, el recorrido guiado se negó a empezar y los hooks de Claude Code aparecieron como inutilizables; y crear un worktree falló al copiar sus archivos locales. Ninguno de los dos fallos apareció en la máquina de desarrollo, cuya propia configuración los tapa. Por orden:
 
 - Tests que obligan al producto a cumplirlo:
-  - Subir hasta el 100% los suelos de cobertura que exige CI: las ramas de `core` (hoy 79%) y `cli` (83%), y las líneas (88%) y ramas (73%) de la app de escritorio fuera de sus composables, que cubren los tests end to end. Las líneas de `core` y `cli` ya están al 100%, y también los textos de la app de escritorio. La app de escritorio sube un paquete por cambio, en este orden: los ajustes de proyecto, los worktrees y su inspector, el shell y el icono de la barra de menús, las vistas de la máquina y los multirepos, los componentes compartidos y, por último, el cableado de la app, cuando su entorno del host se resuelva en un solo sitio.
-  - Abrir en Herdr en los tests end to end del CLI en Windows, donde el cliente de Herdr solo ejecuta `herdr.exe` y los tests necesitan un ejecutable que lo sustituya; en Linux y macOS ya se ejecutan contra un `herdr` falso.
+  - Subir hasta el 100% los suelos de cobertura que exige CI: las ramas de `core` (hoy 79%) y `cli` (83%), y las líneas (88%) y ramas (74%) de la app de escritorio fuera de sus composables, que cubren los tests end to end. Las líneas de `core` y `cli` ya están al 100%, y también los textos de la app de escritorio. La app de escritorio sube un paquete por cambio, en este orden: los ajustes de proyecto, los worktrees y su inspector, el shell y el icono de la barra de menús, las vistas de la máquina y los multirepos, los componentes compartidos y, por último, el cableado de la app, cuando su entorno del host se resuelva en un solo sitio.
   - Que los tests end to end de la app de escritorio fijen si `shogun` está instalado, cuando el entorno del host se resuelva en un solo sitio: hoy los tests del recorrido y de los hooks siguen lo que tenga la máquina, porque en macOS siempre se busca en `/opt/homebrew/bin`, y "falta el comando" solo se cubre con dobles.
-  - Un test de regresión por cada bug corregido, escrito primero para reproducirlo, como ya lo tiene el falso aviso de «no está en el `PATH`».
 - Una prueba de humo de la app empaquetada en una máquina limpia en CI antes de cada versión: instalar el `.dmg` en un runner de macOS, abrir la app con el entorno que le da el Dock, instalar el comando y los hooks, añadir un proyecto con archivos locales, ejecutar `shogun new` y comprobar los archivos copiados. Una versión que no la pasa no se publica. Después, lo mismo en Windows y Linux con sus paquetes, que cubre también instalar el comando desde la app en Windows y en un equipo sin `~/.local/bin` en el `PATH`, y elegir una carpeta con el diálogo del sistema, que en Linux pasa por el portal del escritorio y, sin él, recurre al selector de Java.
-- Más comprobaciones en `shogun doctor` y «Comprobar instalación»: las herramientas de los providers que declara un repositorio (Xcode, el SDK de Android, Docker), y los multirepos con sus repositorios y grupos.
-- Un paso que ejecute `shogun doctor` en el [ensayo en una cuenta limpia](process/clean-account-rehearsal.md), para que un fallo allí llegue con qué está mal y cómo arreglarlo.
+- Lo que las herramientas de los providers necesitan además de estar instaladas, en `shogun doctor` y «Comprobar instalación»: el runtime de Java de Gradle y Maven, el daemon de Docker en marcha y versiones mínimas; hoy comprueban que cada herramienta se encuentra y se ejecuta.
 
-### 2. Orca, un segundo runner de primera clase
+### 2. Correcciones de la revisión de UX de la interfaz v2
+
+Una revisión de UX de la interfaz v2 ya implementada, hecha sobre `develop` en `aaf42f94` con datos de ejemplo, concluyó que la app debería responder primero «¿qué me necesita?» y «¿dónde está cada agente?», y que hoy no responde ninguna de las dos de un vistazo. Sus correcciones se reparten en cambios, por orden:
+
+- El modelo de atención (un cambio de OpenSpec):
+  - «Te necesitan» se divide en «Esperándote», para un agente bloqueado o terminado, bajo una cabecera de aviso, y «Sin terminar», para trabajo sin commitear o sin subir, bajo una neutra. El checkout principal y los worktrees inactivos salen de los dos grupos, pero conservan su marca ✎.
+  - El contador de Activos de la barra lateral cuenta solo «Esperándote», y «Parados» empieza plegado.
+  - «↑» significa solo commits no subidos al upstream: la comparación con la base pasa al inspector, y una rama sin upstream muestra un icono de «sin subir».
+  - Una vista de Activos vacía y tranquila: «Nada te necesita», con cuántos agentes están trabajando y «Ver todos los worktrees».
+- Una fila por cambio de multirepo en Activos, con el peor estado de sus repositorios, que se despliega en una fila hija por repositorio; las filas hijas no repiten la rama.
+- Una lista y un inspector más tranquilos:
+  - Sin selección no hay inspector, y el resumen pasa a la cabecera de la vista. El inspector se acopla cuando el contenido mide al menos 980 dp de ancho, y por debajo es una capa superpuesta.
+  - La columna de ejecución se pliega cuando ninguna fila la usa.
+  - El origen solo se muestra cuando no es ShogunAi, y el checkout principal se muestra como su rama con un chip neutro «main».
+  - La ruta del worktree es relativa a la carpeta de worktrees, con puntos suspensivos en medio.
+  - El resumen de una sección solo se muestra mientras está plegada, y Provisionado solo aparece cuando algo está desfasado o ha fallado.
+  - La sección Agente ocupa una línea cuando no hay ningún agente en marcha, y separa el agente en marcha de «Se ejecuta con».
+  - En ventanas estrechas el prefijo del tipo se trunca primero, para que el id de la tarea se vea siempre, y las teselas del rail usan dos letras que distinguen proyectos hermanos.
+  - Las cifras dentro de frases usan la fuente de la interfaz con cifras tabulares; las cifras sueltas siguen en la fuente de datos.
+- Enfocar un agente desde su fila: hacer clic en el indicador de agente de la fila, o pulsar Intro sobre ella, enfoca el panel del agente en su runner, y el tooltip lo dice.
+- La entrada a la máquina y sus alarmas:
+  - La barra de estado empieza siempre por «Máquina», y un engranaje al pie de la barra lateral abre los Ajustes.
+  - Una herramienta que falta o es opcional se muestra neutra con su motivo; el color de peligro queda para los fallos reales.
+  - La vista de daemons de Gradle quita la columna de estado cuando todos los valores son desconocidos, explica por qué «Parar los ociosos» está desactivado y muestra qué worktree usa cada daemon cuando se sabe.
+- El punto de partida por defecto de Nuevo worktree (un cambio pequeño de OpenSpec, ya decidido): el diálogo parte de la rama actual del checkout principal, como hace `shogun new`, en lugar de la rama principal del proyecto, y con ello corrige la spec y la guía de la app de escritorio.
+- Una barra de herramientas más ordenada que cabe en una fila: el filtro; «Vista ▾» con el proyecto, la agrupación, el orden y Recargar (también con ⌘R); «Limpiar N» solo cuando hay algo que limpiar; y Nuevo worktree. En ventanas estrechas el filtro pasa a ser un icono y Nuevo worktree pasa a ser «+».
+- Arreglos rápidos que no necesitan OpenSpec:
+  - La barra de estado, su tooltip y la vista toman el número de daemons de Gradle de una sola fuente; hoy no coinciden.
+  - El aviso del recorrido guiado pasa a ser una línea en el pie de la barra lateral.
+  - Una insignia «Nuevo» legible.
+  - La paleta de comandos toma Ajustes y Preferencias como sinónimos y lista los worktrees para «abrir» cuando no hay nada seleccionado, descarta las coincidencias aproximadas que no son una subsecuencia del nombre visible, y dice en su pie, en la fuente de la interfaz, qué hacen ↵ y ⌘↵, tomado del catálogo de acciones.
+  - Comprobar a mano dos problemas, que solo se arreglan si se reproducen: un proyecto añadido con `shogun project add` no aparece hasta reiniciar la app, y ⌘A seguido de borrar en la paleta borra un solo carácter.
+
+### 3. Orca, un segundo runner de primera clase
 
 [Orca](https://www.onorca.dev), la app de escritorio para ejecutar agentes de programación en worktrees, recibe todo lo que ShogunAi hace con Herdr, más lo que Orca ofrece y Herdr no. Un spike comparó los dos: los hooks de repositorio de Orca (`orca.yaml`) pueden provisionar sus worktrees con `shogun`, su CLI puede abrir un worktree de ShogunAi con su entorno y su agente, y informa de estados de agente más ricos que sobreviven a reiniciar la app. Por orden:
 
@@ -51,7 +81,7 @@ ShogunAi tiene que funcionar a la primera en una máquina que no es en la que se
   - Que los avisos de Orca y su app móvil siguen a los agentes que ShogunAi arranca en Orca.
 - Fuera a propósito: los worktrees remotos y por SSH de Orca, porque ShogunAi prepara worktrees en esta máquina; y las ejecuciones de orquestación de Orca, porque el agente del multirepo ya coordina un grupo.
 
-### 3. Provisionado y recursos de los stacks móviles
+### 4. Provisionado y recursos de los stacks móviles
 
 Provisionado y recursos acotados para los stacks en los que un worktree recién creado está más lejos de compilar:
 
@@ -61,7 +91,7 @@ Provisionado y recursos acotados para los stacks en los que un worktree recién 
 - Decidir si la regla del inicio de sesión de ejecutar `shogun emulator start` antes de cada uso del emulador sigue haciendo falta ahora que la concesión del dispositivo se renueva mientras la sesión trabaja (una sesión larga que nunca envía un prompt aún puede perder su emulador), o si los fallos de `adb` deberían remitir a `shogun emulator start`, tras observarlo en uso.
 - Esperar un dispositivo desde la app de escritorio y mostrar en sus vistas de máquina los worktrees que esperan cada pool; hoy solo esperan `shogun emulator start --wait` y `shogun simulator start --wait`, y la app hace fallar un arranque mientras otros esperan.
 
-### 4. Todos los agentes, no solo Claude Code
+### 5. Todos los agentes, no solo Claude Code
 
 La vista de ShogunAi solo es neutral si ve a todos los agentes:
 
@@ -72,7 +102,7 @@ La vista de ShogunAi solo es neutral si ve a todos los agentes:
 - Registrar la rama base de los worktrees que crea Herdr, si su evento `worktree.created` llega a incluir el punto de partida; hoy se registra a mano con `shogun base --set`, mientras que `shogun new`, el hook de Claude Code, la app de escritorio y los grupos de los multirepos la registran solos.
 - Mostrar la rama base de cada worktree en las filas de la app de escritorio; hoy la columna Git se compara con ella y la nombra en su tooltip y en el detalle, y la informan `shogun base` y `shogun status`.
 
-### 5. Multirepos para todo el equipo
+### 6. Multirepos para todo el equipo
 
 Los multirepos y los grupos por rama están hechos en el CLI y en la app de escritorio, y son también la forma en que quienes no escriben el código siguen un cambio a través de los repositorios. Quedaron fuera:
 
@@ -83,7 +113,7 @@ Los multirepos y los grupos por rama están hechos en el CLI y en la app de escr
 - Una única sesión para todo el grupo, con un entorno combinado, como opción junto a un agente por repositorio.
 - El estado del pull request de cada repositorio de un grupo, que depende de la integración con GitHub en estudio.
 
-### 6. Robustez y mantenimiento
+### 7. Robustez y mantenimiento
 
 - Detectar los merges por squash y por rebase, que dejan una rama como no mergeada en su base ni en la rama principal, así que la limpieza no la ofrece y `--delete-branch` la conserva.
 - Encontrar la causa raíz de los errores que cerraban la ventana de Preferencias, a partir de las entradas que el aislamiento deja ahora en el registro de diagnóstico, y del crash nativo visto en otra máquina que dejó un informe de diagnóstico vacío.
@@ -111,13 +141,15 @@ Aceptados, pero aplazados hasta que alguien los necesite, porque amplían dónde
 
 ## En estudio
 
-### Replantear la UX/UI para que sea fácil de usar
-
-La app bombardea ahora con información a quien la abre: el estado Git de cada worktree, los agentes, los dispositivos, los puertos, los orígenes, los tamaños y los recursos de la máquina están en pantalla a la vez. Replantearla quiere decir decidir qué se muestra por defecto, de un vistazo, y qué solo aparece bajo demanda (en el detalle, al pasar el ratón o tras una acción), para que las preguntas habituales ("¿qué me necesita?", "¿dónde está cada agente?") se respondan primero. Necesita una exploración de las pantallas actuales y de cómo se usan de verdad antes de convertirse en un cambio.
-
 ### Replantear los Ajustes
 
-Los Ajustes deberían permitir personalizar ShogunAi sin obligar a configurarlo todo: valores por defecto sensatos, pocas opciones de primer nivel y los detalles solo para quien los quiera. Eso incluye revisar la decisión provisional de ligar la cadencia de refresco de la app a los perfiles de capacidad (ver [Cadencia de refresco](guide/providers.es.md#cadencia-de-refresco)), que reutiliza los perfiles pensados para los límites de dispositivos y daemons en lugar de ofrecer una elección propia. Va después del replanteamiento de la UX/UI de arriba, porque lo que ofrecen los Ajustes depende de lo que la app mantenga en pantalla.
+Los Ajustes deberían permitir personalizar ShogunAi sin obligar a configurarlo todo: valores por defecto sensatos, pocas opciones de primer nivel y los detalles solo para quien los quiera. Eso incluye revisar la decisión provisional de ligar la cadencia de refresco de la app a los perfiles de capacidad (ver [Cadencia de refresco](guide/providers.es.md#cadencia-de-refresco)), que reutiliza los perfiles pensados para los límites de dispositivos y daemons en lugar de ofrecer una elección propia. La revisión de UX de la interfaz v2 (ver el punto 2 de arriba) deja material para ello:
+
+- Los perfiles de capacidad Automático y Equilibrado apenas se diferencian.
+- Los minutos de la reserva de dispositivos y del turno del escritorio son detalles internos de los agentes que ve todo el mundo; podrían pasar a una subsección «Avanzado» plegada.
+- Recursos se muestra aunque ningún proyecto use dispositivos; podría mostrarse solo cuando un proyecto declara providers.
+- La ventana se llama «Preferencias», mientras que macOS y los proyectos dicen «Ajustes».
+- Con el modelo de atención, el umbral de inactividad pesa más, porque decide cuándo el trabajo sin terminar deja de pedir atención.
 
 ### Apps de escritorio en segundo plano más allá de macOS y del teclado
 

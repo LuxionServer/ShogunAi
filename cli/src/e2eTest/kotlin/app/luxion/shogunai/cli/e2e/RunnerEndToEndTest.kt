@@ -1,6 +1,5 @@
 package app.luxion.shogunai.cli.e2e
 
-import org.junit.Assume.assumeFalse
 import java.nio.file.Path
 import kotlin.test.AfterTest
 import kotlin.test.Test
@@ -24,8 +23,6 @@ class RunnerEndToEndTest {
 
     @Test
     fun `open in Herdr opens the worktree and runs the project's agent in it`() {
-        assumeFalse("Herdr's client only runs herdr.exe on Windows, which a script can't stand in for", Sandbox.isWindows)
-
         sandbox.shogunSucceeds(repository, "open", "TASK-1", "--herdr")
 
         val calls = FakeRunners.calls(sandbox, "herdr")
@@ -38,7 +35,6 @@ class RunnerEndToEndTest {
 
     @Test
     fun `open in Herdr twice focuses the agent already running`() {
-        assumeFalse("Herdr's client only runs herdr.exe on Windows, which a script can't stand in for", Sandbox.isWindows)
         sandbox.shogunSucceeds(repository, "open", "TASK-1", "--herdr")
 
         sandbox.shogunSucceeds(repository, "open", "TASK-1", "--herdr")

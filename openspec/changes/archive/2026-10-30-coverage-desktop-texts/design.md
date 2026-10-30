@@ -33,7 +33,7 @@ Two tests list what they check with `kotlin-reflect` instead of naming each case
 - `EveryTextTest` evaluates every member of `Strings` in both languages. Each function is called with every combination of sample arguments and the test asserts what the spec requires: no text is blank, and every string argument (alone or in a list) appears in the result. A nullable return (`installationFix` of a check that passed) may be `null`.
 - `EveryErrorTest` builds every subclass of `WorktreeError` the same way and asserts, in both languages, that its summary and next step are not blank and that the values it carries show up in them or in its technical details, and that an error whose next step points to its technical details has some. `worktreePath` is the one value not required: the error is shown on that worktree. Git causes, commands that can't start and unexpected exceptions get explicit tests next to it.
 
-`TextSamples`, shared by both, gives the samples per type: a marked string per parameter (so one argument can't be found because of another), `0`, `1` and `2` for counts, both booleans, every value of an enum, an empty, a one-element and a full list, and `null` too for nullable types. Data classes and sealed types (`InstallationFinding`, `CommandLineToolStatus`, `GitFailureCause`, `UnavailableLocalFile`…) are built from their constructors with the samples of their parameters, so texts that take domain objects need no hand-written cases. A few types get a fixed table: pool holders (one per state, one with a working agent and one with a lease), a desktop turn, a duration and two exceptions. A type the samples can't build fails the test naming it, so a new text or error can't silently stay untested; combinations are capped at 5,000 per call to keep the run in seconds.
+`TextSamples`, shared by both, gives the samples per type: a marked string per parameter (so one argument can't be found because of another), `0`, `1` and `2` for counts, both booleans, every value of an enum, an empty, a one-element and a full list, and `null` too for nullable types. Data classes and sealed types (`InstallationFinding`, `CommandLineToolStatus`, `GitFailureCause`, `UnavailableLocalFile`…) are built from their constructors with the samples of their parameters, so texts that take domain objects need no hand-written cases. A few types get a fixed table: pool holders (one per state, one with a working agent and one with a lease), a desktop turn, a duration and two exceptions. A type the samples can't build fails the test naming it, so a new text or error can't silently stay untested; combinations are capped at 10,000 per call to keep the run in seconds (an installation check reaches about 6,300 once provider tools and multirepos are checked).
 
 The single allowed empty text is `environmentSummary(0, 0)`, the summary of a worktree without ports nor variables, which the inspector turns into "no summary".
 
@@ -72,7 +72,7 @@ Measured on macOS after this change, with the end-to-end tests:
 | `ui/i18n` | 100% (2,657 of 2,657) | 99.8% (1,302 of 1,304; the two above) |
 | whole desktop app outside composables | 88.26% (1,342 uncovered) | 73.89% (1,864 uncovered) |
 
-The floors in `desktopApp/build.gradle.kts` go up from 83 to 88 (lines) and from 66 to 73 (branches).
+The floors in `desktopApp/build.gradle.kts` go up from 83 to 88 (lines) and from 66 to 73 (branches), and the branches to 74 once merged with the doctor's provider and multirepo checks, whose texts the samples cover.
 
 ### Plan for the rest of the desktop app
 
