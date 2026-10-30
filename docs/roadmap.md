@@ -58,7 +58,6 @@ A UX review of the implemented v2 interface, done on `develop` at `aaf42f94` wit
   - The status bar always starts with "Machine", and a gear at the bottom of the sidebar opens Settings.
   - A missing or optional tool shows as neutral with its reason; the danger color is kept for real failures.
   - The Gradle daemons view drops the state column when every value is unknown, explains why "Stop idle daemons" is disabled, and shows which worktree uses each daemon when that's known.
-- New worktree's default start (a small OpenSpec change, already decided): the dialog starts from the main checkout's current branch, as `shogun new` does, instead of the project's main branch, fixing the spec and the desktop app guide with it.
 - Quick fixes that don't need OpenSpec:
   - The status bar, its tooltip and the view take the count of Gradle daemons from a single source; today they disagree.
   - The guided tour's notice becomes one line in the sidebar's footer.

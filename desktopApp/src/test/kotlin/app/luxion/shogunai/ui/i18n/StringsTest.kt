@@ -493,6 +493,14 @@ class StringsTest {
     }
 
     @Test
+    fun `the current branch start point says it is the same as shogun new`() {
+        assertEquals("Current branch of the repository (develop) · same as shogun new", EnglishStrings.startFromCurrentBranch("develop"))
+        assertEquals("Current commit of the repository · same as shogun new", EnglishStrings.startFromCurrentBranch(null))
+        assertEquals("Rama actual del repositorio (develop) · igual que shogun new", SpanishStrings.startFromCurrentBranch("develop"))
+        assertEquals("Commit actual del repositorio · igual que shogun new", SpanishStrings.startFromCurrentBranch(null))
+    }
+
+    @Test
     fun `agent labels name the agent and translate each phase`() {
         AgentPhase.entries.forEach { phase ->
             val english = EnglishStrings.agentLabel("Claude", phase)
