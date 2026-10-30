@@ -174,7 +174,7 @@ object EnglishStrings : Strings {
     override val startFromLabel = "Start from"
     override fun startFromMainBranch(ref: String) = "$ref (main branch)"
     override fun startFromCurrentBranch(branch: String?) =
-        if (branch != null) "Current branch of the repository ($branch)" else "Current commit of the repository"
+        if (branch != null) "Current branch of the repository ($branch) · same as shogun new" else "Current commit of the repository · same as shogun new"
     override fun remoteBranchLabel(branch: String) = "$branch (remote)"
     override val fetchFirstLabel = "Fetch from origin first"
     override val createWithoutFetching = "Create without fetching"
@@ -271,16 +271,15 @@ object EnglishStrings : Strings {
         AgentPhase.RUNNING -> "running"
         AgentPhase.IDLE -> "idle"
     }
-    override fun agentWaitingOn(tool: String, input: String?) = "Waiting on $tool" + (input?.let { ": $it" } ?: "")
+    override fun agentWaitingOn(tool: String, input: String?) = "Waiting on $tool" + (if (input == null) "" else ": $input")
     override fun agentPrompt(prompt: String) = "Prompt: $prompt"
     override fun agentLastMessage(message: String) = "Last message: $message"
     override fun portListening(label: String) = "$label (listening)"
     override val orcaPortsTitle = "Listening, seen by Orca"
-    override fun agentStateSource(source: AgentStateSource?) = when (source) {
+    override fun agentStateSource(source: AgentStateSource?) = if (source == null) "Only its process was found" else when (source) {
         AgentStateSource.HERDR -> "State from Herdr"
         AgentStateSource.ORCA -> "State from Orca"
         AgentStateSource.CLAUDE_CODE -> "State from Claude Code hooks"
-        null -> "Only its process was found"
     }
     override fun agentsUpdated(relative: String) = "Updated $relative"
     override val noAgentRunning = "No agent running"
@@ -340,6 +339,11 @@ object EnglishStrings : Strings {
     override fun cleanupCandidatesSummary(count: Int) = "$count to clean up"
     override val locked = "locked"
     override val cleanUp = "Clean up"
+    override fun cleanUpCount(count: Int) = "Clean up $count"
+    override val viewMenu = "View"
+    override val viewMenuProject = "Project"
+    override val viewMenuGrouping = "Group"
+    override val filterWorktrees = "Filter worktrees"
     override val copyPath = "Copy path"
     override val statusTitle = "Status"
     override val agentsTitle = "Agents"
@@ -507,11 +511,12 @@ object EnglishStrings : Strings {
         CapacityProfile.CUSTOM -> "Custom"
     }
     override fun resourceLimitsSummary(limits: ResourceLimits, includeSimulators: Boolean) = listOfNotNull(
-        limits.emulators.let { if (it == null) "emulators: no limit" else if (it == 1) "1 emulator" else "$it emulators" },
-        limits.simulators.let { if (it == null) "iOS simulators: no limit" else if (it == 1) "1 iOS simulator" else "$it iOS simulators" }
+        limitText(limits.emulators, "emulators: no limit") { if (it == 1) "1 emulator" else "$it emulators" },
+        limitText(limits.simulators, "iOS simulators: no limit") { if (it == 1) "1 iOS simulator" else "$it iOS simulators" }
             .takeIf { includeSimulators },
-        limits.gradleDaemons.let { if (it == null) "Gradle daemons: no limit" else if (it == 1) "1 Gradle daemon" else "$it Gradle daemons" },
+        limitText(limits.gradleDaemons, "Gradle daemons: no limit") { if (it == 1) "1 Gradle daemon" else "$it Gradle daemons" },
     ).joinToString(" · ")
+    private fun limitText(limit: Int?, noLimit: String, count: (Int) -> String) = if (limit == null) noLimit else count(limit)
     override fun resourceKindLabel(kind: ResourceKind) = when (kind) {
         ResourceKind.EMULATOR -> "Emulators"
         ResourceKind.IOS_SIMULATOR -> "iOS simulators"
@@ -557,7 +562,7 @@ object EnglishStrings : Strings {
     override fun desktopWaitingLabel(position: Int) = "Waiting for the desktop, #$position"
     override val desktopTurnDetailTitle = "Desktop turn"
     override fun desktopTurnDetailWaiting(position: Int, since: String, holder: String?) =
-        "Waiting for the desktop, #$position since $since" + (holder?.let { ", behind $it" } ?: "")
+        "Waiting for the desktop, #$position since $since" + (if (holder == null) "" else ", behind $holder")
     override val headlessAppRunningLabel = "App in the background"
     override val headlessAppDetailTitle = "Background app"
     override fun headlessAppRunning(pid: Long?) = if (pid == null) "Running" else "Running (process $pid)"
@@ -588,7 +593,7 @@ object EnglishStrings : Strings {
     }
     override fun trimmedNotice(count: Int, limit: Int?, trims: Int, lastTime: String) =
         (if (count == 1) "1 idle Gradle daemon was stopped" else "$count idle Gradle daemons were stopped") +
-            (limit?.let { " to stay within the limit of $it" } ?: "") +
+            (if (limit == null) "" else " to stay within the limit of $limit") +
             (if (trims == 1) " at $lastTime" else " · $trims times, last at $lastTime")
     override fun poolSummary(inUse: Int, limit: Int?) = if (limit == null) "$inUse" else "$inUse/$limit"
     override val androidEmulatorsTitle = "Android emulators"
