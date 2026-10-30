@@ -279,6 +279,7 @@ interface HostEnvironment {
     val home: String
     val shell: String?
     val path: HostPath
+    val userBinFolders: List<String>
     fun variable(name: String): String?
 }
 
@@ -287,7 +288,7 @@ data class HostPath(val folders: List<String>, val source: HostPathSource)
 enum class HostPathSource { LOGIN_SHELL, PROCESS, FALLBACK }
 ```
 
-The machine's environment as ShogunAi sees it, resolved once per process: the home folder, the user's shell (`SHELL`, blank counts as none), the `PATH` folders and any other variable. Every command ShogunAi runs gets `path.folders` as its `PATH`, and every tool it looks for is searched there, so the desktop app opened from the Dock behaves as from a terminal. `path` is resolved on first access and may wait for the login shell, at most its time limit; `source` tells where it came from: `LOGIN_SHELL` (the desktop app read the user's login shell), `PROCESS` (the CLI, and Windows, whose own `PATH` is the user's) or `FALLBACK` (the desktop app couldn't read the login shell and added the usual install folders to its own `PATH`). The composition roots build it once (`SystemHostEnvironment`) and pass its values down; nothing else reads the process environment.
+The machine's environment as ShogunAi sees it, resolved once per process: the home folder, the user's shell (`SHELL`, blank counts as none), the `PATH` folders and any other variable. Every command ShogunAi runs gets `path.folders` as its `PATH`, and every tool it looks for is searched there, so the desktop app opened from the Dock behaves as from a terminal. `path` is resolved on first access and may wait for the login shell, at most its time limit; `source` tells where it came from: `LOGIN_SHELL` (the desktop app read the user's login shell), `PROCESS` (the CLI, and Windows, whose own `PATH` is the user's) or `FALLBACK` (the desktop app couldn't read the login shell and added the usual install folders to its own `PATH`). `userBinFolders` are those usual install folders (`/opt/homebrew/bin`, `/usr/local/bin`, `~/.local/bin` and `~/.cargo/bin` unless given others; none on Windows), searched for tools after `path` and nowhere else, so an environment answers on its own where a tool can be found. The composition roots build it once (`SystemHostEnvironment`) and pass its values down; nothing else reads the process environment. The desktop app's `AppContainer` receives it as a constructor parameter, defaulting to `SystemHostEnvironment.forDesktopApp()`, so its end-to-end tests give it their own.
 
 ### `FileManager`
 
