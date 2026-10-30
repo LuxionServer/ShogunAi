@@ -846,6 +846,13 @@ interface Strings {
     val daemonStopBlockedGradleBusy: String
     val stopIdleBlockedStopping: String
     val stopIdleBlockedNoneIdle: String
+    fun stopIdleAllBusy(count: Int): String
+    fun stopIdleAllUnknown(count: Int): String
+    fun stopIdleBusyAndUnknown(busy: Int, unknown: Int): String
+    fun gradleBuildCacheOffIn(projects: Int): String
+    val ownerUnknown: String
+    val machineOverviewTooltip: String
+    val machineOverviewNoProviders: String
 }
 
 val LocalStrings = staticCompositionLocalOf<Strings> { EnglishStrings }
