@@ -239,10 +239,10 @@ class MachineResources(
 
     private suspend fun <T> io(call: suspend () -> T): T = withContext(ioDispatcher) { call() }
 
-    private suspend fun loadPool(kind: ResourceKind) {
+    private suspend fun loadPool(kind: ResourceKind, listedGradleDaemons: List<DaemonProcess>? = null) {
         val resource = machineResourceOf(kind)
         val project = projects().firstOrNull { resource in it.declares } ?: return
-        io { useCases.readPool(kind, project.project.config, project.worktrees) }.getOrNull()?.let { usage ->
+        io { useCases.readPool(kind, project.project.config, project.worktrees, listedGradleDaemons) }.getOrNull()?.let { usage ->
             pools = pools + (kind to usage)
         }
     }
@@ -411,18 +411,7 @@ class MachineResources(
         }
         if (MachineResource.GRADLE_DAEMONS in resources) {
             trimGradleDaemons()
-            val daemons = io { useCases.listDaemons() }
-            if (daemons.isSuccess) loadPool(ResourceKind.GRADLE_DAEMON)
-            record(MachineResource.GRADLE_DAEMONS, daemons) { listed ->
-                val pool = pools[ResourceKind.GRADLE_DAEMON]
-                MachineSummary(
-                    listed.size,
-                    listed.sumOf { it.residentMemoryBytes },
-                    pool?.inUse,
-                    pool?.effectiveLimit,
-                    poolHeldByBuilds = pool?.let(::buildsHoldingPool) != null,
-                )
-            }
+            record(MachineResource.GRADLE_DAEMONS, readGradleDaemons(), ::gradleSummary)
         }
         if (MachineResource.MAVEN_DAEMONS in resources) {
             record(MachineResource.MAVEN_DAEMONS, io { useCases.listMavenDaemons() }) { daemons ->
@@ -614,8 +603,33 @@ class MachineResources(
     }
 
     private suspend fun loadDaemons() {
-        daemonProcesses = io { useCases.listDaemons() }.fold({ MachineLoad.Loaded(it) }, { MachineLoad.Unavailable })
-        loadPool(ResourceKind.GRADLE_DAEMON)
+        val listed = readGradleDaemons()
+        if (listed.isFailure) daemonProcesses = MachineLoad.Unavailable
+        listed.onSuccess { daemons ->
+            if (MachineResource.GRADLE_DAEMONS in providerSummaries) {
+                providerSummaries = providerSummaries + (MachineResource.GRADLE_DAEMONS to gradleSummary(daemons))
+            }
+        }
+    }
+
+    private suspend fun readGradleDaemons(): Result<List<DaemonProcess>> {
+        val listed = io { useCases.listDaemons() }
+        listed.onSuccess { daemons ->
+            daemonProcesses = MachineLoad.Loaded(daemons)
+            loadPool(ResourceKind.GRADLE_DAEMON, daemons)
+        }
+        return listed
+    }
+
+    private fun gradleSummary(listed: List<DaemonProcess>): MachineSummary {
+        val pool = pools[ResourceKind.GRADLE_DAEMON]
+        return MachineSummary(
+            listed.count { it.kind == DaemonKind.GRADLE },
+            listed.sumOf { it.residentMemoryBytes },
+            pool?.inUse,
+            pool?.effectiveLimit,
+            poolHeldByBuilds = pool?.let(::buildsHoldingPool) != null,
+        )
     }
 
     private suspend fun loadEmulators() {

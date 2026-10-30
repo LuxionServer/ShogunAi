@@ -693,7 +693,11 @@ interface Strings {
     val menuCommandPalette: String
     val paletteHint: String
     val paletteNoResults: String
-    val paletteCopyLaunchCommandHint: String
+    val paletteSettingsSynonym: String
+    fun paletteOpenWorktree(worktree: String): String
+    val paletteEnterOpen: String
+    val paletteEnterRun: String
+    val paletteEnterShowWorktree: String
     val paletteKindView: String
     val paletteKindSetting: String
     val paletteKindProject: String
@@ -826,6 +830,7 @@ interface Strings {
     val tourRestart: String
     val tourOpenExisting: String
     val tourNoticeMessage: String
+    val tourNoticeDetails: String
     val tourBannerMessage: String
     val tourOpenAgent: String
     val tourEnd: String

@@ -11,12 +11,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Bedtime
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.DesktopMac
 import androidx.compose.material.icons.filled.DesktopWindows
-import androidx.compose.material.icons.filled.FiberNew
 import androidx.compose.material.icons.filled.FolderOff
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PhoneAndroid
@@ -166,7 +166,7 @@ private fun StateBadgeKind.onColor(): Color = if (outlined) color() else ShogunT
 internal fun StateBadgeKind.icon(): ImageVector = when (this) {
     StateBadgeKind.NEEDS_YOU -> Icons.Default.PriorityHigh
     StateBadgeKind.AGENT_WORKING -> Icons.Default.PlayArrow
-    StateBadgeKind.NEW -> Icons.Default.FiberNew
+    StateBadgeKind.NEW -> Icons.Default.Add
     StateBadgeKind.STOPPED -> Icons.Default.Pause
     StateBadgeKind.MERGED -> Icons.Default.Check
     StateBadgeKind.INACTIVE -> Icons.Default.Bedtime
