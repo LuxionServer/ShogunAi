@@ -8,6 +8,8 @@ data class ViewActionContext(
     val isProjectView: Boolean,
     val createBlocked: String?,
     val cleanUpBlocked: String?,
+    val offersCleanUp: Boolean = true,
+    val cleanUpCount: Int = 0,
     val isOpeningMultirepoAgent: Boolean = false,
     val multirepoNeedsReview: String? = null,
     val orcaInstalled: Boolean = false,
@@ -28,16 +30,14 @@ data class ViewCatalog(val actions: List<ActionSpec>, val defaultRunner: RunnerI
 
     val primary: ActionSpec? get() = actions.firstOrNull { it.id == ActionId.NewWorktree || it.id == ActionId.NewChange }?.takeIf { it.isVisible }
 
+    val cleanUp: ActionSpec? get() = find(ActionId.CleanUp)?.takeIf { it.isVisible }
+
     val overflow: List<ActionSpec>
-        get() = actions.filter { it.isVisible && (it.id is ActionId.OpenMultirepoAgent || it.id == ActionId.CleanUp) }
+        get() = actions.filter { it.isVisible && it.id is ActionId.OpenMultirepoAgent }
 }
 
-fun viewOverflow(catalog: ViewCatalog, strings: Strings): List<ActionEntry> = buildList {
-    val (destructive, others) = catalog.overflow.partition { it.isDestructive }
-    addAll(withDefaultRunner(others, catalog.defaultRunner, strings.openMultirepoAgentWith) { (it.id as? ActionId.OpenMultirepoAgent)?.target })
-    if (others.isNotEmpty() && destructive.isNotEmpty()) add(ActionEntry.Divider)
-    destructive.forEach { add(ActionEntry.Run(it)) }
-}
+fun viewOverflow(catalog: ViewCatalog, strings: Strings): List<ActionEntry> =
+    withDefaultRunner(catalog.overflow, catalog.defaultRunner, strings.openMultirepoAgentWith) { (it.id as? ActionId.OpenMultirepoAgent)?.target }
 
 data class GroupCatalog(val context: GroupActionContext, val actions: List<ActionSpec>) {
     fun find(id: ActionId): ActionSpec? = actions.firstOrNull { it.id == id }
@@ -85,9 +85,9 @@ fun viewCatalog(context: ViewActionContext, strings: Strings): ViewCatalog {
                 ActionId.CleanUp,
                 multirepoScope,
                 ActionGroup.DESTRUCTIVE,
-                strings.cleanUp,
+                if (context.cleanUpCount > 0) strings.cleanUpCount(context.cleanUpCount) else strings.cleanUp,
                 ActionIcon.CLEAN,
-                context.cleanUpBlocked?.let(Availability::Disabled) ?: Availability.Available,
+                if (context.offersCleanUp) availableUnless(context.cleanUpBlocked) else Availability.Hidden,
                 confirm = ConfirmKind.CLEAN_UP,
             ),
             create,
