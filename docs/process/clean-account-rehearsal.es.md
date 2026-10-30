@@ -11,12 +11,14 @@ El smoke test de la app empaquetada en CI comprueba el mismo camino de forma aut
 
 ## 1. Conseguir el `.dmg`
 
-- Antes de una release, compílalo desde la rama de la release con el workflow manual `macOS installer`, que lo firma y lo notariza igual que el publicado sin tocar ninguna release, tag ni gestor de paquetes (ver [Firma y notarización en macOS](release.md#firma-y-notarizacion-en-macos)):
+- Antes de una release, cógelo del último run de `Release candidate` de la rama de la release, que lanza cada push a la rama: lo firma y lo notariza igual que el publicado, y si el run está en verde ya ha pasado el [smoke test de la app empaquetada](release.md#smoke-test-de-la-app-empaquetada). No toca ninguna release, tag ni gestor de paquetes:
 
     ```bash
-    gh workflow run macos-installer.yml -R LuxionServer/ShogunAi --ref release/X.X.X -f version=X.X.X
+    gh run list -R LuxionServer/ShogunAi --workflow release-candidate.yml --branch release/X.X.X --limit 1
     gh run download <run-id> -R LuxionServer/ShogunAi -n installer-macos-latest
     ```
+
+    Para compilar solo el `.dmg` desde otra rama, lanza en su lugar el workflow manual `macOS installer` (`gh workflow run macos-installer.yml -R LuxionServer/ShogunAi --ref <rama> -f version=X.X.X`, ver [Firma y notarización en macOS](release.md#firma-y-notarizacion-en-macos)).
 
     `installer-macos-latest` es el `.dmg` para Apple Silicon (`-arm64`) e `installer-macos-26-intel` el de Intel (`-x64`); coge el del Mac en el que ensayas.
 

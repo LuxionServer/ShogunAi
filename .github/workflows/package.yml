@@ -1,0 +1,94 @@
+name: Package
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        type: string
+        required: true
+      ref:
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            task: packageReleaseMsi
+            artifact-glob: desktopApp/build/compose/binaries/main-release/msi/*.msi
+          - os: ubuntu-latest
+            task: packageReleaseDeb
+            artifact-glob: desktopApp/build/compose/binaries/main-release/deb/*.deb
+
+    runs-on: ${{ matrix.os }}
+
+    env:
+      VERSION: ${{ inputs.version }}
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: corretto
+          java-version: "21"
+
+      - uses: gradle/actions/setup-gradle@v6
+
+      - name: Build installer
+        env:
+          TASK: ${{ matrix.task }}
+        run: ./gradlew ":desktopApp:${TASK}" "-PappVersion=${VERSION}"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: installer-${{ matrix.os }}
+          path: ${{ matrix.artifact-glob }}
+          if-no-files-found: error
+
+  build-macos:
+    uses: ./.github/workflows/macos-installer.yml
+    with:
+      version: ${{ inputs.version }}
+      ref: ${{ inputs.ref }}
+    secrets: inherit
+
+  build-cli:
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ inputs.version }}
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: corretto
+          java-version: "21"
+
+      - uses: gradle/actions/setup-gradle@v6
+
+      - name: Build CLI zip
+        run: ./gradlew :cli:distZip "-PappVersion=${VERSION}"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: cli
+          path: cli/build/distributions/shogun-${{ inputs.version }}.zip
+          if-no-files-found: error

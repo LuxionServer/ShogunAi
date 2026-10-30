@@ -11,12 +11,14 @@ The CI smoke test of the packaged app checks the same path automatically on a cl
 
 ## 1. Get the `.dmg`
 
-- Before a release, build it from the release branch with the manual `macOS installer` workflow, which signs and notarizes it like the published one without touching any release, tag or package manager (see [macOS signing and notarization](release.md#macos-signing-and-notarization)):
+- Before a release, take it from the release branch's latest `Release candidate` run, which every push to the branch starts: it signs and notarizes it like the published one, and has already passed the [packaged smoke test](release.md#packaged-smoke-test) when the run is green. It touches no release, tag or package manager:
 
     ```bash
-    gh workflow run macos-installer.yml -R LuxionServer/ShogunAi --ref release/X.X.X -f version=X.X.X
+    gh run list -R LuxionServer/ShogunAi --workflow release-candidate.yml --branch release/X.X.X --limit 1
     gh run download <run-id> -R LuxionServer/ShogunAi -n installer-macos-latest
     ```
+
+    To build only the `.dmg` from another branch, run the manual `macOS installer` workflow instead (`gh workflow run macos-installer.yml -R LuxionServer/ShogunAi --ref <branch> -f version=X.X.X`, see [macOS signing and notarization](release.md#macos-signing-and-notarization)).
 
     `installer-macos-latest` is the Apple Silicon `.dmg` (`-arm64`) and `installer-macos-26-intel` the Intel one (`-x64`); take the one for the Mac you rehearse on.
 

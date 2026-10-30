@@ -1,0 +1,68 @@
+name: Smoke test
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  smoke-test:
+    name: ${{ matrix.name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS Apple Silicon
+            os: macos-latest
+            installer: installer-macos-latest
+          - name: macOS Intel
+            os: macos-26-intel
+            installer: installer-macos-26-intel
+          - name: Windows
+            os: windows-latest
+            installer: installer-windows-latest
+          - name: Linux
+            os: ubuntu-latest
+            installer: installer-ubuntu-latest
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+          sparse-checkout: .github/smoke
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: ${{ matrix.installer }}
+          path: ${{ runner.temp }}/installer
+
+      - name: Install the dmg and open it as the Dock does
+        if: runner.os == 'macOS'
+        shell: bash
+        run: .github/smoke/smoke-macos.sh "$(ls "$RUNNER_TEMP"/installer/*.dmg)" "$RUNNER_TEMP/smoke"
+
+      - name: Install the deb and start it as a new user
+        if: runner.os == 'Linux'
+        shell: bash
+        run: .github/smoke/smoke-linux.sh "$(ls "$RUNNER_TEMP"/installer/*.deb)" "$RUNNER_TEMP/smoke"
+
+      - name: Install the msi and start it with the session's PATH
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $msi = Get-ChildItem "$env:RUNNER_TEMP\installer\*.msi" | Select-Object -First 1
+          .github/smoke/smoke-windows.ps1 -Msi $msi.FullName -Work "$env:RUNNER_TEMP\smoke"
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: smoke-test-${{ matrix.os }}
+          path: ${{ runner.temp }}/smoke/out
+          if-no-files-found: warn
