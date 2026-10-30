@@ -60,7 +60,6 @@ Una revisión de UX de la interfaz v2 ya implementada, hecha sobre `develop` en 
   - La barra de estado empieza siempre por «Máquina», y un engranaje al pie de la barra lateral abre los Ajustes.
   - Una herramienta que falta o es opcional se muestra neutra con su motivo; el color de peligro queda para los fallos reales.
   - La vista de daemons de Gradle quita la columna de estado cuando todos los valores son desconocidos, explica por qué «Parar los ociosos» está desactivado y muestra qué worktree usa cada daemon cuando se sabe.
-- El punto de partida por defecto de Nuevo worktree (un cambio pequeño de OpenSpec, ya decidido): el diálogo parte de la rama actual del checkout principal, como hace `shogun new`, en lugar de la rama principal del proyecto, y con ello corrige la spec y la guía de la app de escritorio.
 - Una barra de herramientas más ordenada que cabe en una fila: el filtro; «Vista ▾» con el proyecto, la agrupación, el orden y Recargar (también con ⌘R); «Limpiar N» solo cuando hay algo que limpiar; y Nuevo worktree. En ventanas estrechas el filtro pasa a ser un icono y Nuevo worktree pasa a ser «+».
 - Arreglos rápidos que no necesitan OpenSpec:
   - La barra de estado, su tooltip y la vista toman el número de daemons de Gradle de una sola fuente; hoy no coinciden.
