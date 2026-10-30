@@ -3,7 +3,7 @@
 ## MODIFIED Requirements
 
 ### Requirement: View header actions
-A worktree view's header SHALL keep a single primary action ("New worktree", or "New change" in a multirepo view) and, before it, "Clean up N" as a neutral ghost button, where N is the number of worktrees selected for cleanup in the view, shown only when there is something to clean up and disabled with its reason while it can't run. Its other actions SHALL go into a "More" (⋯) menu, shown only when it has entries: in a multirepo view, "Open multirepo agent in <default runner>" and, when another runner is installed, an "Open multirepo agent with…" submenu with each other runner.
+A worktree view's header SHALL keep one primary action ("New worktree", or "New change" in a multirepo view) and, before it, "Clean up N" as a ghost button, N being the view's cleanup candidates, shown only when there is something to clean up and disabled with its reason while it can't run. A "More" (⋯) menu, shown only when not empty, SHALL hold in a multirepo view "Open multirepo agent in <default runner>" and, when another runner is installed, "Open multirepo agent with…".
 
 #### Scenario: Clean up from the header
 - **WHEN** "All worktrees" has three cleanup candidates

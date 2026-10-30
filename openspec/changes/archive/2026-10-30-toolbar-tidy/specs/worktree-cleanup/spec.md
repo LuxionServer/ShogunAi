@@ -3,7 +3,7 @@
 ## MODIFIED Requirements
 
 ### Requirement: Confirm before cleaning up
-The system SHALL offer a "Clean up N" button in the worktree view's header, covering the projects shown in the view and shown only when something in them can be cleaned up, and a "Clean up" action in each project group's header, covering that project. Each action SHALL be enabled only when at least one worktree in its scope is selected for cleanup and no cleanup runs, and when disabled SHALL say why in a tooltip. Activating it SHALL show a confirmation dialog listing the selected worktrees grouped by project, with an option to also delete their local branches that is off by default. No Git command SHALL run until the user confirms.
+The view's header SHALL offer "Clean up N" for the shown projects, only when something in them can be cleaned up, and each project group's header a "Clean up" for its project. Each SHALL be enabled only when its scope has a cleanup candidate and no cleanup runs, saying why in a tooltip otherwise. Activating it SHALL show a confirmation listing the candidates by project, with an unchecked option to also delete their local branches. No Git command SHALL run until the user confirms.
 
 #### Scenario: Nothing to clean up
 - **WHEN** no worktree in a project group's scope is selected for cleanup

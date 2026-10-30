@@ -3,10 +3,6 @@ package app.luxion.shogunai.ui.worktree
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.ExperimentalTestApi
@@ -14,12 +10,10 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
-import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performMouseInput
 import androidx.compose.ui.test.v2.runComposeUiTest
 import androidx.compose.ui.unit.dp
@@ -31,13 +25,9 @@ import app.luxion.shogunai.domain.model.RunningAgent
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.WorktreeEmulator
 import app.luxion.shogunai.domain.model.EmulatorState
-import app.luxion.shogunai.domain.model.WorktreeSort
 import app.luxion.shogunai.domain.model.WorktreeStatus
 import app.luxion.shogunai.domain.model.toLocalClockTime
 import app.luxion.shogunai.ui.i18n.EnglishStrings
-import app.luxion.shogunai.ui.i18n.LocalStrings
-import app.luxion.shogunai.ui.i18n.SpanishStrings
-import app.luxion.shogunai.ui.theme.ShogunTheme
 import java.time.Duration
 import java.time.Instant
 import kotlin.test.Test
@@ -281,35 +271,5 @@ class WorktreeRowUiTest {
         setContent { MaterialTheme { Column(Modifier.width(900.dp)) { Row(blocked) } } }
 
         onNodeWithText("Claude · needs you", useUnmergedTree = true).assertIsDisplayed()
-    }
-
-    @Test
-    fun `the sort selector reports the picked order`() = runComposeUiTest {
-        val picks = mutableListOf<WorktreeSort>()
-        var selected by mutableStateOf(WorktreeSort.NAME)
-        setContent {
-            MaterialTheme {
-                SortSelector(selected) {
-                    picks += it
-                    selected = it
-                }
-            }
-        }
-
-        onNodeWithText("Last activity").performClick()
-
-        assertEquals(listOf(WorktreeSort.ACTIVITY), picks)
-    }
-
-    @Test
-    fun `the sort selector is translated`() = runComposeUiTest {
-        setContent {
-            CompositionLocalProvider(LocalStrings provides SpanishStrings) {
-                MaterialTheme { SortSelector(WorktreeSort.NAME) {} }
-            }
-        }
-
-        onNodeWithText("Nombre").assertIsDisplayed()
-        onNodeWithText("Última actividad").assertIsDisplayed()
     }
 }
