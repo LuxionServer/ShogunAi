@@ -29,7 +29,7 @@ Numbered in the order they will be picked up: the number is the priority.
 ShogunAi has to work the first time on a machine that isn't the one it's developed on, and every regression has to be caught before a release reaches anyone. A demo on another Mac showed why: the app, opened from the Dock, gets macOS's minimal `PATH`, so it reported a `shogun` command installed by Homebrew as not on the `PATH`, the guided tour refused to start and Claude Code's hooks read as unusable; and creating a worktree failed while copying its local files. Neither showed up on the developer's machine, whose own setup hides them. In order:
 
 - Tests that hold the product to it:
-  - Raising the coverage floors that CI enforces up to 100%: the branches of `core` (79% today) and `cli` (83%), and the lines (83%) and branches (67%) of the desktop app outside its composables, which the end-to-end tests cover. Lines of `core` and `cli` are already at 100%.
+  - Raising the coverage floors that CI enforces up to 100%: the branches of `core` (79% today) and `cli` (83%), and the lines (88%) and branches (74%) of the desktop app outside its composables, which the end-to-end tests cover. Lines of `core` and `cli` are already at 100%, and so are the desktop app's texts. The desktop app goes up one package per change, in this order: project settings, worktrees and their inspector, the shell and the menu bar icon, the machine views and multirepos, shared components, and last the app's wiring.
 - A smoke test of the packaged app on a clean machine in CI before every release: install the `.dmg` on a macOS runner, open the app with the environment the Dock gives it, install the command and the hooks, add a project with local files, run `shogun new` and check the copied files. A release that fails it isn't published. Then the same on Windows and Linux with their packages, which also covers installing the command from the app on Windows and on a machine without `~/.local/bin` on its `PATH`, and choosing a folder with the system's dialog, which on Linux goes through the desktop portal and falls back to Java's chooser without one.
 - What the providers' tools need beyond being installed, in `shogun doctor` and "Check Installation": the Java runtime behind Gradle and Maven, Docker's daemon running, and minimum versions; today they check that each tool is found and runs.
 
@@ -57,7 +57,6 @@ A UX review of the implemented v2 interface, done on `develop` at `aaf42f94` wit
   - The status bar always starts with "Machine", and a gear at the bottom of the sidebar opens Settings.
   - A missing or optional tool shows as neutral with its reason; the danger color is kept for real failures.
   - The Gradle daemons view drops the state column when every value is unknown, explains why "Stop idle daemons" is disabled, and shows which worktree uses each daemon when that's known.
-- A tidier toolbar that fits in one row: the filter; "View ▾" with the project, grouping, order and Reload (also on ⌘R); "Clean up N" only when there is something to clean up; and New worktree. On narrow windows the filter becomes an icon and New worktree becomes "+".
 - Quick fixes that don't need OpenSpec:
   - The status bar, its tooltip and the view take the count of Gradle daemons from a single source; today they disagree.
   - The guided tour's notice becomes one line in the sidebar's footer.
