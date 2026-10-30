@@ -16,8 +16,7 @@ import app.luxion.shogunai.domain.usecase.GitFailureCause
 import java.time.Instant
 
 internal fun englishErrorTexts(error: Throwable, gitCause: GitFailureCause): ErrorTexts = when (error) {
-    is WorktreeError.GitCommandFailed -> englishGitTexts(gitCause)
-    is WorktreeError -> englishWorktreeTexts(error)
+    is WorktreeError -> englishWorktreeTexts(error, gitCause)
     is CommandExecutionException -> ErrorTexts(
         "Couldn't start ${error.command.first()}.",
         "Install ${error.command.first()} or add it to your PATH, then try again.",
@@ -28,7 +27,7 @@ internal fun englishErrorTexts(error: Throwable, gitCause: GitFailureCause): Err
 private fun englishGitTexts(cause: GitFailureCause): ErrorTexts = when (cause) {
     is GitFailureCause.LockFileExists -> ErrorTexts(
         "Another Git process seems to be running in the repository.",
-        "Wait for it to finish, or remove ${cause.path?.let { "the lock file $it" } ?: "the lock file"} if no Git process is running.",
+        "Wait for it to finish, or remove ${if (cause.path == null) "the lock file" else "the lock file ${cause.path}"} if no Git process is running.",
     )
     is GitFailureCause.PermissionDenied -> ErrorTexts(
         "Git was denied permission${cause.path?.let { " on $it" }.orEmpty()}.",
@@ -49,7 +48,7 @@ private fun englishGitTexts(cause: GitFailureCause): ErrorTexts = when (cause) {
     GitFailureCause.Unknown -> ErrorTexts("The Git operation failed.", "Check the technical details.")
 }
 
-private fun englishWorktreeTexts(error: WorktreeError): ErrorTexts = when (error) {
+private fun englishWorktreeTexts(error: WorktreeError, gitCause: GitFailureCause): ErrorTexts = when (error) {
     is WorktreeError.BaseRepositoryNotFound -> ErrorTexts(
         "The project's repository wasn't found at ${error.path}.",
         "Update the repository path in the project's settings.",
@@ -104,14 +103,14 @@ private fun englishWorktreeTexts(error: WorktreeError): ErrorTexts = when (error
     )
     is WorktreeError.InvalidRepositoryConfig -> ErrorTexts(
         "Couldn't read ${error.path}.",
-        "Fix the file following the technical details.",
+        if (error.detail.isNullOrBlank()) "Check that the file is valid JSON." else "Fix the file following the technical details.",
     )
     is WorktreeError.RepositoryConfigChanged -> ErrorTexts(
         "${error.path} changed on disk since the settings were opened.",
         "Reload the settings and apply your changes again.",
     )
     is WorktreeError.UpdateCheckFailed -> ErrorTexts(
-        "Couldn't check for updates" + (error.reason?.takeIf { it.isNotBlank() }?.let { ": $it" } ?: "."),
+        "Couldn't check for updates" + (if (error.reason.isNullOrBlank()) "." else ": ${error.reason}"),
         "Check your connection and try again later.",
     )
     is WorktreeError.NotAWorktree -> ErrorTexts(
@@ -186,8 +185,10 @@ private fun englishWorktreeTexts(error: WorktreeError): ErrorTexts = when (error
         "Stop one of them, or raise the limit of ${error.limit} in Preferences.",
     )
     is WorktreeError.DesktopTurnTaken -> ErrorTexts(
-        error.holder?.let { "The desktop is taken by ${it.displayName} until ${Instant.ofEpochMilli(it.expiresAt).toLocalClockTime()}." }
-            ?: "Other worktrees are waiting for the desktop first.",
+        error.holder.let {
+            if (it == null) "Other worktrees are waiting for the desktop first."
+            else "The desktop is taken by ${it.displayName} until ${Instant.ofEpochMilli(it.expiresAt).toLocalClockTime()}."
+        },
         "Wait for it with shogun desktop acquire --wait, or release it from the Desktop view.",
     )
     is WorktreeError.DesktopTurnWaitTimedOut -> ErrorTexts(
@@ -268,7 +269,7 @@ private fun englishWorktreeTexts(error: WorktreeError): ErrorTexts = when (error
     )
     is WorktreeError.HeadlessAppStopFailed -> ErrorTexts(
         "The worktree's desktop app couldn't be stopped.",
-        "Check the technical details.",
+        if (error.reason.isNullOrBlank()) "Try again with shogun headless stop." else "Check the technical details.",
     )
     is WorktreeError.MacPermissionMissing -> ErrorTexts(
         "macOS hasn't granted ${error.permission.displayName} to the application that runs shogun.",
@@ -402,7 +403,7 @@ private fun englishWorktreeTexts(error: WorktreeError): ErrorTexts = when (error
         "Couldn't show \"${error.path}\".",
         "Check the technical details.",
     )
-    is WorktreeError.GitCommandFailed -> englishGitTexts(GitFailureCause.Unknown)
+    is WorktreeError.GitCommandFailed -> englishGitTexts(gitCause)
 }
 
 private fun englishKindName(kind: ResourceKind): String = when (kind) {
@@ -419,10 +420,12 @@ private fun englishWaiting(waiting: Int): String = when (waiting) {
     else -> "; $waiting worktrees are waiting for one"
 }
 
-private fun englishProtection(holder: PoolHolder): String = when (holder.protection) {
-    HolderProtection.AGENT_WORKING -> ", agent working"
-    HolderProtection.LEASED -> ", lease until ${holder.leaseExpiresAt?.toLocalClockTime()}"
-    null -> ""
+private fun englishProtection(holder: PoolHolder): String {
+    val protection = holder.protection ?: return ""
+    return when (protection) {
+        HolderProtection.AGENT_WORKING -> ", agent working"
+        HolderProtection.LEASED -> ", lease until ${holder.leaseExpiresAt?.toLocalClockTime()}"
+    }
 }
 
 internal fun englishLocalFilesFix(files: List<UnavailableLocalFile>): String {

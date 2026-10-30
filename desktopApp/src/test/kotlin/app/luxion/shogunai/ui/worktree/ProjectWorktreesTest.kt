@@ -1244,7 +1244,7 @@ class ProjectWorktreesTest {
                     success(command, stdout = "refs/heads/develop\nrefs/heads/feature/TASK-123\n$remoteBranches")
                 command.take(2) == listOf("git", "symbolic-ref") ->
                     mainBranch?.let { success(command, stdout = "origin/$it\n") } ?: failure(command)
-                command.take(2) == listOf("git", "rev-parse") && command.last() == "refs/remotes/origin/develop" -> success(command)
+                command.take(2) == listOf("git", "rev-parse") && command.last() == "refs/remotes/origin/${mainBranch ?: "develop"}" -> success(command)
                 command.take(2) == listOf("git", "rev-parse") && command.last() == "origin/develop^{commit}" ->
                     success(command, stdout = "fetched1\n")
                 command.take(2) == listOf("git", "rev-parse") && command.last() == "develop^{commit}" ->
@@ -1263,16 +1263,32 @@ class ProjectWorktreesTest {
     }
 
     @Test
-    fun `the new branch starts at the main branch by default`() = runTest(dispatcher) {
-        val (board, executor) = startPointScenario()
+    fun `the new branch starts at the repository's current branch by default, as shogun new does`() = runTest(dispatcher) {
+        val (board, executor) = startPointScenario(mainBranch = "main")
         advanceUntilIdle()
         board.openCreateDialog()
         advanceUntilIdle()
         board.updateTaskId("TASK-456")
 
+        assertEquals(StartOption.Current, board.effectiveStartFrom)
+        assertEquals(listOf(StartOption.Current, StartOption.Branch("origin/main")), board.startOptions.take(2))
+
+        board.confirmCreate()
+        advanceUntilIdle()
+
+        assertTrue(executor.executed("git", "worktree", "add", "/home/dev/projects/TASK-456", "-b", "feature/TASK-456"), executor.executedCommands.toString())
+        assertTrue(executor.executed("git", "config", "branch.feature/TASK-456.gh-merge-base", "develop"), executor.executedCommands.toString())
+    }
+
+    @Test
+    fun `choosing the main branch starts the new branch at its commit`() = runTest(dispatcher) {
+        val (board, executor) = startPointScenario()
+        advanceUntilIdle()
+        board.openCreateDialog()
+        advanceUntilIdle()
+        board.updateTaskId("TASK-456")
+        board.startFrom = board.startOptions[1]
         assertEquals(StartOption.Branch("origin/develop"), board.effectiveStartFrom)
-        assertEquals(StartOption.Branch("origin/develop"), board.startOptions.first())
-        assertEquals(StartOption.Current, board.startOptions[1])
 
         board.confirmCreate()
         advanceUntilIdle()
@@ -1306,6 +1322,7 @@ class ProjectWorktreesTest {
         advanceUntilIdle()
 
         assertEquals(StartOption.Current, board.effectiveStartFrom)
+        assertEquals(StartOption.Current, board.startOptions.first())
         assertEquals("develop", board.currentBranchName)
     }
 
@@ -1334,6 +1351,7 @@ class ProjectWorktreesTest {
         board.openCreateDialog()
         advanceUntilIdle()
         board.updateTaskId("TASK-456")
+        board.startFrom = StartOption.Branch("origin/develop")
         board.fetchFirst = true
 
         board.confirmCreate()
@@ -1356,6 +1374,7 @@ class ProjectWorktreesTest {
         board.openCreateDialog()
         advanceUntilIdle()
         board.updateTaskId("TASK-456")
+        board.startFrom = StartOption.Branch("origin/develop")
         board.fetchFirst = true
 
         board.confirmCreate()
@@ -1383,6 +1402,7 @@ class ProjectWorktreesTest {
         board.openCreateDialog()
         advanceUntilIdle()
         board.updateTaskId("TASK-456")
+        board.startFrom = StartOption.Branch("origin/develop")
         board.fetchFirst = true
         board.confirmCreate()
         advanceUntilIdle()

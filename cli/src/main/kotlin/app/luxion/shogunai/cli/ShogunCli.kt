@@ -157,6 +157,8 @@ import app.luxion.shogunai.domain.usecase.PrepareWorktreeEnvironmentUseCase
 import app.luxion.shogunai.domain.usecase.ProviderContributions
 import app.luxion.shogunai.domain.usecase.CheckProvisionedFilesUseCase
 import app.luxion.shogunai.domain.usecase.CheckInstallationUseCase
+import app.luxion.shogunai.domain.usecase.CheckMultireposUseCase
+import app.luxion.shogunai.domain.usecase.CheckProviderToolsUseCase
 import app.luxion.shogunai.domain.usecase.CommandLineTool
 import app.luxion.shogunai.domain.usecase.InstallationReportText
 import app.luxion.shogunai.infrastructure.NioLauncherFiles
@@ -2310,6 +2312,8 @@ class ShogunCli(
             projects = projectRepository,
             fileManager = fileManager,
             provisioningSource = provisioningSource,
+            providerTools = CheckProviderToolsUseCase(executor, findExecutable, fileManager, androidSdk, appleSimulators),
+            multirepos = CheckMultireposUseCase(multirepoSource, resolveMultirepo, DetectGroupsUseCase(executor), projectRepository),
         )()
         if (command.json) printJson(doctorJson(report)) else InstallationReportText.lines(report).forEach { out.line(it) }
         return if (report.failed) EXIT_FAILURE else EXIT_OK
