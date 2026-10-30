@@ -40,11 +40,6 @@ ShogunAi tiene que funcionar a la primera en una máquina que no es en la que se
 
 Una revisión de UX de la interfaz v2 ya implementada, hecha sobre `develop` en `aaf42f94` con datos de ejemplo, concluyó que la app debería responder primero «¿qué me necesita?» y «¿dónde está cada agente?», y que hoy no responde ninguna de las dos de un vistazo. Sus correcciones se reparten en cambios, por orden:
 
-- El modelo de atención (un cambio de OpenSpec):
-  - «Te necesitan» se divide en «Esperándote», para un agente bloqueado o terminado, bajo una cabecera de aviso, y «Sin terminar», para trabajo sin commitear o sin subir, bajo una neutra. El checkout principal y los worktrees inactivos salen de los dos grupos, pero conservan su marca ✎.
-  - El contador de Activos de la barra lateral cuenta solo «Esperándote», y «Parados» empieza plegado.
-  - «↑» significa solo commits no subidos al upstream: la comparación con la base pasa al inspector, y una rama sin upstream muestra un icono de «sin subir».
-  - Una vista de Activos vacía y tranquila: «Nada te necesita», con cuántos agentes están trabajando y «Ver todos los worktrees».
 - Una fila por cambio de multirepo en Activos, con el peor estado de sus repositorios, que se despliega en una fila hija por repositorio; las filas hijas no repiten la rama.
 - Una lista y un inspector más tranquilos:
   - Sin selección no hay inspector, y el resumen pasa a la cabecera de la vista. El inspector se acopla cuando el contenido mide al menos 980 dp de ancho, y por debajo es una capa superpuesta.
