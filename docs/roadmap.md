@@ -31,12 +31,44 @@ ShogunAi has to work the first time on a machine that isn't the one it's develop
 - Tests that hold the product to it:
   - Raising the coverage floors that CI enforces up to 100%: the branches of `core` (79% today) and `cli` (83%), and the lines (83%) and branches (67%) of the desktop app outside its composables, which the end-to-end tests cover. Lines of `core` and `cli` are already at 100%.
   - Opening in Herdr in the CLI's end-to-end tests on Windows, where Herdr's client only runs `herdr.exe` and the tests need a stand-in executable for it; on Linux and macOS they already run against a fake `herdr`.
-  - A regression test for every bug fixed, written first to reproduce it, as the false "not on the `PATH`" warning already has, in a unit test and end to end.
 - A smoke test of the packaged app on a clean machine in CI before every release: install the `.dmg` on a macOS runner, open the app with the environment the Dock gives it, install the command and the hooks, add a project with local files, run `shogun new` and check the copied files. A release that fails it isn't published. Then the same on Windows and Linux with their packages, which also covers installing the command from the app on Windows and on a machine without `~/.local/bin` on its `PATH`, and choosing a folder with the system's dialog, which on Linux goes through the desktop portal and falls back to Java's chooser without one.
 - More checks in `shogun doctor` and "Check Installation": the tools of the providers a repository declares (Xcode, the Android SDK, Docker), and multirepos with their repositories and groups.
 - A step running `shogun doctor` in the [clean account rehearsal](process/clean-account-rehearsal.md), so a failure there arrives with what is wrong and how to fix it.
 
-### 2. Orca, a second first-class runner
+### 2. Fixes from the UX review of the v2 interface
+
+A UX review of the implemented v2 interface, done on `develop` at `aaf42f94` with sample data, concluded that the app should first answer "what needs me?" and "where is each agent?", and that today it answers neither at a glance. Its fixes are split into changes, in order:
+
+- The attention model (an OpenSpec change):
+  - "Needs you" splits into "Waiting for you", for an agent that is blocked or done, under a warning header, and "Unfinished", for uncommitted or unpushed work, under a neutral one. The main checkout and idle worktrees leave both groups but keep their ✎ mark.
+  - The sidebar's Active counter counts only "Waiting for you", and "Stopped" starts collapsed.
+  - "↑" means only commits not pushed to the upstream: the comparison with the base moves to the inspector, and a branch without an upstream shows a "not pushed" icon.
+  - A calm empty Active view: "Nothing needs you", with how many agents are working and "See all worktrees".
+- One row per multirepo change in Active, showing the worst state of its repositories, which expands into one child row per repository; the child rows don't repeat the branch.
+- A calmer list and inspector:
+  - No inspector without a selection, with the summary moved to the view's header. The inspector docks when the content is at least 980 dp wide, and is an overlay below that.
+  - The execution column collapses when no row uses it.
+  - The origin shows only when it isn't ShogunAi, and the main checkout shows as its branch with a neutral "main" chip.
+  - The worktree path is relative to the worktrees folder, with an ellipsis in the middle.
+  - A section's summary shows only while the section is collapsed, and Provisioning appears only when something is stale or has failed.
+  - The Agent section is one line when no agent runs, and keeps the running agent apart from "Runs with".
+  - On narrow windows the type prefix truncates first, so the task id always shows, and the rail's tiles use two letters that tell sibling projects apart.
+  - Counts inside sentences use the interface font with tabular figures; lone figures stay in the data font.
+- Focusing an agent from its row: clicking the row's agent indicator, or pressing Enter on the row, focuses the agent's pane in its runner, and the tooltip says so.
+- The machine's entry point and its alarms:
+  - The status bar always starts with "Machine", and a gear at the bottom of the sidebar opens Settings.
+  - A missing or optional tool shows as neutral with its reason; the danger color is kept for real failures.
+  - The Gradle daemons view drops the state column when every value is unknown, explains why "Stop idle daemons" is disabled, and shows which worktree uses each daemon when that's known.
+- New worktree's default start (a small OpenSpec change, already decided): the dialog starts from the main checkout's current branch, as `shogun new` does, instead of the project's main branch, fixing the spec and the desktop app guide with it.
+- A tidier toolbar that fits in one row: the filter; "View ▾" with the project, grouping, order and Reload (also on ⌘R); "Clean up N" only when there is something to clean up; and New worktree. On narrow windows the filter becomes an icon and New worktree becomes "+".
+- Quick fixes that don't need OpenSpec:
+  - The status bar, its tooltip and the view take the count of Gradle daemons from a single source; today they disagree.
+  - The guided tour's notice becomes one line in the sidebar's footer.
+  - A legible "New" badge.
+  - The command palette takes Settings and Preferences as synonyms and lists the worktrees for "open" when nothing is selected, drops fuzzy matches that aren't a subsequence of the visible name, and says in its footer, in the interface font, what ↵ and ⌘↵ do, taken from the action catalogue.
+  - Checking by hand two issues, fixed only if they reproduce: a project added with `shogun project add` not appearing until the app restarts, and ⌘A followed by delete in the palette removing a single character.
+
+### 3. Orca, a second first-class runner
 
 [Orca](https://www.onorca.dev), the desktop app for running coding agents in worktrees, gets everything ShogunAi does with Herdr, plus what Orca offers that Herdr doesn't. A spike compared the two: Orca's repository hooks (`orca.yaml`) can provision its worktrees with `shogun`, its CLI can open a ShogunAi worktree with its environment and agent, and it reports richer agent states that survive restarting the app. In order:
 
@@ -50,7 +82,7 @@ ShogunAi has to work the first time on a machine that isn't the one it's develop
   - That Orca's notifications and its mobile companion follow the agents ShogunAi starts in Orca.
 - Left out on purpose: Orca's remote and SSH worktrees, since ShogunAi prepares worktrees on this machine; and Orca's orchestration runs, since the multirepo agent already coordinates a group.
 
-### 3. Provisioning and resources of mobile stacks
+### 4. Provisioning and resources of mobile stacks
 
 Provisioning and bounded resources for the stacks where a fresh worktree is furthest from building:
 
@@ -60,7 +92,7 @@ Provisioning and bounded resources for the stacks where a fresh worktree is furt
 - Deciding whether the session-start rule to run `shogun emulator start` before every use of the emulator is still needed now that the device lease is renewed while the session works (a long session that never sends a prompt can still lose its emulator), or whether `adb` failures should point to `shogun emulator start` instead, after watching it in use.
 - Waiting for a device from the desktop app, and showing the worktrees waiting for each pool in its machine views; today only `shogun emulator start --wait` and `shogun simulator start --wait` wait, and the app fails a start while others wait.
 
-### 4. Every agent, not only Claude Code
+### 5. Every agent, not only Claude Code
 
 ShogunAi's view is only neutral if it sees every agent:
 
@@ -71,7 +103,7 @@ ShogunAi's view is only neutral if it sees every agent:
 - Recording the base branch of the worktrees Herdr creates, if its `worktree.created` event gains their start point; today `shogun base --set` records it by hand, while `shogun new`, Claude Code's hook, the desktop app and multirepo groups record it themselves.
 - Showing each worktree's base branch in the desktop app's rows; today the Git column compares with it and names it in its tooltip and in the detail, and `shogun base` and `shogun status` report it.
 
-### 5. Multirepos for the whole team
+### 6. Multirepos for the whole team
 
 Multirepos and groups by branch are done in the CLI and the desktop app, and they're also how people who don't write the code follow a change across repositories. Left out:
 
@@ -82,7 +114,7 @@ Multirepos and groups by branch are done in the CLI and the desktop app, and the
 - A single session for the whole group, with a combined environment, as an option next to one agent per repository.
 - The pull request state of each repository of a group, which depends on the GitHub integration under exploration.
 
-### 6. Robustness and maintenance
+### 7. Robustness and maintenance
 
 - Detecting squash and rebase merges, which leave a branch reading as not merged into its base or the main branch, so cleanup doesn't offer it and `--delete-branch` keeps it.
 - Finding the root cause of the errors that closed the Preferences window, from the entries the isolation now leaves in the diagnostics log, and of the native crash seen on another machine that left an empty diagnostic report.
@@ -110,13 +142,15 @@ Accepted, but left until someone needs them, because they widen what ShogunAi op
 
 ## Under exploration
 
-### Rethinking the UX/UI for ease of use
-
-The app now bombards whoever opens it with information: every worktree's Git state, agents, devices, ports, origins, sizes and machine resources are on screen at once. Rethinking it means deciding what is shown by default, at a glance, and what only appears on demand (in the detail, on hover or behind an action), so the common questions ("what needs me?", "where is each agent?") are answered first. It needs an exploration of the current screens and of how people actually use them before becoming a change.
-
 ### Rethinking Settings
 
-Settings should let people customize ShogunAi without making them configure everything: sensible defaults, a few top-level choices and the details only for whoever wants them. That includes revisiting the provisional decision of tying the app's refresh cadence to the capacity profiles (see [Refresh cadence](guide/providers.md#refresh-cadence)), which reuses the profiles meant for device and daemon limits instead of offering a choice of its own. It comes after the UX/UI rethink above, since what Settings offers depends on what the app keeps on screen.
+Settings should let people customize ShogunAi without making them configure everything: sensible defaults, a few top-level choices and the details only for whoever wants them. That includes revisiting the provisional decision of tying the app's refresh cadence to the capacity profiles (see [Refresh cadence](guide/providers.md#refresh-cadence)), which reuses the profiles meant for device and daemon limits instead of offering a choice of its own. The UX review of the v2 interface (see point 2 above) leaves material for it:
+
+- The Automatic and Balanced capacity profiles barely differ.
+- The device lease and desktop turn minutes are agents' internals that everyone sees; they could move into a collapsed "Advanced" subsection.
+- Resources shows even when no project uses devices; it could show only when a project declares providers.
+- The window is called "Preferences", while macOS and the projects say "Settings".
+- Once the attention model ships, the idle threshold matters more, since it decides when unfinished work stops asking for attention.
 
 ### Background desktop apps beyond macOS and the keyboard
 
