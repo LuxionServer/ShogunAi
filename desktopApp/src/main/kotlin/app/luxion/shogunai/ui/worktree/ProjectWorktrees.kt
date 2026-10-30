@@ -916,17 +916,37 @@ class ProjectWorktrees(
         if (worktree.path in openingInHerdr) return
         onUsed(worktree.path)
         val agent = resolveAgent(worktree, picked)
-        openingInHerdr = openingInHerdr + worktree.path
         val agentToFocus = agents.orEmpty()[worktree.path].orEmpty().agentToFocus()
+        inHerdr(worktree) {
+            if (agentToFocus != null) {
+                val (name, pane) = agentToFocus
+                focusHerdrPane(name, pane)
+            } else {
+                useCases.herdr.open(worktree, agent)
+            }
+        }
+    }
+
+    fun focusAgent(worktree: Worktree): Boolean {
+        val target = agentFocusTarget(agents.orEmpty()[worktree.path].orEmpty()) ?: return false
+        val pane = target.herdrPaneId
+        if (pane == null) {
+            openInOrca(worktree)
+        } else if (worktree.path !in openingInHerdr) {
+            onUsed(worktree.path)
+            inHerdr(worktree) { focusHerdrPane(target.agent, pane) }
+        }
+        return true
+    }
+
+    private suspend fun focusHerdrPane(agent: String, pane: String): Result<HerdrOpening> =
+        useCases.herdr.focusAgent(pane).map { HerdrOpening(HerdrOutcome.FOCUSED, pane, agent) }
+
+    private fun inHerdr(worktree: Worktree, open: suspend () -> Result<HerdrOpening>) {
+        openingInHerdr = openingInHerdr + worktree.path
         scope.launch {
             try {
-                val result = if (agentToFocus != null) {
-                    val (name, pane) = agentToFocus
-                    useCases.herdr.focusAgent(pane).map { HerdrOpening(HerdrOutcome.FOCUSED, pane, name) }
-                } else {
-                    useCases.herdr.open(worktree, agent)
-                }
-                result
+                open()
                     .onSuccess { opening ->
                         clearActionError(worktree.path)
                         success = WorktreeSuccess.OpenedInHerdr(

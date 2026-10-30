@@ -142,7 +142,7 @@ fun worktreeRowModel(
     return WorktreeRowModel(
         badge = StateBadge(kind, kind.label(strings)),
         execution = ExecutionCell(
-            agent = agentIndicator(agents, agentsReadAt, now, strings),
+            agent = agentIndicator(agents, agentsReadAt, now, strings, clickToFocus = true),
             device = secondLine(desktopTurn, emulator, simulator, headlessApp, strings),
         ),
         name = nameCell(worktree, origin, projectName, strings).copy(groupTag = groupTag),

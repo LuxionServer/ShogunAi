@@ -4,6 +4,7 @@ import app.luxion.shogunai.domain.model.CheckState
 import app.luxion.shogunai.domain.model.InstallationCheck
 import app.luxion.shogunai.domain.model.InstallationReport
 import app.luxion.shogunai.domain.model.AgentStateSource
+import app.luxion.shogunai.domain.model.RunnerId
 import app.luxion.shogunai.ui.components.AgentPhase
 import app.luxion.shogunai.domain.model.ComposeResourceKind
 import app.luxion.shogunai.domain.model.ResourceLimits
@@ -276,6 +277,8 @@ object EnglishStrings : Strings {
     override fun agentLastMessage(message: String) = "Last message: $message"
     override fun portListening(label: String) = "$label (listening)"
     override val orcaPortsTitle = "Listening, seen by Orca"
+    override fun agentInRunner(runner: RunnerId) = "in ${runner.displayName}"
+    override val clickToFocus = "click to focus"
     override fun agentStateSource(source: AgentStateSource?) = if (source == null) "Only its process was found" else when (source) {
         AgentStateSource.HERDR -> "State from Herdr"
         AgentStateSource.ORCA -> "State from Orca"

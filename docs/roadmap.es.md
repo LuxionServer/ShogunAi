@@ -53,7 +53,6 @@ Una revisión de UX de la interfaz v2 ya implementada, hecha sobre `develop` en 
   - La sección Agente ocupa una línea cuando no hay ningún agente en marcha, y separa el agente en marcha de «Se ejecuta con».
   - En ventanas estrechas el prefijo del tipo se trunca primero, para que el id de la tarea se vea siempre, y las teselas del rail usan dos letras que distinguen proyectos hermanos.
   - Las cifras dentro de frases usan la fuente de la interfaz con cifras tabulares; las cifras sueltas siguen en la fuente de datos.
-- Enfocar un agente desde su fila: hacer clic en el indicador de agente de la fila, o pulsar Intro sobre ella, enfoca el panel del agente en su runner, y el tooltip lo dice.
 - La entrada a la máquina y sus alarmas:
   - La barra de estado empieza siempre por «Máquina», y un engranaje al pie de la barra lateral abre los Ajustes.
   - Una herramienta que falta o es opcional se muestra neutra con su motivo; el color de peligro queda para los fallos reales.
