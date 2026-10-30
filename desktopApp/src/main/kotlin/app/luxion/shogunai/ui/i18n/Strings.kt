@@ -295,6 +295,11 @@ interface Strings {
     fun cleanupCandidatesSummary(count: Int): String
     val locked: String
     val cleanUp: String
+    fun cleanUpCount(count: Int): String
+    val viewMenu: String
+    val viewMenuProject: String
+    val viewMenuGrouping: String
+    val filterWorktrees: String
     val copyPath: String
     val statusTitle: String
     val agentsTitle: String

@@ -17,8 +17,7 @@ import app.luxion.shogunai.domain.usecase.GitFailureCause
 import java.time.Instant
 
 internal fun spanishErrorTexts(error: Throwable, gitCause: GitFailureCause): ErrorTexts = when (error) {
-    is WorktreeError.GitCommandFailed -> spanishGitTexts(gitCause)
-    is WorktreeError -> spanishWorktreeTexts(error)
+    is WorktreeError -> spanishWorktreeTexts(error, gitCause)
     is CommandExecutionException -> ErrorTexts(
         "No se pudo iniciar ${error.command.first()}.",
         "Instala ${error.command.first()} o añádelo al PATH y vuelve a intentarlo.",
@@ -29,7 +28,7 @@ internal fun spanishErrorTexts(error: Throwable, gitCause: GitFailureCause): Err
 private fun spanishGitTexts(cause: GitFailureCause): ErrorTexts = when (cause) {
     is GitFailureCause.LockFileExists -> ErrorTexts(
         "Parece que otro proceso de Git se está ejecutando en el repositorio.",
-        "Espera a que termine, o elimina ${cause.path?.let { "el archivo de bloqueo $it" } ?: "el archivo de bloqueo"} si no hay ningún proceso de Git en marcha.",
+        "Espera a que termine, o elimina ${if (cause.path == null) "el archivo de bloqueo" else "el archivo de bloqueo ${cause.path}"} si no hay ningún proceso de Git en marcha.",
     )
     is GitFailureCause.PermissionDenied -> ErrorTexts(
         "Git no tiene permiso${cause.path?.let { " sobre $it" }.orEmpty()}.",
@@ -50,7 +49,7 @@ private fun spanishGitTexts(cause: GitFailureCause): ErrorTexts = when (cause) {
     GitFailureCause.Unknown -> ErrorTexts("La operación de Git falló.", "Revisa los detalles técnicos.")
 }
 
-private fun spanishWorktreeTexts(error: WorktreeError): ErrorTexts = when (error) {
+private fun spanishWorktreeTexts(error: WorktreeError, gitCause: GitFailureCause): ErrorTexts = when (error) {
     is WorktreeError.BaseRepositoryNotFound -> ErrorTexts(
         "No se encontró el repositorio del proyecto en ${error.path}.",
         "Actualiza la ruta del repositorio en los ajustes del proyecto.",
@@ -105,14 +104,14 @@ private fun spanishWorktreeTexts(error: WorktreeError): ErrorTexts = when (error
     )
     is WorktreeError.InvalidRepositoryConfig -> ErrorTexts(
         "No se pudo leer ${error.path}.",
-        "Corrige el archivo siguiendo los detalles técnicos.",
+        if (error.detail.isNullOrBlank()) "Comprueba que el archivo sea JSON válido." else "Corrige el archivo siguiendo los detalles técnicos.",
     )
     is WorktreeError.RepositoryConfigChanged -> ErrorTexts(
         "${error.path} cambió en disco desde que se abrieron los ajustes.",
         "Recarga los ajustes y aplica de nuevo tus cambios.",
     )
     is WorktreeError.UpdateCheckFailed -> ErrorTexts(
-        "No se pudo buscar actualizaciones" + (error.reason?.takeIf { it.isNotBlank() }?.let { ": $it" } ?: "."),
+        "No se pudo buscar actualizaciones" + (if (error.reason.isNullOrBlank()) "." else ": ${error.reason}"),
         "Comprueba tu conexión e inténtalo de nuevo más tarde.",
     )
     is WorktreeError.NotAWorktree -> ErrorTexts(
@@ -187,8 +186,10 @@ private fun spanishWorktreeTexts(error: WorktreeError): ErrorTexts = when (error
         "Detén uno de ellos, o sube el límite de ${error.limit} en Preferencias.",
     )
     is WorktreeError.DesktopTurnTaken -> ErrorTexts(
-        error.holder?.let { "El escritorio lo tiene ${it.displayName} hasta las ${Instant.ofEpochMilli(it.expiresAt).toLocalClockTime()}." }
-            ?: "Otros worktrees esperan antes el escritorio.",
+        error.holder.let {
+            if (it == null) "Otros worktrees esperan antes el escritorio."
+            else "El escritorio lo tiene ${it.displayName} hasta las ${Instant.ofEpochMilli(it.expiresAt).toLocalClockTime()}."
+        },
         "Espéralo con shogun desktop acquire --wait, o libéralo desde la vista Escritorio.",
     )
     is WorktreeError.DesktopTurnWaitTimedOut -> ErrorTexts(
@@ -269,7 +270,7 @@ private fun spanishWorktreeTexts(error: WorktreeError): ErrorTexts = when (error
     )
     is WorktreeError.HeadlessAppStopFailed -> ErrorTexts(
         "No se pudo parar la app de escritorio del worktree.",
-        "Revisa los detalles técnicos.",
+        if (error.reason.isNullOrBlank()) "Vuelve a intentarlo con shogun headless stop." else "Revisa los detalles técnicos.",
     )
     is WorktreeError.MacPermissionMissing -> ErrorTexts(
         "macOS no ha concedido el permiso de ${spanishPermissionName(error.permission)} a la aplicación que ejecuta shogun.",
@@ -399,7 +400,7 @@ private fun spanishWorktreeTexts(error: WorktreeError): ErrorTexts = when (error
         "No se pudo mostrar \"${error.path}\".",
         "Revisa los detalles técnicos.",
     )
-    is WorktreeError.GitCommandFailed -> spanishGitTexts(GitFailureCause.Unknown)
+    is WorktreeError.GitCommandFailed -> spanishGitTexts(gitCause)
 }
 
 private fun spanishKindName(kind: ResourceKind): String = when (kind) {
@@ -431,10 +432,12 @@ private fun spanishKindSingular(kind: ResourceKind): String = when (kind) {
     ResourceKind.GRADLE_DAEMON -> "daemon de Gradle"
 }
 
-private fun spanishProtection(holder: PoolHolder): String = when (holder.protection) {
-    HolderProtection.AGENT_WORKING -> ", agente trabajando"
-    HolderProtection.LEASED -> ", concesión hasta ${holder.leaseExpiresAt?.toLocalClockTime()}"
-    null -> ""
+private fun spanishProtection(holder: PoolHolder): String {
+    val protection = holder.protection ?: return ""
+    return when (protection) {
+        HolderProtection.AGENT_WORKING -> ", agente trabajando"
+        HolderProtection.LEASED -> ", concesión hasta ${holder.leaseExpiresAt?.toLocalClockTime()}"
+    }
 }
 
 private fun spanishPermissionName(permission: MacPermission): String = when (permission) {
