@@ -43,6 +43,8 @@ import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.lifecycle.viewmodel.compose.viewModel
 import app.luxion.shogunai.cli.runShogun
+import app.luxion.shogunai.smoke.runSmokeTest
+import app.luxion.shogunai.smoke.smokeTestReportPath
 import app.luxion.shogunai.ui.components.OpenMenus
 import app.luxion.shogunai.ui.components.TextInputFocus
 import app.luxion.shogunai.infrastructure.FileAppInstanceLock
@@ -94,6 +96,7 @@ private const val AppRequestPollInterval = 500L
 fun main(args: Array<String>) {
     val cliArguments = args.filterNot { it.startsWith("-psn_") }
     if (cliArguments.isNotEmpty()) exitProcess(runShogun(cliArguments.toTypedArray()))
+    smokeTestReportPath(cliArguments, System.getenv())?.let { exitProcess(runSmokeTest(it, System.getenv())) }
     System.setProperty("apple.laf.useScreenMenuBar", "true")
     System.setProperty("apple.awt.application.name", "ShogunAi")
     openWindow()

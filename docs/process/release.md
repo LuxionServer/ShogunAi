@@ -7,22 +7,26 @@ How a new version of the desktop installer (`.dmg`/`.msi`/`.deb`) is cut and pub
 ```mermaid
 graph LR
     A["Create branch release/X.X.X"] --> B["Push to release/X.X.X"]
-    B --> C["Tests"]
-    C --> D["PR release/X.X.X → main"]
+    B --> C["Tests + Release candidate"]
+    C --> R["Rehearsal on a clean account"]
+    R --> D["PR release/X.X.X → main"]
     D --> E["Merge"]
-    E --> F["Release: tag vX.X.X + build + publish"]
+    E --> F["Release: test + build + smoke test + tag + publish"]
 ```
 
 1. **Create the branch** `release/X.X.X` (where `X.X.X` is the version to publish) from `develop`, write the headline feature of the release in `.github/release-title` (see [Release title](#release-title)) and its notes in `.github/release-notes/X.X.X.md` and `X.X.X.es.md` (see [Release notes](#release-notes)).
-2. **Validate** — every push to `release/**` triggers the `Tests` workflow (`.github/workflows/tests.yml`), which runs `./gradlew test`. Used to iterate and fix issues before opening the PR. The same workflow also runs on every pull request targeting `develop` or an `epic/**` branch and every push to them (a push to a branch with such a pull request open skips it, as the pull request already runs it), so regressions are caught before they reach a release branch.
-3. **Open the PR** from `release/X.X.X` to `main` and review it like any other.
-4. **Merge** — when a PR whose source branch matches `release/*` is merged, the `Release` workflow (`.github/workflows/release.yml`):
+2. **Validate** — every push to `release/**` triggers two workflows, used to iterate and fix issues before opening the PR:
+      - `Tests` (`.github/workflows/tests.yml`), which runs `./gradlew test`. The same workflow also runs on every pull request targeting `develop` or an `epic/**` branch and every push to them (a push to a branch with such a pull request open skips it, as the pull request already runs it), so regressions are caught before they reach a release branch.
+      - `Release candidate` (`.github/workflows/release-candidate.yml`), which builds the installers for the version in the branch name and runs the [packaged smoke test](#packaged-smoke-test) on them. It never creates a tag, a release or a package manifest. It can also be started by hand from the Actions tab on any branch, giving the version to package.
+3. **Rehearse** on a clean macOS account, following the [rehearsal script](rehearsal.md), before the release or before a demo.
+4. **Open the PR** from `release/X.X.X` to `main` and review it like any other.
+5. **Merge** — when a PR whose source branch matches `release/*` is merged, the `Release` workflow (`.github/workflows/release.yml`):
       1. validates the version taken from the branch name (or the tag): it must be `X.Y.Z` with digits only, otherwise the run fails before building anything,
       2. runs the full test suite on the release commit on Linux, macOS and Windows (`.github/workflows/test-suite.yml`, the same one `Tests` uses). Nothing else runs until it passes,
-      3. creates and pushes the `vX.X.X` tag on the merge commit (the version comes from the branch name, no need to write it twice) and creates the GitHub Release in **draft** mode with the release notes as its body (see [Release notes](#release-notes)) titled `vX.X.X — <headline>` (the headline read from `.github/release-title`, see [Release title](#release-title)), only once, before building,
-      4. builds the installers on macOS Apple Silicon, macOS Intel, Windows and Linux (`packageReleaseDmg`/`Msi`/`Deb`) passing that version, with a read-only token. Each macOS `.dmg` is renamed `ShogunAi-X.X.X-<arch>.dmg` (`arm64`/`x64`, taken from the runner's own architecture) right after the build, and each installer is kept as a workflow artifact,
-      5. in parallel, builds the standalone command-line tool once on Linux (`:cli:distZip`, see [Command-line tool](../architecture/cli.md)) and keeps `shogun-X.X.X.zip` as an artifact,
-      6. once all four installers and the zip are built, a job that holds only the permissions to sign attestations (it doesn't check out the repository or run the build) generates a signed build provenance attestation for each of them (`actions/attest`). The release isn't published until every attestation exists,
+      3. builds the installers on macOS Apple Silicon, macOS Intel, Windows and Linux (`packageReleaseDmg`/`Msi`/`Deb`) passing that version, with a read-only token, and in parallel the standalone command-line tool once on Linux (`:cli:distZip`, see [Command-line tool](../architecture/cli.md)), all in `.github/workflows/package.yml`, the same one `Release candidate` uses. Each macOS `.dmg` is renamed `ShogunAi-X.X.X-<arch>.dmg` (`arm64`/`x64`, taken from the runner's own architecture) right after the build, and each installer and `shogun-X.X.X.zip` are kept as workflow artifacts,
+      4. runs the [packaged smoke test](#packaged-smoke-test) on each installer (`.github/workflows/smoke-test.yml`). Nothing public exists yet, and nothing else runs until it passes on every operating system,
+      5. creates and pushes the `vX.X.X` tag on the merge commit (the version comes from the branch name, no need to write it twice) and creates the GitHub Release in **draft** mode with the release notes as its body (see [Release notes](#release-notes)) titled `vX.X.X — <headline>` (the headline read from `.github/release-title`, see [Release title](#release-title)), only once,
+      6. a job that holds only the permissions to sign attestations (it doesn't check out the repository or run the build) generates a signed build provenance attestation for each installer and the zip (`actions/attest`). The release isn't published until every attestation exists,
       7. once every attestation exists, the only job that writes to the repository writes `SHA256SUMS` with the checksum of every asset, uploads everything to the draft and publishes the release (takes it out of draft),
       8. regenerates the Homebrew Cask from `.github/homebrew/shogunai.rb` with the new version and the `.dmg` checksums read from `SHA256SUMS`, and pushes it to the `LuxionServer/homebrew-shogunai` tap. The Cask installs the app and links its launcher as the `shogun` command,
       9. regenerates `bucket/shogunai.json` in the `LuxionServer/scoop-shogunai` bucket from `.github/scoop/shogunai.json` with the new version and the `.msi` checksum read from `SHA256SUMS`, and pushes it,
@@ -30,7 +34,23 @@ graph LR
 
 Steps 8, 9 and 10 run in parallel and are independent: if one fails, the release stays published and the others still run.
 
-The whole flow from step 4 happens in a single CI run, with no manual intervention. The release is created as a draft and only published at the end because an already-published release is immutable for GitHub (it rejects new assets), and because writing the notes only once avoids duplicates if each matrix build wrote them on its own.
+The whole flow from step 5 happens in a single CI run, with no manual intervention. The release is created as a draft and only published at the end because an already-published release is immutable for GitHub (it rejects new assets), and because writing the notes only once avoids duplicates if each matrix build wrote them on its own.
+
+## Packaged smoke test
+
+The test suite runs the code from Gradle on a machine set up like the developer's; the smoke test checks what a user downloads instead, installed on a fresh runner and started the way the desktop starts it. Each operating system has its own job and script in `.github/smoke/`:
+
+| Runner | Installs | Starts the app | Then checks |
+|---|---|---|---|
+| macOS Apple Silicon and Intel | the `.dmg` into `/Applications` | with `open`, so it gets the Dock's minimal `PATH` | `shogun` linked into Homebrew's `bin`, the hooks installed, the tour started, then `shogun new` from a login shell |
+| Windows | the `.msi`, silently | with the `PATH` a new session reads from the registry | `shogun.cmd` installed and its folder added to the user's `PATH`, the hooks installed, then `shogun new` through `shogun.cmd` from a new session |
+| Linux | the `.deb` | as a new user without `~/.local/bin`, twice | first `shogun` installed into `~/.local/bin` but not on the `PATH`; after the restart, available and the hooks installed; then `shogun new` from a login shell |
+
+The app does the work in its smoke-test mode: started with `SHOGUNAI_SMOKE_TEST_REPORT=<file>`, it opens no window and, with the same objects its buttons use, installs the command and Claude Code's hooks, goes through the start of the guided tour and ends it, adds the sample repository (`SHOGUNAI_SMOKE_TEST_REPOSITORY`) as a project with its local files (`SHOGUNAI_SMOKE_TEST_LOCAL_FILES`), creates a worktree and checks the copied files. It writes a JSON report of every step and exits with a non-zero status when a step failed. Each script then compares the report with what its machine should show, and checks the files `shogun new` copied (a `.env.local` listed in the project and a `config/local.json` declared in the repository's `.shogunai.json`).
+
+A failure fails its job with the step or file that went wrong. Every job uploads a `smoke-test-<runner>` artifact with the report, the app's log and the installer's log, to diagnose it. In the `Release` workflow a failure means no tag, no release, no attestation and no updated manifest: fix it on a new `release/` branch (or the same one, before merging) and release again.
+
+To try the smoke-test mode locally without touching your own settings, build the app (`./gradlew :desktopApp:createReleaseDistributable -PappVersion=1.0.0`), prepare a repository with `.github/smoke/prepare-repository.sh <folder>`, and run the launcher with an isolated home: `JAVA_TOOL_OPTIONS=-Duser.home=<empty folder>`, plus the three variables above.
 
 ## Release title
 

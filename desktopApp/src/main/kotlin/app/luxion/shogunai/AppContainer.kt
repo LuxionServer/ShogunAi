@@ -225,6 +225,8 @@ import app.luxion.shogunai.domain.usecase.RegisterProjectUseCase
 import app.luxion.shogunai.domain.usecase.ResolveRepositoryUseCase
 import app.luxion.shogunai.domain.usecase.ResolveStartPointUseCase
 import app.luxion.shogunai.domain.usecase.ResolveBaseBranchUseCase
+import app.luxion.shogunai.ui.isMacOs
+import app.luxion.shogunai.ui.projectconfig.ProjectConfigViewModel
 import app.luxion.shogunai.ui.projectconfig.RepositoryInspection
 import app.luxion.shogunai.domain.usecase.ResolveWorktreeEnvironmentUseCase
 import app.luxion.shogunai.domain.usecase.WorktreeEnvironmentCache
@@ -660,6 +662,22 @@ class AppContainer {
         }
         return registration.getOrNull() is ProjectRegistration.Added
     }
+
+    fun projectConfigViewModel(existingProject: Project?): ProjectConfigViewModel = ProjectConfigViewModel(
+        projectRepository,
+        repositoryProvisioningSource,
+        existingProject,
+        ::loadAvds,
+        simulatorSetup,
+        ::inspectRepository,
+        isMacOs,
+        repositoryTrust,
+        tools,
+        ::detectStacks,
+        ::multirepoNameOfWorkspace,
+        ::detectMobileSecrets,
+        ::listLocalFolder,
+    )
 
     fun multirepoNameOfWorkspace(topLevel: String): String? = resolveMultirepo.approved().withWorkspaceAt(topLevel)?.name
 

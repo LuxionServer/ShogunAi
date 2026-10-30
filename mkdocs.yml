@@ -65,6 +65,7 @@ plugins:
             Command-line tool: Línea de comandos
             Development process: Proceso de desarrollo
             Branches: Ramas
+            Rehearsal: Ensayo
             Design decisions: Decisiones de diseño
             Roadmap: Roadmap
             Using with agents: Uso con agentes
@@ -100,5 +101,6 @@ nav:
       - Branches: process/branching.md
       - OpenSpec: process/openspec.md
       - Release: process/release.md
+      - Rehearsal: process/rehearsal.md
   - Design decisions: decisions/index.md
   - Roadmap: roadmap.md

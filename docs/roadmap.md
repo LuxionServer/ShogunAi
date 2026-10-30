@@ -36,8 +36,7 @@ ShogunAi has to work the first time on a machine that isn't the one it's develop
   - End-to-end tests of the CLI against real Git repositories in temporary folders, without fakes: creating, provisioning, opening and cleaning worktrees and groups, with local files copied, linked and matched by patterns.
   - End-to-end tests of the desktop app driving its interface: the guided tour, adding a project, creating a worktree with local files and the Claude Code hooks section.
   - A regression test for every bug fixed, written first to reproduce it, as the false "not on the `PATH`" warning already has.
-- A smoke test of the packaged app on a clean machine in CI before every release: install the `.dmg` on a macOS runner, open the app with the environment the Dock gives it, install the command and the hooks, add a project with local files, run `shogun new` and check the copied files. A release that fails it isn't published. Then the same on Windows and Linux with their packages, which also covers installing the command from the app on Windows and on a machine without `~/.local/bin` on its `PATH`.
-- A rehearsal on a clean macOS user account, without the developer's instructions or settings, going through the guided tour before each release or demo, following a script in `docs/process/`.
+- What the packaged smoke test left out: installing the `.deb` on a machine without a system menus folder (servers, minimal containers), where its post-install script fails today; and smoke testing the Homebrew Cask and the Scoop manifest rendered for a release before it's published, which today install the same `.dmg` and `.msi` the smoke test checks.
 
 ### 2. Orca, a second first-class runner
 

@@ -41,7 +41,6 @@ import app.luxion.shogunai.ui.components.EmptyState
 import app.luxion.shogunai.ui.components.ShogunDialog
 import app.luxion.shogunai.ui.components.DangerButton
 import app.luxion.shogunai.ui.components.StateAction
-import app.luxion.shogunai.ui.isMacOs
 import app.luxion.shogunai.ui.components.FocusRingWidth
 import app.luxion.shogunai.ui.components.NeutralTextButton
 import app.luxion.shogunai.ui.components.PrimaryButton
@@ -54,7 +53,6 @@ import app.luxion.shogunai.ui.components.ErrorNotice
 import app.luxion.shogunai.ui.components.LocalErrorFixActions
 import app.luxion.shogunai.ui.i18n.LocalStrings
 import app.luxion.shogunai.ui.projectconfig.ProjectSettingsView
-import app.luxion.shogunai.ui.projectconfig.ProjectConfigViewModel
 import app.luxion.shogunai.ui.rememberScreenViewModelStoreOwner
 import app.luxion.shogunai.ui.machine.MachineResource
 import app.luxion.shogunai.ui.machine.MachineResources
@@ -492,21 +490,7 @@ private fun ProjectForm(
     onRepositoryConfigWritten: (projectId: String) -> Unit,
 ) {
     val viewModel = viewModel(viewModelStoreOwner = rememberScreenViewModelStoreOwner()) {
-        ProjectConfigViewModel(
-            appContainer.projectRepository,
-            appContainer.repositoryProvisioningSource,
-            existingProject,
-            appContainer::loadAvds,
-            appContainer.simulatorSetup,
-            appContainer::inspectRepository,
-            isMacOs,
-            appContainer.repositoryTrust,
-            appContainer.tools,
-            appContainer::detectStacks,
-            appContainer::multirepoNameOfWorkspace,
-            appContainer::detectMobileSecrets,
-            appContainer::listLocalFolder,
-        )
+        appContainer.projectConfigViewModel(existingProject)
     }
     ProjectSettingsView(
         viewModel = viewModel,

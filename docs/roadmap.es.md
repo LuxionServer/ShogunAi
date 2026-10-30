@@ -36,8 +36,7 @@ ShogunAi tiene que funcionar a la primera en una máquina que no es en la que se
   - Tests end to end del CLI contra repositorios Git reales en carpetas temporales, sin dobles: crear, provisionar, abrir y limpiar worktrees y grupos, con archivos locales copiados, enlazados y seleccionados por patrones.
   - Tests end to end de la app de escritorio manejando su interfaz: el recorrido guiado, añadir un proyecto, crear un worktree con archivos locales y la sección de hooks de Claude Code.
   - Un test de regresión por cada bug corregido, escrito primero para reproducirlo, como ya lo tiene el falso aviso de «no está en el `PATH`».
-- Una prueba de humo de la app empaquetada en una máquina limpia en CI antes de cada versión: instalar el `.dmg` en un runner de macOS, abrir la app con el entorno que le da el Dock, instalar el comando y los hooks, añadir un proyecto con archivos locales, ejecutar `shogun new` y comprobar los archivos copiados. Una versión que no la pasa no se publica. Después, lo mismo en Windows y Linux con sus paquetes, que cubre también instalar el comando desde la app en Windows y en un equipo sin `~/.local/bin` en el `PATH`.
-- Un ensayo en una cuenta de usuario de macOS limpia, sin las instrucciones ni la configuración de quien desarrolla, recorriendo el recorrido guiado antes de cada versión o demo, siguiendo un guion en `docs/process/`.
+- Lo que la prueba de humo de la app empaquetada dejó fuera: instalar el `.deb` en un equipo sin carpeta de menús del sistema (servidores, contenedores mínimos), donde hoy falla su script de post-instalación; y probar el Cask de Homebrew y el manifiesto de Scoop generados para una versión antes de publicarla, que hoy instalan los mismos `.dmg` y `.msi` que comprueba la prueba de humo.
 
 ### 2. Orca, un segundo runner de primera clase
 
