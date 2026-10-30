@@ -279,6 +279,7 @@ interface HostEnvironment {
     val home: String
     val shell: String?
     val path: HostPath
+    val userBinFolders: List<String>
     fun variable(name: String): String?
 }
 
@@ -287,7 +288,7 @@ data class HostPath(val folders: List<String>, val source: HostPathSource)
 enum class HostPathSource { LOGIN_SHELL, PROCESS, FALLBACK }
 ```
 
-El entorno del equipo tal como lo ve ShogunAi, resuelto una vez por proceso: la carpeta personal, el shell del usuario (`SHELL`; vacía cuenta como ninguno), las carpetas del `PATH` y cualquier otra variable. Cada comando que ejecuta ShogunAi recibe `path.folders` como `PATH`, y cada herramienta que busca se busca ahí, así que la app de escritorio abierta desde el Dock se comporta como desde un terminal. `path` se resuelve en el primer acceso y puede esperar al shell de login, como mucho su límite de tiempo; `source` dice de dónde salió: `LOGIN_SHELL` (la app de escritorio leyó el shell de login del usuario), `PROCESS` (el CLI, y Windows, cuyo `PATH` propio ya es el del usuario) o `FALLBACK` (la app de escritorio no pudo leer el shell de login y añadió las carpetas de instalación habituales a su propio `PATH`). Las raíces de composición lo crean una vez (`SystemHostEnvironment`) y pasan sus valores hacia abajo; nada más lee el entorno del proceso.
+El entorno del equipo tal como lo ve ShogunAi, resuelto una vez por proceso: la carpeta personal, el shell del usuario (`SHELL`; vacía cuenta como ninguno), las carpetas del `PATH` y cualquier otra variable. Cada comando que ejecuta ShogunAi recibe `path.folders` como `PATH`, y cada herramienta que busca se busca ahí, así que la app de escritorio abierta desde el Dock se comporta como desde un terminal. `path` se resuelve en el primer acceso y puede esperar al shell de login, como mucho su límite de tiempo; `source` dice de dónde salió: `LOGIN_SHELL` (la app de escritorio leyó el shell de login del usuario), `PROCESS` (el CLI, y Windows, cuyo `PATH` propio ya es el del usuario) o `FALLBACK` (la app de escritorio no pudo leer el shell de login y añadió las carpetas de instalación habituales a su propio `PATH`). `userBinFolders` son esas carpetas de instalación habituales (`/opt/homebrew/bin`, `/usr/local/bin`, `~/.local/bin` y `~/.cargo/bin` salvo que se den otras; ninguna en Windows), donde se buscan las herramientas después de `path` y en ningún otro sitio, así que un entorno responde por sí solo dónde puede encontrarse una herramienta. Las raíces de composición lo crean una vez (`SystemHostEnvironment`) y pasan sus valores hacia abajo; nada más lee el entorno del proceso. El `AppContainer` de la app de escritorio lo recibe como parámetro del constructor, con `SystemHostEnvironment.forDesktopApp()` por defecto, para que sus tests de extremo a extremo le den el suyo.
 
 ### `FileManager`
 

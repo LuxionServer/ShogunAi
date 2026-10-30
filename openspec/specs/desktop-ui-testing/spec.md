@@ -118,8 +118,20 @@ The desktop app SHALL have end-to-end tests, run by `./gradlew test` on every op
 - **WHEN** a test installs the hooks from the Claude Code hooks section with a `shogun` launcher on the `PATH`, and then removes them
 - **THEN** Claude Code's user settings file contains ShogunAi's hooks after the install and none after the removal, and the section shows each state
 
+#### Scenario: Guided tour with the command installed
+- **WHEN** a test starts the tour with a `shogun` launcher on the `PATH`
+- **THEN** the tour creates the sample project without showing its command step
+
+#### Scenario: Guided tour without the command
+- **WHEN** a test starts the tour with no `shogun` launcher
+- **THEN** the tour shows its command step saying the command isn't installed, and skipping it creates the sample project
+
+#### Scenario: Claude Code hooks section without the command
+- **WHEN** a test opens the Claude Code hooks section with no `shogun` launcher
+- **THEN** the section says the command isn't installed and installing the hooks is disabled
+
 ### Requirement: End-to-end tests run in an isolated home
-The end-to-end tests SHALL run with their own home folder, temporary folder and Git configuration, without Claude Code's configuration folder override and without a login shell, so they never read or write the user's `~/.shogunai`, `~/.claude` or Git settings, and they SHALL fail if they run outside that environment.
+The end-to-end tests SHALL run with their own home folder, temporary folder and Git configuration, without Claude Code's configuration folder override and without the user's login shell (a test may use a fake one of its own), so they never read or write the user's `~/.shogunai`, `~/.claude` or Git settings, and they SHALL fail if they run outside that environment.
 
 #### Scenario: Files stay in the isolated home
 - **WHEN** the end-to-end tests run
@@ -128,3 +140,17 @@ The end-to-end tests SHALL run with their own home folder, temporary folder and 
 #### Scenario: Running outside the isolated task
 - **WHEN** an end-to-end test runs without the isolated environment, for example from an IDE's default test run
 - **THEN** it fails before building the app, with a message naming the task to run
+
+### Requirement: End-to-end tests decide whether the command is installed
+The desktop app's end-to-end tests SHALL give the app a host environment whose `PATH` and usual install folders contain a `shogun` launcher only when the test installs one, so the result never depends on what the machine running them has installed.
+
+#### Scenario: Command installed on the machine
+- **WHEN** the end-to-end tests run on a machine with `shogun` in `/opt/homebrew/bin` and a test doesn't install a launcher
+- **THEN** the app reads the `shogun` command as not installed
+
+### Requirement: The app opened from the Dock is covered end to end
+On macOS and Linux an end-to-end test SHALL start the app with the Dock's minimal `PATH` and a login shell whose `PATH` holds the folder where `shogun` is, and SHALL check that the app doesn't report the command as outside the `PATH`.
+
+#### Scenario: Homebrew command opened from the Dock
+- **WHEN** the app is started with `PATH` `/usr/bin:/bin:/usr/sbin:/sbin`, `shogun` is in a usual install folder and the login shell's `PATH` includes that folder
+- **THEN** the Claude Code hooks section says the command is available and installing the hooks is enabled, and the tour creates the sample project without showing its command step

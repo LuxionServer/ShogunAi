@@ -75,6 +75,21 @@ class SystemHostEnvironmentTest {
     }
 
     @Test
+    fun `names the usual install folders unless it is given its own`() {
+        val executor = printing("")
+
+        assertEquals(withUsualFolders.drop(4), desktopApp(executor).userBinFolders)
+        assertEquals(emptyList(), SystemHostEnvironment(HostOs.WINDOWS, emptyMap(), "C:\\Users\\dev", executor).userBinFolders)
+    }
+
+    @Test
+    fun `falls back to the install folders it is given`() {
+        val environment = SystemHostEnvironment(HostOs.MACOS, mapOf("PATH" to appPath), "/home/dev", loginShell = null, userBinFolders = listOf("/home/dev/tools"))
+
+        assertEquals(listOf("/usr/bin", "/bin", "/usr/sbin", "/sbin", "/home/dev/tools"), environment.path.folders)
+    }
+
+    @Test
     fun `falls back when the shell can't start`() {
         val executor = FakeShellCommandExecutor { throw CommandExecutionException(it, IOException("No such file")) }
 

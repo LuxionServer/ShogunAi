@@ -92,6 +92,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.io.FileManager
+import app.luxion.shogunai.domain.io.HostEnvironment
 import app.luxion.shogunai.ui.worktree.DialogRepositoryApproval
 import app.luxion.shogunai.domain.io.LanguagePreferenceRepository
 import app.luxion.shogunai.domain.io.ProjectRepository
@@ -275,10 +276,11 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 
-class AppContainer {
-    private val hostEnvironment = SystemHostEnvironment.forDesktopApp().also { environment ->
-        Thread({ environment.path }, "host-environment-path").apply { isDaemon = true }.start()
+class AppContainer(private val hostEnvironment: HostEnvironment = SystemHostEnvironment.forDesktopApp()) {
+    init {
+        Thread({ hostEnvironment.path }, "host-environment-path").apply { isDaemon = true }.start()
     }
+
     val files = ShogunFiles(hostEnvironment.home)
     val projectRepository: ProjectRepository = JsonProjectRepository(files.projects)
     var loadedBranches: () -> Collection<String> = { emptyList() }
