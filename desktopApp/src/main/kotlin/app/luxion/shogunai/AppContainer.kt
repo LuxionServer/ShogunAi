@@ -193,6 +193,8 @@ import app.luxion.shogunai.domain.usecase.DetectRunningAgentsUseCase
 import app.luxion.shogunai.domain.io.DiagnosticsLog
 import app.luxion.shogunai.domain.usecase.DerivedDataMeasure
 import app.luxion.shogunai.domain.usecase.CheckInstallationUseCase
+import app.luxion.shogunai.domain.usecase.CheckMultireposUseCase
+import app.luxion.shogunai.domain.usecase.CheckProviderToolsUseCase
 import app.luxion.shogunai.ui.shell.InstallationCheckState
 import app.luxion.shogunai.domain.usecase.DiagnosticReport
 import app.luxion.shogunai.domain.usecase.Redactor
@@ -480,20 +482,24 @@ class AppContainer(private val hostEnvironment: HostEnvironment = SystemHostEnvi
     private val herdrConfig = HerdrConfigFile(hostEnvironment::variable, hostEnvironment.home)
     private val herdrClient = CliHerdrClient(shellCommandExecutor, locator::find)
     private val orcaClient = CliOrcaClient(shellCommandExecutor, locator::find)
-    val checkInstallation = CheckInstallationUseCase(
-        executor = shellCommandExecutor,
-        findExecutable = locator::find,
-        path = { hostEnvironment.path },
-        shell = hostEnvironment.shell,
-        commandLineTool = commandLineTool::status,
-        hooks = ClaudeCodeHooks(fileManager),
-        hooksSettingsPath = ClaudeCodeHooks.userSettingsPath(hostEnvironment.variable("CLAUDE_CONFIG_DIR"), hostEnvironment.home),
-        herdrLocation = herdrClient::location,
-        orcaLocation = orcaClient::location,
-        projects = projectRepository,
-        fileManager = fileManager,
-        provisioningSource = repositoryProvisioningSource,
-    )
+    val checkInstallation by lazy {
+        CheckInstallationUseCase(
+            executor = shellCommandExecutor,
+            findExecutable = locator::find,
+            path = { hostEnvironment.path },
+            shell = hostEnvironment.shell,
+            commandLineTool = commandLineTool::status,
+            hooks = ClaudeCodeHooks(fileManager),
+            hooksSettingsPath = ClaudeCodeHooks.userSettingsPath(hostEnvironment.variable("CLAUDE_CONFIG_DIR"), hostEnvironment.home),
+            herdrLocation = herdrClient::location,
+            orcaLocation = orcaClient::location,
+            projects = projectRepository,
+            fileManager = fileManager,
+            provisioningSource = repositoryProvisioningSource,
+            providerTools = CheckProviderToolsUseCase(shellCommandExecutor, locator::find, fileManager, androidSdk, appleSimulators),
+            multirepos = CheckMultireposUseCase(multirepoSource, resolveMultirepo, DetectGroupsUseCase(shellCommandExecutor), projectRepository),
+        )
+    }
     val installationCheck = InstallationCheckState { withContext(Dispatchers.IO) { checkInstallation() } }
     private val orcaStore = JsonOrcaWorkspaceStore(files.orcaWorkspaces)
     private val orcaReader = OrcaWorktreeReader(orcaClient, orcaStore, hostEnvironment.home)

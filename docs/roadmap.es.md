@@ -31,8 +31,7 @@ ShogunAi tiene que funcionar a la primera en una máquina que no es en la que se
 - Tests que obligan al producto a cumplirlo:
   - Subir hasta el 100% los suelos de cobertura que exige CI: las ramas de `core` (hoy 79%) y `cli` (83%), y las líneas (83%) y ramas (67%) de la app de escritorio fuera de sus composables, que cubren los tests end to end. Las líneas de `core` y `cli` ya están al 100%.
 - Una prueba de humo de la app empaquetada en una máquina limpia en CI antes de cada versión: instalar el `.dmg` en un runner de macOS, abrir la app con el entorno que le da el Dock, instalar el comando y los hooks, añadir un proyecto con archivos locales, ejecutar `shogun new` y comprobar los archivos copiados. Una versión que no la pasa no se publica. Después, lo mismo en Windows y Linux con sus paquetes, que cubre también instalar el comando desde la app en Windows y en un equipo sin `~/.local/bin` en el `PATH`, y elegir una carpeta con el diálogo del sistema, que en Linux pasa por el portal del escritorio y, sin él, recurre al selector de Java.
-- Más comprobaciones en `shogun doctor` y «Comprobar instalación»: las herramientas de los providers que declara un repositorio (Xcode, el SDK de Android, Docker), y los multirepos con sus repositorios y grupos.
-- Un paso que ejecute `shogun doctor` en el [ensayo en una cuenta limpia](process/clean-account-rehearsal.md), para que un fallo allí llegue con qué está mal y cómo arreglarlo.
+- Lo que las herramientas de los providers necesitan además de estar instaladas, en `shogun doctor` y «Comprobar instalación»: el runtime de Java de Gradle y Maven, el daemon de Docker en marcha y versiones mínimas; hoy comprueban que cada herramienta se encuentra y se ejecuta.
 
 ### 2. Correcciones de la revisión de UX de la interfaz v2
 

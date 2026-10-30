@@ -31,8 +31,7 @@ ShogunAi has to work the first time on a machine that isn't the one it's develop
 - Tests that hold the product to it:
   - Raising the coverage floors that CI enforces up to 100%: the branches of `core` (79% today) and `cli` (83%), and the lines (83%) and branches (67%) of the desktop app outside its composables, which the end-to-end tests cover. Lines of `core` and `cli` are already at 100%.
 - A smoke test of the packaged app on a clean machine in CI before every release: install the `.dmg` on a macOS runner, open the app with the environment the Dock gives it, install the command and the hooks, add a project with local files, run `shogun new` and check the copied files. A release that fails it isn't published. Then the same on Windows and Linux with their packages, which also covers installing the command from the app on Windows and on a machine without `~/.local/bin` on its `PATH`, and choosing a folder with the system's dialog, which on Linux goes through the desktop portal and falls back to Java's chooser without one.
-- More checks in `shogun doctor` and "Check Installation": the tools of the providers a repository declares (Xcode, the Android SDK, Docker), and multirepos with their repositories and groups.
-- A step running `shogun doctor` in the [clean account rehearsal](process/clean-account-rehearsal.md), so a failure there arrives with what is wrong and how to fix it.
+- What the providers' tools need beyond being installed, in `shogun doctor` and "Check Installation": the Java runtime behind Gradle and Maven, Docker's daemon running, and minimum versions; today they check that each tool is found and runs.
 
 ### 2. Fixes from the UX review of the v2 interface
 
