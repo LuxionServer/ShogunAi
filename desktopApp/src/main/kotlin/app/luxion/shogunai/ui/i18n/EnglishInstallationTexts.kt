@@ -64,7 +64,7 @@ internal fun englishInstallationSummary(check: InstallationCheck): String = when
         else -> "Claude Code's hooks run shogun, which isn't installed"
     }
     is InstallationFinding.AgentTool ->
-        finding.location?.let { "${finding.tool.displayName} is at $it" } ?: "${finding.tool.displayName} isn't installed"
+        if (finding.location == null) "${finding.tool.displayName} isn't installed" else "${finding.tool.displayName} is at ${finding.location}"
     is InstallationFinding.ProjectFiles -> when {
         finding.baseMissing -> "${finding.project}: its folder ${finding.basePath} doesn't exist"
         finding.detail != null -> "${finding.project}: couldn't check its local files: ${finding.detail}"
@@ -105,7 +105,7 @@ internal fun englishInstallationFix(check: InstallationCheck): String? {
             else -> (finding.unavailable.map(::englishLocalFileProblem) + englishLocalFilesFix(finding.unavailable)).joinToString("\n")
         }
         is InstallationFinding.ProviderTool -> finding.problem?.let { englishProviderFix(finding.tool, it) }
-        is InstallationFinding.MultirepoCheck -> finding.problems.joinToString("\n") { englishMultirepoFix(finding, it) }
+        is InstallationFinding.MultirepoCheck -> finding.problems.takeIf { it.isNotEmpty() }?.joinToString("\n") { englishMultirepoFix(finding, it) }
     }
 }
 
