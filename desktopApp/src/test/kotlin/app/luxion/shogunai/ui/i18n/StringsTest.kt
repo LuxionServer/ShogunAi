@@ -233,6 +233,8 @@ class StringsTest {
         assertEquals("1 commit sin subir · 3 commits sin traer", SpanishStrings.upstreamArrows(1, 3))
         assertEquals("2 commits sin subir", SpanishStrings.upstreamArrows(2, 0))
         assertEquals("1 commit sin traer", SpanishStrings.upstreamArrows(0, 1))
+        assertEquals("in sync with its upstream", EnglishStrings.upstreamArrows(0, 0))
+        assertEquals("al día con su upstream", SpanishStrings.upstreamArrows(0, 0))
     }
 
     @Test
@@ -515,6 +517,14 @@ class StringsTest {
     fun `each language names itself in its own language`() {
         assertEquals("English", EnglishStrings.languageName)
         assertEquals("Español", SpanishStrings.languageName)
+    }
+
+    @Test
+    fun `the current branch start point says it is the same as shogun new`() {
+        assertEquals("Current branch of the repository (develop) · same as shogun new", EnglishStrings.startFromCurrentBranch("develop"))
+        assertEquals("Current commit of the repository · same as shogun new", EnglishStrings.startFromCurrentBranch(null))
+        assertEquals("Rama actual del repositorio (develop) · igual que shogun new", SpanishStrings.startFromCurrentBranch("develop"))
+        assertEquals("Commit actual del repositorio · igual que shogun new", SpanishStrings.startFromCurrentBranch(null))
     }
 
     @Test

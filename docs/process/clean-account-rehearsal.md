@@ -79,6 +79,7 @@ Click "Take the tour" (or Help › ShogunAi Tour). See [Desktop app](../guide/de
 3. In Terminal, from `~/projects/main-repo`, run `shogun new TASK-123`. **Check**: it prints the new worktree's path without errors, and `cat <path>/local.properties` prints `sdk.dir=/placeholder`.
 4. **Check**: the app shows the new worktree under the project, as "New", without restarting it.
 5. Back in the app, create a second worktree with "New worktree" on the project. **Check**: it's created and also gets `local.properties`.
+6. In a new Terminal window, run `shogun doctor`. **Check**: no line starts with `fail`, and the project `main-repo` shows its local file as available. Warnings are fine as long as their fix makes sense (for example the agent tools this account doesn't use). A `fail` is a failure of the rehearsal: report it with the whole output.
 
 ## Reporting a failure
 
@@ -88,7 +89,8 @@ Stop at the first failure: later steps often fail because of it.
 2. Take a screenshot of the app or Terminal.
 3. In the app, choose Help › Copy Diagnostic Report and paste it into the report. It has the app version, macOS's version and architecture and the latest entries of the diagnostics log, with paths, the user name, project names and branches replaced by placeholders (see [Diagnostics](../guide/desktop-app.md#diagnostics)).
 4. When a command failed, add the command and its full output.
-5. Open a GitHub issue with all of it, titled with the step, for example "Rehearsal 0.11.0, step 4.2: the tour says shogun isn't on the PATH". Before posting, check that the screenshots and outputs show nothing private; the account's user name is in paths outside the diagnostic report.
+5. Add the output of `shogun doctor` run in a new Terminal window: it says what's wrong and how to fix it. If the command isn't installed yet, the diagnostic report of the previous item already has the app's own check.
+6. Open a GitHub issue with all of it, titled with the step, for example "Rehearsal 0.11.0, step 4.2: the tour says shogun isn't on the PATH". Before posting, check that the screenshots and outputs show nothing private; the account's user name is in paths outside the diagnostic report.
 
 Before a release, link the issue from the release pull request. When the failure is fixed, rehearse again from the start in a new account.
 

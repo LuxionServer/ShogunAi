@@ -1017,11 +1017,11 @@ class WorktreeBoard(
             val holder = createHolder ?: return emptyList()
             val default = holder.defaultStartRef
             val branches = holder.branches.map { it.name }.filter { it != default }
-            return listOfNotNull(default?.let(StartOption::Branch), StartOption.Current) + branches.map(StartOption::Branch)
+            return listOfNotNull(StartOption.Current, default?.let(StartOption::Branch)) + branches.map(StartOption::Branch)
         }
 
     val effectiveStartFrom: StartOption
-        get() = startFrom ?: createHolder?.defaultStartRef?.let(StartOption::Branch) ?: StartOption.Current
+        get() = startFrom ?: StartOption.Current
 
     val currentBranchName: String?
         get() = createHolder?.worktrees?.firstOrNull { it.isMain }?.branch

@@ -79,6 +79,7 @@ Pulsa "Hacer el recorrido" (o Ayuda › Recorrido de ShogunAi). En [App de escri
 3. En Terminal, desde `~/projects/main-repo`, ejecuta `shogun new TASK-123`. **Comprueba**: imprime la ruta del worktree nuevo sin errores, y `cat <ruta>/local.properties` imprime `sdk.dir=/placeholder`.
 4. **Comprueba**: la app muestra el worktree nuevo bajo el proyecto, en "Nuevos", sin reiniciarla.
 5. De vuelta en la app, crea un segundo worktree con "Nuevo worktree" en el proyecto. **Comprueba**: se crea y también recibe `local.properties`.
+6. En una ventana nueva de Terminal, ejecuta `shogun doctor`. **Comprueba**: ninguna línea empieza por `fail` y el proyecto `main-repo` muestra su archivo local como disponible. Los avisos valen siempre que su solución tenga sentido (por ejemplo, las herramientas de agentes que esta cuenta no usa). Un `fail` es un fallo del ensayo: informa de él con la salida completa.
 
 ## Informar de un fallo
 
@@ -88,7 +89,8 @@ Para en el primer fallo: los pasos siguientes suelen fallar por su culpa.
 2. Haz una captura de la app o de Terminal.
 3. En la app, elige Ayuda › Copiar informe de diagnóstico y pégalo en el informe. Lleva la versión de la app, la versión y la arquitectura de macOS y las últimas entradas del log de diagnóstico, con las rutas, el nombre de usuario, los nombres de los proyectos y las ramas sustituidos por marcadores (ver [Diagnóstico](../guide/desktop-app.md#diagnostico)).
 4. Si falló un comando, añade el comando y su salida completa.
-5. Abre una issue en GitHub con todo ello, titulada con el paso, por ejemplo "Rehearsal 0.11.0, step 4.2: the tour says shogun isn't on the PATH". Antes de publicarla, comprueba que las capturas y las salidas no muestran nada privado; fuera del informe de diagnóstico, el nombre de usuario de la cuenta aparece en las rutas.
+5. Añade la salida de `shogun doctor` ejecutado en una ventana nueva de Terminal: dice qué está mal y cómo arreglarlo. Si el comando aún no está instalado, el informe de diagnóstico del punto anterior ya lleva la comprobación de la propia app.
+6. Abre una issue en GitHub con todo ello, titulada con el paso, por ejemplo "Rehearsal 0.11.0, step 4.2: the tour says shogun isn't on the PATH". Antes de publicarla, comprueba que las capturas y las salidas no muestran nada privado; fuera del informe de diagnóstico, el nombre de usuario de la cuenta aparece en las rutas.
 
 Antes de una release, enlaza la issue desde la pull request de la release. Cuando el fallo esté arreglado, vuelve a ensayar desde el principio en una cuenta nueva.
 
