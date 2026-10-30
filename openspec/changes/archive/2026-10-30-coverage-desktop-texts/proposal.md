@@ -21,11 +21,12 @@ None.
 ### Modified Capabilities
 
 - `ui-localization`: every text the app produces is non-empty in every language and shows the values it is given; a check enforces it for every text.
+- `error-presentation`: an error only tells the user to check its technical details when it has them, which the tests found wasn't true for the background app's errors, an unreadable local file, and a few errors without a reason.
 
 ## Impact
 
 - Tests: new tests under `desktopApp/src/test/kotlin/app/luxion/shogunai/ui/i18n/`.
 - Build: `gradle/libs.versions.toml` (`kotlin-reflect`, test only) and `desktopApp/build.gradle.kts` (test dependency and floors).
-- Production code: only if a test finds a defective text (a blank translation or a dropped argument) or unreachable code, both noted in design.md.
+- Production code: the error descriptions in `ui/i18n` gain the technical details and next steps the tests found missing, and branches the compiler generates but no input reaches are rewritten in an equivalent form (see design.md).
 - Docs: `docs/roadmap.md` and `docs/roadmap.es.md`.
 - Parallel work: `desktop-host-environment` may touch the installation texts; a conflict there is small and resolved when bringing in `develop`. Coverage floors may conflict with the other coverage changes of roadmap point 1 (`core` and `cli` only touch their own modules).

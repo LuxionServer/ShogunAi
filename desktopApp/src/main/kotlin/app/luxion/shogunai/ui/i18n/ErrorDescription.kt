@@ -13,7 +13,7 @@ data class TechnicalDetails(
     val output: String,
 ) {
     fun asPlainText(): String = listOfNotNull(
-        command?.joinToString(" ")?.let { it },
+        command?.joinToString(" "),
         exitCode?.let { "exit code $it" },
         output.takeIf { it.isNotBlank() },
     ).joinToString("\n")
@@ -67,11 +67,16 @@ private fun technicalDetailsOf(error: Throwable): TechnicalDetails? = when (erro
     is WorktreeError.EditorLaunchFailed -> TechnicalDetails(null, null, error.detail)
     is WorktreeError.ClaudeDesktopLaunchFailed -> TechnicalDetails(null, null, error.detail)
     is WorktreeError.FolderOpenFailed -> TechnicalDetails(null, null, error.detail)
+    is WorktreeError.HeadlessAppLaunchFailed -> TechnicalDetails(null, null, "log: ${error.logPath}\n${error.lastLogLines}".trimEnd())
+    is WorktreeError.HeadlessAppExitedEarly -> TechnicalDetails(null, null, "log: ${error.logPath}\n${error.lastLogLines}".trimEnd())
+    is WorktreeError.MacWindowToolFailed -> TechnicalDetails(null, null, error.detail)
+    is WorktreeError.HeadlessAppStopFailed -> TechnicalDetails(null, null, error.reason.orEmpty())
     is WorktreeError.PostCreateCommandFailed -> TechnicalDetails(error.command, error.exitCode, error.errorOutput)
     is WorktreeError.InvalidRepositoryConfig -> error.detail?.let { TechnicalDetails(null, null, it) }
+    is WorktreeError.LocalFileUnreadable -> error.reason?.let { TechnicalDetails(null, null, it) }
     is WorktreeError.AndroidSdkNotFound -> TechnicalDetails(null, null, error.checked.joinToString("\n"))
     is WorktreeError.SecretCopyFailed -> causeDetails(error)
-    is WorktreeError.LocalFilesUnavailable -> TechnicalDetails(null, null, error.message.orEmpty().lines().drop(1).joinToString("\n") { it.trim() })
+    is WorktreeError.LocalFilesUnavailable -> TechnicalDetails(null, null, error.message.toString().lines().drop(1).joinToString("\n") { it.trim() })
     is WorktreeError.ClipboardWriteFailed -> causeDetails(error)
     is WorktreeError.EnvironmentFileWriteFailed -> causeDetails(error)
     is CommandExecutionException -> TechnicalDetails(error.command, null, error.cause?.message.orEmpty())

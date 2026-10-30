@@ -60,7 +60,7 @@ internal fun englishInstallationSummary(check: InstallationCheck): String = when
         else -> "Claude Code's hooks run shogun, which isn't installed"
     }
     is InstallationFinding.AgentTool ->
-        finding.location?.let { "${finding.tool.displayName} is at $it" } ?: "${finding.tool.displayName} isn't installed"
+        if (finding.location == null) "${finding.tool.displayName} isn't installed" else "${finding.tool.displayName} is at ${finding.location}"
     is InstallationFinding.ProjectFiles -> when {
         finding.baseMissing -> "${finding.project}: its folder ${finding.basePath} doesn't exist"
         finding.detail != null -> "${finding.project}: couldn't check its local files: ${finding.detail}"
