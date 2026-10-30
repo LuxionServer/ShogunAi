@@ -96,4 +96,13 @@ class FileClaudeSessionRegistryTest {
     fun `a missing directory has no sessions`() {
         assertEquals(emptyList(), FileClaudeSessionRegistry(directory.resolve("missing").toString()).list())
     }
+
+    @Test
+    fun `a blank folder, a blank name and a status that isn't text are left out`() {
+        directory.resolve("1.json").writeText("""{"pid":1,"cwd":" "}""")
+        directory.resolve("2.json").writeText("""{"pid":2,"cwd":"/w","name":" ","status":3}""")
+        directory.resolve("3.json").writeText("""{"pid":3,"cwd":"/w","status":{"state":"busy"}}""")
+
+        assertEquals(listOf(ClaudeSession(2, "/w", null), ClaudeSession(3, "/w", null)), registry.list().sortedBy { it.pid })
+    }
 }

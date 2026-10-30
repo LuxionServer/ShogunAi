@@ -104,4 +104,29 @@ class FileKmpTestWiringTest {
             Files.setPosixFilePermissions(locked, PosixFilePermissions.fromString("rwx------"))
         }
     }
+
+    @Test
+    fun `a missing repository, unreadable scripts, links and folders named like scripts are ignored`() {
+        assertFalse(FileKmpTestWiring(gradleHome.toString()).usesKotlinMultiplatform(root.resolve("missing").toString()))
+        val plugin = "plugins { kotlin(\"multiplatform\") }"
+        repository.resolve("folder.gradle.kts").createDirectories()
+        val outside = root.resolve("outside.gradle.kts").apply { writeText(plugin) }
+        Files.createSymbolicLink(repository.resolve("linked.gradle.kts"), outside)
+        repository.resolve("notes.txt").writeText(plugin)
+        val unreadable = repository.resolve("build.gradle").apply { writeText(plugin) }
+        Files.setPosixFilePermissions(unreadable, PosixFilePermissions.fromString("---------"))
+        try {
+            assertFalse(wiring.usesKotlinMultiplatform(repository.toString()))
+        } finally {
+            Files.setPosixFilePermissions(unreadable, PosixFilePermissions.fromString("rw-------"))
+        }
+        assertTrue(wiring.usesKotlinMultiplatform(repository.toString()))
+    }
+
+    @Test
+    fun `uninstalling a script that was never installed does nothing`() {
+        wiring.uninstallInitScript()
+
+        assertFalse(gradleHome.exists())
+    }
 }

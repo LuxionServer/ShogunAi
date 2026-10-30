@@ -8,7 +8,7 @@
 
 - New and extended unit tests in `core` cover every branch Kover counts in its production code, including the branches kotlinx.serialization generates for `@Serializable` classes (missing, present and default fields).
 - Branches no input can reach are removed from the production code instead of being tested around, without changing behavior; each one is listed with its reason in design.md.
-- `core`'s branch rule in `core/build.gradle.kts` rises with the coverage, ending at 100%.
+- `core`'s branch rule in `core/build.gradle.kts` rises with the coverage and ends as a maximum of missed branches: the eighteen deserializer checks kotlinx.serialization generates for classes whose fields are all optional, which no input can reach (see design.md).
 - No new coverage exclusions.
 - The roadmap drops `core`'s branches from its coverage item.
 
@@ -20,7 +20,7 @@ None.
 
 ### Modified Capabilities
 
-- `test-coverage`: `core`'s threshold becomes 100% of lines and of branches, instead of a branch floor.
+- `test-coverage`: `core`'s threshold becomes 100% of lines and every reachable branch, instead of a branch floor.
 
 ## Impact
 

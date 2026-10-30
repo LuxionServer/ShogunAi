@@ -36,10 +36,11 @@ internal class WorktreeFolderRemoval(
         }
         if (!isFolderInUseFailure(first.stderr)) throw first.toError()
 
-        val herdrClosing = closeHerdrWorkspaces?.closeHolders(path, workspaceId) ?: HolderClosing()
-        val orcaFailure = if (hasOrcaTerminals) closeOrcaTerminals?.closeOne(path) else null
+        val herdrClosing = if (closeHerdrWorkspaces != null) closeHerdrWorkspaces.closeHolders(path, workspaceId) else HolderClosing()
+        val orcaCloser = closeOrcaTerminals?.takeIf { hasOrcaTerminals }
+        val orcaFailure = orcaCloser?.closeOne(path)
         val closing = herdrClosing.copy(
-            closedOrcaTerminals = hasOrcaTerminals && closeOrcaTerminals != null && orcaFailure == null,
+            closedOrcaTerminals = orcaCloser != null && orcaFailure == null,
             orcaFailure = orcaFailure,
         )
         val retry = git(removeCommand)
@@ -66,7 +67,7 @@ internal class WorktreeFolderRemoval(
     }
 
     private suspend fun isRegistered(path: String): Boolean =
-        ListWorktreesUseCase(config, executor)().getOrNull()?.any { sameDirectory(it.path, path) } ?: true
+        ListWorktreesUseCase(config, executor)().getOrNull()?.any { sameDirectory(it.path, path) } != false
 
     private fun folderInUse(path: String, failure: CommandResult, unregistered: Boolean) =
         WorktreeError.WorktreeFolderInUse(path, unregistered, failure.command, failure.exitCode, failure.stderr)

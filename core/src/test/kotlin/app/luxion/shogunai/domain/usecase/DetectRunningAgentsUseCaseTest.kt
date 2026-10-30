@@ -983,4 +983,86 @@ class DetectRunningAgentsUseCaseTest {
 
         assertEquals(RunningAgent("claude", AgentState.WORKING, stateSource = AgentStateSource.CLAUDE_CODE), agents[nested.path]?.single())
     }
+    @Test
+    fun `a file's modification time is known only when the file exists`() {
+        val file = kotlin.io.path.createTempFile("transcript", ".jsonl").toFile().apply { deleteOnExit() }
+
+        assertTrue((fileModifiedAt(file.path) ?: 0) > 0)
+        assertNull(fileModifiedAt("${file.path}.missing"))
+    }
+
+    @Test
+    fun `lsof names before any process and ps lines without an executable are skipped`() {
+        assertEquals(listOf("1" to "/a"), parseLsofWorkingDirectories("n/orphan\np1\nn/a"))
+        assertEquals(listOf("1" to "claude"), parsePsExecutables("\n  1 claude\n  2\n"))
+    }
+
+    @Test
+    fun `a blank agent command adds no executable to look for`() = runTest {
+        val agents = DetectRunningAgentsUseCase(executor())(listOf(AgentSearch(listOf(" "), worktrees))).getOrThrow()
+
+        assertEquals(listOf(RunningAgent("codex")), agents[main.path])
+    }
+
+    @Test
+    fun `claude sessions outside the worktrees and agents other than claude are left as they are`() = runTest {
+        val registry = FakeClaudeSessionRegistry(
+            listOf(
+                ClaudeSession(100, main.path, "main-session", status = ClaudeSessionStatus.BUSY),
+                ClaudeSession(104, "/home/dev/elsewhere", "lost"),
+            ),
+        )
+
+        val agents = DetectRunningAgentsUseCase(executor(), claudeSessions = registry)(config, worktrees).getOrThrow()
+
+        assertEquals(listOf(RunningAgent("codex")), agents[main.path])
+        assertEquals(listOf(RunningAgent("claude")), agents[nested.path])
+    }
+
+    @Test
+    fun `a done session without a transcript or with an unreadable one stays done`() = runTest {
+        val without = FakeAgentSessionStore(mapOf(nested.path to listOf(session("s1", AgentState.DONE))))
+        val unreadable = FakeAgentSessionStore(mapOf(nested.path to listOf(session("s1", AgentState.DONE, transcript = "/transcripts/s1.jsonl"))))
+
+        assertEquals(AgentState.DONE, detectWith(without)(config, worktrees).getOrThrow()[nested.path]?.single()?.state)
+        assertEquals(AgentState.DONE, detectWith(unreadable)(config, worktrees).getOrThrow()[nested.path]?.single()?.state)
+    }
+
+    @Test
+    fun `a cancelled herdr read cancels the detection`() = runTest {
+        val herdr = object : HerdrClient by FakeHerdrClient() {
+            override suspend fun listAgents(): List<HerdrAgent> = throw kotlinx.coroutines.CancellationException("stopped")
+        }
+
+        assertTrue(DetectRunningAgentsUseCase(executor(), herdr)(config, worktrees).isFailure)
+    }
+
+    @Test
+    fun `an agent only orca sees without a state has no state source`() = runTest {
+        val orca = FakeOrcaClient(psRows = listOf(orcaRow(sibling.path, "gemini" to null)))
+
+        val agents = detectWithOrca(orca)(config, worktrees).getOrThrow()
+
+        assertEquals(listOf(RunningAgent("gemini")), agents[sibling.path])
+    }
+
+    @Test
+    fun `orca's state replaces a less urgent herdr state and not a more urgent one`() = runTest {
+        val herdr = FakeHerdrClient(agents = listOf(HerdrAgent("claude", AgentState.WORKING, nested.path, "w1:p1"), HerdrAgent("codex", AgentState.BLOCKED, main.path, "w1:p2")))
+        val orca = FakeOrcaClient(psRows = listOf(orcaRow(nested.path, "claude" to AgentState.BLOCKED), orcaRow(main.path, "codex" to AgentState.WORKING)))
+
+        val agents = DetectRunningAgentsUseCase(executor(), herdr, orca = orcaReader(orca), canonical = { it })(config, worktrees).getOrThrow()
+
+        assertEquals(AgentStateSource.ORCA, agents[nested.path]?.single()?.stateSource)
+        assertEquals(AgentState.BLOCKED, agents[main.path]?.single()?.state)
+        assertEquals(AgentStateSource.HERDR, agents[main.path]?.single()?.stateSource)
+    }
+    @Test
+    fun `a hook state of a worktree only applies to its claude`() = runTest {
+        val store = FakeAgentSessionStore(mapOf(main.path to listOf(session("s1", AgentState.BLOCKED, pid = 100))))
+
+        val agents = DetectRunningAgentsUseCase(executor(), sessionStore = store, now = { 20_000L })(config, worktrees).getOrThrow()
+
+        assertEquals(listOf(RunningAgent("codex")), agents[main.path])
+    }
 }

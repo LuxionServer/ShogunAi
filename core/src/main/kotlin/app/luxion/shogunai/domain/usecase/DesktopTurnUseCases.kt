@@ -109,7 +109,10 @@ class ReleaseDesktopTurnUseCase(private val ledger: DesktopTurnLedger) {
     }
 
     suspend fun force(): Result<DesktopTurnRelease> = runCatching {
-        ledger.locked { ledger.currentTurn()?.let(::release) ?: DesktopTurnRelease.NobodyHolds }
+        ledger.locked {
+            val turn = ledger.currentTurn()
+            if (turn != null) release(turn) else DesktopTurnRelease.NobodyHolds
+        }
     }
 
     suspend fun onWorktreeRemoved(worktreePath: String) {

@@ -51,13 +51,14 @@ class CheckInstallationUseCase(
 
     private suspend fun git(): InstallationCheck {
         val location = findExecutable("git") ?: return InstallationCheck(CheckState.FAILED, InstallationFinding.Git(null, null, MINIMUM_GIT))
-        val output = try {
-            executor.executeWithin(listOf(location, "--version"), CommandTimeouts.LISTING).takeIf { it.isSuccess }?.stdout
+        val result = try {
+            executor.executeWithin(listOf(location, "--version"), CommandTimeouts.LISTING)
         } catch (error: CommandExecutionException) {
-            return InstallationCheck(CheckState.FAILED, InstallationFinding.Git(location, null, MINIMUM_GIT, error.cause?.message ?: error.message))
+            return InstallationCheck(CheckState.FAILED, InstallationFinding.Git(location, null, MINIMUM_GIT, error.cause.message ?: error.message))
         }
-        val version = output?.let(::gitVersion)
-            ?: return InstallationCheck(CheckState.FAILED, InstallationFinding.Git(location, null, MINIMUM_GIT, output?.trim()))
+        if (!result.isSuccess) return InstallationCheck(CheckState.FAILED, InstallationFinding.Git(location, null, MINIMUM_GIT))
+        val version = gitVersion(result.stdout)
+            ?: return InstallationCheck(CheckState.FAILED, InstallationFinding.Git(location, null, MINIMUM_GIT, result.stdout.trim()))
         val state = if (isAtLeast(version, MINIMUM_GIT)) CheckState.PASSED else CheckState.FAILED
         return InstallationCheck(state, InstallationFinding.Git(location, version, MINIMUM_GIT))
     }
@@ -86,7 +87,7 @@ class CheckInstallationUseCase(
         } catch (error: WorktreeError.InvalidClaudeSettings) {
             return InstallationCheck(CheckState.FAILED, InstallationFinding.Hooks(hooksSettingsPath, null, invalidDetail = error.detail))
         }
-        val shogun = status?.state ?: CommandLineToolState.MISSING
+        val shogun = if (status != null) status.state else CommandLineToolState.MISSING
         val finding = InstallationFinding.Hooks(hooksSettingsPath, hooksStatus.state, hooksStatus.events, shogun)
         val state = when {
             hooksStatus.state != HooksInstallState.INSTALLED -> CheckState.WARNING
@@ -136,13 +137,13 @@ class CheckInstallationUseCase(
         private val GIT_VERSION = Regex("git version (\\d+)\\.(\\d+)(?:\\.(\\d+))?")
 
         fun gitVersion(output: String): String? =
-            GIT_VERSION.find(output)?.groupValues?.drop(1)?.filter { it.isNotEmpty() }?.joinToString(".")
+            GIT_VERSION.find(output)?.let { match -> match.groupValues.drop(1).filter { it.isNotEmpty() }.joinToString(".") }
 
         fun isAtLeast(version: String, minimum: String): Boolean {
             val actual = version.split('.').map { it.toInt() }
             val wanted = minimum.split('.').map { it.toInt() }
             val compared = actual.zip(wanted).map { (a, w) -> a.compareTo(w) }.firstOrNull { it != 0 }
-            return compared?.let { it > 0 } ?: (actual.size >= wanted.size)
+            return if (compared != null) compared > 0 else actual.size >= wanted.size
         }
     }
 }

@@ -65,4 +65,24 @@ class DetectGroupsUseCaseTest {
         assertEquals(setOf("docs"), result.failures.keys)
         assertEquals(1, result.groups.size)
     }
+    @Test
+    fun `a detached worktree is never grouped`() = runTest {
+        with(world.git) {
+            world.app.worktree("${world.worktreesRoot}/app/detached", null)
+            world.api.worktree("${world.worktreesRoot}/api/detached", null)
+        }
+
+        assertTrue(detect(world.members()).groups.isEmpty())
+    }
+
+    @Test
+    fun `a repository without a project gets the proposed folder only when it is the workspace`() {
+        world.makeFolderARepository()
+        val multirepo = world.resolved()
+
+        val members = multirepoMembers(multirepo, emptyList())
+
+        assertEquals("", members.first { it.alias == "app" }.config.worktreesRoot)
+        assertEquals("${world.worktreesRoot}/workspace", members.first { it.alias == "workspace" }.config.worktreesRoot)
+    }
 }

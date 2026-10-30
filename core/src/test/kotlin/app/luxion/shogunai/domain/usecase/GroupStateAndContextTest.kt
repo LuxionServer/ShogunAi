@@ -16,8 +16,13 @@ import app.luxion.shogunai.domain.model.HerdrWorkspace
 import app.luxion.shogunai.domain.model.Multirepo
 import app.luxion.shogunai.domain.model.RunnerId
 import app.luxion.shogunai.domain.model.RunningAgent
+import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.WorktreeError
 import kotlinx.coroutines.test.runTest
+import app.luxion.shogunai.domain.model.MultirepoDeclaration
+import app.luxion.shogunai.domain.model.Divergence
+import app.luxion.shogunai.domain.model.MainBranch
+import app.luxion.shogunai.domain.model.WorktreeStatus
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -275,6 +280,7 @@ class GroupStateAndContextTest {
             workspaces = listOf(HerdrWorkspace("w5", "product", null), HerdrWorkspace("w6", "app", world.folder)),
             panes = listOf(
                 HerdrPane("w6:p1", "w6", world.folder),
+                HerdrPane("w5:p0", "w5", null),
                 HerdrPane("w5:p1", "w5", world.folder),
                 HerdrPane("w5:p2", "w5", world.folder, agent = "claude", agentStatus = "idle"),
             ),
@@ -375,5 +381,108 @@ class GroupStateAndContextTest {
         assertFalse(selection.isEmpty)
         assertEquals(listOf(appTask, apiTask, "${world.worktreesRoot}/api/merged"), selection.removablePaths)
         assertEquals(setOf("app", "api"), selection.removableByAlias.keys)
+    }
+    @Test
+    fun `a worktree outside the group has no group context`() = runTest {
+        val group = DetectGroupsUseCase(world.git)(world.members()).groups.single()
+
+        assertEquals(emptyList(), GroupContext(FakeFileManager()).groupLines(world.multirepo, group, "/elsewhere"))
+    }
+
+    @Test
+    fun `a group of every repository lists no missing ones`() = runTest {
+        world.git.run { world.docs.worktree("${world.worktreesRoot}/docs/TASK-1", "feature/TASK-1") }
+        val group = DetectGroupsUseCase(world.git)(world.members()).groups.single()
+
+        val lines = GroupContext(FakeFileManager()).groupLines(world.multirepo, group, apiTask)
+
+        assertEquals(2, lines.size)
+        assertTrue(lines.none { it.startsWith("Not in the group") })
+    }
+
+    @Test
+    fun `a group of a single repository's worktree lists no others`() = runTest {
+        val group = WorktreeGroup("feature/TASK-9", listOf(GroupWorktree("api", world.apiProject.config, Worktree(apiTask, "feature/TASK-9"))))
+
+        val lines = GroupContext(FakeFileManager()).groupLines(world.multirepo, group, apiTask)
+
+        assertTrue(lines.none { it.startsWith("Other repositories") })
+    }
+
+    @Test
+    fun `an empty multirepo says it has no repositories and that new needs them named`() {
+        val lines = GroupContext(FakeFileManager()).multirepoLines(Multirepo(world.folder, MultirepoDeclaration(), approved = true))
+
+        assertTrue(lines[0].endsWith("with the repositories none yet."))
+        assertTrue(lines.last().contains(" with --repos "))
+    }
+    private fun state(
+        status: Result<WorktreeStatus>?,
+        prunable: Boolean = false,
+        locked: Boolean = false,
+        agents: List<RunningAgent> = emptyList(),
+    ) = GroupWorktreeState(
+        GroupWorktree("api", world.apiProject.config, Worktree(apiTask, "feature/TASK-1", isPrunable = prunable, isLocked = locked)),
+        null,
+        status,
+        agents,
+    )
+
+    private fun status(changes: Int, merged: Boolean) =
+        Result.success(WorktreeStatus(changes, null, if (merged) Divergence(0, 1) else Divergence(1, 0), null))
+
+    @Test
+    fun `a worktree is clean and merged when prunable or merged without changes`() {
+        assertTrue(state(null, prunable = true).isCleanAndMerged)
+        assertFalse(state(null).isCleanAndMerged)
+        assertFalse(state(Result.failure(IllegalStateException())).isCleanAndMerged)
+        assertFalse(state(status(1, merged = true)).isCleanAndMerged)
+        assertFalse(state(status(0, merged = false)).isCleanAndMerged)
+        assertTrue(state(status(0, merged = true)).isCleanAndMerged)
+    }
+
+    @Test
+    fun `loose cleanup leaves worktrees with agents, locked or not merged`() {
+        val clean = state(status(0, merged = true))
+
+        assertEquals(
+            listOf(clean),
+            selectLooseCleanup(listOf(clean, state(status(0, true), agents = listOf(RunningAgent("claude"))), state(status(0, true), locked = true), state(status(0, false)))),
+        )
+        assertFalse(GroupCleanupSelection(emptyList(), emptyList(), loose = listOf(clean)).isEmpty)
+        assertTrue(GroupCleanupSelection(emptyList(), emptyList()).isEmpty)
+    }
+
+    @Test
+    fun `a group is kept when a status can't be read and a prunable member doesn't stop it`() {
+        val group = WorktreeGroup("feature/TASK-1", emptyList())
+
+        assertEquals(
+            GroupKeptReason.STATUS_UNAVAILABLE,
+            selectGroupCleanup(listOf(GroupState(group, listOf(state(Result.failure(IllegalStateException())))))).kept.single().reason,
+        )
+        assertEquals(GroupKeptReason.STATUS_UNAVAILABLE, selectGroupCleanup(listOf(GroupState(group, listOf(state(null))))).kept.single().reason)
+        assertEquals(1, selectGroupCleanup(listOf(GroupState(group, listOf(state(null, prunable = true))))).candidates.size)
+    }
+
+    @Test
+    fun `bases fall back to the main branch and unreadable bases or agents count as none`() = runTest {
+        val main = MainBranch("develop", "origin/develop")
+        val bases = RepositoryBases(main, mapOf("feature/TASK-1" to MainBranch("epic/x", "origin/epic/x")))
+        world.api.prunable += apiTask
+        val failing = ReadGroupsUseCase(
+            DetectGroupsUseCase(world.git),
+            resolveBases = { error("unreadable") },
+            readStatus = { _, _, _ -> Result.failure(IllegalStateException()) },
+            detectAgents = { Result.failure(IllegalStateException()) },
+        )
+
+        assertEquals("epic/x", bases.of("feature/TASK-1")?.name)
+        assertEquals(main, bases.of("feature/OTHER"))
+        assertEquals(main, bases.of(null))
+        val state = failing(world.members(), withUngrouped = false)
+        assertTrue(state.ungrouped.isEmpty())
+        assertTrue(state.groups.single().worktrees.all { it.base == null && it.agents.isEmpty() })
+        assertEquals(null, state.groups.single().worktrees.single { it.member.alias == "api" }.status)
     }
 }

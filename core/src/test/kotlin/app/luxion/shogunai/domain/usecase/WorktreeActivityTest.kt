@@ -248,4 +248,11 @@ class WorktreeActivityTest {
 
         assertEquals(Activity.Stopped, worktreeActivity(worktree, old, null, now, Duration.ofDays(7)))
     }
+
+    @Test
+    fun `a branch without upstream needs you only when it is ahead of its base`() {
+        assertEquals(Activity.NeedsYou, activity(worktree, status(upstream = null, mainBranch = Divergence(ahead = 2, behind = 0))))
+        assertFalse(activity(worktree, status(upstream = null, mainBranch = null)) == Activity.NeedsYou)
+        assertFalse(activity(worktree, status(upstream = null, mainBranch = Divergence(ahead = 0, behind = 3))) == Activity.NeedsYou)
+    }
 }

@@ -32,6 +32,7 @@ class ResolveMultirepoUseCase(
     private val source: MultirepoSource,
     private val executor: ShellCommandExecutor,
     private val fileManager: FileManager,
+    private val isValidPath: (String) -> Boolean = ::isValidMultirepoPath,
 ) {
     suspend operator fun invoke(directory: String): Result<MultirepoContext?> = runCatching {
         val known = source.knownFolders().map(::normalizePath)
@@ -78,7 +79,11 @@ class ResolveMultirepoUseCase(
         while (current != null) {
             val folder = normalizePath(current.toString()).ifEmpty { "/" }
             if (known.any { sameDirectory(it, folder) }) {
-                source.read(folder)?.let { build(folder, it) }?.takeIf { it.approved }?.let { return it }
+                val declaration = source.read(folder)
+                if (declaration != null) {
+                    val multirepo = build(folder, declaration)
+                    if (multirepo.approved) return multirepo
+                }
             }
             current = current.parent
         }
@@ -91,18 +96,20 @@ class ResolveMultirepoUseCase(
         if (declaration.worktreesRoot.isBlank()) invalid("worktreesRoot is missing")
         if (hasUnsafePathCharacters(declaration.worktreesRoot)) invalid("worktreesRoot contains control characters")
         if ((declaration.repos.keys + declaration.defaultRepos).any(::hasUnsafePathCharacters)) invalid("an alias contains control characters")
-        declaration.workspace?.alias?.takeIf(::hasUnsafePathCharacters)?.let { invalid("the workspace alias contains control characters") }
+        val workspaceAlias = declaration.workspace?.alias
+        if (workspaceAlias != null && hasUnsafePathCharacters(workspaceAlias)) invalid("the workspace alias contains control characters")
         declaration.repos.entries.firstOrNull { hasUnsafePathCharacters(it.value) }?.let {
             invalid("the path of '${it.key}' contains control characters")
         }
-        multirepo.declaredName?.takeUnless(::isValidMultirepoName)?.let {
+        val name = multirepo.declaredName
+        if (name != null && !isValidMultirepoName(name)) {
             invalid("the name must have at most $MAX_MULTIREPO_NAME_LENGTH characters and no control characters")
         }
         declaration.repos.keys.firstOrNull { !isValidMultirepoAlias(it) }?.let {
             invalid("alias '$it' must use only lowercase letters, digits and hyphens")
         }
-        if (!isValidMultirepoPath(declaration.worktreesRoot)) invalid("worktreesRoot isn't a valid path")
-        declaration.repos.entries.firstOrNull { !isValidMultirepoPath(it.value) }?.let {
+        if (!isValidPath(declaration.worktreesRoot)) invalid("worktreesRoot isn't a valid path")
+        declaration.repos.entries.firstOrNull { !isValidPath(it.value) }?.let {
             invalid("the path of '${it.key}' isn't a valid path")
         }
         declaration.defaultRepos.firstOrNull { it !in declaration.repos }?.let {
@@ -111,7 +118,7 @@ class ResolveMultirepoUseCase(
         try {
             multirepo.sharedVariables()
         } catch (error: InvalidSharedEnvironment) {
-            invalid(error.message.orEmpty())
+            invalid(error.message)
         }
         declaration.workspace?.takeIf { it.enabled }?.let { workspace ->
             if (!isValidMultirepoAlias(workspace.alias)) {

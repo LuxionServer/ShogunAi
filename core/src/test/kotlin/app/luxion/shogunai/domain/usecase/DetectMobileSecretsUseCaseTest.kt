@@ -11,8 +11,10 @@ import app.luxion.shogunai.domain.model.MobileSecretsReport
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.RepositoryProvisioning
 import kotlinx.coroutines.test.runTest
+import app.luxion.shogunai.domain.model.WorktreeError
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertIs
 
 class DetectMobileSecretsUseCaseTest {
 
@@ -188,5 +190,54 @@ class DetectMobileSecretsUseCaseTest {
         val report = detect(listOf("android/local.properties"), fileManager)
 
         assertEquals(listOf(MobileSecret("android/upload.jks", MobileSecretKind.KEYSTORE)), report.secrets)
+    }
+    @Test
+    fun `a failing git listing fails the detection`() = runTest {
+        val executor = FakeShellCommandExecutor { FakeShellCommandExecutor.failure(it) }
+
+        val error = runCatching { DetectMobileSecretsUseCase(executor, FakeFileManager(), FakeRepositoryProvisioningSource())(config) }.exceptionOrNull()
+
+        assertIs<WorktreeError.GitCommandFailed>(error)
+    }
+
+    @Test
+    fun `empty, home, drive and bare dot references aren't keystores`() = runTest {
+        val fileManager = FakeFileManager(
+            properties = mapOf(
+                "$base/key.properties" to mapOf("a.storeFile" to " ", "b.storeFile" to "~/keys/a.jks", "c.storeFile" to "C:/keys/a.jks", "d.storeFile" to "."),
+            ),
+        )
+
+        val report = detect(listOf("key.properties"), fileManager)
+
+        assertEquals(listOf(KeystoreReferenceWarning("key.properties", "d.storeFile", ".")), report.warnings)
+        assertEquals(listOf("key.properties"), report.secrets.map { it.path })
+    }
+
+    @Test
+    fun `a keystore whose tracking can't be checked counts as tracked`() = runTest {
+        val fileManager = FakeFileManager(existing = listOf("$base/upload.jks"), properties = mapOf("$base/key.properties" to mapOf("storeFile" to "upload.jks")))
+        val executor = FakeShellCommandExecutor { command ->
+            when {
+                "local.properties" in command && "*.jks" in command -> success(command, stdout = "key.properties\u0000")
+                command.getOrNull(2) == "-z" && command.getOrNull(3) == "--" -> FakeShellCommandExecutor.failure(command)
+                else -> success(command)
+            }
+        }
+
+        val report = DetectMobileSecretsUseCase(executor, fileManager, FakeRepositoryProvisioningSource())(config)
+
+        assertEquals(listOf("key.properties"), report.secrets.map { it.path })
+    }
+
+    @Test
+    fun `an unreadable repository configuration provides nothing`() = runTest {
+        val report = DetectMobileSecretsUseCase(
+            executor(listOf("local.properties")),
+            FakeFileManager(),
+            FakeRepositoryProvisioningSource(unreadable = setOf(base)),
+        )(config)
+
+        assertEquals(listOf("local.properties"), report.secrets.map { it.path })
     }
 }

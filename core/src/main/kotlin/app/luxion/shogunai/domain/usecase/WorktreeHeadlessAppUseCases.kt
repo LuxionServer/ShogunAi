@@ -55,10 +55,10 @@ class HeadlessAppWorktrees(
     }
 
     internal fun runningPid(paths: HeadlessAppPaths): Long? =
-        fileManager.readProperties(paths.pidFilePath)["pid"]?.trim()?.toLongOrNull()?.takeIf(launcher::isAlive)
+        fileManager.readProperties(paths.pidFilePath)["pid"]?.let { it.trim().toLongOrNull() }?.takeIf(launcher::isAlive)
 
     internal fun tailOf(path: String): String =
-        fileManager.readText(path)?.lines()?.dropLastWhile { it.isBlank() }?.takeLast(LOG_TAIL_LINES)?.joinToString("\n").orEmpty()
+        fileManager.readText(path)?.let { text -> text.lines().dropLastWhile { it.isBlank() }.takeLast(LOG_TAIL_LINES).joinToString("\n") }.orEmpty()
 
     internal suspend fun grantedPermissions(): Set<MacPermission> =
         MacPermission.entries.filter { windows.isGranted(it) }.toSet()

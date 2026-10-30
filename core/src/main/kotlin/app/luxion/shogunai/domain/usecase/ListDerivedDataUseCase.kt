@@ -39,9 +39,8 @@ class ListDerivedDataUseCase(
             val measured = measureSizes(toMeasure).toList().associateBy { it.path }
             DerivedDataListing(
                 folders = attributed.map { entry ->
-                    measured[entry.folder.path]?.let {
-                        entry.copy(folder = entry.folder.copy(sizeBytes = it.sizeBytes ?: 0L, packagesBytes = it.packagesBytes))
-                    } ?: entry
+                    val size = measured[entry.folder.path]
+                    if (size == null) entry else entry.copy(folder = entry.folder.copy(sizeBytes = size.sizeBytes ?: 0L, packagesBytes = size.packagesBytes))
                 },
                 compilationCacheBytes = compilationCache.await(),
                 packageCaches = caches.await(),

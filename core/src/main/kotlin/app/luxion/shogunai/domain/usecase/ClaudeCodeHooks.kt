@@ -10,6 +10,7 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.addJsonObject
 import kotlinx.serialization.json.putJsonArray
@@ -41,7 +42,7 @@ class ClaudeCodeHooks(private val fileManager: FileManager) {
         val preview = diff(readSettings(path), install = true)
         val state = when {
             preview.isEmpty -> HooksInstallState.INSTALLED
-            preview.added.size == DESIRED.size && preview.replaced.isEmpty() && preview.removed.isEmpty() -> HooksInstallState.MISSING
+            preview.added.size == DESIRED.size && preview.removed.isEmpty() -> HooksInstallState.MISSING
             else -> HooksInstallState.OUTDATED
         }
         HooksStatus(path, state, preview.events)
@@ -70,7 +71,7 @@ class ClaudeCodeHooks(private val fileManager: FileManager) {
         val parsed = try {
             Json.parseToJsonElement(text)
         } catch (error: SerializationException) {
-            throw WorktreeError.InvalidClaudeSettings(path, error.message?.lineSequence()?.firstOrNull().orEmpty())
+            throw WorktreeError.InvalidClaudeSettings(path, error.message!!.lineSequence().first())
         }
         val settings = parsed as? JsonObject ?: throw WorktreeError.InvalidClaudeSettings(path, "the top level isn't an object")
         if (settings[HOOKS] != null && settings[HOOKS] !is JsonObject) {
@@ -113,16 +114,16 @@ class ClaudeCodeHooks(private val fileManager: FileManager) {
     private fun installedHooks(groups: JsonElement?): List<InstalledHook> =
         (groups as? JsonArray).orEmpty().flatMap { group ->
             val matcher = (group as? JsonObject)?.get(MATCHER)?.string()
-            shogunHooks(group).map { InstalledHook(commandOf(it), matcher, (it as? JsonObject)?.get(IF)?.string()) }
+            shogunHooks(group).map { InstalledHook(commandOf(it), matcher, it[IF]?.string()) }
         }
 
-    private fun shogunHooks(group: JsonElement): List<JsonElement> =
-        ((group as? JsonObject)?.get(HOOKS) as? JsonArray).orEmpty().filter(::isShogunHook)
+    private fun shogunHooks(group: JsonElement): List<JsonObject> =
+        ((group as? JsonObject)?.get(HOOKS) as? JsonArray).orEmpty().filter(::isShogunHook).map { it.jsonObject }
 
     private fun isShogunHook(hook: JsonElement): Boolean =
-        (hook as? JsonObject)?.get("type")?.string() == "command" && commandOf(hook).startsWith(SHOGUN_PREFIX)
+        hook is JsonObject && hook["type"]?.string() == "command" && commandOf(hook).startsWith(SHOGUN_PREFIX)
 
-    private fun commandOf(hook: JsonElement): String = (hook as? JsonObject)?.get("command")?.string().orEmpty()
+    private fun commandOf(hook: JsonObject): String = hook["command"]?.string().orEmpty()
 
     private fun JsonElement.string(): String? = (this as? JsonPrimitive)?.takeIf { it.isString }?.content
 

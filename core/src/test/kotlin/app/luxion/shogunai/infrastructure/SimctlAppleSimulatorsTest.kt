@@ -5,6 +5,7 @@ import app.luxion.shogunai.domain.model.SimulatorDevice
 import app.luxion.shogunai.domain.model.SimulatorState
 import app.luxion.shogunai.domain.model.WorktreeError
 import kotlinx.coroutines.test.runTest
+import app.luxion.shogunai.domain.model.SimulatorDeviceType
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -163,5 +164,35 @@ class SimctlAppleSimulatorsTest {
         assertTrue(SimctlAppleSimulators(FakeShellCommandExecutor(), osName = "Mac OS X").isSupported())
         assertFalse(SimctlAppleSimulators(FakeShellCommandExecutor(), osName = "Linux").isSupported())
         assertFalse(SimctlAppleSimulators(FakeShellCommandExecutor(), osName = "Windows 11").isSupported())
+    }
+
+    @Test
+    fun `malformed runtimes and device types are skipped`() {
+        assertEquals(emptyList(), parseRuntimes("[]"))
+        assertEquals(emptyList(), parseRuntimes("""{"runtimes": {}}"""))
+        val runtimes = parseRuntimes(
+            """{"runtimes": [
+                "x",
+                {"isAvailable": false, "identifier": "a", "name": "A"},
+                {"isAvailable": "yes", "name": "B"},
+                {"identifier": "c"},
+                {"identifier": "d", "name": "D", "supportedDeviceTypes": "x"},
+                {"identifier": "e", "name": "E", "version": 18, "supportedDeviceTypes": ["x", {"name": "n"}, {"identifier": "i"}, {"identifier": "t", "name": "T"}]}
+            ]}""",
+        )
+
+        assertEquals(listOf("D", "E"), runtimes.map { it.name })
+        assertEquals(listOf("" to ""), runtimes.map { it.version to it.platform }.drop(1))
+        assertEquals(listOf(SimulatorDeviceType("t", "T", "")), runtimes.last().supportedDeviceTypes)
+    }
+
+    @Test
+    fun `malformed device listings are skipped`() {
+        assertEquals(emptyList(), parseDevices("[]"))
+        assertEquals(emptyList(), parseDevices("""{"devices": []}"""))
+        assertEquals(
+            listOf(SimulatorDevice("u", "", SimulatorState.SHUTDOWN)),
+            parseDevices("""{"devices": {"runtime-a": "x", "runtime-b": ["x", {"name": "n"}, {"udid": "u", "state": "Shutdown"}]}}"""),
+        )
     }
 }

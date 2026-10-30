@@ -12,7 +12,7 @@ sealed interface GitFailureCause {
 fun classifyGitFailure(stderr: String): GitFailureCause {
     LOCK_FILE.find(stderr)?.let { return GitFailureCause.LockFileExists(it.groupValues[1]) }
     if (ANOTHER_PROCESS in stderr) return GitFailureCause.LockFileExists(null)
-    if (PERMISSION_DENIED in stderr) return GitFailureCause.PermissionDenied(QUOTED_PATH.find(stderr)?.groupValues?.get(1))
+    if (PERMISSION_DENIED in stderr) return GitFailureCause.PermissionDenied(QUOTED_PATH.find(stderr)?.let { it.groupValues[1] })
     if (NOT_A_REPOSITORY in stderr) return GitFailureCause.NotARepository
     BRANCH_EXISTS.find(stderr)?.let { return GitFailureCause.BranchExists(it.groupValues[1]) }
     if (LOCAL_CHANGES in stderr) return GitFailureCause.LocalChanges

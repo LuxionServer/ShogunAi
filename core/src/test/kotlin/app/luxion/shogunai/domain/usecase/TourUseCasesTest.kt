@@ -160,6 +160,22 @@ class TourUseCasesTest {
             worktree.path.substringAfterLast('/') to worktreeActivity(worktree, status, emptyList(), Instant.now(), Duration.ofDays(90))
         }
     }
+
+    @Test
+    fun `a git failure without an error message reports its output or the command`() = runTest {
+        val quiet = FakeShellCommandExecutor { command ->
+            if ("worktree" in command) FakeShellCommandExecutor.failure(command, stderr = " ").copy(stdout = "fatal on stdout") else FakeShellCommandExecutor.success(command)
+        }
+        val silent = FakeShellCommandExecutor { command ->
+            if ("worktree" in command) throw CommandExecutionException(command, java.io.IOException()) else FakeShellCommandExecutor.success(command)
+        }
+
+        val quietError = assertIs<WorktreeError.TourCreationFailed>(CreateTourUseCase(quiet, fileManager, FakeProjectRepository(), location)(AppLanguage.ENGLISH).exceptionOrNull())
+        val silentError = assertIs<WorktreeError.TourCreationFailed>(CreateTourUseCase(silent, fileManager, FakeProjectRepository(), location)(AppLanguage.ENGLISH).exceptionOrNull())
+
+        assertEquals("fatal on stdout", quietError.detail)
+        assertTrue(silentError.detail.startsWith("Could not start the command: git"))
+    }
 }
 
 class TourScriptTest {

@@ -519,4 +519,59 @@ class ProvisionWorktreeUseCaseTest {
         assertEquals(listOf("asked", "prepared"), events)
         assertEquals(listOf("PORT"), result.skippedVariables)
     }
+
+    @Test
+    fun `a linked folder over a worktree folder holding links fails and keeps it`() = runTest {
+        val fileManager = keysFileManager(baseFiles = listOf("a.pem"), worktreeFiles = listOf("a.pem")).also { it.directoryLinks[worktreeKeys] = listOf("shared.pem") }
+        val records = FakeProvisioningRecordStore(mapOf(linked to mapOf("keys" to listOf("a.pem"))))
+
+        assertIs<WorktreeError.LinkedFolderOccupied>(provision(linkedKeysConfig, fileManager, records)(linked).exceptionOrNull())
+        assertTrue(fileManager.deletedRecursively.isEmpty())
+    }
+
+    @Test
+    fun `a recorded file that became a folder or a link isn't deleted`() = runTest {
+        val fileManager = FakeFileManager(
+            existing = listOf(base, linked, baseKeys, "$worktreeKeys/a.pem", "$worktreeKeys/old"),
+            directories = setOf(baseKeys, worktreeKeys, "$worktreeKeys/old"),
+        ).also {
+            it.directoryFiles[baseKeys] = listOf("a.pem")
+            it.directoryFiles[worktreeKeys] = listOf("a.pem", "old", "shared.pem")
+        }
+        fileManager.createSymbolicLink(target = "/elsewhere/shared.pem", link = "$worktreeKeys/shared.pem")
+        val records = FakeProvisioningRecordStore(mapOf(linked to mapOf("keys" to listOf("a.pem", "old", "shared.pem"))))
+
+        val result = provision(keysConfig, fileManager, records)(linked).getOrThrow()
+
+        assertEquals(emptyList(), result.removed)
+        assertTrue(fileManager.deletedFiles.isEmpty())
+    }
+
+    @Test
+    fun `a post-creation command that can't start without a reason reports the command`() = runTest {
+        val exec = linkingExecutor { throw CommandExecutionException(it, java.io.IOException()) }
+        val fileManager = FakeFileManager(existing = listOf("$base/local.properties"))
+
+        val error = ProvisionWorktreeUseCase(config, exec, fileManager, linkingProvisioning, trust = approvedTrust)(linked).exceptionOrNull()
+
+        assertTrue(assertIs<WorktreeError.PostCreateCommandFailed>(error).errorOutput.startsWith("Could not start the command"))
+    }
+
+    @Test
+    fun `a recorded file already gone from the worktree isn't counted as removed`() = runTest {
+        val fileManager = keysFileManager(baseFiles = listOf("a.pem"), worktreeFiles = listOf("a.pem"))
+        val records = FakeProvisioningRecordStore(mapOf(linked to mapOf("keys" to listOf("a.pem", "gone.pem"))))
+
+        assertEquals(emptyList(), provision(keysConfig, fileManager, records)(linked).getOrThrow().removed)
+    }
+
+    @Test
+    fun `an existing link to a folder is replaced without looking inside it`() = runTest {
+        val fileManager = keysFileManager(baseFiles = listOf("a.pem"), worktreeFiles = listOf("other.pem"))
+        fileManager.symbolicLinks[worktreeKeys] = "/home/dev/elsewhere"
+
+        provision(linkedKeysConfig, fileManager)(linked).getOrThrow()
+
+        assertEquals(baseKeys, fileManager.symbolicLinks[worktreeKeys])
+    }
 }

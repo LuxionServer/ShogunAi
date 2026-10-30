@@ -46,7 +46,7 @@ data class DeviceWaitProgress(
 )
 
 fun poolDisplayName(adminDirectory: String?, worktreePath: String?): String {
-    val repository = adminDirectory?.substringBefore("/.git")?.substringAfterLast('/').orEmpty()
-    val worktree = (worktreePath ?: adminDirectory)?.trimEnd('/')?.substringAfterLast('/').orEmpty()
+    val repository = adminDirectory?.let { it.substringBefore("/.git").substringAfterLast('/') }.orEmpty()
+    val worktree = (worktreePath ?: adminDirectory)?.let { it.trimEnd('/').substringAfterLast('/') }.orEmpty()
     return if (repository.isEmpty()) worktree else "$repository · $worktree"
 }

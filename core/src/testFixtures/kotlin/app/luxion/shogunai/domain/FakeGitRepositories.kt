@@ -15,6 +15,7 @@ class FakeGitRepositories : ShellCommandExecutor {
         val recordedBases = linkedMapOf<String, String>()
         val dirty = mutableMapOf<String, Int>()
         val unreadableStatus = mutableSetOf<String>()
+        val prunable = mutableSetOf<String>()
         var failAdd: String? = null
     }
 
@@ -117,6 +118,7 @@ class FakeGitRepositories : ShellCommandExecutor {
             appendLine("worktree $path")
             appendLine("HEAD 2222222222222222222222222222222222222222")
             if (branch == null) appendLine("detached") else appendLine("branch refs/heads/$branch")
+            if (path in repository.prunable) appendLine("prunable")
         }
     }
 

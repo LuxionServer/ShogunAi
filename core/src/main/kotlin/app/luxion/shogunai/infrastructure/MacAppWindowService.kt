@@ -22,7 +22,7 @@ import java.nio.file.Path
 class MacAppWindowService(
     private val executor: ShellCommandExecutor,
     private val scriptDirectory: String,
-    private val osName: String = System.getProperty("os.name").orEmpty(),
+    private val osName: String = System.getProperty("os.name", ""),
 ) : AppWindowService {
 
     override val isSupported: Boolean get() = osName.startsWith("Mac", ignoreCase = true)
@@ -32,7 +32,7 @@ class MacAppWindowService(
     override suspend fun hide(pid: Long): HideOutcome = parseHide(helper(ACTION_HIDE, pid.toString()))
 
     override suspend fun capture(window: AppWindow, outputPath: String) {
-        withContext(Dispatchers.IO) { Path.of(outputPath).toAbsolutePath().parent?.let(Files::createDirectories) }
+        withContext(Dispatchers.IO) { Files.createDirectories(Path.of(outputPath).toAbsolutePath().parent) }
         val command = captureCommand(window, outputPath)
         val result = executor.execute(command)
         if (!result.isSuccess) throw WorktreeError.MacWindowToolFailed(result.stderr.ifBlank { result.stdout }.trim())
@@ -44,7 +44,7 @@ class MacAppWindowService(
             MacPermission.SCREEN_RECORDING -> "screenRecording"
             MacPermission.ACCESSIBILITY -> "accessibility"
         }
-        return permissions[key]?.jsonPrimitive?.booleanOrNull == true
+        return permissions[key]?.let { it.jsonPrimitive.booleanOrNull } == true
     }
 
     private suspend fun helper(action: String, pid: String): String {
@@ -76,14 +76,14 @@ class MacAppWindowService(
             (Json.parseToJsonElement(output) as? JsonArray).orEmpty()
                 .map { it.jsonObject }
                 .maxByOrNull { it.long("width") * it.long("height") }
-                ?.let { AppWindow(id = it.long("id"), isOnScreen = it["onScreen"]?.jsonPrimitive?.booleanOrNull == true) }
+                ?.let { AppWindow(id = it.long("id"), isOnScreen = it["onScreen"]?.let { onScreen -> onScreen.jsonPrimitive.booleanOrNull } == true) }
 
         fun parseHide(output: String): HideOutcome {
-            val code = Json.parseToJsonElement(output).jsonObject["code"]?.jsonPrimitive?.intOrNull
+            val code = Json.parseToJsonElement(output).jsonObject["code"]?.let { it.jsonPrimitive.intOrNull }
             return if (code == 0) HideOutcome.HIDDEN else HideOutcome.DENIED
         }
 
-        private fun JsonObject.long(key: String): Long = this[key]?.jsonPrimitive?.longOrNull ?: 0L
+        private fun JsonObject.long(key: String): Long = this[key]?.let { it.jsonPrimitive.longOrNull } ?: 0L
 
         val SCRIPT = """
             ObjC.import('AppKit');

@@ -161,4 +161,14 @@ class WindowsArgumentsTest {
         if (started) arguments += current.toString()
         return arguments
     }
+
+    @Test
+    fun `only Windows commands with arguments that aren't batch files are quoted`() {
+        val command = listOf("tool", "a b")
+
+        assertEquals(command, WindowsArguments.prepare(command, "Mac OS X"))
+        assertEquals(listOf("tool"), WindowsArguments.prepare(listOf("tool"), "Windows 11"))
+        assertEquals(listOf("run.cmd", "a b"), WindowsArguments.prepare(listOf("run.cmd", "a b"), "Windows 11"))
+        assertEquals(listOf("tool", "\"a b\""), WindowsArguments.prepare(command, "Windows 11"))
+    }
 }

@@ -155,4 +155,60 @@ class FileAgentSessionStoreTest {
         assertTrue(folder.resolve(".git/shogunai/agent-sessions").isDirectory())
         assertTrue(!folderStore.exists())
     }
+
+    @Test
+    fun `records missing a field or of the wrong shape are skipped`() {
+        store.write(main.toString(), record("s1"))
+        val sessions = main.resolve(".git/shogunai/agent-sessions")
+        listOf(
+            "[1]",
+            """{"agent":"claude","state":"working","updatedAt":1}""",
+            """{"sessionId":"x","state":"working","updatedAt":1}""",
+            """{"sessionId":"x","agent":"claude","state":"sleeping","updatedAt":1}""",
+            """{"sessionId":"x","agent":"claude","updatedAt":1}""",
+            """{"sessionId":"x","agent":"claude","state":"working","updatedAt":"soon"}""",
+            """{"sessionId":"x","agent":"claude","state":"working","updatedAt":{}}""",
+        ).forEachIndexed { index, text -> sessions.resolve("bad-$index.json").toFile().writeText(text) }
+        sessions.resolve("odd.json").toFile().writeText("""{"sessionId":"odd","agent":"claude","state":"working","updatedAt":2,"pid":"x","transcriptPath":3}""")
+
+        assertEquals(setOf("s1", "odd"), store.list(main.toString()).map { it.sessionId }.toSet())
+        assertEquals(null, store.list(main.toString()).single { it.sessionId == "odd" }.pid)
+    }
+
+    @Test
+    fun `a git file without a gitdir line or pointing nowhere is no worktree`() {
+        val odd = root.resolve("odd").also { it.toFile().mkdirs() }
+        odd.resolve(".git").toFile().writeText("not a pointer")
+        val dangling = root.resolve("dangling").also { it.toFile().mkdirs() }
+        dangling.resolve(".git").toFile().writeText("gitdir: ../nowhere")
+
+        assertEquals(emptyList(), store.list(odd.toString()))
+        assertEquals(emptyList(), store.list(dangling.toString()))
+    }
+
+    @Test
+    fun `a folder that is neither a worktree nor a multirepo has no records`() {
+        val plain = root.resolve("plain").also { Files.createDirectories(it) }
+        val noGitdir = root.resolve("no-gitdir").also { Files.createDirectories(it); Files.writeString(it.resolve(".git"), "nothing\n") }
+        val lostGitdir = root.resolve("lost-gitdir").also { Files.createDirectories(it); Files.writeString(it.resolve(".git"), "gitdir: ../gone\n") }
+
+        store.remove(plain.toString(), "s1")
+
+        listOf(plain, noGitdir, lostGitdir).forEach { assertEquals(emptyList(), store.list(it.toString())) }
+    }
+
+    @Test
+    fun `records of the wrong shape are skipped and a pid that isn't a number is unknown`() {
+        store.write(main.toString(), record("s1"))
+        val directory = main.resolve(".git/shogunai/agent-sessions")
+        val base = """{"sessionId":"s9","agent":"claude","state":"working","updatedAt":5"""
+        Files.writeString(directory.resolve("array.json"), "[]")
+        Files.writeString(directory.resolve("object-pid.json"), "$base,\"pid\":{}}")
+        Files.writeString(directory.resolve("text-pid.json"), "$base,\"pid\":\"x\"}")
+
+        val listed = store.list(main.toString())
+
+        assertEquals(listOf(null, null, 4242L), listed.sortedBy { it.sessionId == "s1" }.map { it.pid })
+        assertEquals(3, listed.size)
+    }
 }

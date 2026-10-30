@@ -3,7 +3,7 @@ package app.luxion.shogunai.domain.model
 import java.time.Duration
 import java.time.Instant
 
-sealed class WorktreeError(message: String, cause: Throwable? = null) : Exception(message, cause) {
+sealed class WorktreeError(override val message: String, cause: Throwable? = null) : Exception(message, cause) {
 
     class BaseRepositoryNotFound(val path: String) :
         WorktreeError("Base repository doesn't exist: $path")
@@ -69,7 +69,7 @@ sealed class WorktreeError(message: String, cause: Throwable? = null) : Exceptio
         val exitCode: Int?,
         val errorOutput: String,
     ) : WorktreeError(
-        "Post-creation command failed" + (exitCode?.let { " (exit code $it)" } ?: "") + ": ${command.joinToString(" ")}" +
+        "Post-creation command failed" + (if (exitCode != null) " (exit code $exitCode)" else "") + ": ${command.joinToString(" ")}" +
             if (errorOutput.isNotBlank()) "\n$errorOutput" else "",
     )
 
@@ -134,7 +134,7 @@ sealed class WorktreeError(message: String, cause: Throwable? = null) : Exceptio
 
     class DesktopTurnWaitTimedOut(val waited: Duration, val holder: DesktopTurn?) : WorktreeError(
         "Waited ${waited.toWaitText()} for the desktop" +
-            (holder?.let { ", still taken by ${it.displayName} until ${it.expiryClockTime()}" } ?: ", still behind other waiters"),
+            (if (holder != null) ", still taken by ${holder.displayName} until ${holder.expiryClockTime()}" else ", still behind other waiters"),
     )
 
     class DesktopTurnHeldByOther(val holder: DesktopTurn) : WorktreeError(
@@ -361,7 +361,7 @@ private fun desktopWaitingNote(waiting: Int): String = when (waiting) {
 }
 
 private fun desktopTakenSummary(holder: DesktopTurn?, waiting: Int): String =
-    holder?.let { "The desktop is taken by ${it.displayName} until ${it.expiryClockTime()}" + desktopWaitingNote(waiting) } ?: desktopQueueNote(waiting)
+    if (holder != null) "The desktop is taken by ${holder.displayName} until ${holder.expiryClockTime()}" + desktopWaitingNote(waiting) else desktopQueueNote(waiting)
 
 private fun desktopQueueNote(waiting: Int): String =
     if (waiting == 1) "1 worktree is waiting for the desktop first" else "$waiting worktrees are waiting for the desktop first"
@@ -374,8 +374,10 @@ fun Duration.toWaitText(): String = when {
     else -> "$seconds s"
 }
 
-private fun PoolHolder.protectionNote(): String = when (protection) {
-    HolderProtection.AGENT_WORKING -> ", agent working"
-    HolderProtection.LEASED -> ", lease until ${leaseExpiresAt?.toLocalClockTime()}"
-    null -> ""
+private fun PoolHolder.protectionNote(): String {
+    val protection = protection ?: return ""
+    return when (protection) {
+        HolderProtection.AGENT_WORKING -> ", agent working"
+        HolderProtection.LEASED -> ", lease until ${leaseExpiresAt?.toLocalClockTime()}"
+    }
 }

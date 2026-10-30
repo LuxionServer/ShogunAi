@@ -12,7 +12,7 @@ class ResolveRepositoryUseCase(
     suspend operator fun invoke(directory: String): Result<String> = runCatching {
         val layout = git(directory, "rev-parse", "--path-format=absolute", "--git-common-dir", "--is-bare-repository")
         val lines = layout.stdout.lines().map { it.trim() }
-        val commonDir = normalizePath(lines.firstOrNull().orEmpty())
+        val commonDir = normalizePath(lines.first())
         if (!layout.isSuccess || commonDir.isEmpty()) throw WorktreeError.RepositoryNotFound(directory)
         if (lines.getOrNull(1) == "true") throw WorktreeError.BareRepositoryNotSupported(directory)
         if (commonDir.endsWith("/.git")) return@runCatching commonDir.removeSuffix("/.git")
@@ -28,8 +28,8 @@ class ResolveRepositoryUseCase(
         if (configured.isNotEmpty()) return normalizePath(Path.of(commonDir).resolve(configured).normalize().toString())
         val listing = git(directory, "worktree", "list", "--porcelain")
         if (!listing.isSuccess) throw WorktreeError.RepositoryNotFound(directory)
-        return parseWorktreeList(listing.stdout).firstOrNull()?.path
-            ?: throw WorktreeError.RepositoryNotFound(directory)
+        val main = parseWorktreeList(listing.stdout).firstOrNull() ?: throw WorktreeError.RepositoryNotFound(directory)
+        return main.path
     }
 
     private suspend fun git(directory: String, vararg args: String): CommandResult =

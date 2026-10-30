@@ -82,8 +82,8 @@ class JsonComposeProjectRegistry(
     }
 
     @Serializable
-    private data class Store(val repositories: Map<String, List<StoredEntry>> = emptyMap())
+    internal data class Store(val repositories: Map<String, List<StoredEntry>> = emptyMap())
 
     @Serializable
-    private data class StoredEntry(val project: String, val worktreePath: String)
+    internal data class StoredEntry(val project: String, val worktreePath: String)
 }

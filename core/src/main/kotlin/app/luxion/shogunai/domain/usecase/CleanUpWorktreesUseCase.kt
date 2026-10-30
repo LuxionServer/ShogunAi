@@ -42,8 +42,9 @@ fun selectCleanup(
     val qualifying = worktrees.filter { worktree ->
         !worktree.isMain && !worktree.isLocked && (worktree.isPrunable || statuses[worktree.path].isCleanAndMerged())
     }
-    val (kept, candidates) = qualifying.partition { !it.isPrunable && runningAgents?.get(it.path).orEmpty().isNotEmpty() }
-    return CleanupSelection(candidates, kept.associateWith { runningAgents?.get(it.path).orEmpty() })
+    fun agentsIn(worktree: Worktree): List<RunningAgent> = runningAgents?.get(worktree.path).orEmpty()
+    val (kept, candidates) = qualifying.partition { !it.isPrunable && agentsIn(it).isNotEmpty() }
+    return CleanupSelection(candidates, kept.associateWith(::agentsIn))
 }
 
 fun selectCleanupCandidates(

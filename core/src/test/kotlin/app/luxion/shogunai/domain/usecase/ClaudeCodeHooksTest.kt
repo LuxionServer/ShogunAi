@@ -316,4 +316,42 @@ class ClaudeCodeHooksTest {
         assertEquals(allEvents, preview.removed.map { it.event })
         assertEquals(installed, files.writtenTexts.getValue(path))
     }
+    @Test
+    fun `a blank settings file or one without hooks reads as no hooks`() {
+        settings("  ")
+        assertEquals(HooksInstallState.MISSING, hooks.status(path).getOrThrow().state)
+        settings("""{"theme":"dark"}""")
+        assertEquals(HooksInstallState.MISSING, hooks.status(path).getOrThrow().state)
+    }
+
+    @Test
+    fun `a ShogunAi hook left on an unused event makes the installation outdated`() {
+        settings("""{"hooks":{"Old":[{"hooks":[{"type":"command","command":"shogun hook old"}]}]}}""")
+
+        assertEquals(HooksInstallState.OUTDATED, hooks.status(path).getOrThrow().state)
+    }
+
+    @Test
+    fun `entries that aren't hooks are kept as they are`() {
+        val stop = """["text",{"matcher":5,"hooks":"x"},{"hooks":["x",{"command":"say"},{"type":1},{"type":{}},{"type":"prompt","command":"shogun hook agent-state"},{"type":"command"},{"type":"command","command":"say"},{"type":"command","command":"shogun hook agent-state","if":7}]}]"""
+        settings("""{"hooks":{"Stop":$stop,"Other":"value"}}""")
+
+        assertEquals(listOf("Stop"), hooks.previewUninstall(path).getOrThrow().events)
+        hooks.uninstall(path).getOrThrow()
+
+        val result = written().getValue("hooks").jsonObject
+        assertEquals(
+            Json.parseToJsonElement("""["text",{"matcher":5,"hooks":"x"},{"hooks":["x",{"command":"say"},{"type":1},{"type":{}},{"type":"prompt","command":"shogun hook agent-state"},{"type":"command"},{"type":"command","command":"say"}]}]"""),
+            result.getValue("Stop"),
+        )
+        assertEquals("value", result.getValue("Other").jsonPrimitive.content)
+    }
+
+    @Test
+    fun `a parse error names its first line only`() {
+        settings("{\n\"a\": }")
+
+        val error = assertIs<WorktreeError.InvalidClaudeSettings>(hooks.status(path).exceptionOrNull())
+        assertFalse(error.detail.contains("\n"))
+    }
 }

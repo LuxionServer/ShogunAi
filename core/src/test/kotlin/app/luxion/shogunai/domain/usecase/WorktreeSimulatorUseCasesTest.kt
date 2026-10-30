@@ -21,6 +21,8 @@ import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.WorktreeSimulator
 import kotlinx.coroutines.test.runTest
 import java.time.Duration
+import app.luxion.shogunai.domain.io.AppleSimulators
+import app.luxion.shogunai.domain.model.SimulatorDevice
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -327,5 +329,72 @@ class WorktreeSimulatorUseCasesTest {
         assertEquals(listOf(task), started.acquisition.releases.map { it.worktreePath })
         assertEquals(1200, started.acquisition.waitedSeconds)
         assertEquals(listOf("UDID-1"), simulators.deleted)
+    }
+
+    @Test
+    fun `a simulator deleted outside ShogunAi is neither stopped nor read`() = runTest {
+        acquire(task)
+        simulators.devicesByUdid.remove("UDID-1")
+
+        assertNull(StopWorktreeSimulatorUseCase(provisioning(), simulators, resolve())(config, task).getOrThrow())
+        assertEquals(emptyMap(), ReadSimulatorStatesUseCase(provisioning(), simulators, resolve())(config, listOf(Worktree(task, "feature/TASK-123"))).getOrThrow())
+    }
+
+    @Test
+    fun `stopping a simulator that is already shut down shuts nothing down`() = runTest {
+        acquire(task)
+
+        assertEquals(SimulatorState.SHUTDOWN, StopWorktreeSimulatorUseCase(provisioning(), simulators, resolve())(config, task).getOrThrow()?.state)
+        assertTrue(simulators.shutDown.isEmpty())
+    }
+
+    @Test
+    fun `without the provider or off macOS there are no states, orphans or running UDID`() = runTest {
+        val offMac = FakeAppleSimulators(supported = false)
+        val broken = object : ShellCommandExecutor {
+            override suspend fun execute(command: List<String>, workingDirectory: String?) = FakeShellCommandExecutor.failure(command)
+        }
+
+        assertEquals(emptyList(), DeleteSimulatorsUseCase(provisioning(), offMac, resolve()).orphans(config).getOrThrow())
+        assertEquals(emptyList(), DeleteSimulatorsUseCase(provisioning(), simulators, resolve())(emptyList()).getOrThrow())
+        assertEquals(
+            emptyMap(),
+            ReadSimulatorStatesUseCase(provisioning(), simulators, ResolveWorktreeEnvironmentUseCase(broken, provisioning(), store, FakePortProbe()))(config, listOf(Worktree(task, "x"))).getOrThrow(),
+        )
+        acquire(task)
+        val unreadable = object : AppleSimulators by simulators {
+            override suspend fun devices(): List<SimulatorDevice> = throw IllegalStateException("simctl failed")
+        }
+        assertNull(ReadSimulatorStatesUseCase(provisioning(), unreadable, resolve()).runningUdid(config, task))
+    }
+
+    @Test
+    fun `a simulator that disappears while booting times out`() = runTest {
+        val harness = harness()
+        val vanishing = object : AppleSimulators by simulators {
+            override suspend fun boot(udid: String) {
+                simulators.devicesByUdid.remove(udid)
+            }
+        }
+        val start = StartWorktreeSimulatorUseCase(provisioning(), vanishing, harness.acquire, harness.resolve, pause = { pauses += it }, timeoutMs = 1_000)
+
+        assertIs<WorktreeError.SimulatorBootTimeout>(start(config, task).exceptionOrNull())
+    }
+
+    @Test
+    fun `shutting down an unknown UDID shuts nothing down`() = runTest {
+        start()(config, task).getOrThrow()
+
+        StopWorktreeSimulatorUseCase(provisioning(), simulators, resolve()).shutDown("UNKNOWN")
+
+        assertTrue(simulators.shutDown.isEmpty())
+    }
+
+    @Test
+    fun `a worktree whose environment can't be resolved has no state`() = runTest {
+        acquire(task)
+        val failing = resolve(FakeRepositoryProvisioningSource(unreadable = setOf(repository)))
+
+        assertEquals(emptyMap(), ReadSimulatorStatesUseCase(provisioning(), simulators, failing)(config, listOf(Worktree(task, "x"))).getOrThrow())
     }
 }

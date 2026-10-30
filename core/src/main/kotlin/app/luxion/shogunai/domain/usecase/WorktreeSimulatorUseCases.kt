@@ -80,7 +80,7 @@ class ReadSimulatorStatesUseCase(
             if (!declaresIosSimulator(provisioningSource, simulators, config)) return@runCatching emptyMap()
             val udids = worktrees.filterNot { it.isPrunable }.mapNotNull { worktree ->
                 resolveEnvironment(config.baseRepositoryPath, worktree.path, reserve = false).getOrNull()
-                    ?.resources?.get(IOS_SIMULATOR_KEY)
+                    ?.let { it.resources[IOS_SIMULATOR_KEY] }
                     ?.let { worktree.path to it }
             }.toMap()
             if (udids.isEmpty()) return@runCatching emptyMap()

@@ -39,7 +39,7 @@ object InstallationReportText {
         }
         is InstallationFinding.Hooks -> hooksSummary(check.state, finding)
         is InstallationFinding.AgentTool ->
-            finding.location?.let { "${finding.tool.displayName} at $it" } ?: "${finding.tool.displayName} not found"
+            if (finding.location != null) "${finding.tool.displayName} at ${finding.location}" else "${finding.tool.displayName} not found"
         is InstallationFinding.ProjectFiles -> projectSummary(finding)
     }
 

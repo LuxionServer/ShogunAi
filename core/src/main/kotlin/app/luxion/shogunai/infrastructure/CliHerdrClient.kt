@@ -21,7 +21,7 @@ import kotlinx.serialization.json.longOrNull
 class CliHerdrClient(
     private val executor: ShellCommandExecutor,
     private val findExecutable: (String) -> String?,
-    private val osName: String = System.getProperty("os.name").orEmpty(),
+    private val osName: String = System.getProperty("os.name", ""),
 ) : HerdrClient {
 
     override fun isInstalled(): Boolean = location() != null
@@ -180,5 +180,5 @@ class CliHerdrClient(
         (this[name] as? JsonPrimitive)?.takeUnless { it.isString }?.longOrNull
 
     private fun JsonObject.string(name: String): String? =
-        (this[name] as? JsonPrimitive)?.takeIf { it.isString }?.content
+        (this[name] as? JsonPrimitive)?.stringOrNull()
 }

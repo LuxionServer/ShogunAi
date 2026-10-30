@@ -43,4 +43,19 @@ class WorktreeEnvironmentCacheTest {
 
         assertNull(cache.directoriesOf(folder.toString()))
     }
+
+    @Test
+    fun `an unreadable git file is not cached`() {
+        val worktree = createTempDirectory("unreadable-worktree")
+        val gitFile = worktree.resolve(".git").apply { writeText("gitdir: /projects/main-repo/.git/worktrees/TASK-1") }
+        val cache = WorktreeEnvironmentCache()
+        cache.remember(worktree.toString(), directories)
+
+        gitFile.toFile().setReadable(false)
+        try {
+            assertNull(cache.directoriesOf(worktree.toString()))
+        } finally {
+            gitFile.toFile().setReadable(true)
+        }
+    }
 }

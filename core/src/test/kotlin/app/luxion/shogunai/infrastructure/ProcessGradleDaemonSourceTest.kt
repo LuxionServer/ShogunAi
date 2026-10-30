@@ -198,6 +198,78 @@ class ProcessGradleDaemonSourceTest {
         assertNull(heldSource(connection).list()[0].holder)
     }
 
+    @Test
+    fun `malformed process lines are skipped`() {
+        assertEquals(emptyList(), parseDaemonProcesses("x\nabc 1 java\n1 abc java\n"))
+        assertEquals(mapOf(5L to ProcessEntry(1, "")), parseProcessTable("x\n5\n5 x\n5 1\n"))
+        assertEquals(emptyList(), ancestorsOf(99, emptyMap()))
+    }
+
+    @Test
+    fun `an idle marker without a readable time and build lines without a folder read as unknown and no build`() {
+        val record = parseDaemonLog(
+            "junk [INFO] Marking the daemon as idle, address: [x]\n" +
+                "2026-10-16T21:02:00.000+0200 [DEBUG] Starting executing command: Build{id=1} with connection: socket\n",
+        )
+        val received = parseDaemonLog("2026-10-16T21:02:00.000+0200 [INFO] Received command: Build{id=1}.\n")
+
+        assertEquals(DaemonState.Unknown, record.state)
+        assertNull(record.latestBuild)
+        assertNull(received.latestBuild)
+    }
+
+    @Test
+    fun `a busy daemon without a build or a client port holds no client`() = runTest {
+        writeLog(BUSY_LINES.lines().drop(1).joinToString("\n"))
+        assertNull(heldSource(connection).list()[0].holder)
+
+        writeLog(BUSY_LINES)
+        assertNull(heldSource(connection).list()[0].holder?.client)
+    }
+
+    @Test
+    fun `daemons without a version are left as listed and an unreadable or partial process table gives no client`() = runTest {
+        val unversioned = "36474 1162208 /opt/jdk-21/bin/java org.gradle.launcher.daemon.bootstrap.GradleDaemon\n"
+        val source = ProcessGradleDaemonSource(FakeShellCommandExecutor { FakeShellCommandExecutor.success(it, unversioned) }, gradleUserHome.toString())
+        assertEquals(DaemonState.Unknown, source.list().single().state)
+
+        writeLog(IDLE_LOG + HELD_LINES)
+        val failingTable = ProcessGradleDaemonSource(
+            FakeShellCommandExecutor { command ->
+                when {
+                    command.first() == "lsof" -> connection(command)
+                    command.contains("pid=,ppid=,command=") -> FakeShellCommandExecutor.failure(command)
+                    else -> FakeShellCommandExecutor.success(command, PS_OUTPUT)
+                }
+            },
+            gradleUserHome.toString(),
+        )
+        assertNull(failingTable.list()[0].holder?.client)
+        assertNull(heldSource(connection, processTable = "  500     1 /bin/zsh -l\n").list()[0].holder?.client)
+    }
+
+    @Test
+    fun `two busy daemons read the process table once`() = runTest {
+        val logs = gradleUserHome.resolve("daemon/9.6.1").createDirectories()
+        logs.resolve("daemon-36474.out.log").writeText(IDLE_LOG + HELD_LINES)
+        logs.resolve("daemon-36476.out.log").writeText(IDLE_LOG + HELD_LINES)
+        val second = "36476 1162208 /opt/jdk-21/bin/java -cp gradle-daemon-main-9.6.1.jar org.gradle.launcher.daemon.bootstrap.GradleDaemon 9.6.1\n"
+        val tableReads = mutableListOf<List<String>>()
+        val source = ProcessGradleDaemonSource(
+            FakeShellCommandExecutor { command ->
+                when {
+                    command.first() == "lsof" -> connection(command)
+                    command.contains("pid=,ppid=,command=") -> FakeShellCommandExecutor.success(command, PROCESS_TABLE).also { tableReads += command }
+                    else -> FakeShellCommandExecutor.success(command, PS_OUTPUT + "\n" + second)
+                }
+            },
+            gradleUserHome.toString(),
+        )
+
+        assertEquals(2, source.list().count { it.holder != null })
+        assertEquals(1, tableReads.size)
+    }
+
     private companion object {
         val PS_OUTPUT = """
               1   12000 /sbin/launchd

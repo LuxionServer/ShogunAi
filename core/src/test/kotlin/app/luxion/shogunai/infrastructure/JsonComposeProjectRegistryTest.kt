@@ -6,6 +6,9 @@ import java.nio.file.Path
 import kotlin.io.path.createDirectories
 import kotlin.io.path.readText
 import kotlin.io.path.writeText
+import kotlin.io.path.deleteIfExists
+import kotlin.io.path.exists
+import kotlin.test.assertFalse
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -72,5 +75,25 @@ class JsonComposeProjectRegistryTest {
 
         assertEquals(setOf("main-repo-api-task-1"), registry.recordedElsewhere(repository))
         assertEquals(setOf("main-repo-task-9"), registry.recordedElsewhere(sibling))
+    }
+
+    @Test
+    fun `dropping nothing or from an unknown repository writes nothing`() {
+        registry.drop(repository, emptySet())
+        registry.drop(sibling, setOf("main-repo-task-9"))
+
+        assertFalse(storage.exists())
+    }
+
+    @Test
+    fun `a blank or unreadable file reads as empty and a missing repository keeps its path`() {
+        storage.parent.createDirectories()
+        storage.writeText(" ")
+        assertEquals(emptyList(), registry.entries(repository))
+
+        storage.deleteIfExists()
+        storage.createDirectories()
+        assertEquals(emptyList(), registry.entries(repository))
+        assertEquals(emptyList(), registry.entries("${home}/gone"))
     }
 }

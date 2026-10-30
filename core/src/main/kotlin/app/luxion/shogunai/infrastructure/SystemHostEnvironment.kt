@@ -43,7 +43,7 @@ class SystemHostEnvironment(
         } catch (_: CommandExecutionException) {
             return emptyList()
         }
-        return split(Regex("$MARKER(.*?)$MARKER").find(output)?.groupValues?.get(1))
+        return split(Regex("$MARKER(.*?)$MARKER").find(output)?.let { it.groupValues[1] })
     }
 
     private fun split(path: String?): List<String> =

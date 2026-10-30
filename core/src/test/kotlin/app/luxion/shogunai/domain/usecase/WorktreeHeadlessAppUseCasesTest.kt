@@ -15,6 +15,9 @@ import kotlinx.coroutines.test.runTest
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneOffset
+import app.luxion.shogunai.domain.io.HeadlessAppLauncher
+import app.luxion.shogunai.domain.model.HeadlessLaunch
+import app.luxion.shogunai.domain.model.HeadlessLaunchResult
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -338,5 +341,77 @@ class WorktreeHeadlessAppUseCasesTest {
         val failure = StopHeadlessAppUseCase(worktrees(), launcher).beforeRemoving(worktree)
 
         assertIs<WorktreeError.HeadlessAppStopFailed>(failure)
+    }
+
+    @Test
+    fun `a launch without a printed pid uses the pid file`() = runTest {
+        val silentLaunch = object : HeadlessAppLauncher by launcher {
+            override suspend fun launch(launch: HeadlessLaunch): HeadlessLaunchResult = launcher.launch(launch).copy(pid = null)
+        }
+        appWithWindow()
+
+        val started = StartHeadlessAppUseCase(worktrees(), silentLaunch, windows, files, pause = { }, pollIntervalMs = 500, timeoutMs = 5_000)(worktree).getOrThrow()
+
+        assertEquals(4242, started.pid)
+    }
+
+    @Test
+    fun `a running app without a window or a visible one with its window hidden reports it`() = runTest {
+        running()
+        windows.windows.remove(4242)
+
+        assertFalse(start()(worktree).getOrThrow().hidden)
+
+        windows.windows[4242] = AppWindow(77, isOnScreen = false)
+        assertTrue(start()(worktree, visible = true).getOrThrow().hidden)
+    }
+
+    @Test
+    fun `status of a running app without a window or a shown one`() = runTest {
+        running()
+        windows.windows.remove(4242)
+
+        val withoutWindow = ReadHeadlessAppUseCase(worktrees(), windows)(worktree).getOrThrow()
+        appWithWindow(4242)
+        val shown = ReadHeadlessAppUseCase(worktrees(), windows)(worktree).getOrThrow()
+
+        assertFalse(withoutWindow.hasWindow)
+        assertFalse(withoutWindow.hidden)
+        assertFalse(shown.hidden)
+    }
+
+    @Test
+    fun `capture of an app without a window fails`() = runTest {
+        running()
+        windows.windows.remove(4242)
+
+        assertIs<WorktreeError.HeadlessAppHasNoWindow>(CaptureHeadlessAppUseCase(worktrees(), windows)(worktree).exceptionOrNull())
+    }
+
+    @Test
+    fun `an unreadable pid, a dead process or a missing log mean nothing runs`() = runTest {
+        files.writtenProperties[pidFile] = mapOf("pid" to "not a number")
+        assertEquals(HeadlessAppState.STOPPED, ReadHeadlessAppUseCase(worktrees(), windows).process(worktree).getOrThrow()?.state)
+
+        files.writtenProperties[pidFile] = mapOf("pid" to "4242")
+        assertEquals(HeadlessAppState.STOPPED, ReadHeadlessAppUseCase(worktrees(), windows).process(worktree).getOrThrow()?.state)
+        assertEquals("", worktrees().tailOf("/missing.log"))
+    }
+
+    @Test
+    fun `an app isn't declared where windows aren't supported or the configuration can't be read`() = runTest {
+        val unsupported = HeadlessAppWorktrees(provisioning(), { admin }, launcher, FakeAppWindowService(isSupported = false), files)
+        val unreadable = HeadlessAppWorktrees(FakeRepositoryProvisioningSource(unreadable = setOf(worktree)), { admin }, launcher, windows, files)
+
+        assertFalse(unsupported.declaresApp(worktree))
+        assertFalse(unreadable.declaresApp(worktree))
+    }
+
+    @Test
+    fun `a stop that fails with a typed error before removing is returned as it is`() = runTest {
+        running()
+        launcher.failStop = WorktreeError.MacWindowToolFailed("denied")
+
+        assertEquals(launcher.failStop, StopHeadlessAppUseCase(worktrees(), launcher).beforeRemoving(worktree))
     }
 }

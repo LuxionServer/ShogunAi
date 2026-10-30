@@ -59,8 +59,9 @@ fun orcaComment(activity: Activity, status: WorktreeStatus?, agents: List<Runnin
 }
 
 fun issueNumberOf(branch: String?): Int? {
-    val name = branch?.substringAfterLast('/') ?: return null
-    return ISSUE_BRANCH.matchEntire(name)?.let { match -> (match.groups[1] ?: match.groups[2])?.value?.toIntOrNull() }
+    if (branch == null) return null
+    val match = ISSUE_BRANCH.matchEntire(branch.substringAfterLast('/')) ?: return null
+    return match.groupValues[1].ifEmpty { match.groupValues[2] }.toIntOrNull()
 }
 
 private val ISSUE_BRANCH = Regex("""(?:(\d+)|(?:issue|gh)-(\d+))(?:[-_].*)?""", RegexOption.IGNORE_CASE)
@@ -101,8 +102,8 @@ class OrcaWorktreeSync(
     }
 
     private suspend fun updateFor(item: OrcaSyncItem, row: OrcaWorktree, boardStatus: String, lastWritten: String?, key: String): OrcaWorktreeUpdate {
-        val comment = orcaComment(item.activity, item.status, item.agents)
-            ?.takeIf { row.comment.isNullOrBlank() || row.comment.startsWith(ORCA_COMMENT_PREFIX) }
+        val comment = orcaComment(item.activity, item.status, item.agents)!!
+            .takeIf { row.comment.isNullOrBlank() || row.comment.startsWith(ORCA_COMMENT_PREFIX) }
             ?.takeIf { it != row.comment }
         val (pullRequest, issue) = links(item, row, key)
         return OrcaWorktreeUpdate(

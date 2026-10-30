@@ -19,6 +19,7 @@ import java.nio.file.attribute.PosixFilePermissions
 import org.junit.Assume.assumeTrue
 import kotlin.test.assertFailsWith
 import kotlin.test.AfterTest
+import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -395,6 +396,62 @@ class NioFileManagerTest {
             server.bind(UnixDomainSocketAddress.of(socket))
 
             assertIs<UnavailableReason.Unreadable>(fileManager.unavailableReason(socket.toString()))
+        }
+    }
+
+    @Test
+    fun `a read failure names its reason or its kind`() {
+        assertEquals("permission denied", readFailureReason(AccessDeniedException("/a")))
+        assertEquals("locked", readFailureReason(AccessDeniedException("/a", null, "locked")))
+        assertEquals("FileSystemException", readFailureReason(FileSystemException("/a")))
+        assertEquals("loop", readFailureReason(FileSystemException("/a", null, "loop")))
+        assertEquals("broken", readFailureReason(java.io.IOException("broken")))
+        assertEquals("IOException", readFailureReason(java.io.IOException()))
+    }
+
+    @Test
+    fun `deleting a tree stops at a directory that couldn't be read`() {
+        val deleted = mutableListOf<Path>()
+        val deleter = TreeDeleter { deleted.add(it) }
+
+        assertFailsWith<java.io.IOException> { deleter.postVisitDirectory(root, java.io.IOException("unreadable")) }
+        assertTrue(deleted.isEmpty())
+    }
+
+    @Test
+    fun `links that Windows refuses for lack of privilege aren't supported and other failures pass through`() {
+        val privileged = NioFileManager(linkTo = { _, _ -> throw FileSystemException("/l", null, "A required privilege is not held by the client") })
+        val other = NioFileManager(linkTo = { _, _ -> throw FileSystemException("/l", null, "disk full") })
+        val reasonless = NioFileManager(linkTo = { _, _ -> throw FileSystemException("/l") })
+        val denied = NioFileManager(linkTo = { _, _ -> throw AccessDeniedException("/l", null, "privilege") })
+
+        assertFailsWith<SymbolicLinksNotSupported> { privileged.createSymbolicLink("/t", root.resolve("a").toString()) }
+        assertFailsWith<FileSystemException> { other.createSymbolicLink("/t", root.resolve("b").toString()) }
+        assertFailsWith<FileSystemException> { reasonless.createSymbolicLink("/t", root.resolve("c").toString()) }
+        assertFailsWith<AccessDeniedException> { denied.createSymbolicLink("/t", root.resolve("d").toString()) }
+    }
+
+    @Test
+    fun `missing paths have no time, names, sameness or containment, and special files aren't listed`() {
+        val folder = Files.createDirectories(root.resolve("special"))
+        ProcessBuilder("mkfifo", folder.resolve("pipe").toString()).start().waitFor()
+
+        assertEquals(emptyList(), fileManager.listTree(folder.toString()).files)
+        assertNull(fileManager.lastModifiedMillis(root.resolve("missing").toString()))
+        assertNull(fileManager.listNames(root.resolve("missing").toString()))
+        assertFalse(fileManager.isInside(root.resolve("missing").toString(), root.toString()))
+        val dangling = Files.createSymbolicLink(root.resolve("dangling"), root.resolve("nowhere"))
+        assertFalse(fileManager.isSymbolicLinkTo(dangling.toString(), root.resolve("nowhere").toString()))
+    }
+
+    @Test
+    fun `a file that can't be read has no text`() {
+        val file = Files.writeString(root.resolve("secret.txt"), "x")
+        file.toFile().setReadable(false)
+        try {
+            assertNull(fileManager.readText(file.toString()))
+        } finally {
+            file.toFile().setReadable(true)
         }
     }
 }

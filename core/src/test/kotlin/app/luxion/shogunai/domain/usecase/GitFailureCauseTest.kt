@@ -83,4 +83,11 @@ class GitFailureCauseTest {
             GitFailureCause.LocalChanges,
         ).forEach { assertTrue(it.hint() != null) }
     }
+    @Test
+    fun `hints name the path only when it is known`() {
+        assertTrue(GitFailureCause.LockFileExists(null).hint().orEmpty().contains("remove the lock file"))
+        assertTrue(GitFailureCause.LockFileExists("/repo/.git/index.lock").hint().orEmpty().contains("remove /repo/.git/index.lock"))
+        assertTrue(GitFailureCause.PermissionDenied(null).hint().orEmpty().startsWith("Git was denied permission. "))
+        assertTrue(GitFailureCause.PermissionDenied("/repo").hint().orEmpty().startsWith("Git was denied permission on /repo. "))
+    }
 }

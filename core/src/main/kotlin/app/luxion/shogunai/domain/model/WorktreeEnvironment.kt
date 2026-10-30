@@ -40,7 +40,7 @@ sealed interface UnresolvedReason {
     data class InvalidDeclaration(val declarationPath: String, val detail: String) : UnresolvedReason
 }
 
-class InvalidEnvironmentTemplate(message: String, val issue: RepositoryConfigIssue) : Exception(message)
+class InvalidEnvironmentTemplate(override val message: String, val issue: RepositoryConfigIssue) : Exception(message)
 
 private val VARIABLE_NAME = Regex("[A-Za-z_][A-Za-z0-9_]*")
 private val PORT_KEY = Regex("[A-Za-z0-9_-]+")

@@ -57,5 +57,5 @@ class JsonOrcaWorkspaceStore(
     }
 
     @Serializable
-    private data class Store(val workspacesRoot: String? = null, val boardStatuses: Map<String, String> = emptyMap())
+    internal data class Store(val workspacesRoot: String? = null, val boardStatuses: Map<String, String> = emptyMap())
 }

@@ -1,6 +1,8 @@
 package app.luxion.shogunai.domain.usecase
 
 import java.nio.file.Files
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -15,5 +17,12 @@ class CanonicalDirectoryTest {
         } finally {
             Files.delete(folder)
         }
+    }
+
+    @Test
+    fun `only macOS and Windows file systems ignore case`() {
+        assertTrue(isCaseInsensitiveFileSystem("Mac OS X"))
+        assertTrue(isCaseInsensitiveFileSystem("Windows 11"))
+        assertFalse(isCaseInsensitiveFileSystem("Linux"))
     }
 }

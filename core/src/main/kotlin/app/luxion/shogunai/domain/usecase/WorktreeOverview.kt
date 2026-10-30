@@ -49,10 +49,10 @@ fun isInactive(
     inactiveAfter: Duration,
 ): Boolean {
     if (worktree.isMain || status == null || !status.hasOwnCommits) return false
-    val lastActivity = activityDate(worktree, status)?.at ?: return false
+    val lastActivity = activityDate(worktree, status) ?: return false
     return status.uncommittedChanges == 0 &&
         agents.isNullOrEmpty() &&
-        Duration.between(lastActivity, now) > inactiveAfter
+        Duration.between(lastActivity.at, now) > inactiveAfter
 }
 
 enum class Activity { NeedsYou, AgentWorking, New, Stopped, Merged, Inactive, Missing, Idle, Unknown }
@@ -89,7 +89,7 @@ private fun hasUnpushedCommits(status: WorktreeStatus): Boolean =
     if (status.upstream != null) {
         status.upstream.ahead > 0
     } else {
-        (status.base?.ahead ?: 0) > 0
+        status.base != null && status.base.ahead > 0
     }
 
 internal fun normalizePath(path: String): String = path.replace('\\', '/').trimEnd('/')

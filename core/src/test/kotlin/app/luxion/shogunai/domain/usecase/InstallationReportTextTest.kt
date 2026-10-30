@@ -184,4 +184,24 @@ class InstallationReportTextTest {
     fun `markers name every state`() {
         assertTrue(CheckState.entries.map(InstallationReportText::marker).distinct().size == CheckState.entries.size)
     }
+    @Test
+    fun `details are added only when there is one`() {
+        assertEquals("Couldn't read Git's version from /usr/bin/git", summary(CheckState.FAILED, InstallationFinding.Git("/usr/bin/git", null, "2.29")))
+        assertEquals("Couldn't read Git's version from /usr/bin/git", summary(CheckState.FAILED, InstallationFinding.Git("/usr/bin/git", null, "2.29", " ")))
+    }
+
+    @Test
+    fun `shogun fixes name its folder or say its folder`() {
+        val unknownFolder = InstallationFinding.ShogunCommand(CommandLineToolState.INSTALLED_NOT_ON_PATH, "/opt/shogun", null, true)
+
+        assertEquals("Restart your terminal and Claude Code so they pick up its folder", fix(CheckState.WARNING, unknownFolder))
+        assertEquals(
+            "The hooks run 'shogun'. Add its folder to your PATH",
+            fix(CheckState.WARNING, InstallationFinding.Hooks(settings, HooksInstallState.INSTALLED, shogun = CommandLineToolState.INSTALLED_NOT_ON_PATH)),
+        )
+        assertEquals(
+            "The hooks run 'shogun'. Install the command from the desktop app's Preferences › Claude Code, or follow the installation guide",
+            fix(CheckState.FAILED, InstallationFinding.Hooks(settings, HooksInstallState.INSTALLED, shogun = CommandLineToolState.AVAILABLE)),
+        )
+    }
 }

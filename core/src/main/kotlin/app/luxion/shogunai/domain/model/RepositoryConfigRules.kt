@@ -58,7 +58,7 @@ object RepositoryConfigRules {
     fun isInsideWorktree(relative: String): Boolean {
         if (relative.isBlank()) return false
         val path = runCatching { Path.of(relative) }.getOrNull() ?: return false
-        if (path.isAbsolute || relative.startsWith("/") || relative.startsWith("\\")) return false
+        if (path.root != null || relative.startsWith("\\")) return false
         val normalized = path.normalize()
         return normalized.toString().isNotEmpty() && !normalized.startsWith("..")
     }

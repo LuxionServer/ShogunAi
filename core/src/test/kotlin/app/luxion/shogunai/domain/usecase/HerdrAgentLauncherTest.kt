@@ -234,4 +234,13 @@ class HerdrAgentLauncherTest {
         assertNull(launcher(focusable(), registry).focusLiveAgent("w1", folder, "main-repo-task-123")?.sessionName)
         assertNull(launcher(codex, withSession).focusLiveAgent("w1", folder, "main-repo-task-123")?.sessionName)
     }
+    @Test
+    fun `a named launch without a folder doesn't wait for the session`() = runTest {
+        val herdr = FakeHerdrClient(panes = listOf(HerdrPane("w1:p1", "w1", "/home/dev/projects/main-repo")))
+
+        val opening = HerdrAgentLauncher(herdr).launch("w1", "w1:p1", "claude", "Claude", HerdrOutcome.OPENED, sessionName = "task")
+
+        assertEquals(HerdrOpening(HerdrOutcome.OPENED, "w1:p1", "Claude"), opening)
+        assertEquals(listOf("w1:p1" to "claude -n task"), herdr.ran)
+    }
 }

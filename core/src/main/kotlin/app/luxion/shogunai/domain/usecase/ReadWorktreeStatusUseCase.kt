@@ -77,12 +77,8 @@ class ReadWorktreeStatusUseCase(
     private fun createdAt(worktree: Worktree): Instant? {
         if (worktree.isMain) return null
         val pointer = fileManager.readText("${worktree.path.trimEnd('/')}/.git") ?: return null
-        val administrativeFolder = pointer.lineSequence()
-            .firstOrNull { it.startsWith(GITDIR_PREFIX) }
-            ?.removePrefix(GITDIR_PREFIX)
-            ?.trim()
-            ?.takeIf { it.isNotEmpty() }
-            ?: return null
+        val line = pointer.lineSequence().firstOrNull { it.startsWith(GITDIR_PREFIX) } ?: return null
+        val administrativeFolder = line.removePrefix(GITDIR_PREFIX).trim().ifEmpty { return null }
         return fileManager.lastModifiedMillis("${administrativeFolder.trimEnd('/')}/commondir")
             ?.let(Instant::ofEpochMilli)
     }

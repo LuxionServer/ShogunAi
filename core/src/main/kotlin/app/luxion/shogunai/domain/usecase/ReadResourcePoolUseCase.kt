@@ -158,7 +158,7 @@ class ReadResourcePoolUseCase(
         if (normalizePath(adminDirectory) == normalizePath(commonDirectory)) {
             return normalizePath(commonDirectory).removeSuffix("/.git").takeIf { it.isNotEmpty() }
         }
-        return fileManager.readText("$adminDirectory/gitdir")?.trim()?.let(::normalizePath)?.removeSuffix("/.git")
+        return fileManager.readText("$adminDirectory/gitdir")?.let { normalizePath(it.trim()).removeSuffix("/.git") }
     }
 
     private companion object {

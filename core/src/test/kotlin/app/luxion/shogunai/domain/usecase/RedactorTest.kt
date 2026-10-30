@@ -68,4 +68,11 @@ class RedactorTest {
     fun `does not touch URLs scheme`() {
         assertTrue(redactor().redact("GET https://example.com/a failed").startsWith("GET https:"))
     }
+
+    @Test
+    fun `a root home, a short user name and short project names aren't replaced`() {
+        val redactor = Redactor(home = "/", userName = "jo", projectNames = { listOf("ab") }, branchNames = { emptyList() })
+
+        assertEquals("jo opened ab", redactor.redact("jo opened ab"))
+    }
 }

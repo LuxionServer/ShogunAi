@@ -10,6 +10,8 @@ import kotlin.io.path.createDirectories
 import kotlin.io.path.exists
 import kotlin.io.path.writeText
 import kotlin.test.AfterTest
+import app.luxion.shogunai.domain.FakeProcessHandle
+import java.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -90,5 +92,18 @@ class NioDeviceWaitQueueTest {
         process.waitFor()
 
         assertFalse(ProcessHandleLiveness().isAlive(identity))
+    }
+
+    @Test
+    fun `a process is alive while it runs and started when it says`() {
+        val liveness = ProcessHandleLiveness()
+        val started = Instant.parse("2026-01-01T00:00:00Z")
+
+        assertFalse(liveness.isAlive(FakeProcessHandle(alive = false), null))
+        assertTrue(liveness.isAlive(FakeProcessHandle(startedAt = null), started.toEpochMilli()))
+        assertTrue(liveness.isAlive(FakeProcessHandle(startedAt = started), started.toEpochMilli()))
+        assertFalse(liveness.isAlive(FakeProcessHandle(startedAt = started), started.toEpochMilli() + 1))
+        assertEquals(ProcessIdentity(42, null), liveness.identityOf(FakeProcessHandle()))
+        assertFalse(liveness.isAlive(ProcessIdentity(Long.MAX_VALUE, null)))
     }
 }

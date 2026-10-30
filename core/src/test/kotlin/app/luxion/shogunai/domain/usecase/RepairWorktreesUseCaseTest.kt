@@ -93,4 +93,26 @@ class RepairWorktreesUseCaseTest {
 
         assertIs<WorktreeError.GitCommandFailed>(error)
     }
+
+    @Test
+    fun `worktrees already under the root or without a previous root are repaired in place`() = runTest {
+        val executor = executor()
+        val fileManager = FakeFileManager(existing = listOf(config.baseRepositoryPath))
+
+        RepairWorktreesUseCase(config, executor, fileManager)(config.worktreesRoot).getOrThrow()
+        RepairWorktreesUseCase(config, executor, fileManager)(null).getOrThrow()
+
+        assertTrue(executor.executedCommands.filter { it.take(3) == listOf("git", "worktree", "repair") }.all { it.size == 3 })
+    }
+
+    @Test
+    fun `a worktree at the filesystem root has no previous root to move from`() = runTest {
+        val executor = FakeShellCommandExecutor { command ->
+            if (command == listCommand) success(command, stdout = "worktree /home/dev/moved/main-repo\nHEAD abc\n\nworktree /TASK-9\nHEAD def\n") else success(command)
+        }
+
+        RepairWorktreesUseCase(config, executor, FakeFileManager(existing = listOf(config.baseRepositoryPath)))(null).getOrThrow()
+
+        assertTrue(executor.executedCommands.filter { it.take(3) == listOf("git", "worktree", "repair") }.all { it.size == 3 })
+    }
 }

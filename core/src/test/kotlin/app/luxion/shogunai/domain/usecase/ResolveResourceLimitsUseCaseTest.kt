@@ -7,6 +7,7 @@ import app.luxion.shogunai.domain.model.ResourceKind
 import app.luxion.shogunai.domain.model.ResourceLimits
 import app.luxion.shogunai.domain.model.ResourceSettings
 import app.luxion.shogunai.domain.model.effectiveLimit
+import app.luxion.shogunai.domain.io.ResourceLimitsRepository
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -69,5 +70,17 @@ class ResolveResourceLimitsUseCaseTest {
         assertEquals(16, effectiveLimit(ResourceKind.EMULATOR, 40))
         assertEquals(3, effectiveLimit(ResourceKind.EMULATOR, 3))
         assertNull(effectiveLimit(ResourceKind.IOS_SIMULATOR, null))
+    }
+
+    @Test
+    fun `unreadable settings give the defaults`() {
+        val unreadable = object : ResourceLimitsRepository by FakeResourceLimitsRepository() {
+            override fun load(): ResourceSettings = throw IllegalStateException("unreadable")
+        }
+        val resolve = ResolveResourceLimitsUseCase(unreadable, FakeMachineCapacity(null, 8))
+
+        assertEquals(ResourceLimits.LIGHT, resolve())
+        assertEquals(ResourceSettings().leaseDuration, resolve.leaseDuration())
+        assertEquals(ResourceSettings().desktopTurnDuration, resolve.desktopTurnDuration())
     }
 }

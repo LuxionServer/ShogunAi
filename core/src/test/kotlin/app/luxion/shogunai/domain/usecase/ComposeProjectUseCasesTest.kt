@@ -6,6 +6,8 @@ import app.luxion.shogunai.domain.FakeComposeProjectSource
 import app.luxion.shogunai.domain.FakeEnvironmentStateStore
 import app.luxion.shogunai.domain.FakePortProbe
 import app.luxion.shogunai.domain.FakeRepositoryProvisioningSource
+import app.luxion.shogunai.domain.io.ComposeProjectRegistry
+import app.luxion.shogunai.domain.io.ComposeProjectSource
 import app.luxion.shogunai.domain.io.ComposeRegistryEntry
 import app.luxion.shogunai.domain.model.ComposeAction
 import app.luxion.shogunai.domain.model.ComposeResource
@@ -294,7 +296,11 @@ class ComposeProjectUseCasesTest {
     private val composeRepository = "/home/dev/projects/main-repo"
     private val taskPath = "$worktreesRoot/TASK-123"
 
-    private fun runUseCase(source: FakeComposeProjectSource, registry: FakeComposeProjectRegistry = FakeComposeProjectRegistry()): RunComposeProjectUseCase {
+    private fun runUseCase(
+        source: FakeComposeProjectSource,
+        registry: FakeComposeProjectRegistry? = FakeComposeProjectRegistry(),
+        providers: RepositoryProviders = RepositoryProviders(dockerCompose = DockerComposeProvider(listOf("DB_PORT"))),
+    ): RunComposeProjectUseCase {
         val executor = FakeShellCommandExecutor { command ->
             FakeShellCommandExecutor.success(command, "$composeRepository/.git/worktrees/TASK-123\n$composeRepository/.git\n")
         }
@@ -302,7 +308,7 @@ class ComposeProjectUseCasesTest {
             executor,
             FakeRepositoryProvisioningSource(
                 byRepository = mapOf(
-                    composeRepository to RepositoryProvisioning(providers = RepositoryProviders(dockerCompose = DockerComposeProvider(listOf("DB_PORT")))),
+                    composeRepository to RepositoryProvisioning(providers = providers),
                 ),
             ),
             FakeEnvironmentStateStore(),
@@ -411,5 +417,34 @@ class ComposeProjectUseCasesTest {
 
         assertNull(report.composeResources)
         assertEquals("daemon not reachable", report.composeUnavailable)
+    }
+    @Test
+    fun `a worktree without the compose provider runs under its own project name and without a registry`() = runTest {
+        val source = FakeComposeProjectSource()
+
+        val project = runUseCase(source, registry = null, providers = RepositoryProviders())(composeRepository, taskPath, ComposeAction.Up()).getOrThrow()
+
+        assertEquals(worktreeComposeProjectName(composeRepository, taskPath), project)
+    }
+
+    @Test
+    fun `failures without a message are reported with an empty reason`() = runTest {
+        val source = object : ComposeProjectSource by FakeComposeProjectSource() {
+            override suspend fun down(name: String, removeVolumes: Boolean): Result<Unit> = Result.failure(IllegalStateException())
+            override suspend fun remove(resource: ComposeResource): Result<Unit> = Result.failure(IllegalStateException())
+        }
+
+        assertEquals("", TakeDownComposeProjectsUseCase(source)(listOf("main-repo-task-9")).failures.single().detail)
+        assertEquals("", RemoveComposeLeftoversUseCase(source)(listOf(network), removeVolumes = false).failures.single().detail)
+    }
+
+    @Test
+    fun `an unreadable registry has no leftovers`() = runTest {
+        val registry = object : ComposeProjectRegistry by FakeComposeProjectRegistry() {
+            override fun entries(repositoryPath: String): List<ComposeRegistryEntry> = throw IllegalStateException("unreadable")
+            override fun recordedElsewhere(repositoryPath: String): Set<String> = throw IllegalStateException("unreadable")
+        }
+
+        assertEquals(emptyList(), ListComposeLeftoversUseCase(FakeComposeProjectSource(resources = listOf(volume)), registry)(repository, worktrees).getOrThrow())
     }
 }

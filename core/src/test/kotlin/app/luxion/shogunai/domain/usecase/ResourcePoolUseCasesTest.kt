@@ -1,6 +1,7 @@
 package app.luxion.shogunai.domain.usecase
 
 import app.luxion.shogunai.domain.FakeAndroidSdk
+import app.luxion.shogunai.domain.FakeAppleSimulators
 import app.luxion.shogunai.domain.FakeEnvironmentStateStore
 import app.luxion.shogunai.domain.FakeFileManager
 import app.luxion.shogunai.domain.FakeGradleDaemonSource
@@ -18,6 +19,14 @@ import app.luxion.shogunai.domain.model.ResourceKind
 import app.luxion.shogunai.domain.model.WorktreeError
 import kotlinx.coroutines.test.runTest
 import java.time.Instant
+import app.luxion.shogunai.domain.io.AndroidSdk
+import app.luxion.shogunai.domain.io.AppleSimulators
+import app.luxion.shogunai.domain.io.GradleDaemonSource
+import app.luxion.shogunai.domain.model.DaemonProcess
+import app.luxion.shogunai.domain.model.DaemonState
+import app.luxion.shogunai.domain.model.SimulatorDevice
+import app.luxion.shogunai.domain.model.SimulatorState
+import app.luxion.shogunai.domain.model.Worktree
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -388,5 +397,99 @@ class ResourcePoolUseCasesTest {
 
         assertEquals(listOf(PoolHolderState.UNKNOWN), usage.holders.map { it.state })
         assertFalse(usage.holders.single().idle)
+    }
+
+    private fun pool(
+        sdk: AndroidSdk = this.sdk,
+        simulators: AppleSimulators = harness.simulators,
+        daemons: ListGradleDaemonsUseCase? = null,
+    ) = ReadResourcePoolUseCase(harness.resolve, store, files, sdk, simulators, harness.limits, daemons, clock = { harness.now })
+
+    @Test
+    fun `an sdk that can't be read leaves every emulator stopped`() = runTest {
+        store.writePorts(admin1, mapOf("emulator" to 5554))
+        sdk.states["emulator-5554"] = EmulatorState.RUNNING
+
+        val usage = pool(sdk = FakeAndroidSdk(missing = true)).emulators(repository)
+
+        assertEquals(listOf(PoolHolderState.STOPPED), usage.holders.map { it.state })
+    }
+
+    @Test
+    fun `simulators unsupported or unreadable read as shut down and reservations without one are skipped`() = runTest {
+        store.writeResources(admin1, mapOf("ios-simulator" to "UDID-1"))
+        store.writePorts(admin2, mapOf("emulator" to 5556))
+        harness.simulators.addExisting("UDID-1", "ShogunAi · main-repo · TASK-1", SimulatorState.BOOTED)
+        val unreadable = object : AppleSimulators by FakeAppleSimulators() {
+            override suspend fun devices(): List<SimulatorDevice> = throw IllegalStateException("simctl failed")
+        }
+
+        assertEquals(listOf(PoolHolderState.SHUTDOWN), pool(simulators = FakeAppleSimulators(supported = false)).simulators(repository).holders.map { it.state })
+        assertEquals(listOf(PoolHolderState.SHUTDOWN), pool(simulators = unreadable).simulators(repository).holders.map { it.state })
+    }
+
+    @Test
+    fun `gradle daemons are none without a listing or when it fails, and untracked ones are unknown and unowned`() = runTest {
+        val failing = ListGradleDaemonsUseCase(object : GradleDaemonSource by FakeGradleDaemonSource() {
+            override suspend fun list(): List<DaemonProcess> = throw IllegalStateException("jps failed")
+        }, files)
+        harness.daemons.daemons = listOf(FakeGradleDaemonSource.gradleDaemon(1, DaemonState.Untracked, lastBuildDirectory = "/elsewhere"))
+
+        assertTrue(pool().gradleDaemons(null).holders.isEmpty())
+        assertTrue(pool(daemons = failing).gradleDaemons(null).holders.isEmpty())
+        val untracked = pool(daemons = ListGradleDaemonsUseCase(harness.daemons, files)).gradleDaemons(emptyList()).holders.single()
+        assertEquals(PoolHolderState.UNKNOWN, untracked.state)
+        assertNull(untracked.worktreePath)
+    }
+
+    @Test
+    fun `trimming within the limit stops nothing and a failing listing fails`() = runTest {
+        harness.limit(gradleDaemons = 5)
+        harness.daemons.daemons = listOf(FakeGradleDaemonSource.gradleDaemon(1, idleSince10))
+        val failing = object : GradleDaemonSource by FakeGradleDaemonSource() {
+            override suspend fun list(): List<DaemonProcess> = throw IllegalStateException("jps failed")
+        }
+
+        assertEquals(1, harness.trim(null).getOrThrow().remaining)
+        assertTrue(TrimGradleDaemonsUseCase(ListGradleDaemonsUseCase(failing, files), StopGradleDaemonsUseCase(failing, git), harness.limits)(null).isFailure)
+    }
+
+    @Test
+    fun `a gradle daemon owned by a worktree names it and kotlin daemons don't count for trimming`() = runTest {
+        harness.limit(gradleDaemons = 5)
+        harness.daemons.daemons = listOf(
+            FakeGradleDaemonSource.gradleDaemon(1, idleSince10, lastBuildDirectory = task1),
+            FakeGradleDaemonSource.kotlinDaemon(2),
+        )
+        files.writeText(task1, "")
+
+        val holder = pool(daemons = ListGradleDaemonsUseCase(harness.daemons, files)).gradleDaemons(listOf(Worktree(task1, "feature/TASK-1"))).holders.single()
+
+        assertEquals(task1, holder.worktreePath)
+        assertEquals(1, harness.trim(null).getOrThrow().remaining)
+    }
+
+    @Test
+    fun `the main checkout of a repository at the filesystem root has no worktree path`() = runTest {
+        val rootGit = object : ShellCommandExecutor {
+            override suspend fun execute(command: List<String>, workingDirectory: String?) = FakeShellCommandExecutor.success(command, "/.git\n/.git\n")
+        }
+        store.writePorts("/.git", mapOf("emulator" to 5554))
+
+        val usage = PoolHarness(rootGit, source, store, sdk, files = files).readPool.emulators("/")
+
+        assertEquals(listOf(null), usage.holders.map { it.worktreePath })
+    }
+
+    @Test
+    fun `a device never used is released before a used one whatever their order`() = runTest {
+        harness.limit(emulators = 2)
+        store.writePorts(admin1, mapOf("emulator" to 5554))
+        store.writePorts(admin2, mapOf("emulator" to 5556))
+        lastUsed(admin2, "emulator", "2026-01-01T00:00:00Z")
+
+        val acquisition = harness.acquire.emulator(repository, task3).getOrThrow()
+
+        assertEquals(listOf(task1), acquisition.releases.map { it.worktreePath })
     }
 }
