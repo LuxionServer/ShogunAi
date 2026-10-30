@@ -1005,4 +1005,15 @@ object SpanishStrings : Strings {
     override val daemonStopBlockedGradleBusy = "Los daemons de Kotlin solo se paran cuando ningún daemon de Gradle está ocupado"
     override val stopIdleBlockedStopping = "Se están parando los daemons"
     override val stopIdleBlockedNoneIdle = "Ningún daemon está inactivo"
+    override fun stopIdleAllBusy(count: Int) = if (count == 1) "Está ocupado, no está inactivo" else "Los $count están ocupados, ninguno está inactivo"
+    override fun stopIdleAllUnknown(count: Int) =
+        if (count == 1) "Su estado es desconocido, no se puede parar con seguridad" else "El estado de los $count es desconocido, ninguno se puede parar con seguridad"
+    override fun stopIdleBusyAndUnknown(busy: Int, unknown: Int) =
+        (if (busy == 1) "1 está ocupado" else "$busy están ocupados") + " y el estado de $unknown es desconocido, ninguno está inactivo"
+    override fun gradleBuildCacheOffIn(projects: Int) =
+        "La caché de build de Gradle está desactivada en $projects proyectos: añade org.gradle.caching=true a su gradle.properties para que un worktree nuevo reutilice lo que otros worktrees ya compilaron."
+    override val ownerUnknown = "desconocido"
+    override val machineOverviewTooltip = "Máquina: los daemons, dispositivos y cachés que comparten todos los worktrees"
+    override val machineOverviewNoProviders =
+        "Ningún proyecto guardado declara aún un proveedor. Declara uno en la configuración de un proyecto (Gradle, emuladores de Android, simuladores de iOS, Xcode, Maven o Docker Compose) para ver aquí sus daemons, dispositivos y cachés."
 }

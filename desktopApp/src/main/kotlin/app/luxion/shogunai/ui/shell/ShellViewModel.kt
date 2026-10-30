@@ -174,6 +174,8 @@ class ShellViewModel(
 
     fun selectAll() = requestLeave { select(ShellDestination.All()) }
 
+    fun selectMachineOverview() = requestLeave { select(ShellDestination.MachineOverview) }
+
     fun selectMachine(resource: MachineResource) = requestLeave { select(ShellDestination.Machine(resource)) }
 
     fun selectMultirepo(folder: String, group: String? = null) = requestLeave { select(ShellDestination.MultirepoView(folder, group)) }

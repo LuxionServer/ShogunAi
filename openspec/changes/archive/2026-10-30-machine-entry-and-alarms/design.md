@@ -23,7 +23,7 @@ The desktop app's lines outside composables have a coverage floor, so the decisi
 ## Decisions
 
 ### A Machine overview destination
-`ShellDestination.MachineOverview` is a new data object with its own storage key (`machine`), so it's restored like any view. Its content is a `MachineOverviewView` that reuses `machineStatusItems` for the rows (icon, full name, figure, tooltip text as summary), so the overview and the bar can never disagree. The overview lists the desktop turn always: `MachineResources.overviewResources` is `visibleResources` plus `DESKTOP_TURN`. When `declared` is empty it adds an explanatory text below the Desktop row.
+`ShellDestination.MachineOverview` is a new data object with its own storage key (`machine`), so it's restored like any view. Its content is a `MachineOverviewView` that reuses `machineStatusItems` for the rows (icon, full name, figure, tooltip text as summary), so the overview and the bar can never disagree. The overview lists the desktop turn always: `MachineResources.overviewResources` is `visibleResources` plus `DESKTOP_TURN`, and `overviewSummaries` always holds the desktop turn's summary, while `summaries` keeps leaving it out when the turn is free so the bar and the summary refresh behave as before. When `declared` is empty it adds an explanatory text below the Desktop row.
 
 Alternatives: making `Machine(resource)` nullable ripples through every `when` on the destination and the palette; opening the first visible resource (or Desktop) when "Machine" is clicked gives no place to explain what Machine is when nothing is declared.
 

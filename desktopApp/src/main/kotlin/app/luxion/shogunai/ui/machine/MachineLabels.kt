@@ -53,7 +53,7 @@ fun MachineSummary.text(resource: MachineResource, strings: Strings): String {
         MachineResource.IOS_SIMULATORS -> strings.bootedCount(count)
         MachineResource.MAVEN_DAEMONS -> "$count · ${formatSize(bytes ?: 0)}"
         MachineResource.COMPOSE_PROJECTS -> strings.composeProjectsSummary(count)
-        MachineResource.DESKTOP_TURN -> strings.desktopTurnSummary(holder, count)
+        MachineResource.DESKTOP_TURN -> if (holder == null && count == 0) strings.desktopTurnFree else strings.desktopTurnSummary(holder, count)
         MachineResource.XCODE_DERIVED_DATA -> when {
             calculating -> "$count · ${strings.calculating}"
             quotaBytes != null -> strings.derivedDataQuotaUsage(formatSize(bytes ?: 0), formatSize(quotaBytes), quotaAutomatic)
