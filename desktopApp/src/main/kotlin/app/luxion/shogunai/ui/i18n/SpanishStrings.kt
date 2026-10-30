@@ -173,7 +173,7 @@ object SpanishStrings : Strings {
     override val startFromLabel = "Partir de"
     override fun startFromMainBranch(ref: String) = "$ref (rama principal)"
     override fun startFromCurrentBranch(branch: String?) =
-        if (branch != null) "Rama actual del repositorio ($branch)" else "Commit actual del repositorio"
+        if (branch != null) "Rama actual del repositorio ($branch) · igual que shogun new" else "Commit actual del repositorio · igual que shogun new"
     override fun remoteBranchLabel(branch: String) = "$branch (remota)"
     override val fetchFirstLabel = "Hacer fetch de origin antes"
     override val createWithoutFetching = "Crear sin hacer fetch"
