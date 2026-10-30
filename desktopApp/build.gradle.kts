@@ -163,7 +163,7 @@ kover {
                 minBound(83, CoverageUnit.LINE)
             }
             rule("desktop app branches") {
-                minBound(66, CoverageUnit.BRANCH)
+                minBound(67, CoverageUnit.BRANCH)
             }
         }
     }
