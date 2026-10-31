@@ -328,6 +328,16 @@ sealed class WorktreeError(override val message: String, cause: Throwable? = nul
             if (errorOutput.isNotBlank()) ":\n$errorOutput" else "",
     )
 
+    class WorktreeLocked(
+        val path: String,
+        val reason: String?,
+        val command: List<String>,
+        val exitCode: Int,
+        val errorOutput: String,
+    ) : WorktreeError(
+        "$path is locked" + (if (reason != null) " ($reason)" else "") + "; remove it forcing it to override the lock",
+    )
+
     class BaseBranchNotFound(val repository: String) :
         WorktreeError("Couldn't resolve the base branch of $repository; set the project's main branch")
 

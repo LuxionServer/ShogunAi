@@ -87,6 +87,7 @@ Each production change, the branch it removes and why no input reaches it. None 
 - `copySecretsOrRollback` rolls back on any `WorktreeError` from `applyProvisionedFiles`, which only throws `SecretCopyFailed` or `LinkedFolderOccupied`; the type test before the rollback could never let another error through.
 - `TmuxTerminalLauncher` picks the most recently attached session and then reads its name, instead of `maxByOrNull { … }?.second ?: throw`, whose elvis tested a name that is never `null`.
 - `ProcessMavenDaemonSource` maps the last state line with an `if` instead of `?.let { … } ?: DaemonState.Busy`.
+- Code that `develop` brought in while this change was open had the same shapes: `WorktreeError.WorktreeLocked`'s message and `lockReason` (from `fix/locked-worktree-removal`), `WorktreeStatus.hasUnpushedCommits` and the inactivity check (from `attention-model`), and `InstallationReportText`'s provider tool fix (from `doctor-provider-checks`) are rewritten the same way when merging, with tests for each outcome.
 
 - `TrimDerivedDataUseCase` only plans orphaned or worktree folders, so it checks a candidate as a worktree folder or else as an orphan, and `isInUse` takes the worktree owner instead of casting it again. `WorktreeFolderRemoval` only closes Orca terminals of a worktree that has them, which needs the Orca use case, so it reads both through one `takeIf`. `SharedEnvironment` resolves the alias of a repository the multirepo declares (`first` instead of `firstOrNull`) and, when the declaration is invalid, it has an `env` block (`!!`).
 

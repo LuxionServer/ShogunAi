@@ -16,6 +16,7 @@ class SystemHostEnvironment(
     override val home: String,
     private val loginShell: ShellCommandExecutor?,
     private val timeout: Duration = 5.seconds,
+    override val userBinFolders: List<String> = ToolCatalog.userBinFolders(os, home),
 ) : HostEnvironment {
 
     override val shell: String? = variable("SHELL")?.takeIf { it.isNotBlank() }
@@ -28,7 +29,7 @@ class SystemHostEnvironment(
     private fun resolve(): HostPath {
         val processFolders = split(variable("PATH"))
         if (os == HostOs.WINDOWS) return HostPath(processFolders, HostPathSource.PROCESS)
-        val withUsualFolders = (processFolders + ToolCatalog.userBinFolders(os, home)).distinct()
+        val withUsualFolders = (processFolders + userBinFolders).distinct()
         val executor = loginShell ?: return HostPath(withUsualFolders, HostPathSource.PROCESS)
         val loginFolders = readLoginShell(executor)
         if (loginFolders.isEmpty()) return HostPath(withUsualFolders, HostPathSource.FALLBACK)

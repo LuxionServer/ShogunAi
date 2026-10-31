@@ -2,6 +2,8 @@ package app.luxion.shogunai.ui.worktree
 
 import app.luxion.shogunai.domain.model.Divergence
 import app.luxion.shogunai.domain.model.EMULATOR_PORT_KEY
+import app.luxion.shogunai.domain.model.ProvisionDrift
+import app.luxion.shogunai.domain.model.ProvisionDriftState
 import app.luxion.shogunai.domain.model.RunningAgent
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.WorktreeEnvironment
@@ -15,6 +17,7 @@ import app.luxion.shogunai.ui.worktree.inspector.environmentSectionState
 import app.luxion.shogunai.ui.worktree.inspector.environmentSummary
 import app.luxion.shogunai.ui.worktree.inspector.provisioningSectionState
 import app.luxion.shogunai.ui.worktree.inspector.resourcesSectionState
+import app.luxion.shogunai.ui.worktree.inspector.runsWithLabel
 import app.luxion.shogunai.ui.worktree.inspector.statusProperties
 import app.luxion.shogunai.ui.worktree.inspector.statusSectionState
 import app.luxion.shogunai.ui.worktree.inspector.statusSummary
@@ -90,20 +93,59 @@ class InspectorModelsTest {
         assertNull(statusSummary(status.copy(uncommittedChanges = 0, upstream = Divergence(0, 0)), EnglishStrings))
     }
 
+    private val runsWith = runsWithLabel("Claude Code", "Herdr")
+
+    @Test
+    fun `provisioning is drawn only when a file is stale or the check failed`() {
+        val stale = ProvisioningState.Checked(listOf(ProvisionDrift(".env", ProvisionDriftState.DIFFERS)))
+
+        assertEquals(SectionState.NotApplicable, provisioningSectionState(worktree, ProvisioningState.Checking, EnglishStrings))
+        assertEquals(SectionState.NotApplicable, provisioningSectionState(worktree, ProvisioningState.Checked(emptyList()), EnglishStrings))
+        assertEquals(SectionState.Content, provisioningSectionState(worktree, stale, EnglishStrings))
+        assertEquals(
+            SectionState.Empty(EnglishStrings.provisioningUnavailable),
+            provisioningSectionState(worktree, ProvisioningState.Unavailable, EnglishStrings),
+        )
+        assertEquals(SectionState.NotApplicable, provisioningSectionState(worktree.copy(isPrunable = true), stale, EnglishStrings))
+    }
+
+    @Test
+    fun `runs with names the agent and the runner`() {
+        assertEquals("Claude Code · Herdr", runsWith)
+    }
+
+    @Test
+    fun `a branch with commits of its own and no upstream says it isn't pushed`() {
+        val unpushed = WorktreeStatus(0, null, Divergence(3, 0), now.minus(Duration.ofHours(1)))
+
+        assertEquals(Property("Upstream", "not pushed", isData = false), statusProperties(unpushed, "develop", now, EnglishStrings)[1])
+        assertEquals("not pushed", statusSummary(unpushed, EnglishStrings))
+    }
+
+    @Test
+    fun `a new branch without upstream has no upstream property`() {
+        val fresh = WorktreeStatus(0, null, Divergence(0, 0), now.minus(Duration.ofHours(1)))
+
+        assertEquals(listOf("Changes", "vs develop"), statusProperties(fresh, "develop", now, EnglishStrings).map { it.key }.take(2))
+    }
+
     @Test
     fun `section states distinguish loading, empty and not applicable`() {
         assertEquals(SectionState.Loading, statusSectionState(null, EnglishStrings))
         assertEquals(SectionState.Empty("Status unavailable"), statusSectionState(WorktreeStatusState.Unavailable, EnglishStrings))
         assertEquals(SectionState.Content, statusSectionState(WorktreeStatusState.Loaded(status), EnglishStrings))
-        assertEquals(SectionState.Loading, agentSectionState(null, worktree, EnglishStrings))
-        assertEquals(SectionState.Empty("No agent running"), agentSectionState(emptyMap(), worktree, EnglishStrings))
+        assertEquals(SectionState.Loading, agentSectionState(null, worktree, runsWith, EnglishStrings))
+        assertEquals(
+            SectionState.Empty("No agent running · runs with Claude Code · Herdr"),
+            agentSectionState(emptyMap(), worktree, runsWith, EnglishStrings),
+        )
         assertEquals(
             SectionState.Content,
-            agentSectionState(mapOf(worktree.path to listOf(RunningAgent("claude"))), worktree, EnglishStrings),
+            agentSectionState(mapOf(worktree.path to listOf(RunningAgent("claude"))), worktree, runsWith, EnglishStrings),
         )
         assertEquals(SectionState.NotApplicable, environmentSectionState(null, emptyMap()))
         assertEquals(SectionState.NotApplicable, provisioningSectionState(worktree.copy(isMain = true), null, EnglishStrings))
-        assertEquals(SectionState.Loading, provisioningSectionState(worktree, null, EnglishStrings))
+        assertEquals(SectionState.NotApplicable, provisioningSectionState(worktree, null, EnglishStrings))
         assertEquals(SectionState.Loading, resourcesSectionState(applies = false, size = null, worktree = worktree))
         assertEquals(SectionState.NotApplicable, resourcesSectionState(false, null, worktree.copy(isPrunable = true)))
         assertEquals(SectionState.Content, resourcesSectionState(false, 1024L, worktree))

@@ -34,6 +34,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
@@ -44,16 +45,30 @@ import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.snapshotFlow
+import kotlinx.coroutines.flow.filter
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.isAltPressed
+import androidx.compose.ui.input.key.isShiftPressed
+import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.isMetaPressed
+import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -83,6 +98,7 @@ fun WorktreeListPane(
 ) {
     val listState = rememberLazyListState()
     val items = listItems(board)
+    KeepTopInView(listState, items.firstOrNull()?.key)
     LaunchedEffect(board.selected) {
         val selected = board.selected ?: return@LaunchedEffect
         val index = items.indexOfFirst {
@@ -105,6 +121,7 @@ fun WorktreeListPane(
                             board.selectPrevious()
                             true
                         }
+                        Key.Enter, Key.NumPadEnter -> !event.hasModifiers() && board.focusSelectedAgent()
                         else -> false
                     }
                 } else {
@@ -113,6 +130,8 @@ fun WorktreeListPane(
             },
     ) {
         val compact = maxWidth < CompactListWidth
+        val strings = LocalStrings.current
+        val showExecution = usesExecution(items, board, Instant.now(), strings)
         val aliasWidth = aliasColumnWidth(
             items.mapNotNull { item ->
                 when (item) {
@@ -145,6 +164,8 @@ fun WorktreeListPane(
                             { board.openCleanup() },
                             board.inactivity.days,
                             board.cleanUpBlock()?.describe(LocalStrings.current),
+                            collapsed = item.group.collapsed,
+                            onToggle = { board.toggleStateCollapsed(item.group.kind) },
                         )
                     }
                     is ListItem.StateRow -> item(key = item.key) {
@@ -153,6 +174,7 @@ fun WorktreeListPane(
                             board, entry.project, entry.holder, entry.worktree,
                             projectName = entry.project.name.takeIf { board.shownProjects.size > 1 && !board.isMultirepoView },
                             compact = compact,
+                            showExecution = showExecution,
                             alias = board.aliasOf(entry.project.id),
                             aliasWidth = aliasWidth,
                             onOpenGroup = onOpenGroup,
@@ -167,14 +189,14 @@ fun WorktreeListPane(
                     }
                     is ListItem.ChangeRow -> item(key = item.key) {
                         val entry = item.aliased.entry
-                        WorktreeRowFor(board, entry.project, entry.holder, entry.worktree, projectName = null, compact = compact, alias = item.aliased.alias, aliasWidth = aliasWidth)
+                        WorktreeRowFor(board, entry.project, entry.holder, entry.worktree, projectName = null, compact = compact, showExecution = showExecution, alias = item.aliased.alias, aliasWidth = aliasWidth)
                         HorizontalDivider()
                     }
                     is ListItem.GroupState -> item(key = item.key) {
                         GroupState(item.group.holder, item.group.project.id, projectName = item.group.project.name.takeIf { item.showsProjectName })
                     }
                     is ListItem.WorktreeItem -> item(key = item.key) {
-                        WorktreeRowFor(board, item.group.project, item.group.holder, item.worktree, projectName = null, compact = compact, onOpenGroup = onOpenGroup)
+                        WorktreeRowFor(board, item.group.project, item.group.holder, item.worktree, projectName = null, compact = compact, showExecution = showExecution, onOpenGroup = onOpenGroup)
                         HorizontalDivider()
                     }
                 }
@@ -184,6 +206,17 @@ fun WorktreeListPane(
 }
 
 private val CompactListWidth = 760.dp
+
+@Composable
+internal fun KeepTopInView(listState: LazyListState, firstKey: Any?) {
+    var pinnedToTop by remember { mutableStateOf(true) }
+    LaunchedEffect(listState) {
+        snapshotFlow { listState.isScrollInProgress }.filter { !it }.collect { pinnedToTop = !listState.canScrollBackward }
+    }
+    LaunchedEffect(firstKey) {
+        if (pinnedToTop) listState.scrollToItem(0)
+    }
+}
 
 private suspend fun LazyListState.bringIntoViewBelowHeader(index: Int) {
     repeat(2) {
@@ -251,6 +284,28 @@ internal sealed interface ListItem {
     }
 }
 
+internal fun usesExecution(items: List<ListItem>, board: WorktreeBoard, now: Instant, strings: Strings): Boolean =
+    items.mapNotNull { it.rowEntry() }.any { (holder, worktree) -> !executionCellOf(board, holder, worktree, now, strings).isEmpty }
+
+private fun ListItem.rowEntry(): Pair<ProjectWorktrees, Worktree>? = when (this) {
+    is ListItem.StateRow -> entry.holder to entry.worktree
+    is ListItem.ChangeRow -> aliased.entry.holder to aliased.entry.worktree
+    is ListItem.WorktreeItem -> group.holder to worktree
+    else -> null
+}
+
+private fun executionCellOf(board: WorktreeBoard, holder: ProjectWorktrees, worktree: Worktree, now: Instant, strings: Strings): ExecutionCell =
+    executionCell(
+        agents = holder.agents.orEmpty()[worktree.path].orEmpty(),
+        agentsReadAt = holder.agentsReadAt,
+        now = now,
+        desktopTurn = board.desktopTurn.rowTurn(worktree.path),
+        emulator = holder.emulators[worktree.path]?.takeIf { holder.isEmulatorRepository },
+        simulator = holder.simulators[worktree.path]?.takeIf { holder.isSimulatorRepository },
+        headlessApp = holder.headlessApps[worktree.path]?.takeIf { holder.isHeadlessAppRepository },
+        strings = strings,
+    )
+
 internal fun listItems(board: WorktreeBoard): List<ListItem> = when {
     board.isGroupedByChange -> changeListItems(board)
     board.isGroupedByState -> stateListItems(board)
@@ -280,7 +335,7 @@ private fun stateListItems(board: WorktreeBoard): List<ListItem> {
         ListItem.GroupState(WorktreeGroup(project, holder, emptyList(), collapsed = false), showsProjectName = true)
     }
     return notices + board.stateGroups.flatMap { group ->
-        listOf<ListItem>(ListItem.StateHeader(group)) + group.items.map { ListItem.StateRow(group, it) }
+        listOf<ListItem>(ListItem.StateHeader(group)) + if (group.collapsed) emptyList() else group.items.map { ListItem.StateRow(group, it) }
     }
 }
 
@@ -341,7 +396,7 @@ private fun ProjectGroupHeader(
             )
             Text(
                 strings.worktreeCount(if (board.isActiveView) group.worktrees.size else holder.worktrees.size),
-                style = ShogunTheme.typography.dataSmall,
+                style = ShogunTheme.typography.figures,
                 color = colors.onSurfaceVariant,
                 maxLines = 1,
             )
@@ -433,17 +488,28 @@ internal fun StateGroupHeader(
     onCleanUp: () -> Unit,
     inactiveDays: Int = DEFAULT_INACTIVE_AFTER_DAYS,
     cleanUpBlockedReason: String? = null,
+    collapsed: Boolean = false,
+    onToggle: () -> Unit = {},
 ) {
     val strings = LocalStrings.current
     val colors = MaterialTheme.colorScheme
+    val waiting = kind == StateGroupKind.WAITING_FOR_YOU
+    val titleColor = if (waiting) ShogunTheme.status.of(Status.WARNING).color else Color.Unspecified
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .background(colors.surfaceContainer)
-            .padding(horizontal = Spacing.md, vertical = Spacing.xs),
+            .interactive(onClick = onToggle)
+            .padding(horizontal = Spacing.sm, vertical = Spacing.xs),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
     ) {
+        IconAction(
+            icon = if (collapsed) Icons.Default.ChevronRight else Icons.Default.ExpandMore,
+            label = if (collapsed) strings.expand else strings.collapse,
+            onClick = onToggle,
+            tint = colors.onSurfaceVariant,
+        )
         Row(
             modifier = Modifier.weight(1f),
             verticalAlignment = Alignment.CenterVertically,
@@ -454,7 +520,15 @@ internal fun StateGroupHeader(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
                 ) {
-                    GroupTitle(kind.label(strings))
+                    if (waiting) {
+                        Icon(
+                            StateBadgeKind.WAITING_FOR_YOU.icon(),
+                            contentDescription = null,
+                            tint = titleColor,
+                            modifier = Modifier.size(StateHeaderIconSize).testTag(WaitingHeaderIconTag),
+                        )
+                    }
+                    GroupTitle(kind.label(strings), color = titleColor)
                     Text(
                         kind.hint(strings, inactiveDays),
                         style = MaterialTheme.typography.bodySmall,
@@ -465,7 +539,7 @@ internal fun StateGroupHeader(
                     )
                 }
             }
-            Text(strings.worktreeCount(count), style = ShogunTheme.typography.dataSmall, color = colors.onSurfaceVariant, maxLines = 1)
+            Text(strings.worktreeCount(count), style = ShogunTheme.typography.figures, color = colors.onSurfaceVariant, maxLines = 1)
         }
         if (kind == StateGroupKind.MERGED) {
             DisabledReason(cleanUpBlockedReason.takeUnless { canCleanUp }) {
@@ -478,9 +552,14 @@ internal fun StateGroupHeader(
     }
 }
 
+private val StateHeaderIconSize = 16.dp
+
+internal const val WaitingHeaderIconTag = "waiting-header-icon"
+
 internal fun StateGroupKind.hint(strings: Strings, inactiveDays: Int = DEFAULT_INACTIVE_AFTER_DAYS): String = when (this) {
     StateGroupKind.AGENT_WORKING -> strings.groupAgentWorkingHint
-    StateGroupKind.NEEDS_YOU -> strings.groupNeedsYouHint
+    StateGroupKind.WAITING_FOR_YOU -> strings.groupWaitingForYouHint
+    StateGroupKind.UNFINISHED -> strings.groupUnfinishedHint
     StateGroupKind.NEW -> strings.groupNewHint
     StateGroupKind.STOPPED -> strings.groupStoppedHint
     StateGroupKind.MERGED -> strings.groupMergedHint
@@ -491,7 +570,8 @@ internal fun StateGroupKind.hint(strings: Strings, inactiveDays: Int = DEFAULT_I
 
 internal fun StateGroupKind.criterion(strings: Strings, inactiveDays: Int = DEFAULT_INACTIVE_AFTER_DAYS): String = when (this) {
     StateGroupKind.AGENT_WORKING -> strings.groupAgentWorkingCriterion
-    StateGroupKind.NEEDS_YOU -> strings.groupNeedsYouCriterion
+    StateGroupKind.WAITING_FOR_YOU -> strings.groupWaitingForYouCriterion
+    StateGroupKind.UNFINISHED -> strings.groupUnfinishedCriterion
     StateGroupKind.NEW -> strings.groupNewCriterion
     StateGroupKind.STOPPED -> strings.groupStoppedCriterion
     StateGroupKind.MERGED -> strings.groupMergedCriterion
@@ -502,7 +582,8 @@ internal fun StateGroupKind.criterion(strings: Strings, inactiveDays: Int = DEFA
 
 internal fun StateGroupKind.label(strings: Strings): String = when (this) {
     StateGroupKind.AGENT_WORKING -> strings.groupAgentWorking
-    StateGroupKind.NEEDS_YOU -> strings.groupNeedsYou
+    StateGroupKind.WAITING_FOR_YOU -> strings.groupWaitingForYou
+    StateGroupKind.UNFINISHED -> strings.groupUnfinished
     StateGroupKind.NEW -> strings.groupNew
     StateGroupKind.STOPPED -> strings.groupStopped
     StateGroupKind.MERGED -> strings.groupMerged
@@ -519,6 +600,7 @@ private fun WorktreeRowFor(
     worktree: Worktree,
     projectName: String?,
     compact: Boolean,
+    showExecution: Boolean,
     alias: String? = null,
     aliasWidth: Dp = DefaultAliasColumnWidth,
     onOpenGroup: (GroupTag) -> Unit = {},
@@ -548,11 +630,16 @@ private fun WorktreeRowFor(
         selected = board.selected == ref,
         isCopied = holder.copiedWorktreePath == worktree.path,
         compact = compact,
+        showExecution = showExecution,
         aliasWidth = aliasWidth,
         onSelect = { board.select(ref) },
         onCopyLaunchCommand = { holder.copyLaunchCommand(worktree) },
         contextMenu = worktreeContextMenu(holder, worktree),
         onOpenGroupTag = { groupTag?.let(onOpenGroup) },
+        onFocusAgent = {
+            board.select(ref)
+            holder.focusAgent(worktree)
+        },
     )
 }
 
@@ -666,6 +753,8 @@ private fun UngroupedHeader(count: Int) {
         horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
     ) {
         GroupTitle(strings.ungrouped, modifier = Modifier.weight(1f))
-        Text(strings.worktreeCount(count), style = ShogunTheme.typography.dataSmall, color = colors.onSurfaceVariant)
+        Text(strings.worktreeCount(count), style = ShogunTheme.typography.figures, color = colors.onSurfaceVariant)
     }
 }
+
+private fun KeyEvent.hasModifiers(): Boolean = isMetaPressed || isCtrlPressed || isShiftPressed || isAltPressed

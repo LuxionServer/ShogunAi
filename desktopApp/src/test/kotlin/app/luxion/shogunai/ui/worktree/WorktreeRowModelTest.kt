@@ -82,7 +82,11 @@ class WorktreeRowModelTest {
     fun `the badge follows the worktree's state`() {
         fun kind(model: WorktreeRowModel) = model.badge.kind
 
-        assertEquals(StateBadgeKind.NEEDS_YOU, kind(model(status = WorktreeStatusState.Loaded(status(changes = 3)))))
+        assertEquals(StateBadgeKind.UNFINISHED, kind(model(status = WorktreeStatusState.Loaded(status(changes = 3)))))
+        assertEquals(
+            StateBadgeKind.WAITING_FOR_YOU,
+            kind(model(status = WorktreeStatusState.Loaded(status(changes = 3)), agents = listOf(RunningAgent("claude", AgentState.DONE)))),
+        )
         assertEquals(
             StateBadgeKind.AGENT_WORKING,
             kind(model(status = WorktreeStatusState.Loaded(status(changes = 3)), agents = listOf(RunningAgent("claude", AgentState.WORKING)))),
@@ -227,14 +231,48 @@ class WorktreeRowModelTest {
     }
 
     @Test
-    fun `the git cell shows changes above and divergence below naming the main branch`() {
-        val git = model(status = WorktreeStatusState.Loaded(status(changes = 3, mainBranch = Divergence(2, 1)))).git
+    fun `the git cell shows changes above and the upstream divergence below`() {
+        val git = model(status = WorktreeStatusState.Loaded(status(changes = 3, upstream = Divergence(2, 1), mainBranch = Divergence(4, 1)))).git
 
         assertEquals(GitCellState.READY, git.state)
         assertEquals("✎ 3", git.changes)
         assertEquals("3 changes", git.changesTooltip)
         assertEquals("↑2 ↓1", git.secondLine)
-        assertEquals("↑2 ↓1 main", git.secondLineTooltip)
+        assertEquals("2 commits not pushed · 1 commit not pulled", git.secondLineTooltip)
+        assertFalse(git.notPushed)
+    }
+
+    @Test
+    fun `a pushed branch ahead of the main branch has an empty second line`() {
+        val git = model(status = WorktreeStatusState.Loaded(status(mainBranch = Divergence(4, 1)))).git
+
+        assertNull(git.secondLine)
+        assertNull(git.secondLineTooltip)
+        assertFalse(git.notPushed)
+    }
+
+    @Test
+    fun `a branch with commits of its own and no upstream is not pushed`() {
+        val git = model(status = WorktreeStatusState.Loaded(status(upstream = null, mainBranch = Divergence(2, 0)))).git
+
+        assertNull(git.secondLine)
+        assertTrue(git.notPushed)
+    }
+
+    @Test
+    fun `a new branch without upstream has nothing to push`() {
+        val git = model(status = WorktreeStatusState.Loaded(status(upstream = null, mainBranch = Divergence(0, 0)))).git
+
+        assertNull(git.secondLine)
+        assertFalse(git.notPushed)
+    }
+
+    @Test
+    fun `a merged branch without upstream shows merged and not the not pushed icon`() {
+        val git = model(status = WorktreeStatusState.Loaded(status(upstream = null, mainBranch = Divergence(0, 3)))).git
+
+        assertEquals("merged", git.secondLine)
+        assertFalse(git.notPushed)
     }
 
     @Test
@@ -251,12 +289,12 @@ class WorktreeRowModelTest {
     }
 
     @Test
-    fun `the git cell compares with the recorded base and names it`() {
+    fun `the git cell doesn't compare with the recorded base`() {
         val loaded = status(mainBranch = Divergence(9, 0)).copy(base = Divergence(2, 0), baseName = "epic/redesign")
         val git = model(status = WorktreeStatusState.Loaded(loaded)).git
 
-        assertEquals("↑2", git.secondLine)
-        assertEquals("↑2 epic/redesign", git.secondLineTooltip)
+        assertNull(git.secondLine)
+        assertNull(git.secondLineTooltip)
     }
 
     @Test
@@ -277,10 +315,12 @@ class WorktreeRowModelTest {
     }
 
     @Test
-    fun `a branch that never had commits is not shown as merged`() {
-        val loaded = status(mainBranch = Divergence(0, 5)).copy(neverCommitted = true)
+    fun `a branch that never had commits is not shown as merged or as not pushed`() {
+        val loaded = status(upstream = null, mainBranch = Divergence(0, 5)).copy(neverCommitted = true)
+        val git = model(status = WorktreeStatusState.Loaded(loaded)).git
 
-        assertEquals("↓5", model(status = WorktreeStatusState.Loaded(loaded)).git.secondLine)
+        assertNull(git.secondLine)
+        assertFalse(git.notPushed)
     }
 
     @Test
@@ -325,12 +365,45 @@ class WorktreeRowModelTest {
     }
 
     @Test
-    fun `the time cell marks the main and locked worktrees`() {
+    fun `the time cell says when a worktree is locked and no longer writes main`() {
         val main = worktree(path = "/home/dev/projects/main-repo", branch = "main", isMain = true, isLocked = true)
 
-        assertEquals(listOf("main", "locked"), model(worktree = main, origin = null).time.marks)
-        assertEquals(emptyList(), model().time.marks)
+        assertTrue(model(worktree = main, origin = null).time.isLocked)
+        assertFalse(model().time.isLocked)
         assertFalse(model().isFolderMissing)
+    }
+
+    @Test
+    fun `the main checkout shows its branch with the main mark and no folder`() {
+        val main = worktree(path = "/home/dev/projects/main-repo", branch = "develop", isMain = true)
+        val name = model(worktree = main, origin = null, projectName = "main-repo").name
+
+        assertTrue(name.isMain)
+        assertEquals("develop", name.branch)
+        assertNull(name.folder)
+        assertEquals("main-repo", name.project)
+        assertFalse(model().name.isMain)
+    }
+
+    @Test
+    fun `the type prefix of a branch is split from the rest`() {
+        assertEquals(BranchParts("feature/", "TASK-123"), branchParts("feature/TASK-123"))
+        assertEquals(BranchParts("epic/feature/", "TASK-7"), branchParts("epic/feature/TASK-7"))
+        assertEquals(BranchParts(null, "develop"), branchParts("develop"))
+        assertEquals(BranchParts(null, "/develop"), branchParts("/develop"))
+        assertEquals(BranchParts(null, "feature/"), branchParts("feature/"))
+        assertEquals(BranchParts("feature/", "TASK-123"), model().name.branchParts)
+    }
+
+    @Test
+    fun `an execution cell is empty without agents, devices, desktop turn or headless app`() {
+        val empty = executionCell(emptyList(), null, now, null, null, null, null, EnglishStrings)
+        val withAgent = executionCell(listOf(RunningAgent("claude")), null, now, null, null, null, null, EnglishStrings)
+        val holding = executionCell(emptyList(), null, now, WorktreeDesktopTurn.Waiting(2), null, null, null, EnglishStrings)
+
+        assertTrue(empty.isEmpty)
+        assertFalse(withAgent.isEmpty)
+        assertFalse(holding.isEmpty)
     }
 
     @Test

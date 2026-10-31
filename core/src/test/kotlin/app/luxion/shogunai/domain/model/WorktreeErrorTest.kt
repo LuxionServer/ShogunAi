@@ -113,4 +113,18 @@ class WorktreeErrorTest {
         assertTrue(WorktreeError.DesktopTurnTaken(turn, waiting = 1).summary.endsWith("; 1 worktree is waiting for it"))
         assertTrue(WorktreeError.DesktopTurnTaken(turn).summary.startsWith("The desktop is taken by "))
     }
+
+    @Test
+    fun `a locked worktree names its lock reason when there is one`() {
+        val command = listOf("git", "worktree", "remove", "/w/TASK-1")
+
+        assertEquals(
+            "/w/TASK-1 is locked (on a USB drive); remove it forcing it to override the lock",
+            WorktreeError.WorktreeLocked("/w/TASK-1", "on a USB drive", command, 128, "locked").message,
+        )
+        assertEquals(
+            "/w/TASK-1 is locked; remove it forcing it to override the lock",
+            WorktreeError.WorktreeLocked("/w/TASK-1", null, command, 128, "locked").message,
+        )
+    }
 }

@@ -92,6 +92,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.io.FileManager
+import app.luxion.shogunai.domain.io.HostEnvironment
 import app.luxion.shogunai.ui.worktree.DialogRepositoryApproval
 import app.luxion.shogunai.domain.io.LanguagePreferenceRepository
 import app.luxion.shogunai.domain.io.ProjectRepository
@@ -192,6 +193,8 @@ import app.luxion.shogunai.domain.usecase.DetectRunningAgentsUseCase
 import app.luxion.shogunai.domain.io.DiagnosticsLog
 import app.luxion.shogunai.domain.usecase.DerivedDataMeasure
 import app.luxion.shogunai.domain.usecase.CheckInstallationUseCase
+import app.luxion.shogunai.domain.usecase.CheckMultireposUseCase
+import app.luxion.shogunai.domain.usecase.CheckProviderToolsUseCase
 import app.luxion.shogunai.ui.shell.InstallationCheckState
 import app.luxion.shogunai.domain.usecase.DiagnosticReport
 import app.luxion.shogunai.domain.usecase.Redactor
@@ -229,6 +232,8 @@ import app.luxion.shogunai.domain.usecase.RegisterProjectUseCase
 import app.luxion.shogunai.domain.usecase.ResolveRepositoryUseCase
 import app.luxion.shogunai.domain.usecase.ResolveStartPointUseCase
 import app.luxion.shogunai.domain.usecase.ResolveBaseBranchUseCase
+import app.luxion.shogunai.ui.isMacOs
+import app.luxion.shogunai.ui.projectconfig.ProjectConfigViewModel
 import app.luxion.shogunai.ui.projectconfig.RepositoryInspection
 import app.luxion.shogunai.domain.usecase.ResolveWorktreeEnvironmentUseCase
 import app.luxion.shogunai.domain.usecase.WorktreeEnvironmentCache
@@ -275,12 +280,15 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 
-class AppContainer {
-    private val hostEnvironment = SystemHostEnvironment.forDesktopApp().also { environment ->
-        Thread({ environment.path }, "host-environment-path").apply { isDaemon = true }.start()
+class AppContainer(private val hostEnvironment: HostEnvironment = SystemHostEnvironment.forDesktopApp()) {
+    init {
+        Thread({ hostEnvironment.path }, "host-environment-path").apply { isDaemon = true }.start()
     }
+
     val files = ShogunFiles(hostEnvironment.home)
     val projectRepository: ProjectRepository = JsonProjectRepository(files.projects)
+
+    fun projectCatalogModifiedAt(): Long? = fileManager.lastModifiedMillis(files.projects.toString())
     var loadedBranches: () -> Collection<String> = { emptyList() }
     private val redactor = Redactor(
         home = hostEnvironment.home,
@@ -478,20 +486,24 @@ class AppContainer {
     private val herdrConfig = HerdrConfigFile(hostEnvironment::variable, hostEnvironment.home)
     private val herdrClient = CliHerdrClient(shellCommandExecutor, locator::find)
     private val orcaClient = CliOrcaClient(shellCommandExecutor, locator::find)
-    val checkInstallation = CheckInstallationUseCase(
-        executor = shellCommandExecutor,
-        findExecutable = locator::find,
-        path = { hostEnvironment.path },
-        shell = hostEnvironment.shell,
-        commandLineTool = commandLineTool::status,
-        hooks = ClaudeCodeHooks(fileManager),
-        hooksSettingsPath = ClaudeCodeHooks.userSettingsPath(hostEnvironment.variable("CLAUDE_CONFIG_DIR"), hostEnvironment.home),
-        herdrLocation = herdrClient::location,
-        orcaLocation = orcaClient::location,
-        projects = projectRepository,
-        fileManager = fileManager,
-        provisioningSource = repositoryProvisioningSource,
-    )
+    val checkInstallation by lazy {
+        CheckInstallationUseCase(
+            executor = shellCommandExecutor,
+            findExecutable = locator::find,
+            path = { hostEnvironment.path },
+            shell = hostEnvironment.shell,
+            commandLineTool = commandLineTool::status,
+            hooks = ClaudeCodeHooks(fileManager),
+            hooksSettingsPath = ClaudeCodeHooks.userSettingsPath(hostEnvironment.variable("CLAUDE_CONFIG_DIR"), hostEnvironment.home),
+            herdrLocation = herdrClient::location,
+            orcaLocation = orcaClient::location,
+            projects = projectRepository,
+            fileManager = fileManager,
+            provisioningSource = repositoryProvisioningSource,
+            providerTools = CheckProviderToolsUseCase(shellCommandExecutor, locator::find, fileManager, androidSdk, appleSimulators),
+            multirepos = CheckMultireposUseCase(multirepoSource, resolveMultirepo, DetectGroupsUseCase(shellCommandExecutor), projectRepository),
+        )
+    }
     val installationCheck = InstallationCheckState { withContext(Dispatchers.IO) { checkInstallation() } }
     private val orcaStore = JsonOrcaWorkspaceStore(files.orcaWorkspaces)
     private val orcaReader = OrcaWorktreeReader(orcaClient, orcaStore, hostEnvironment.home)
@@ -648,8 +660,8 @@ class AppContainer {
             runCatching { androidSdk.deviceStates(androidSdk.locate(config.baseRepositoryPath)) }
         },
         startEmulator = { config, worktreePath -> startEmulatorShownInOrca(config, worktreePath) },
-        readPool = { kind, config, worktrees ->
-            runCatching { readPool.of(kind, config.baseRepositoryPath, worktrees) }
+        readPool = { kind, config, worktrees, listedGradleDaemons ->
+            runCatching { readPool.of(kind, config.baseRepositoryPath, worktrees, listedGradleDaemons) }
         },
         trimGradleDaemons = { worktrees -> trimGradleDaemons(worktrees) },
         resourceSettings = { resources.settings },
@@ -694,6 +706,23 @@ class AppContainer {
         }
         return registration.getOrNull() is ProjectRegistration.Added
     }
+
+    fun projectConfigViewModel(existingProject: Project?): ProjectConfigViewModel = ProjectConfigViewModel(
+        projectRepository,
+        repositoryProvisioningSource,
+        existingProject,
+        ::loadAvds,
+        simulatorSetup,
+        ::inspectRepository,
+        isMacOs,
+        repositoryTrust,
+        tools,
+        ::detectStacks,
+        ::multirepoNameOfWorkspace,
+        ::detectMobileSecrets,
+        ::listLocalFolder,
+        ::listLocalFileCandidates,
+    )
 
     fun multirepoNameOfWorkspace(topLevel: String): String? = resolveMultirepo.approved().withWorkspaceAt(topLevel)?.name
 
@@ -786,6 +815,7 @@ class AppContainer {
     }
 
     fun worktreeUseCases(config: ProjectConfig): WorktreeUseCases = WorktreeUseCases(
+        home = hostEnvironment.home,
         list = ListWorktreesUseCase(config, shellCommandExecutor, fileManager),
         create = CreateWorktreeUseCase(
             config,
@@ -1039,6 +1069,7 @@ data class WorktreeUseCases(
     val releaseResources: ReleaseResourcesUseCases = ReleaseResourcesUseCases.NONE,
     val agents: AgentUseCases = AgentUseCases.NONE,
     val headlessApp: HeadlessAppUseCases = HeadlessAppUseCases.NONE,
+    val home: String = "",
 )
 
 class ProvisioningUseCases(
@@ -1075,7 +1106,7 @@ class MachineUseCases(
     val readEmulatorStates: suspend (ProjectConfig, List<Worktree>) -> Result<Map<String, WorktreeEmulator>>,
     val readRunningEmulators: suspend (ProjectConfig) -> Result<Map<String, EmulatorState>>,
     val startEmulator: suspend (ProjectConfig, String) -> Result<DeviceStart<WorktreeEmulator>>,
-    val readPool: suspend (ResourceKind, ProjectConfig, List<Worktree>?) -> Result<PoolUsage>,
+    val readPool: suspend (ResourceKind, ProjectConfig, List<Worktree>?, List<DaemonProcess>?) -> Result<PoolUsage>,
     val trimGradleDaemons: suspend (List<Worktree>?) -> Result<GradleTrim>,
     val resourceSettings: () -> ResourceSettings,
     val stopEmulator: suspend (ProjectConfig, String) -> Result<WorktreeEmulator?>,

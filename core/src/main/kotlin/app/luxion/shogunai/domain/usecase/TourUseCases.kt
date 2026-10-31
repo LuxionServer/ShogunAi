@@ -67,9 +67,9 @@ class CreateTourUseCase(
 
             addWorktree("new-idea", "feature/new-idea")
 
-            val needsYou = addWorktree("needs-you", "feature/needs-you")
-            write(needsYou, "README.md", "$README\nA change nobody committed yet.\n")
-            write(needsYou, "draft.md", "# Draft\n\nWork in progress.\n")
+            val unfinished = addWorktree("unfinished", "feature/unfinished")
+            write(unfinished, "README.md", "$README\nA change nobody committed yet.\n")
+            write(unfinished, "draft.md", "# Draft\n\nWork in progress.\n")
 
             val pushedWork = addWorktree("pushed-work", "feature/pushed-work")
             write(pushedWork, "feature.md", "# Pushed work\n\nCommitted and pushed, waiting for review.\n")

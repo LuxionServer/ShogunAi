@@ -44,6 +44,7 @@ object FakeRunners {
 
     fun install(sandbox: Sandbox) {
         if (Sandbox.isWindows) {
+            writeWindowsExecutable(sandbox.pathFolder.resolve("herdr.exe"), "herdr", sandbox.logOf("herdr"))
             writeWindowsLauncher(sandbox.pathFolder.resolve("orca.cmd"), "orca", sandbox.logOf("orca"))
         } else {
             writeUnixLauncher(sandbox.pathFolder.resolve("herdr"), "herdr", sandbox.logOf("herdr"))
@@ -73,13 +74,23 @@ object FakeRunners {
     }
 
     private fun writeWindowsLauncher(file: Path, tool: String, log: Path) {
-        file.writeText("@echo off\r\n\"${javaExecutable()}\" -cp \"${classpath()}\" $MAIN_CLASS $tool \"$log\" %*\r\n")
+        file.writeText("@echo off\r\n\"${javaExecutable()}\" ${windowsArguments(tool, log)} %*\r\n")
     }
+
+    private fun writeWindowsExecutable(file: Path, tool: String, log: Path) {
+        Files.copy(runnerLauncher(), file)
+        file.resolveSibling("$tool.launch").writeText("${javaExecutable()}\r\n${windowsArguments(tool, log)}\r\n")
+    }
+
+    private fun windowsArguments(tool: String, log: Path): String = "-cp \"${classpath()}\" $MAIN_CLASS $tool \"$log\""
 
     private fun javaExecutable(): String =
         Path.of(System.getProperty("java.home"), "bin", if (Sandbox.isWindows) "java.exe" else "java").toString()
 
     private fun classpath(): String = System.getProperty("shogun.e2e.classpath") ?: error("shogun.e2e.classpath is not set")
+
+    private fun runnerLauncher(): Path =
+        Path.of(System.getProperty("shogun.e2e.runnerLauncher") ?: error("shogun.e2e.runnerLauncher is not set"))
 
     private fun quoteForShell(value: String): String = "'" + value.replace("'", "'\\''") + "'"
 

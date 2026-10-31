@@ -46,9 +46,12 @@ import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.lifecycle.viewmodel.compose.viewModel
 import app.luxion.shogunai.cli.runShogun
+import app.luxion.shogunai.smoke.runSmokeTest
+import app.luxion.shogunai.smoke.smokeTestReportPath
 import app.luxion.shogunai.ui.components.OpenMenus
 import app.luxion.shogunai.ui.components.TextInputFocus
 import app.luxion.shogunai.infrastructure.FileAppInstanceLock
+import app.luxion.shogunai.infrastructure.SystemHostEnvironment
 import app.luxion.shogunai.infrastructure.FileAppRequestChannel
 import app.luxion.shogunai.ui.shell.AboutWindow
 import app.luxion.shogunai.ui.shell.AppRequestHandler
@@ -97,6 +100,8 @@ private const val AppRequestPollInterval = 500L
 fun main(args: Array<String>) {
     val cliArguments = args.filterNot { it.startsWith("-psn_") }
     if (cliArguments.isNotEmpty()) exitProcess(runShogun(cliArguments.toTypedArray()))
+    val variable = SystemHostEnvironment.forCommandLine()::variable
+    smokeTestReportPath(cliArguments, variable)?.let { exitProcess(runSmokeTest(it, variable)) }
     System.setProperty("apple.laf.useScreenMenuBar", "true")
     System.setProperty("apple.awt.application.name", "ShogunAi")
     openWindow()
@@ -110,6 +115,7 @@ internal fun shellViewModelOf(appContainer: AppContainer) = ShellViewModel(
     MultirepoCatalog(appContainer::knownMultirepos),
     appContainer::registerWorkspaceProject,
     appContainer::forgetMissingMultirepos,
+    appContainer::projectCatalogModifiedAt,
 )
 
 @OptIn(ExperimentalComposeUiApi::class)

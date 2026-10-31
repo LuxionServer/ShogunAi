@@ -16,6 +16,7 @@ import app.luxion.shogunai.domain.usecase.Activity
 import app.luxion.shogunai.domain.usecase.ActivityDate
 import app.luxion.shogunai.domain.usecase.ActivityKind
 import app.luxion.shogunai.domain.usecase.activityDate
+import app.luxion.shogunai.domain.usecase.isUnpushedBranch
 import app.luxion.shogunai.domain.usecase.worktreeActivity
 import app.luxion.shogunai.ui.components.AgentIndicatorModel
 import app.luxion.shogunai.ui.i18n.Strings
@@ -34,8 +35,9 @@ data class WorktreeRowModel(
 )
 
 enum class StateBadgeKind(val status: Status, val outlined: Boolean = false) {
-    NEEDS_YOU(Status.WARNING),
+    WAITING_FOR_YOU(Status.WARNING),
     AGENT_WORKING(Status.INFO),
+    UNFINISHED(Status.NEUTRAL),
     NEW(Status.NEUTRAL, outlined = true),
     STOPPED(Status.NEUTRAL),
     MERGED(Status.SUCCESS),
@@ -65,10 +67,29 @@ sealed interface WorktreeDesktopTurn {
     data class Waiting(val position: Int) : WorktreeDesktopTurn
 }
 
-data class ExecutionCell(val agent: AgentIndicatorModel?, val device: DeviceLine?)
+data class ExecutionCell(val agent: AgentIndicatorModel?, val device: DeviceLine?) {
+    val isEmpty: Boolean
+        get() = agent == null && device == null
+}
 
-data class NameCell(val branch: String, val folder: String?, val origin: String?, val project: String?, val groupTag: String? = null) {
+data class NameCell(
+    val branch: String,
+    val folder: String?,
+    val origin: String?,
+    val project: String?,
+    val groupTag: String? = null,
+    val isMain: Boolean = false,
+) {
     val branchTooltip: String get() = listOfNotNull(branch, origin).joinToString("\n")
+    val branchParts: BranchParts get() = branchParts(branch)
+}
+
+data class BranchParts(val prefix: String?, val rest: String)
+
+fun branchParts(branch: String): BranchParts {
+    val cut = branch.lastIndexOf('/')
+    if (cut <= 0 || cut == branch.lastIndex) return BranchParts(null, branch)
+    return BranchParts(branch.substring(0, cut + 1), branch.substring(cut + 1))
 }
 
 enum class GitCellState { LOADING, UNAVAILABLE, READY }
@@ -80,13 +101,15 @@ data class GitCell(
     val secondLine: String?,
     val secondLineTooltip: String?,
     val unavailableTooltip: String?,
+    val notPushed: Boolean = false,
 )
 
-data class TimeCell(val activity: String?, val marks: List<String>, val compactActivity: String? = activity)
+data class TimeCell(val activity: String?, val isLocked: Boolean, val compactActivity: String? = activity)
 
 fun StateBadgeKind.label(strings: Strings): String = when (this) {
-    StateBadgeKind.NEEDS_YOU -> strings.groupNeedsYou
+    StateBadgeKind.WAITING_FOR_YOU -> strings.groupWaitingForYou
     StateBadgeKind.AGENT_WORKING -> strings.groupAgentWorking
+    StateBadgeKind.UNFINISHED -> strings.groupUnfinished
     StateBadgeKind.NEW -> strings.groupNew
     StateBadgeKind.STOPPED -> strings.groupStopped
     StateBadgeKind.MERGED -> strings.groupMerged
@@ -96,8 +119,9 @@ fun StateBadgeKind.label(strings: Strings): String = when (this) {
 }
 
 fun Activity.badgeKind(): StateBadgeKind = when (this) {
-    Activity.NeedsYou -> StateBadgeKind.NEEDS_YOU
+    Activity.WaitingForYou -> StateBadgeKind.WAITING_FOR_YOU
     Activity.AgentWorking -> StateBadgeKind.AGENT_WORKING
+    Activity.Unfinished -> StateBadgeKind.UNFINISHED
     Activity.New -> StateBadgeKind.NEW
     Activity.Stopped -> StateBadgeKind.STOPPED
     Activity.Merged -> StateBadgeKind.MERGED
@@ -141,19 +165,13 @@ fun worktreeRowModel(
     val kind = worktreeActivity(worktree, loaded, agents, now, inactiveAfter).badgeKind()
     return WorktreeRowModel(
         badge = StateBadge(kind, kind.label(strings)),
-        execution = ExecutionCell(
-            agent = agentIndicator(agents, agentsReadAt, now, strings),
-            device = secondLine(desktopTurn, emulator, simulator, headlessApp, strings),
-        ),
+        execution = executionCell(agents, agentsReadAt, now, desktopTurn, emulator, simulator, headlessApp, strings, clickToFocus = true),
         name = nameCell(worktree, origin, projectName, strings).copy(groupTag = groupTag),
         git = gitCell(status, loaded, mainBranchName, strings),
         time = activityDate(worktree, loaded).let { date ->
             TimeCell(
                 activity = date?.let { activityLabel(it, now, strings) },
-                marks = listOfNotNull(
-                    strings.mainWorktree.takeIf { worktree.isMain },
-                    strings.locked.takeIf { worktree.isLocked },
-                ),
+                isLocked = worktree.isLocked,
                 compactActivity = date?.let { compactRelativeTime(it.at, now, strings) },
             )
         },
@@ -161,6 +179,21 @@ fun worktreeRowModel(
         alias = alias,
     )
 }
+
+fun executionCell(
+    agents: List<RunningAgent>,
+    agentsReadAt: Instant?,
+    now: Instant,
+    desktopTurn: WorktreeDesktopTurn?,
+    emulator: WorktreeEmulator?,
+    simulator: WorktreeSimulator?,
+    headlessApp: HeadlessAppProcess?,
+    strings: Strings,
+    clickToFocus: Boolean = false,
+): ExecutionCell = ExecutionCell(
+    agent = agentIndicator(agents, agentsReadAt, now, strings, clickToFocus),
+    device = secondLine(desktopTurn, emulator, simulator, headlessApp, strings),
+)
 
 internal fun activityLabel(date: ActivityDate, now: Instant, strings: Strings): String {
     val relative = relativeTime(date.at, now, strings)
@@ -175,9 +208,10 @@ private fun nameCell(worktree: Worktree, origin: WorktreeOrigin?, projectName: S
     val folder = worktree.path.replace('\\', '/').trimEnd('/').substringAfterLast('/')
     return NameCell(
         branch = branch,
-        folder = folder.takeIf { it != worktree.branch?.substringAfterLast('/') },
+        folder = folder.takeIf { !worktree.isMain && it != worktree.branch?.substringAfterLast('/') },
         origin = origin?.let { originLabel(it, strings) },
         project = projectName,
+        isMain = worktree.isMain,
     )
 }
 
@@ -231,18 +265,19 @@ private fun gitCell(
     }
     val mergedInto = status.mergedInto(mainBranchName)
     val changes = status.uncommittedChanges.takeIf { it > 0 }
-    val secondLine = if (mergedInto != null) strings.mergedLabel else status.base?.arrows()
+    val upstream = status.upstream
     return GitCell(
         state = GitCellState.READY,
         changes = changes?.let { "✎ $it" },
         changesTooltip = changes?.let(strings::uncommittedChanges),
-        secondLine = secondLine,
+        secondLine = if (mergedInto != null) strings.mergedLabel else upstream?.arrows(),
         secondLineTooltip = when {
             mergedInto != null -> strings.mergedInto(mergedInto)
-            secondLine != null -> listOfNotNull(secondLine, status.baseName ?: mainBranchName).joinToString(" ")
+            upstream?.arrows() != null -> strings.upstreamArrows(upstream.ahead, upstream.behind)
             else -> null
         },
         unavailableTooltip = null,
+        notPushed = status.isUnpushedBranch,
     )
 }
 

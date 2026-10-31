@@ -41,6 +41,7 @@ import app.luxion.shogunai.ui.machine.MachineProject
 import app.luxion.shogunai.ui.tray.TrayWorktree
 import app.luxion.shogunai.domain.usecase.AgentSearch
 import app.luxion.shogunai.domain.usecase.isActive
+import app.luxion.shogunai.domain.usecase.waitsForUser
 import app.luxion.shogunai.domain.usecase.worktreeActivity
 import app.luxion.shogunai.domain.usecase.isValidGitRefSegment
 import app.luxion.shogunai.domain.usecase.normalizeTaskId
@@ -125,6 +126,7 @@ class WorktreeBoard(
     var multirepoAgentsReadAt by mutableStateOf<Instant?>(null)
         private set
     private var collapsedChanges by mutableStateOf<Set<String>>(emptySet())
+    private var collapsedStates by mutableStateOf(mapOf(GroupedView.ACTIVE to setOf(StateGroupKind.STOPPED)))
     var multirepoNotice by mutableStateOf<MultirepoNotice?>(null)
         private set
     var addingToGroup by mutableStateOf<Set<String>>(emptySet())
@@ -243,7 +245,19 @@ class WorktreeBoard(
             ),
             includeInactive = !isActiveView,
             isPinned = { it.ref == selected },
-        )
+        ).map { group -> group.copy(collapsed = group.kind in collapsedStates[mode].orEmpty() && !isTextFiltering) }
+
+    fun toggleStateCollapsed(kind: StateGroupKind) {
+        val current = collapsedStates[mode].orEmpty()
+        val collapsing = kind !in current
+        collapsedStates = collapsedStates + (mode to if (collapsing) current + kind else current - kind)
+        if (collapsing && stateGroups.any { group -> group.kind == kind && group.items.any { it.ref == selected } }) selected = null
+    }
+
+    private fun expandStateGroupOf(ref: WorktreeRef) {
+        if (!isGroupedByState) return
+        stateGroups.firstOrNull { group -> group.collapsed && group.items.any { it.ref == ref } }?.let { toggleStateCollapsed(it.kind) }
+    }
 
     val isGroupedByState: Boolean
         get() = grouping == Grouping.BY_STATE
@@ -251,7 +265,7 @@ class WorktreeBoard(
     val isGroupedByChange: Boolean
         get() = isMultirepoView && grouping == Grouping.BY_CHANGE
 
-    private val isListEmpty: Boolean
+    val isListEmpty: Boolean
         get() = when {
             isGroupedByChange -> changeView.isEmpty
             isGroupedByState -> stateGroups.isEmpty()
@@ -312,15 +326,24 @@ class WorktreeBoard(
                 holder.statuses.values.any { it == WorktreeStatusState.Loading }
         }
 
-    val isNothingActive: Boolean
-        get() = isActiveView && !isTextFiltering && !isReadingActivity && isListEmpty && shownProjects.none {
-            holder(it.id)?.listFailure != null
+    val isNothingWaiting: Boolean
+        get() = isActiveView && !isTextFiltering && !isReadingActivity && shownProjects.none { project ->
+            val holder = holder(project.id) ?: return@none false
+            holder.listFailure != null || listedRows(project, holder).any { activityOf(holder, it) == Activity.WaitingForYou }
         }
 
-    val activeCount: Int
-        get() = entries.values.sumOf { activeCountOf(it.holder) }
+    val workingAgentCount: Int
+        get() = shownProjects.sumOf { project ->
+            val holder = holder(project.id) ?: return@sumOf 0
+            listedRows(project, holder).sumOf { worktree ->
+                holder.agents?.get(worktree.path).orEmpty().count { it.state == AgentState.WORKING || it.state == null }
+            }
+        }
 
-    fun activeCountOf(projectId: String): Int = holder(projectId)?.let(::activeCountOf) ?: 0
+    val waitingCount: Int
+        get() = entries.values.sumOf { waitingCountOf(it.holder) }
+
+    fun waitingCountOf(projectId: String): Int = holder(projectId)?.let(::waitingCountOf) ?: 0
 
     val hasClaudeWithoutState: Boolean
         get() = entries.values.any { entry ->
@@ -335,8 +358,8 @@ class WorktreeBoard(
     fun agentsReadAtOf(group: ChangeGroup): Instant? =
         group.members.mapNotNull { it.entry.holder.agentsReadAt }.maxOrNull()
 
-    fun multirepoActivityCountOf(folder: String): Int =
-        multirepoAgentsOf(folder).count { it.state == AgentState.WORKING || it.state == AgentState.BLOCKED }
+    fun multirepoWaitingCountOf(folder: String): Int =
+        multirepoAgentsOf(folder).count { it.waitsForUser }
 
     private fun multirepoSearches(): List<AgentSearch> =
         memberships.filter { it.multirepo.approved }.map { AgentSearch.multirepoFolder(it.folder, it.multirepo.agent.agentCommand) }
@@ -350,8 +373,8 @@ class WorktreeBoard(
     fun agentNamesOf(projectId: String): List<String> =
         holder(projectId)?.agents.orEmpty().values.flatten().map { it.name }.distinct()
 
-    private fun activeCountOf(holder: ProjectWorktrees): Int =
-        holder.worktrees.count { activityOf(holder, it).isActive }
+    private fun waitingCountOf(holder: ProjectWorktrees): Int =
+        holder.worktrees.count { activityOf(holder, it) == Activity.WaitingForYou }
 
     private fun activityOf(holder: ProjectWorktrees, worktree: Worktree): Activity {
         val status = (holder.statuses[worktree.path] as? WorktreeStatusState.Loaded)?.status
@@ -903,6 +926,7 @@ class WorktreeBoard(
     }
 
     fun select(ref: WorktreeRef) {
+        expandStateGroupOf(ref)
         selected = ref
         onWorktreeUsed(ref)
     }
@@ -924,6 +948,9 @@ class WorktreeBoard(
         if (textFilter.isNotEmpty()) clearTextFilter() else clearSelection()
     }
 
+    fun focusSelectedAgent(): Boolean =
+        selectedWorktree?.let { it.holder.focusAgent(it.worktree) } ?: false
+
     fun selectNext() = moveSelection(1)
 
     fun selectPrevious() = moveSelection(-1)
@@ -944,7 +971,7 @@ class WorktreeBoard(
         if (isGroupedByChange) {
             changeView.let { view -> view.groups.filterNot { it.collapsed }.flatMap { group -> group.entries.map { it.ref } } + view.ungrouped.map { it.ref } }
         } else if (isGroupedByState) {
-            stateGroups.flatMap { group -> group.items.map { it.ref } }
+            stateGroups.filterNot { it.collapsed }.flatMap { group -> group.items.map { it.ref } }
         } else {
             groups.filterNot { it.collapsed }.flatMap { group -> group.worktrees.map { WorktreeRef(group.project.id, it.path) } }
         }
@@ -993,11 +1020,11 @@ class WorktreeBoard(
             val holder = createHolder ?: return emptyList()
             val default = holder.defaultStartRef
             val branches = holder.branches.map { it.name }.filter { it != default }
-            return listOfNotNull(default?.let(StartOption::Branch), StartOption.Current) + branches.map(StartOption::Branch)
+            return listOfNotNull(StartOption.Current, default?.let(StartOption::Branch)) + branches.map(StartOption::Branch)
         }
 
     val effectiveStartFrom: StartOption
-        get() = startFrom ?: createHolder?.defaultStartRef?.let(StartOption::Branch) ?: StartOption.Current
+        get() = startFrom ?: StartOption.Current
 
     val currentBranchName: String?
         get() = createHolder?.worktrees?.firstOrNull { it.isMain }?.branch

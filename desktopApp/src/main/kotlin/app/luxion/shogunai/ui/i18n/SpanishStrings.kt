@@ -4,6 +4,7 @@ import app.luxion.shogunai.domain.model.CheckState
 import app.luxion.shogunai.domain.model.InstallationCheck
 import app.luxion.shogunai.domain.model.InstallationReport
 import app.luxion.shogunai.domain.model.AgentStateSource
+import app.luxion.shogunai.domain.model.RunnerId
 import app.luxion.shogunai.ui.components.AgentPhase
 import app.luxion.shogunai.domain.model.ComposeResourceKind
 import app.luxion.shogunai.domain.model.ResourceLimits
@@ -173,18 +174,18 @@ object SpanishStrings : Strings {
     override val startFromLabel = "Partir de"
     override fun startFromMainBranch(ref: String) = "$ref (rama principal)"
     override fun startFromCurrentBranch(branch: String?) =
-        if (branch != null) "Rama actual del repositorio ($branch)" else "Commit actual del repositorio"
+        if (branch != null) "Rama actual del repositorio ($branch) · igual que shogun new" else "Commit actual del repositorio · igual que shogun new"
     override fun remoteBranchLabel(branch: String) = "$branch (remota)"
     override val fetchFirstLabel = "Hacer fetch de origin antes"
     override val createWithoutFetching = "Crear sin hacer fetch"
     override val selectBranchPlaceholder = "Selecciona una rama"
     override val otherBranchesGroup = "otras"
-    override val worktreesTitle = "Worktrees"
     override val viewsTitle = "Vistas"
     override val allWorktrees = "Todos los worktrees"
     override val activeWorktrees = "Activos"
     override val groupAgentWorking = "Con agente"
-    override val groupNeedsYou = "Te necesitan"
+    override val groupWaitingForYou = "Esperándote"
+    override val groupUnfinished = "Sin terminar"
     override val groupNew = "Nuevos"
     override val groupStopped = "Parados"
     override val groupMerged = "Fusionados"
@@ -193,8 +194,10 @@ object SpanishStrings : Strings {
     override val groupOther = "Otros"
     override val groupAgentWorkingHint = "agente en marcha"
     override val groupAgentWorkingCriterion = "Un agente de IA está trabajando en el worktree, o se ejecuta sin estado conocido."
-    override val groupNeedsYouHint = "agente esperando, sin commit o sin subir"
-    override val groupNeedsYouCriterion = "Un agente está bloqueado o ha terminado, o ningún agente trabaja y hay cambios sin commit o commits sin subir a su upstream (o a su base si no tiene)."
+    override val groupWaitingForYouHint = "agente bloqueado o terminado"
+    override val groupWaitingForYouCriterion = "Un agente de IA del worktree está bloqueado, por ejemplo en una petición de permiso, o ha terminado su turno."
+    override val groupUnfinishedHint = "sin commit o sin subir"
+    override val groupUnfinishedCriterion = "Ningún agente trabaja y hay cambios sin commit, commits sin subir a su upstream o commits propios en una rama nunca subida. El worktree principal y los inactivos no aparecen aquí."
     override val groupNewHint = "aún sin commits"
     override val groupNewCriterion = "Sin commits propios, sin cambios sin commit y sin agente en marcha."
     override val groupStoppedHint = "subido, en espera"
@@ -203,16 +206,20 @@ object SpanishStrings : Strings {
     override val groupMergedCriterion = "Sin commits propios por delante de su base o de la rama principal. Se puede limpiar."
     override fun groupInactiveHint(days: Int) = "sin actividad en $days+ días"
     override fun groupInactiveCriterion(days: Int) =
-        "Limpio, sin agente en marcha y sin actividad en " + (if (days == 1) "el último día." else "los últimos $days días.")
+        "Sin agente en marcha y sin actividad en " + (if (days == 1) "el último día" else "los últimos $days días") + ", aunque tenga trabajo sin commit o sin subir."
     override val groupFolderMissingHint = "carpeta borrada"
     override val groupFolderMissingCriterion = "Git aún lo lista, pero su carpeta ya no existe. Se puede limpiar."
     override val groupOtherHint = "principal o sin leer"
-    override val groupOtherCriterion = "El worktree principal cuando está limpio, o un worktree cuyo estado aún no se ha leído."
+    override val groupOtherCriterion = "El worktree principal sin agente, o un worktree cuyo estado aún no se ha leído."
     override val groupByState = "Por estado"
     override val groupByProject = "Por proyecto"
     override val readingWorktreeStatus = "Leyendo el estado de los worktrees…"
-    override val nothingActiveTitle = "No hay nada activo"
-    override val nothingActiveMessage = "No hay agentes en ejecución ni worktrees con trabajo en curso."
+    override val nothingNeedsYou = "Nada te necesita"
+    override fun agentsWorking(count: Int) = when (count) {
+        0 -> "Ningún agente trabajando"
+        1 -> "1 agente trabajando"
+        else -> "$count agentes trabajando"
+    }
     override val seeAllWorktrees = "Ver todos los worktrees"
     override val menuActive = "Mostrar activos"
     override val menuAllWorktrees = "Mostrar todos los worktrees"
@@ -271,19 +278,21 @@ object SpanishStrings : Strings {
         AgentPhase.RUNNING -> "en ejecución"
         AgentPhase.IDLE -> "inactivo"
     }
-    override fun agentWaitingOn(tool: String, input: String?) = "Esperando a $tool" + (input?.let { ": $it" } ?: "")
+    override fun agentWaitingOn(tool: String, input: String?) = "Esperando a $tool" + (if (input == null) "" else ": $input")
     override fun agentPrompt(prompt: String) = "Prompt: $prompt"
     override fun agentLastMessage(message: String) = "Último mensaje: $message"
     override fun portListening(label: String) = "$label (escuchando)"
     override val orcaPortsTitle = "Escuchando, según Orca"
-    override fun agentStateSource(source: AgentStateSource?) = when (source) {
+    override fun agentInRunner(runner: RunnerId) = "en ${runner.displayName}"
+    override val clickToFocus = "clic para enfocar"
+    override fun agentStateSource(source: AgentStateSource?) = if (source == null) "Solo se ha encontrado su proceso" else when (source) {
         AgentStateSource.HERDR -> "Estado de Herdr"
         AgentStateSource.ORCA -> "Estado de Orca"
         AgentStateSource.CLAUDE_CODE -> "Estado de los hooks de Claude Code"
-        null -> "Solo se ha encontrado su proceso"
     }
     override fun agentsUpdated(relative: String) = "Actualizado $relative"
-    override val noAgentRunning = "No hay ningún agente en ejecución"
+    override fun noAgentRunningRunsWith(runsWith: String) = "Ningún agente en ejecución · se ejecuta con $runsWith"
+    override val runsWithKey = "Se ejecuta con"
     override fun copyValue(key: String) = "Copiar $key"
     override val agentSectionTitle = "Agente"
     override val resourcesTitle = "Recursos"
@@ -311,6 +320,8 @@ object SpanishStrings : Strings {
     override val forceRemoveTitle = "¿Forzar eliminación?"
     override fun forceRemoveMessage(path: String) =
         "\"$path\" tiene cambios sin guardar. Se perderán si se elimina el worktree."
+    override fun forceRemoveLockedMessage(path: String, reason: String?) =
+        "\"$path\" está bloqueado${reason?.let { ": $it" }.orEmpty()}. Forzar la eliminación se salta el bloqueo."
     override fun alsoDeleteLocalBranch(branch: String) = "Eliminar también la rama local ($branch)"
     override val forceRemove = "Forzar eliminación"
     override val detachedHead = "(desacoplado)"
@@ -318,6 +329,12 @@ object SpanishStrings : Strings {
     override val upstream = "upstream"
     override fun mergedInto(branch: String) = "mergeada en $branch"
     override val mergedLabel = "fusionado"
+    override val notPushedLabel = "sin subir"
+    override val branchNotPushed = "La rama no está subida: no tiene upstream"
+    override fun upstreamArrows(ahead: Int, behind: Int) = listOfNotNull(
+        ahead.takeIf { it > 0 }?.let { if (it == 1) "1 commit sin subir" else "$it commits sin subir" },
+        behind.takeIf { it > 0 }?.let { if (it == 1) "1 commit sin traer" else "$it commits sin traer" },
+    ).joinToString(" · ").ifEmpty { "al día con su upstream" }
     override fun commitAgo(relative: String) = "commit $relative"
     override fun createdAgo(relative: String) = "creado $relative"
     override val sortLabel = "Orden"
@@ -338,15 +355,19 @@ object SpanishStrings : Strings {
     override fun worktreesSummary(count: Int, totalSize: String) =
         (if (count == 1) "1 worktree" else "$count worktrees") + " · $totalSize"
     override fun cleanupCandidatesSummary(count: Int) = "$count para limpiar"
-    override val locked = "bloqueado"
+    override val locked = "Bloqueado"
     override val cleanUp = "Limpiar"
+    override fun cleanUpCount(count: Int) = "Limpiar $count"
+    override val viewMenu = "Vista"
+    override val viewMenuProject = "Proyecto"
+    override val viewMenuGrouping = "Agrupar"
+    override val filterWorktrees = "Filtrar worktrees"
     override val copyPath = "Copiar ruta"
     override val statusTitle = "Estado"
     override val agentsTitle = "Agentes"
     override val provisioningTitle = "Archivos provisionados"
     override val provisioningChecking = "Comprobando…"
     override val provisioningUnavailable = "No se pudieron comprobar los archivos"
-    override val provisioningUpToDate = "Los archivos están al día"
     override val provisionAction = "Provisionar"
     override val copyAsEnv = "Copiar como .env"
     override fun provisionDriftState(state: ProvisionDriftState) = when (state) {
@@ -498,11 +519,12 @@ object SpanishStrings : Strings {
         CapacityProfile.CUSTOM -> "Personalizado"
     }
     override fun resourceLimitsSummary(limits: ResourceLimits, includeSimulators: Boolean) = listOfNotNull(
-        limits.emulators.let { if (it == null) "emuladores: sin límite" else if (it == 1) "1 emulador" else "$it emuladores" },
-        limits.simulators.let { if (it == null) "simuladores de iOS: sin límite" else if (it == 1) "1 simulador de iOS" else "$it simuladores de iOS" }
+        limitText(limits.emulators, "emuladores: sin límite") { if (it == 1) "1 emulador" else "$it emuladores" },
+        limitText(limits.simulators, "simuladores de iOS: sin límite") { if (it == 1) "1 simulador de iOS" else "$it simuladores de iOS" }
             .takeIf { includeSimulators },
-        limits.gradleDaemons.let { if (it == null) "daemons de Gradle: sin límite" else if (it == 1) "1 daemon de Gradle" else "$it daemons de Gradle" },
+        limitText(limits.gradleDaemons, "daemons de Gradle: sin límite") { if (it == 1) "1 daemon de Gradle" else "$it daemons de Gradle" },
     ).joinToString(" · ")
+    private fun limitText(limit: Int?, noLimit: String, count: (Int) -> String) = if (limit == null) noLimit else count(limit)
     override fun resourceKindLabel(kind: ResourceKind) = when (kind) {
         ResourceKind.EMULATOR -> "Emuladores"
         ResourceKind.IOS_SIMULATOR -> "Simuladores de iOS"
@@ -548,7 +570,7 @@ object SpanishStrings : Strings {
     override fun desktopWaitingLabel(position: Int) = "Espera el escritorio, nº $position"
     override val desktopTurnDetailTitle = "Turno del escritorio"
     override fun desktopTurnDetailWaiting(position: Int, since: String, holder: String?) =
-        "Espera el escritorio, nº $position desde las $since" + (holder?.let { ", detrás de $it" } ?: "")
+        "Espera el escritorio, nº $position desde las $since" + (if (holder == null) "" else ", detrás de $holder")
     override val headlessAppRunningLabel = "App en segundo plano"
     override val headlessAppDetailTitle = "App en segundo plano"
     override fun headlessAppRunning(pid: Long?) = if (pid == null) "En marcha" else "En marcha (proceso $pid)"
@@ -579,9 +601,9 @@ object SpanishStrings : Strings {
     }
     override fun trimmedNotice(count: Int, limit: Int?, trims: Int, lastTime: String) =
         (if (count == 1) "Se detuvo 1 daemon de Gradle inactivo" else "Se detuvieron $count daemons de Gradle inactivos") +
-            (limit?.let { " para mantenerse dentro del límite de $it" } ?: "") +
+            (if (limit == null) "" else " para mantenerse dentro del límite de $limit") +
             (if (trims == 1) " a las $lastTime" else " · $trims veces, la última a las $lastTime")
-    override fun poolSummary(inUse: Int, limit: Int?) = if (limit == null) "$inUse" else "$inUse/$limit"
+    override fun poolSummary(inUse: Int, limit: Int?) = if (limit == null) "$inUse" else "$inUse de $limit"
     override val machineTitle = "Máquina"
     override val machineStatusGradle = "Gradle"
     override val machineStatusEmulators = "Emuladores"
@@ -809,7 +831,11 @@ object SpanishStrings : Strings {
     override val menuCommandPalette = "Paleta de comandos"
     override val paletteHint = "Busca vistas, proyectos, worktrees y acciones"
     override val paletteNoResults = "Sin resultados"
-    override val paletteCopyLaunchCommandHint = "Copiar comando de lanzamiento"
+    override val paletteSettingsSynonym = "Ajustes"
+    override fun paletteOpenWorktree(worktree: String) = "Abrir $worktree"
+    override val paletteEnterOpen = "Abrir"
+    override val paletteEnterRun = "Ejecutar"
+    override val paletteEnterShowWorktree = "Mostrar en Todos los worktrees"
     override val paletteKindView = "Vista"
     override val paletteKindSetting = "Ajuste"
     override val paletteKindProject = "Proyecto"
@@ -983,7 +1009,8 @@ object SpanishStrings : Strings {
     override val tourExistingMessage = "El ejemplo del recorrido ya existe. Ábrelo donde lo dejaste, o reinicia el recorrido para crearlo de nuevo desde cero."
     override val tourRestart = "Reiniciar"
     override val tourOpenExisting = "Abrir"
-    override val tourNoticeMessage = "Novedad: un recorrido guiado por ShogunAi con un repositorio de ejemplo desechable y un agente que te enseña cada función."
+    override val tourNoticeMessage = "Novedad: haz el recorrido guiado"
+    override val tourNoticeDetails = "Un recorrido guiado por ShogunAi con un repositorio de ejemplo desechable y un agente que te enseña cada función."
     override val tourBannerMessage = "Este es el ejemplo desechable del recorrido. Su agente te enseña ShogunAi en el worktree principal."
     override val tourOpenAgent = "Abrir el agente del recorrido"
     override val tourEnd = "Terminar recorrido"
@@ -1005,4 +1032,15 @@ object SpanishStrings : Strings {
     override val daemonStopBlockedGradleBusy = "Los daemons de Kotlin solo se paran cuando ningún daemon de Gradle está ocupado"
     override val stopIdleBlockedStopping = "Se están parando los daemons"
     override val stopIdleBlockedNoneIdle = "Ningún daemon está inactivo"
+    override fun stopIdleAllBusy(count: Int) = if (count == 1) "Está ocupado, no está inactivo" else "Los $count están ocupados, ninguno está inactivo"
+    override fun stopIdleAllUnknown(count: Int) =
+        if (count == 1) "Su estado es desconocido, no se puede parar con seguridad" else "El estado de los $count es desconocido, ninguno se puede parar con seguridad"
+    override fun stopIdleBusyAndUnknown(busy: Int, unknown: Int) =
+        (if (busy == 1) "1 está ocupado" else "$busy están ocupados") + " y el estado de $unknown es desconocido, ninguno está inactivo"
+    override fun gradleBuildCacheOffIn(projects: Int) =
+        "La caché de build de Gradle está desactivada en $projects proyectos: añade org.gradle.caching=true a su gradle.properties para que un worktree nuevo reutilice lo que otros worktrees ya compilaron."
+    override val ownerUnknown = "desconocido"
+    override val machineOverviewTooltip = "Máquina: los daemons, dispositivos y cachés que comparten todos los worktrees"
+    override val machineOverviewNoProviders =
+        "Ningún proyecto guardado declara aún un proveedor. Declara uno en la configuración de un proyecto (Gradle, emuladores de Android, simuladores de iOS, Xcode, Maven o Docker Compose) para ver aquí sus daemons, dispositivos y cachés."
 }

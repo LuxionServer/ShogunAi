@@ -13,6 +13,10 @@ Don't load all of `docs/` into context by default: search for the specific page 
 - Code compiles without warnings: every compiler warning is an error in every module. Tests may use `ExperimentalCoroutinesApi` APIs without `@OptIn`; production code may not.
 - **Never use company identifiers** (internal repo names, task prefixes, etc.) in code, tests, or examples. Use generic placeholders (`~/projects/main-repo`, `TASK-123`).
 
+## Tests
+
+- Every bug fix comes with a regression test, written first and seen failing so it reproduces the bug before the fix makes it pass.
+
 ## Coverage
 
 Kover measures line and branch coverage of every module, and `./gradlew koverVerify` (run by the macOS job of the Tests workflow) fails below a module's rules, set in its `build.gradle.kts`.

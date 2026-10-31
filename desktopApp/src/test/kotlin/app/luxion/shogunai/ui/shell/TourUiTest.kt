@@ -8,6 +8,7 @@ import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onLast
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.v2.runComposeUiTest
@@ -260,6 +261,37 @@ class TourUiTest {
     }
 
     @Test
+    fun `the notice is one line that starts the tour`() = runComposeUiTest {
+        val state = TourState(FakeTour().actions)
+        setContent {
+            CompositionLocalProvider(LocalStrings provides EnglishStrings) {
+                MaterialTheme { Column { TourNotice(state, hasProjects = true) } }
+            }
+        }
+
+        onNodeWithText(EnglishStrings.tourNoticeMessage).performClick()
+        waitForIdle()
+
+        assertTrue(state.step != null)
+    }
+
+    @Test
+    fun `the collapsed sidebar shows the notice as an icon that starts the tour`() = runComposeUiTest {
+        val state = TourState(FakeTour().actions)
+        setContent {
+            CompositionLocalProvider(LocalStrings provides EnglishStrings) {
+                MaterialTheme { Column { TourNotice(state, hasProjects = true, rail = true) } }
+            }
+        }
+
+        onNodeWithText(EnglishStrings.tourNoticeMessage).assertDoesNotExist()
+        onNodeWithContentDescription(EnglishStrings.tourNoticeDetails).performClick()
+        waitForIdle()
+
+        assertTrue(state.step != null)
+    }
+
+    @Test
     fun `the notice starts the tour and doesn't return once dismissed`() = runComposeUiTest {
         val tour = FakeTour()
         val state = TourState(tour.actions)
@@ -270,7 +302,7 @@ class TourUiTest {
         }
 
         onNodeWithText(EnglishStrings.tourNoticeMessage).assertIsDisplayed()
-        onNodeWithText(EnglishStrings.claudeHooksNoticeDismiss).performClick()
+        onNodeWithContentDescription(EnglishStrings.claudeHooksNoticeDismiss).performClick()
         waitForIdle()
 
         onNodeWithText(EnglishStrings.tourNoticeMessage).assertDoesNotExist()

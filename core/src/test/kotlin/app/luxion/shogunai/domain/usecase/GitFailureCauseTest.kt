@@ -1,5 +1,6 @@
 package app.luxion.shogunai.domain.usecase
 
+import kotlin.test.assertNull
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -89,5 +90,12 @@ class GitFailureCauseTest {
         assertTrue(GitFailureCause.LockFileExists("/repo/.git/index.lock").hint().orEmpty().contains("remove /repo/.git/index.lock"))
         assertTrue(GitFailureCause.PermissionDenied(null).hint().orEmpty().startsWith("Git was denied permission. "))
         assertTrue(GitFailureCause.PermissionDenied("/repo").hint().orEmpty().startsWith("Git was denied permission on /repo. "))
+    }
+
+    @Test
+    fun `the lock reason is read only when Git gives one`() {
+        assertEquals("on a USB drive", lockReason("fatal: cannot remove a locked working tree, lock reason: on a USB drive \n"))
+        assertNull(lockReason("fatal: cannot remove a locked working tree, lock reason:  "))
+        assertNull(lockReason("fatal: cannot remove a locked working tree"))
     }
 }

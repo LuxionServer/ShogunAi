@@ -108,9 +108,20 @@ class WorktreeOverviewTest {
     }
 
     @Test
-    fun `pending changes or a running agent keep a worktree active`() {
-        assertFalse(isInactive(worktreeAt("/w"), status(changes = 1), emptyList(), now, threshold))
+    fun `a running agent keeps a worktree active`() {
         assertFalse(isInactive(worktreeAt("/w"), status(), listOf(RunningAgent("claude")), now, threshold))
+    }
+
+    @Test
+    fun `pending changes don't keep an abandoned worktree active`() {
+        assertTrue(isInactive(worktreeAt("/w"), status(changes = 2), emptyList(), now, threshold))
+    }
+
+    @Test
+    fun `a merged worktree is not inactive`() {
+        val merged = WorktreeStatus(0, null, Divergence(0, 3), now.minus(Duration.ofDays(20)), base = Divergence(1, 0))
+
+        assertFalse(isInactive(worktreeAt("/w"), merged, emptyList(), now, threshold))
     }
 
     @Test
@@ -155,10 +166,10 @@ class WorktreeOverviewTest {
     }
 
     @Test
-    fun `a not started worktree with changes needs the user`() {
+    fun `a not started worktree with changes is unfinished even when its base commit is old`() {
         val activity = worktreeActivity(worktreeAt("/home/dev/projects/TASK-1"), notStartedStatus(2), emptyList(), now)
 
-        assertEquals(Activity.NeedsYou, activity)
+        assertEquals(Activity.Unfinished, activity)
     }
 
     @Test

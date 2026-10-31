@@ -5,6 +5,12 @@ import app.luxion.shogunai.domain.model.CheckState
 import app.luxion.shogunai.domain.model.InstallationCheck
 import app.luxion.shogunai.domain.model.InstallationFinding
 import app.luxion.shogunai.domain.model.InstallationReport
+import app.luxion.shogunai.domain.model.MULTIREPO_FILE_NAME
+import app.luxion.shogunai.domain.model.MultirepoProblem
+import app.luxion.shogunai.domain.model.ProviderToolId
+import app.luxion.shogunai.domain.model.ProviderToolProblem
+import app.luxion.shogunai.domain.model.RepositoryProvisioning
+import app.luxion.shogunai.domain.model.joinPath
 import app.luxion.shogunai.domain.model.problemText
 import app.luxion.shogunai.domain.model.removalText
 
@@ -41,6 +47,8 @@ object InstallationReportText {
         is InstallationFinding.AgentTool ->
             if (finding.location != null) "${finding.tool.displayName} at ${finding.location}" else "${finding.tool.displayName} not found"
         is InstallationFinding.ProjectFiles -> projectSummary(finding)
+        is InstallationFinding.ProviderTool -> providerSummary(finding)
+        is InstallationFinding.MultirepoCheck -> multirepoSummary(finding)
     }
 
     fun fix(check: InstallationCheck): String? {
@@ -65,6 +73,8 @@ object InstallationReportText {
                 finding.detail != null -> "Check that ${finding.basePath} is a Git repository you can read"
                 else -> finding.unavailable.joinToString("\n") { "${it.path}: ${it.problemText()}, ${it.removalText()}" }
             }
+            is InstallationFinding.ProviderTool -> if (finding.problem != null) providerFix(finding.tool, finding.problem) else null
+            is InstallationFinding.MultirepoCheck -> finding.problems.joinToString("\n") { multirepoFix(finding, it) }
         }
     }
 
@@ -93,6 +103,67 @@ object InstallationReportText {
         finding.unavailable.isEmpty() -> "${finding.project}: ${count(finding.checked)} available in ${finding.basePath}"
         else -> "${finding.project}: ${count(finding.unavailable.size)} unavailable in ${finding.basePath}"
     }
+
+    private fun providerSummary(finding: InstallationFinding.ProviderTool): String {
+        val tool = finding.tool.displayName
+        val subject = "${finding.project}: $tool"
+        return when (val problem = finding.problem) {
+            null -> subject + finding.location?.let { " at $it" }.orEmpty() + installedSuffix(finding)
+            is ProviderToolProblem.NotFound -> "$subject not found, needed by the ${finding.tool.provider} provider (looked in ${(problem.searched + problem.commands.map { "$it on the PATH" }).joinToString()})"
+            is ProviderToolProblem.Unusable -> "$subject${finding.location?.let { " at $it" }.orEmpty()} doesn't work" + problem.detail.suffix()
+            ProviderToolProblem.NeedsMacOs -> "${finding.project}: the ${finding.tool.provider} provider needs macOS with Xcode"
+            ProviderToolProblem.NoAndroidVirtualDevice -> "$subject at ${finding.location} has no Android Virtual Device"
+            ProviderToolProblem.NoIosRuntime -> "${finding.project}: no iOS simulator runtime is installed"
+            is ProviderToolProblem.ProvidersUnreadable -> "${finding.project}: couldn't read its providers" + problem.detail.suffix()
+        }
+    }
+
+    private fun installedSuffix(finding: InstallationFinding.ProviderTool): String = when (finding.tool) {
+        ProviderToolId.ANDROID_SDK -> " (${plural(finding.installed ?: 0, "virtual device", "virtual devices")})"
+        ProviderToolId.IOS_SIMULATOR -> " (${plural(finding.installed ?: 0, "iOS runtime", "iOS runtimes")})"
+        else -> ""
+    }
+
+    private fun providerFix(tool: ProviderToolId, problem: ProviderToolProblem): String = when (problem) {
+        ProviderToolProblem.NeedsMacOs -> "Use the ${tool.provider} provider on a Mac with Xcode, or ignore this on other systems"
+        ProviderToolProblem.NoAndroidVirtualDevice -> "Create a virtual device in Android Studio's Device Manager"
+        ProviderToolProblem.NoIosRuntime -> "Install an iOS runtime from Xcode's Settings › Components"
+        is ProviderToolProblem.ProvidersUnreadable -> "Correct the repository's ${RepositoryProvisioning.CONFIG_FILE_NAME} so it's valid"
+        is ProviderToolProblem.NotFound, is ProviderToolProblem.Unusable -> installFix(tool)
+    }
+
+    private fun installFix(tool: ProviderToolId): String = when (tool) {
+        ProviderToolId.GRADLE -> "Add the Gradle wrapper (gradlew) to the repository, or install Gradle: https://gradle.org/install/"
+        ProviderToolId.MAVEN -> "Add the Maven wrapper (mvnw) to the repository, or install Maven: https://maven.apache.org/install.html"
+        ProviderToolId.ANDROID_SDK -> "Install the Android SDK and its emulator with Android Studio (https://developer.android.com/studio), or set ANDROID_HOME to where it is"
+        ProviderToolId.IOS_SIMULATOR, ProviderToolId.XCODE -> "Install Xcode from the App Store and select it: sudo xcode-select -s /Applications/Xcode.app"
+        ProviderToolId.COCOAPODS -> "Install CocoaPods: https://cocoapods.org"
+        ProviderToolId.DOCKER_COMPOSE -> "Install Docker with its Compose plugin, for example Docker Desktop: https://docs.docker.com/get-docker/"
+        ProviderToolId.FLUTTER -> "Install Flutter (https://docs.flutter.dev/get-started/install), or FVM if the repository uses it, and make sure it's on your PATH"
+        ProviderToolId.PROVIDERS -> "Correct the repository's ${RepositoryProvisioning.CONFIG_FILE_NAME} so it's valid"
+    }
+
+    private fun multirepoSummary(finding: InstallationFinding.MultirepoCheck): String {
+        val subject = "Multirepo ${finding.name} (${finding.folder})"
+        return when {
+            finding.problems.isEmpty() -> "$subject: ${finding.repositories.joinToString()}; ${plural(finding.groups, "group", "groups")}"
+            finding.problems.singleOrNull() == MultirepoProblem.DeclarationMissing -> "$subject: ${MULTIREPO_FILE_NAME} is gone"
+            else -> "$subject: ${plural(finding.problems.size, "problem", "problems")}"
+        }
+    }
+
+    private fun multirepoFix(finding: InstallationFinding.MultirepoCheck, problem: MultirepoProblem): String = when (problem) {
+        MultirepoProblem.DeclarationMissing -> "Restore ${finding.folder}; otherwise ShogunAi forgets it the next time it starts"
+        is MultirepoProblem.InvalidDeclaration -> "${problem.path}${problem.detail.suffix()}; correct it"
+        is MultirepoProblem.RepositoryMissing ->
+            "'${problem.alias}': ${problem.path} isn't a Git repository; restore it, or change its path in ${joinPath(finding.folder, MULTIREPO_FILE_NAME)}"
+        MultirepoProblem.NotTrusted -> "It isn't trusted on this machine; review it and run 'shogun multirepo trust ${finding.folder}'"
+        is MultirepoProblem.ListingFailed -> "Couldn't list the worktrees of '${problem.alias}'${problem.detail.suffix()}; check it's a Git repository you can read"
+        is MultirepoProblem.GroupWorktreeMissing ->
+            "Group ${problem.branch}: the '${problem.alias}' worktree's folder ${problem.path} doesn't exist; restore it, or run 'git worktree prune' in '${problem.alias}'"
+    }
+
+    private fun plural(count: Int, one: String, many: String): String = if (count == 1) "1 $one" else "$count $many"
 
     private fun shogunFix(state: CommandLineToolState, folder: String?, restartNeeded: Boolean): String = when (state) {
         CommandLineToolState.INSTALLED_NOT_ON_PATH ->

@@ -112,25 +112,33 @@ The sidebar SHALL show a views section above the projects, with an "All worktree
 - **THEN** the content area shows the worktree view with only `api`'s worktrees and `api` marked as selected in the sidebar
 
 ### Requirement: Active is the main view
-The sidebar's views section SHALL list "Active" first, above "All worktrees", with the number of active worktrees. When no view was saved from a previous session, the app SHALL open on "Active".
+The sidebar's views section SHALL list "Active" first, above "All worktrees", with the number of worktrees waiting for the user. When no view was saved from a previous session, the app SHALL open on "Active".
 
 #### Scenario: First launch with projects
 - **WHEN** the app starts with saved projects and no saved view
 - **THEN** it opens on "Active"
 
 #### Scenario: Count
-- **WHEN** four worktrees are active across all projects
-- **THEN** the sidebar shows "Active" with 4
+- **WHEN** four worktrees are active across all projects and one of them is "Waiting for you"
+- **THEN** the sidebar shows "Active" with 1
+
+#### Scenario: Nothing waiting
+- **WHEN** worktrees are active but none is "Waiting for you"
+- **THEN** the sidebar shows "Active" without a count
 
 ### Requirement: Activity in the sidebar's projects
-Each project in the sidebar SHALL show its number of active worktrees, and the agent icon in the info color, next to the count, when an agent is running in any of its worktrees, with the running agents in its tooltip and accessible name. Projects with no active worktree SHALL show no count. A multirepo's folder SHALL show the sum of its projects' counts and the agent icon when any of them has it.
+Each project in the sidebar SHALL show its number of worktrees waiting for the user, and the agent icon in the info color, next to the count, when an agent is running in any of its worktrees, with the running agents in its tooltip and accessible name. Projects with no worktree waiting for the user SHALL show no count. A multirepo's folder SHALL show the sum of its projects' counts and the agent icon when any of them has it.
 
 #### Scenario: Project with an agent
-- **WHEN** `api` has two active worktrees and an agent running in one of them
+- **WHEN** `api` has two worktrees waiting for the user and an agent running in another one
 - **THEN** its sidebar entry shows 2 and the agent icon in the info color
 
+#### Scenario: Unfinished work isn't counted
+- **WHEN** `api`'s only active worktree is "Unfinished"
+- **THEN** its sidebar entry shows no count
+
 #### Scenario: Multirepo folder
-- **WHEN** `api` and `mobile` belong to `product` and have two and one active worktrees, with an agent in `api`
+- **WHEN** `api` and `mobile` belong to `product` and have two and one worktrees waiting for the user, with an agent in `api`
 - **THEN** `product` shows 3 and the agent icon in the info color
 
 ### Requirement: Shortcuts for the views
@@ -233,3 +241,29 @@ The manual order of each level SHALL be saved in the app's settings and restored
 #### Scenario: Removed project
 - **WHEN** the user removes `api` after reordering and later adds a project named `api` again
 - **THEN** the new `api` is listed at the end of its level
+
+### Requirement: Rail tiles tell sibling projects apart
+In the compact rail, each project's tile SHALL show two uppercase letters: the initials of its first two words when its name has several words, otherwise its first two letters. When two projects at the same level of the sidebar would show the same letters, each SHALL use its first letter followed by a later letter of its name that the others don't have, when there is one. The tile's tooltip SHALL keep naming the project.
+
+#### Scenario: Different first letters
+- **WHEN** the rail shows the projects `api` and `web`
+- **THEN** their tiles read `AP` and `WE`
+
+#### Scenario: Same first two letters
+- **WHEN** the rail shows the projects `app` and `api`
+- **THEN** their tiles read `AP` and `AI`
+
+#### Scenario: Several words
+- **WHEN** the rail shows the project `main-repo`
+- **THEN** its tile reads `MR`
+
+### Requirement: Preferences from the sidebar
+The sidebar SHALL end with a gear button, in both the expanded sidebar and the rail, labelled "Preferences" for its tooltip and assistive technologies, that opens the Preferences window like the menu and Cmd/Ctrl+Comma do.
+
+#### Scenario: Open Preferences from the gear
+- **WHEN** the user activates the gear at the bottom of the sidebar
+- **THEN** the Preferences window opens
+
+#### Scenario: Gear in the rail
+- **WHEN** the window is narrow enough for the sidebar to become the rail
+- **THEN** the gear stays at the bottom of the rail with its "Preferences" tooltip

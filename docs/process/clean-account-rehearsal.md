@@ -11,12 +11,14 @@ The CI smoke test of the packaged app checks the same path automatically on a cl
 
 ## 1. Get the `.dmg`
 
-- Before a release, build it from the release branch with the manual `macOS installer` workflow, which signs and notarizes it like the published one without touching any release, tag or package manager (see [macOS signing and notarization](release.md#macos-signing-and-notarization)):
+- Before a release, take it from the release branch's latest `Release candidate` run, which every push to the branch starts: it signs and notarizes it like the published one, and has already passed the [packaged smoke test](release.md#packaged-smoke-test) when the run is green. It touches no release, tag or package manager:
 
     ```bash
-    gh workflow run macos-installer.yml -R LuxionServer/ShogunAi --ref release/X.X.X -f version=X.X.X
+    gh run list -R LuxionServer/ShogunAi --workflow release-candidate.yml --branch release/X.X.X --limit 1
     gh run download <run-id> -R LuxionServer/ShogunAi -n installer-macos-latest
     ```
+
+    To build only the `.dmg` from another branch, run the manual `macOS installer` workflow instead (`gh workflow run macos-installer.yml -R LuxionServer/ShogunAi --ref <branch> -f version=X.X.X`, see [macOS signing and notarization](release.md#macos-signing-and-notarization)).
 
     `installer-macos-latest` is the Apple Silicon `.dmg` (`-arm64`) and `installer-macos-26-intel` the Intel one (`-x64`); take the one for the Mac you rehearse on.
 
@@ -53,7 +55,7 @@ Click "Take the tour" (or Help › ShogunAi Tour). See [Desktop app](../guide/de
 
 1. **Welcome**: it says what it will create and where (`~/.shogunai/tour`). Click "Start".
 2. **Command-line tool**: since `shogun` isn't installed, the step shows it as missing and offers "Install command-line tool". **Check**: it doesn't say the command is installed but not on the `PATH`, and it isn't skipped. Install it. **Check**: the step reports it as available, or shows the line to add to the shell profile when it linked it in `~/.local/bin` and that folder isn't on the login shell's `PATH`; in that case add the line, restart the app from the Dock and confirm the step no longer shows it.
-3. **Sample repository**: **Check**: it's created without errors, and the project "ShogunAi tour" appears with worktrees under every state ("New", "Needs you", "Stopped", "Merged", "Inactive", a locked one and "Folder missing").
+3. **Sample repository**: **Check**: it's created without errors, and the project "ShogunAi tour" appears with worktrees under every state ("New", "Unfinished", "Stopped", "Merged", "Inactive", a locked one and "Folder missing").
 4. **Open the tour's agent**: choose the terminal. **Check**: Terminal opens in the sample's main worktree and Claude Code starts with "Start the ShogunAi tour"; accept "Yes, I trust this folder". Go through at least the first two steps of the tour with the agent and check that it speaks the app's language and waits for you between steps.
 
 ## 5. The command and the hooks
@@ -79,6 +81,7 @@ Click "Take the tour" (or Help › ShogunAi Tour). See [Desktop app](../guide/de
 3. In Terminal, from `~/projects/main-repo`, run `shogun new TASK-123`. **Check**: it prints the new worktree's path without errors, and `cat <path>/local.properties` prints `sdk.dir=/placeholder`.
 4. **Check**: the app shows the new worktree under the project, as "New", without restarting it.
 5. Back in the app, create a second worktree with "New worktree" on the project. **Check**: it's created and also gets `local.properties`.
+6. In a new Terminal window, run `shogun doctor`. **Check**: no line starts with `fail`, and the project `main-repo` shows its local file as available. Warnings are fine as long as their fix makes sense (for example the agent tools this account doesn't use). A `fail` is a failure of the rehearsal: report it with the whole output.
 
 ## Reporting a failure
 
@@ -88,7 +91,8 @@ Stop at the first failure: later steps often fail because of it.
 2. Take a screenshot of the app or Terminal.
 3. In the app, choose Help › Copy Diagnostic Report and paste it into the report. It has the app version, macOS's version and architecture and the latest entries of the diagnostics log, with paths, the user name, project names and branches replaced by placeholders (see [Diagnostics](../guide/desktop-app.md#diagnostics)).
 4. When a command failed, add the command and its full output.
-5. Open a GitHub issue with all of it, titled with the step, for example "Rehearsal 0.11.0, step 4.2: the tour says shogun isn't on the PATH". Before posting, check that the screenshots and outputs show nothing private; the account's user name is in paths outside the diagnostic report.
+5. Add the output of `shogun doctor` run in a new Terminal window: it says what's wrong and how to fix it. If the command isn't installed yet, the diagnostic report of the previous item already has the app's own check.
+6. Open a GitHub issue with all of it, titled with the step, for example "Rehearsal 0.11.0, step 4.2: the tour says shogun isn't on the PATH". Before posting, check that the screenshots and outputs show nothing private; the account's user name is in paths outside the diagnostic report.
 
 Before a release, link the issue from the release pull request. When the failure is fixed, rehearse again from the start in a new account.
 

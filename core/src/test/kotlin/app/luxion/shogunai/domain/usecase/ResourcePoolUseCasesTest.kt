@@ -319,6 +319,20 @@ class ResourcePoolUseCasesTest {
     }
 
     @Test
+    fun `the Gradle pool can count a listing already taken instead of listing again`() = runTest {
+        harness.daemons.daemons = listOf(FakeGradleDaemonSource.gradleDaemon(1, busy))
+        val listed = listOf(
+            FakeGradleDaemonSource.gradleDaemon(2, idleSince10),
+            FakeGradleDaemonSource.gradleDaemon(3, busy),
+            FakeGradleDaemonSource.kotlinDaemon(4),
+        )
+
+        val usage = harness.readPool.of(ResourceKind.GRADLE_DAEMON, "~/projects/main-repo", listedGradleDaemons = listed)
+
+        assertEquals(listOf("2", "3"), usage.holders.map { it.reference })
+    }
+
+    @Test
     fun `trimming stops idle daemons longest idle first until the pool is within its limit`() = runTest {
         harness.limit(gradleDaemons = 2)
         harness.daemons.daemons = listOf(

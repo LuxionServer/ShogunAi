@@ -32,6 +32,12 @@ class TypographyTest {
     }
 
     @Test
+    fun `counts inside sentences use Geist with tabular figures`() {
+        assertStyle(ShogunDataTextStyles.figures, Geist, FontWeight.Normal, 12f, 16f)
+        assertEquals("tnum", ShogunDataTextStyles.figures.fontFeatureSettings)
+    }
+
+    @Test
     fun `title and label roles follow the v2 scale`() {
         with(ShogunDataTextStyles) {
             assertStyle(viewTitle, Geist, FontWeight.SemiBold, 16f, 22f)

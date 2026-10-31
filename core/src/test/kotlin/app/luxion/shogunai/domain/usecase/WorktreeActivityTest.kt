@@ -46,9 +46,9 @@ class WorktreeActivityTest {
     }
 
     @Test
-    fun `a blocked or done agent needs the user`() {
+    fun `a blocked or done agent waits for the user`() {
         listOf(AgentState.BLOCKED, AgentState.DONE).forEach { state ->
-            assertEquals(Activity.NeedsYou, activity(worktree, null, listOf(RunningAgent("claude", state))))
+            assertEquals(Activity.WaitingForYou, activity(worktree, null, listOf(RunningAgent("claude", state))))
         }
     }
 
@@ -60,10 +60,10 @@ class WorktreeActivityTest {
     }
 
     @Test
-    fun `an idle agent with pending changes needs the user`() {
+    fun `an idle agent with pending changes leaves the worktree unfinished`() {
         val idle = listOf(RunningAgent("claude", AgentState.IDLE))
 
-        assertEquals(Activity.NeedsYou, activity(worktree, status(changes = 2), idle))
+        assertEquals(Activity.Unfinished, activity(worktree, status(changes = 2), idle))
     }
 
     @Test
@@ -81,27 +81,36 @@ class WorktreeActivityTest {
     }
 
     @Test
-    fun `a blocked agent needs the user whatever the git status`() {
+    fun `a blocked agent waits for the user whatever the git status`() {
         val blocked = listOf(RunningAgent("claude", AgentState.BLOCKED))
 
-        assertEquals(Activity.NeedsYou, activity(worktree, status(), blocked))
+        assertEquals(Activity.WaitingForYou, activity(worktree, status(), blocked))
+        assertEquals(Activity.WaitingForYou, activity(worktree, status(changes = 3, lastCommitAt = now.minus(Duration.ofDays(20))), blocked))
     }
 
     @Test
-    fun `one blocked agent among working ones needs the user`() {
+    fun `an agent waiting in the main worktree waits for the user`() {
+        val done = listOf(RunningAgent("claude", AgentState.DONE))
+
+        assertEquals(Activity.WaitingForYou, activity(main, status(changes = 1, mainBranch = null), done))
+    }
+
+    @Test
+    fun `one blocked agent among working ones waits for the user`() {
         val agents = listOf(RunningAgent("claude", AgentState.WORKING), RunningAgent("codex", AgentState.BLOCKED))
 
-        assertEquals(Activity.NeedsYou, activity(worktree, null, agents))
+        assertEquals(Activity.WaitingForYou, activity(worktree, null, agents))
     }
 
     @Test
-    fun `uncommitted changes need the user`() {
-        assertEquals(Activity.NeedsYou, activity(worktree, status(changes = 2)))
+    fun `uncommitted changes leave the worktree unfinished`() {
+        assertEquals(Activity.Unfinished, activity(worktree, status(changes = 2)))
     }
 
     @Test
-    fun `the main worktree with changes needs the user`() {
-        assertEquals(Activity.NeedsYou, activity(main, status(changes = 1, mainBranch = null)))
+    fun `the main worktree with changes or unpushed commits stays idle`() {
+        assertEquals(Activity.Idle, activity(main, status(changes = 1, mainBranch = null)))
+        assertEquals(Activity.Idle, activity(main, status(upstream = Divergence(2, 0), mainBranch = null)))
     }
 
     @Test
@@ -110,13 +119,13 @@ class WorktreeActivityTest {
     }
 
     @Test
-    fun `commits ahead of the upstream need the user`() {
-        assertEquals(Activity.NeedsYou, activity(worktree, status(upstream = Divergence(1, 0))))
+    fun `commits ahead of the upstream leave the worktree unfinished`() {
+        assertEquals(Activity.Unfinished, activity(worktree, status(upstream = Divergence(1, 0))))
     }
 
     @Test
-    fun `commits ahead of main with no upstream need the user`() {
-        assertEquals(Activity.NeedsYou, activity(worktree, status(upstream = null, mainBranch = Divergence(1, 0))))
+    fun `commits of its own with no upstream leave the worktree unfinished`() {
+        assertEquals(Activity.Unfinished, activity(worktree, status(upstream = null, mainBranch = Divergence(1, 0))))
     }
 
     @Test
@@ -142,6 +151,23 @@ class WorktreeActivityTest {
     }
 
     @Test
+    fun `an old worktree with pending work is inactive`() {
+        val old = now.minus(Duration.ofDays(5))
+
+        assertEquals(Activity.Inactive, activity(worktree, status(changes = 3, lastCommitAt = old)))
+        assertEquals(Activity.Inactive, activity(worktree, status(upstream = Divergence(2, 0), lastCommitAt = old)))
+        assertEquals(Activity.Inactive, activity(worktree, status(upstream = null, lastCommitAt = old)))
+    }
+
+    @Test
+    fun `an old merged worktree stays merged`() {
+        val old = now.minus(Duration.ofDays(5))
+        val mergedIntoMain = WorktreeStatus(0, Divergence(0, 0), Divergence(0, 3), old, base = Divergence(2, 0))
+
+        assertEquals(Activity.Merged, activity(worktree, mergedIntoMain))
+    }
+
+    @Test
     fun `a worktree whose folder is missing is missing`() {
         assertEquals(Activity.Missing, activity(worktree.copy(isPrunable = true), status()))
     }
@@ -152,10 +178,10 @@ class WorktreeActivityTest {
     }
 
     @Test
-    fun `only the first four activities are active`() {
+    fun `only the first five activities are active`() {
         val active = Activity.entries.filter { it.isActive }
 
-        assertEquals(listOf(Activity.NeedsYou, Activity.AgentWorking, Activity.New, Activity.Stopped), active)
+        assertEquals(listOf(Activity.WaitingForYou, Activity.AgentWorking, Activity.Unfinished, Activity.New, Activity.Stopped), active)
         assertTrue(Activity.AgentWorking.isActive)
         assertFalse(Activity.Idle.isActive)
     }
@@ -250,9 +276,12 @@ class WorktreeActivityTest {
     }
 
     @Test
-    fun `a branch without upstream needs you only when it is ahead of its base`() {
-        assertEquals(Activity.NeedsYou, activity(worktree, status(upstream = null, mainBranch = Divergence(ahead = 2, behind = 0))))
-        assertFalse(activity(worktree, status(upstream = null, mainBranch = null)) == Activity.NeedsYou)
-        assertFalse(activity(worktree, status(upstream = null, mainBranch = Divergence(ahead = 0, behind = 3))) == Activity.NeedsYou)
+    fun `only a started branch with its own unmerged commits and no upstream is unpushed`() {
+        assertTrue(WorktreeStatus(0, null, Divergence(2, 0), null).isUnpushedBranch)
+        assertFalse(WorktreeStatus(0, Divergence(0, 0), Divergence(2, 0), null).isUnpushedBranch)
+        assertFalse(WorktreeStatus(0, null, Divergence(0, 0), null).isUnpushedBranch)
+        assertFalse(WorktreeStatus(0, null, null, null, neverCommitted = true).isUnpushedBranch)
+        assertFalse(WorktreeStatus(0, null, null, null, neverCommitted = true, base = Divergence(1, 0)).isUnpushedBranch)
+        assertFalse(WorktreeStatus(0, null, Divergence(0, 3), null, base = Divergence(2, 0)).isUnpushedBranch)
     }
 }
