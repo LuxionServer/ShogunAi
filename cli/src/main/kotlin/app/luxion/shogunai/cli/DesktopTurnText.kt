@@ -8,7 +8,6 @@ import app.luxion.shogunai.domain.model.DesktopWaitProgress
 import app.luxion.shogunai.domain.model.WaitTicket
 import app.luxion.shogunai.domain.model.repositoryPath
 import app.luxion.shogunai.domain.model.toLocalClockTime
-import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonObjectBuilder
 import kotlinx.serialization.json.buildJsonArray
@@ -41,8 +40,9 @@ internal fun desktopStateLines(state: DesktopTurnState): List<String> = buildLis
 }
 
 internal fun desktopWaitProgressLine(progress: DesktopWaitProgress): String {
-    val holder = progress.holder?.let { "held by ${it.displayName} until ${clockTime(it.expiresAt)}" } ?: "free for an earlier waiter"
-    return "waiting for the desktop: ${ordinal(progress.position)} of ${progress.waiting} in line, $holder"
+    val holder = progress.holder
+    val holding = if (holder == null) "free for an earlier waiter" else "held by ${holder.displayName} until ${clockTime(holder.expiresAt)}"
+    return "waiting for the desktop: ${ordinal(progress.position)} of ${progress.waiting} in line, $holding"
 }
 
 internal fun desktopTurnStatusNote(turn: DesktopTurnState, worktreePath: String): String? {
@@ -84,7 +84,7 @@ internal fun worktreeDesktopJson(turn: DesktopTurnState, worktreePath: String): 
 }
 
 private fun JsonObjectBuilder.putDesktopState(state: DesktopTurnState) {
-    put("holder", state.holder?.let(::holderJson) ?: JsonNull)
+    put("holder", state.holder?.let(::holderJson).orJsonNull())
     put("waiting", buildJsonArray { state.waiting.forEach { add(waiterJson(it)) } })
 }
 

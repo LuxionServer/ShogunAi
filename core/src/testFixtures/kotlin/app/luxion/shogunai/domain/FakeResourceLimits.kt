@@ -14,7 +14,12 @@ class FakeMachineCapacity(
 }
 
 class FakeResourceLimitsRepository(var settings: ResourceSettings = ResourceSettings()) : ResourceLimitsRepository {
-    override fun load(): ResourceSettings = settings
+    var loadFailure: Exception? = null
+
+    override fun load(): ResourceSettings {
+        loadFailure?.let { throw it }
+        return settings
+    }
 
     override fun save(settings: ResourceSettings) {
         this.settings = settings

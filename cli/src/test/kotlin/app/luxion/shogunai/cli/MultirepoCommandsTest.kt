@@ -22,6 +22,10 @@ import app.luxion.shogunai.domain.FakeRepositoryProvisioningSource
 import app.luxion.shogunai.domain.FakeResourceLimitsRepository
 import app.luxion.shogunai.domain.FakeRepositoryTrust
 import app.luxion.shogunai.domain.io.RepositoryTrust
+import app.luxion.shogunai.domain.executor.CommandExecutionException
+import app.luxion.shogunai.domain.executor.CommandResult
+import app.luxion.shogunai.domain.executor.ShellCommandExecutor
+import app.luxion.shogunai.domain.model.RepositoryApprovalSubject
 import app.luxion.shogunai.domain.model.AgentLaunchConfig
 import app.luxion.shogunai.domain.model.ClaudeSession
 import app.luxion.shogunai.domain.model.EnvironmentDeclaration
@@ -106,9 +110,11 @@ class MultirepoCommandsTest {
         trust: RepositoryTrust = RepositoryTrust.NONE,
         orca: FakeOrcaClient = FakeOrcaClient(installed = false),
         runner: FakeToolPreferenceRepository = FakeToolPreferenceRepository(),
+        executor: ShellCommandExecutor = git,
+        files: app.luxion.shogunai.domain.io.FileManager = fileManager,
     ) = ShogunCli(
-        executor = git,
-        fileManager = fileManager,
+        executor = executor,
+        fileManager = files,
         projectRepository = projects,
         provisioningSource = provisioning,
         daemonSource = FakeGradleDaemonSource(),
@@ -1433,5 +1439,362 @@ class MultirepoCommandsTest {
         assertEquals(1, cli().run(listOf("multirepo", "workspace", "detect")))
         assertTrue(err.contains("'workspace' is already taken"), err.toString())
         assertEquals(taken, source.declarations.getValue(folder))
+    }
+
+    @Test
+    fun `trust json approves an unapproved multirepo only with yes`() {
+        val multirepos = FakeMultirepoSource(mapOf(folder to declaration), known = emptyList(), approveAll = false)
+
+        assertEquals(0, cli(multirepos = multirepos).run(listOf("multirepo", "trust", "--json")))
+        assertEquals(listOf("false", "false"), listOf(json()["approved"], json()["changed"]).map { it!!.jsonPrimitive.content })
+        assertTrue(multirepos.known.isEmpty())
+        out.clear()
+        assertEquals(0, cli(multirepos = multirepos).run(listOf("multirepo", "trust", "--yes", "--json")))
+        assertEquals(listOf("true", "true"), listOf(json()["approved"], json()["changed"]).map { it!!.jsonPrimitive.content })
+        assertEquals(listOf(folder), multirepos.known)
+    }
+
+    @Test
+    fun `the review names the multirepo and its workspace repository, or says it has no repositories`() {
+        folderIsARepository()
+        val named = FakeMultirepoSource(mapOf(folder to declaration.copy(name = "Product")), known = emptyList(), approveAll = false)
+
+        cli(multirepos = named).run(listOf("multirepo", "trust"))
+
+        assertTrue(out.contains("  name  Product"), out.toString())
+        assertTrue(out.lines().any { it.startsWith("  workspace  $folder") && it.endsWith("(workspace repository)") }, out.toString())
+        out.clear()
+        val empty = FakeMultirepoSource(mapOf("/home/dev/projects/empty" to MultirepoDeclaration(worktreesRoot = "../empty-worktrees")), known = emptyList(), approveAll = false)
+        cli(workingDirectory = "/home/dev/projects/empty", multirepos = empty).run(listOf("multirepo", "trust"))
+        assertTrue(out.contains("  no repositories"), out.toString())
+    }
+
+    @Test
+    fun `workspace detect prints nothing in json`() {
+        folderIsARepository()
+        source.declarations[folder] = declaration.copy(workspace = WorkspaceSetting(alias = "root"))
+
+        assertEquals(0, cli().run(listOf("multirepo", "workspace", "detect", "--json")), err.toString())
+
+        assertTrue(json()["repos"]!!.jsonArray.any { it.jsonObject["alias"]!!.jsonPrimitive.content == "workspace" }, out.toString())
+    }
+
+    @Test
+    fun `worktrees-root moves where the multirepo's worktrees go`() {
+        val exitCode = cli().run(listOf("multirepo", "worktrees-root", "../elsewhere"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals("../elsewhere", source.declarations.getValue(folder).worktreesRoot)
+    }
+
+    @Test
+    fun `add-repo of a repository that already is a project doesn't register it again`() {
+        git.repository("/src/web")
+        projects.save(Project("web", "web", ProjectConfig("/src/web", "$worktreesRoot/web", emptyList())))
+
+        val exitCode = cli(answer = "n").run(listOf("multirepo", "add-repo", "web", "/src/web"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals("added web (/src/web)", out.lines().first(), out.toString())
+    }
+
+    @Test
+    fun `add-repo with use-worktrees-root moves the worktrees folder without asking`() {
+        val fresh = FakeMultirepoSource(mapOf(folder to MultirepoDeclaration(worktreesRoot = "../elsewhere")))
+
+        val exitCode = cli(multirepos = fresh).run(listOf("multirepo", "add-repo", "app", appBase, "--use-worktrees-root"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertFalse(err.contains("[y/N]"))
+        assertEquals("/home/dev/projects/elsewhere/app", projects.list().first { it.id == "app" }.config.worktreesRoot)
+    }
+
+    @Test
+    fun `add-repo asks to move the worktrees of a repository that has none yet`() {
+        val fresh = FakeMultirepoSource(mapOf("/home/dev/projects/platform" to MultirepoDeclaration(worktreesRoot = "../platform-worktrees")))
+        git.repository("/src/web")
+
+        cli(workingDirectory = "/home/dev/projects/platform", multirepos = fresh, answer = "y").run(listOf("multirepo", "add-repo", "web", "/src/web"))
+
+        assertTrue(err.contains("Keep the new worktrees of ") && !err.contains(" instead of "), err.toString())
+    }
+
+    @Test
+    fun `show and status leave the base of a repository without one empty`() {
+        git.repository("/src/web", remote = false).mainBranch = "trunk"
+        source.declarations[folder] = declaration.copy(repos = declaration.repos + ("web" to "/src/web"))
+
+        assertEquals(0, cli().run(listOf("multirepo", "show", "--json")), err.toString())
+        val web = json()["repos"]!!.jsonArray.map { it.jsonObject }.first { it["alias"]!!.jsonPrimitive.content == "web" }
+        assertEquals(JsonNull, web["base"])
+        out.clear()
+        assertEquals(0, cli().run(listOf("status")), err.toString())
+    }
+
+    @Test
+    fun `init over an existing declaration rejects a new worktrees root`() {
+        val exitCode = cli().run(listOf("multirepo", "init", "--worktrees-root", "../elsewhere"))
+
+        assertEquals(2, exitCode)
+        assertTrue(err.contains("--worktrees-root only applies to a new multirepo"), err.toString())
+    }
+
+    @Test
+    fun `init over an approved declaration registers it without asking`() {
+        val exitCode = cli().run(listOf("multirepo", "init"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertTrue(out.contains("is already registered"), out.toString())
+    }
+
+    @Test
+    fun `new in a multirepo rejects from and a worktrees root`() {
+        assertEquals(2, cli().run(listOf("new", "TASK-1", "--from", "develop")))
+        assertTrue(err.contains("--from doesn't apply to a group"), err.toString())
+        assertEquals(2, cli().run(listOf("new", "TASK-1", "--worktrees-root", "/wt")))
+        assertTrue(err.contains("--worktrees-root doesn't apply to a group"), err.toString())
+    }
+
+    @Test
+    fun `a repository that fails without a worktree is reported without a kept path`() {
+        source.declarations[folder] = declaration.copy(repos = declaration.repos + ("web" to "/src/web"), defaultRepos = listOf("app", "web"))
+        git.repository("/src/web")
+
+        val exitCode = cli().run(listOf("new", "TASK-12"))
+
+        assertEquals(1, exitCode)
+        assertTrue(err.contains("shogun: web: couldn't create its worktree: "), err.toString())
+        assertFalse(err.contains("web: couldn't create its worktree ("), err.toString())
+    }
+
+    @Test
+    fun `group status lines show detached, missing, unreadable and not started worktrees`() {
+        with(git) {
+            docs.worktree("$worktreesRoot/docs/detached", null)
+            docs.worktree("$worktreesRoot/docs/gone", "feature/GONE")
+            docs.prunable += "$worktreesRoot/docs/gone"
+            docs.worktree("$worktreesRoot/docs/broken", "feature/BROKEN")
+            docs.unreadableStatus += "$worktreesRoot/docs/broken"
+        }
+
+        assertEquals(0, cli().run(listOf("status")), err.toString())
+
+        val lines = out.lines()
+        assertTrue(lines.any { it.contains("docs  $worktreesRoot/docs/detached  (detached)") }, out.toString())
+        assertTrue(lines.any { it.contains("$worktreesRoot/docs/gone  feature/GONE  folder-missing") }, out.toString())
+        assertTrue(lines.any { it.contains("$worktreesRoot/docs/broken  feature/BROKEN  status-unavailable (") }, out.toString())
+    }
+
+    @Test
+    fun `clean with nothing to clean in json reports an empty plan`() {
+        assertEquals(0, cli().run(listOf("clean", "--json")))
+
+        assertEquals(emptyList(), json()["candidates"]!!.jsonArray.toList())
+    }
+
+    @Test
+    fun `clean without yes repeats every option it was given`() {
+        groupTask1(merged = true)
+
+        cli().run(listOf("clean", "--delete-branches", "--stop-gradle-daemons", "--stop-maven-daemons", "--stop-emulators", "--delete-simulators", "--delete-derived-data", "--down-compose-projects"))
+
+        assertTrue(
+            out.contains("Run 'shogun clean --delete-branches --stop-gradle-daemons --stop-maven-daemons --stop-emulators --delete-simulators --delete-derived-data --down-compose-projects --yes' to remove the groups."),
+            out.toString(),
+        )
+    }
+
+    @Test
+    fun `session start in a worktree outside any group adds no group context`() {
+        with(git) { docs.worktree("$worktreesRoot/docs/notes", "feature/NOTES") }
+
+        val exitCode = cli(input = """{"cwd": "$worktreesRoot/docs/notes"}""").run(listOf("hook", "session-start"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertFalse(out.contains("in the group"), out.toString())
+    }
+
+    private fun gitWith(respond: (List<String>, String?) -> CommandResult?) = object : ShellCommandExecutor {
+        override suspend fun execute(command: List<String>, workingDirectory: String?): CommandResult =
+            respond(command, workingDirectory) ?: git.execute(command, workingDirectory)
+    }
+
+    private fun mainBranchUnreadableIn(directory: String) = gitWith { command, workingDirectory ->
+        if ("symbolic-ref" in command && workingDirectory == directory) throw CommandExecutionException(command, IllegalStateException("git timed out")) else null
+    }
+
+    @Test
+    fun `a repository whose main branch can't be read still shows in show, status and clean`() {
+        groupTask1(merged = true)
+        val executor = mainBranchUnreadableIn(apiBase)
+
+        assertEquals(0, cli(executor = executor).run(listOf("multirepo", "show", "--json")), err.toString())
+        assertEquals(JsonNull, json()["repos"]!!.jsonArray.map { it.jsonObject }.first { it["alias"]!!.jsonPrimitive.content == "api" }["base"])
+        assertEquals(0, cli(executor = executor).run(listOf("status")), err.toString())
+    }
+
+    @Test
+    fun `clean yes still removes a group's worktree when its main branch can no longer be read`() {
+        groupTask1(merged = true)
+        var reads = 0
+        val executor = gitWith { command, workingDirectory ->
+            if ("symbolic-ref" in command && workingDirectory == apiBase && reads++ > 0) throw CommandExecutionException(command, IllegalStateException("git timed out")) else null
+        }
+
+        cli(executor = executor).run(listOf("clean", "--yes"))
+
+        assertTrue(git.ranIn(apiBase, "git", "worktree", "remove", "$worktreesRoot/api/TASK-1"), err.toString())
+    }
+
+    @Test
+    fun `clean yes fails when a group's worktree can't be removed`() {
+        groupTask1(merged = true)
+        val executor = gitWith { command, workingDirectory ->
+            if (command.take(3) == listOf("git", "worktree", "remove") && workingDirectory == apiBase) CommandResult(command, 1, "", "fatal: busy") else null
+        }
+
+        assertEquals(1, cli(executor = executor).run(listOf("clean", "--yes")))
+    }
+
+    @Test
+    fun `status marks a merged worktree whose branch never had its own commit as not started`() {
+        groupTask1(merged = true)
+        val executor = gitWith { command, _ ->
+            when {
+                "reflog" in command -> CommandResult(command, 0, "2222222222222222222222222222222222222222\n", "")
+                command.takeLast(2) == listOf("rev-parse", "HEAD") -> CommandResult(command, 0, "2222222222222222222222222222222222222222\n", "")
+                else -> null
+            }
+        }
+
+        assertEquals(0, cli(executor = executor).run(listOf("status")), err.toString())
+
+        assertTrue(out.lines().any { it.contains("$worktreesRoot/app/TASK-1") && it.contains("not-started") }, out.toString())
+    }
+
+    @Test
+    fun `a worktree of a repository without a base shows its changes only`() {
+        git.repository("/src/web", remote = false).mainBranch = "trunk"
+        with(git) { repositories.last().worktree("$worktreesRoot/web/notes", "feature/NOTES") }
+        source.declarations[folder] = declaration.copy(repos = declaration.repos + ("web" to "/src/web"))
+
+        assertEquals(0, cli().run(listOf("status")), err.toString())
+
+        assertTrue(out.lines().any { it.endsWith("$worktreesRoot/web/notes  feature/NOTES  changes=0") }, out.toString())
+    }
+
+    @Test
+    fun `show names a repository whose project has no worktrees folder as without a project`() {
+        projects.save(Project("docs", "product-docs", ProjectConfig(docsBase, "", emptyList())))
+
+        assertEquals(0, cli().run(listOf("multirepo", "show")), err.toString())
+
+        assertTrue(out.lines().any { it == "  docs  $docsBase  no-project  base=main" }, out.toString())
+    }
+
+    @Test
+    fun `init of a new multirepo with a worktrees root answers in json`() {
+        val home = "/home/dev/projects/platform"
+
+        assertEquals(0, cli(workingDirectory = home, multirepos = FakeMultirepoSource()).run(listOf("multirepo", "init", "--worktrees-root", "../wt", "--json")))
+
+        assertEquals("/home/dev/projects/wt", json()["worktreesRoot"]!!.jsonPrimitive.content)
+    }
+
+    @Test
+    fun `add-repo asks whether to move a project's existing worktrees folder`() {
+        val fresh = FakeMultirepoSource(mapOf(folder to MultirepoDeclaration(worktreesRoot = "../elsewhere")))
+
+        cli(multirepos = fresh, answer = "n").run(listOf("multirepo", "add-repo", "app", appBase))
+
+        assertTrue(err.contains(" instead of $worktreesRoot/app? [y/N] "), err.toString())
+    }
+
+    @Test
+    fun `a repository whose post-creation command fails keeps its worktree and says so`() {
+        val install = listOf(listOf("npm", "install"))
+        val provisioning = FakeRepositoryProvisioningSource(byRepository = mapOf(appBase to RepositoryProvisioning(postCreateCommands = install)))
+        val trust = FakeRepositoryTrust(mapOf(appBase to RepositoryApprovalSubject(install)))
+        val executor = gitWith { command, _ -> if (command.first() == "npm") CommandResult(command, 1, "", "npm failed") else null }
+
+        val exitCode = cli(executor = executor, provisioning = provisioning, trust = trust).run(listOf("new", "TASK-12"))
+
+        assertEquals(1, exitCode)
+        assertTrue(err.contains("app: couldn't create its worktree ($worktreesRoot/app/TASK-12 kept): "), err.toString())
+    }
+
+    @Test
+    fun `an ignored declaration is noted once per run of the same command line`() {
+        val multirepos = FakeMultirepoSource(mapOf(folder to declaration), known = listOf(folder), approveAll = false)
+        val shogun = cli(workingDirectory = appBase, multirepos = multirepos)
+
+        shogun.run(listOf("status"))
+        shogun.run(listOf("status"))
+
+        assertEquals(1, err.lines().count { it.contains("isn't approved on this machine") }, err.toString())
+    }
+
+    @Test
+    fun `no ignored declaration is noted when the declaration can't be read`() {
+        val unreadable = FakeMultirepoSource(mapOf(folder to declaration), known = emptyList()).also { it.unreadable[folder] = IllegalStateException("unreadable") }
+
+        cli(workingDirectory = appBase, multirepos = unreadable).run(listOf("status"))
+
+        assertFalse(err.contains("isn't approved on this machine"), err.toString())
+    }
+
+    @Test
+    fun `status and clean inside a repository of a multirepo work on that repository only`() {
+        with(git) { app.worktree("$worktreesRoot/app/TASK-1", "feature/TASK-1", merged = true) }
+
+        assertEquals(0, cli(workingDirectory = appBase).run(listOf("status")), err.toString())
+        assertFalse(out.contains("ungrouped"), out.toString())
+        out.clear()
+        assertEquals(0, cli(workingDirectory = appBase).run(listOf("clean")), err.toString())
+        assertTrue(out.contains("would remove $worktreesRoot/app/TASK-1"), out.toString())
+        assertFalse(out.contains("the group"), out.toString())
+    }
+
+    @Test
+    fun `session start goes on when the multirepo can't be read`() {
+        source.unreadable[folder] = IllegalStateException("unreadable")
+
+        assertEquals(0, cli(input = """{"cwd": "$appBase"}""").run(listOf("hook", "session-start")), err.toString())
+
+        assertFalse(out.contains("in the group"), out.toString())
+    }
+
+    @Test
+    fun `session start in a repository inside the multirepo folder that isn't one of its repositories adds no group context`() {
+        val stray = "$folder/stray"
+        git.repository(stray)
+        projects.save(Project("stray", "stray", ProjectConfig(stray, "$worktreesRoot/stray", emptyList())))
+
+        assertEquals(0, cli(input = """{"cwd": "$stray"}""").run(listOf("hook", "session-start")), err.toString())
+
+        assertFalse(out.contains("in the group"), out.toString())
+    }
+
+    @Test
+    fun `session start without the group's context when it can't be read`() {
+        groupTask1()
+        val unreadable = object : app.luxion.shogunai.domain.io.FileManager by fileManager {
+            override fun exists(path: String): Boolean = if (path.endsWith("/openspec")) throw java.io.IOException("unreadable") else fileManager.exists(path)
+        }
+
+        assertEquals(0, cli(input = """{"cwd": "$worktreesRoot/api/TASK-1"}""", files = unreadable).run(listOf("hook", "session-start")), err.toString())
+
+        assertFalse(out.contains("in the group"), out.toString())
+    }
+
+    @Test
+    fun `session start in a registered workspace repository describes the multirepo without a group context`() {
+        folderIsARepository()
+        projects.save(Project("workspace", "product", ProjectConfig(folder, "$worktreesRoot/workspace", emptyList())))
+
+        assertEquals(0, cli(input = """{"cwd": "$folder"}""").run(listOf("hook", "session-start")), err.toString())
+
+        assertTrue(out.lines().first().startsWith("ShogunAi multirepo product"), out.toString())
+        assertFalse(out.contains("in the group"), out.toString())
     }
 }

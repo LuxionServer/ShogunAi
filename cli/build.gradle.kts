@@ -39,7 +39,7 @@ kover {
                 minBound(100, CoverageUnit.LINE)
             }
             rule("cli branches") {
-                minBound(83, CoverageUnit.BRANCH)
+                minBound(100, CoverageUnit.BRANCH)
             }
         }
     }

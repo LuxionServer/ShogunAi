@@ -303,6 +303,7 @@ import kotlin.time.Duration.Companion.seconds
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -341,7 +342,7 @@ class ShogunCli(
     private val trust: RepositoryTrust = RepositoryTrust.NONE,
     private val readAnswer: () -> String? = { null },
     private val sessionStore: AgentSessionStore = FileAgentSessionStore(files.agentSessions),
-    private val agentProcessId: () -> Long? = ::claudeAncestorPid,
+    private val agentProcessId: () -> Long? = { claudeAncestorPid() },
     private val mavenDaemonSource: MavenDaemonSource = ProcessMavenDaemonSource(executor),
     private val composeSource: ComposeProjectSource = DockerComposeProjectSource(executor),
     private val composeRegistry: ComposeProjectRegistry = JsonComposeProjectRegistry(files.composeProjects),
@@ -448,9 +449,10 @@ class ShogunCli(
             sharedEnvironment = { repository, worktree -> MultirepoSharedEnvironment(resolveMultirepo, executor).forWorktree(repository, worktree) },
         )
 
-    private fun simulatorSettingsFor(repositoryPath: String): SimulatorSettings =
-        projectRepository.list().firstOrNull { sameDirectory(it.config.baseRepositoryPath, repositoryPath) }
-            ?.config?.simulator ?: SimulatorSettings()
+    private fun simulatorSettingsFor(repositoryPath: String): SimulatorSettings {
+        val project = projectRepository.list().firstOrNull { sameDirectory(it.config.baseRepositoryPath, repositoryPath) }
+        return if (project == null) SimulatorSettings() else project.config.simulator
+    }
     private val prepareEnvironment = PrepareWorktreeEnvironmentUseCase(
         resolveEnvironment,
         WriteEnvironmentFileUseCase(executor, fileManager, provisioningSource),
@@ -515,7 +517,7 @@ class ShogunCli(
     private suspend fun execute(command: CliCommand): Int = try {
         when (command) {
             CliCommand.Help -> out.append(CliHelp.USAGE).let { EXIT_OK }
-            is CliCommand.CommandHelp -> out.append(CliHelp.forCommand(command.name).orEmpty()).let { EXIT_OK }
+            is CliCommand.CommandHelp -> out.append(CliHelp.forCommand(command.name)).let { EXIT_OK }
             CliCommand.Version -> out.line("shogun ${BuildInfo.VERSION}").let { EXIT_OK }
             is CliCommand.New -> new(command)
             is CliCommand.Multirepo -> multirepo(command)
@@ -570,7 +572,7 @@ class ShogunCli(
     } catch (error: CancellationException) {
         throw error
     } catch (error: Exception) {
-        err.line("shogun: ${error.message?.lineSequence()?.firstOrNull { it.isNotBlank() } ?: error::class.simpleName}")
+        err.line("shogun: ${error.message.orEmpty().lineSequence().firstOrNull { it.isNotBlank() } ?: error::class.simpleName}")
         EXIT_FAILURE
     }
 
@@ -605,7 +607,7 @@ class ShogunCli(
         } else {
             startPoint = resolveStartPoint(workingDirectory, command.from)
             CreateWorktreeUseCase(config, executor, fileManager, provisioningSource, prepareEnvironment, trust, approval, provisioningRecords)(
-                command.taskId.orEmpty(),
+                command.taskId!!,
                 command.branchType,
                 startPoint,
                 resolveBaseBranch(workingDirectory, command.from),
@@ -642,7 +644,7 @@ class ShogunCli(
     private suspend fun multirepoContext(): MultirepoContext? {
         val context = resolveMultirepo(workingDirectory).getOrThrow()
         if (context == null && !ignoredDeclarationNoted) {
-            runCatching { resolveMultirepo.nearestDeclaration(workingDirectory) }.getOrNull()?.takeIf { !it.approved }?.let { ignored ->
+            runCatching { resolveMultirepo.nearestDeclaration(workingDirectory) }.getOrNull()?.let { ignored ->
                 ignoredDeclarationNoted = true
                 err.line("shogun: ignoring ${printable(ignored.declarationPath)}: it isn't approved on this machine; review it with 'shogun multirepo trust'")
             }
@@ -679,7 +681,6 @@ class ShogunCli(
         val multirepo = context.multirepo
         val updated = try {
             when (action) {
-                is MultirepoAction.Init, MultirepoAction.Show, is MultirepoAction.Trust -> multirepo
                 is MultirepoAction.Name -> configure.setName(multirepo, action.name).getOrThrow()
                 is MultirepoAction.AddRepo -> {
                     val decision = worktreesFolderDecision(action.useWorktreesRoot, command.json)
@@ -713,6 +714,7 @@ class ShogunCli(
                     if (command.json) printJson(buildJsonObjectOf("deleted" to multirepo.declarationPath)) else out.line("deleted ${multirepo.declarationPath}")
                     return EXIT_OK
                 }
+                else -> multirepo
             }
         } catch (error: UnknownMultirepoAlias) {
             err.line("shogun: ${error.message}")
@@ -736,7 +738,7 @@ class ShogunCli(
                 val config = configs[repository.alias]
                 val details = listOfNotNull(
                     repository.path,
-                    config?.worktreesRoot?.ifBlank { null }?.let { "worktrees=$it" } ?: "no-project",
+                    worktreesDetail(config),
                     bases[repository.alias]?.let { "base=$it" },
                     "default".takeIf { repository.alias in updated.defaultRepos },
                     "workspace".takeIf { repository == updated.workspaceRepository },
@@ -752,9 +754,15 @@ class ShogunCli(
         return EXIT_OK
     }
 
+    private fun worktreesDetail(config: ProjectConfig?): String {
+        val worktreesRoot = config?.let { it.worktreesRoot.ifBlank { null } }
+        return if (worktreesRoot == null) "no-project" else "worktrees=$worktreesRoot"
+    }
+
     private suspend fun initMultirepo(configure: ConfigureMultirepoUseCase, action: MultirepoAction.Init, json: Boolean): Int {
         multirepoSource.forgetMissing()
-        if (multirepoSource.read(workingDirectory) == null) {
+        val declaration = multirepoSource.read(workingDirectory)
+        if (declaration == null) {
             val multirepo = configure.init(workingDirectory, action.worktreesRoot?.let(::absolute), action.name).getOrThrow()
             if (json) printJson(multirepoJson(multirepo, emptyMap(), emptyMap())) else out.line(multirepo.declarationPath)
             return EXIT_OK
@@ -763,7 +771,7 @@ class ShogunCli(
             err.line("shogun: $it only applies to a new multirepo; this folder already has one, use 'shogun multirepo worktrees-root' or 'shogun multirepo name'")
             return EXIT_USAGE
         }
-        val reviewed = resolveMultirepo.build(workingDirectory, multirepoSource.read(workingDirectory) ?: throw WorktreeError.MultirepoNotFound(workingDirectory))
+        val reviewed = resolveMultirepo.build(workingDirectory, declaration)
         resolveMultirepo.validate(reviewed)
         if (!reviewed.approved) approvalRefusal(reviewed, action.yes, json)?.let { return it }
         val registered = configure.register(reviewed, worktreesFolderDecision(action.useWorktreesRoot, json)).getOrThrow()
@@ -782,7 +790,7 @@ class ShogunCli(
 
     private fun worktreesFolderDecision(useWorktreesRoot: Boolean?, json: Boolean) = WorktreesFolderDecision { project, current, proposed ->
         useWorktreesRoot ?: (!json && confirm(
-            "Keep the new worktrees of $project in $proposed" + (current?.let { " instead of $it" } ?: "") + "? [y/N] ",
+            "Keep the new worktrees of $project in $proposed" + (if (current == null) "" else " instead of $current") + "? [y/N] ",
         ))
     }
 
@@ -803,7 +811,7 @@ class ShogunCli(
     }
 
     private suspend fun trustMultirepo(configure: ConfigureMultirepoUseCase, action: MultirepoAction.Trust, json: Boolean): Int {
-        val directory = action.folder?.let(::absolute) ?: workingDirectory
+        val directory = absolute(action.folder ?: workingDirectory)
         val multirepo = resolveMultirepo.nearestDeclaration(directory) ?: throw WorktreeError.MultirepoNotFound(directory)
         if (action.revoke) {
             configure.revoke(multirepo).getOrThrow()
@@ -864,10 +872,9 @@ class ShogunCli(
     }
 
     private fun workspaceDetectionLines(before: Multirepo, after: Multirepo): List<String> {
-        val alias = after.workspaceRepository?.alias ?: return emptyList()
+        val alias = after.workspaceRepository!!.alias
         if (before.declaration.workspace == null) return listOf("the workspace repository is already detected as '$alias'")
-        val defaults = if (alias in after.defaultRepos) "" else "; it isn't a default repository"
-        return listOf("the workspace repository is detected again as '$alias'$defaults")
+        return listOf("the workspace repository is detected again as '$alias'; it isn't a default repository")
     }
 
     private fun sharedVariableLines(multirepo: Multirepo): List<String> {
@@ -901,10 +908,11 @@ class ShogunCli(
             return EXIT_USAGE
         }
         val members = members(context).let { all -> aliases.distinct().mapNotNull { alias -> all.firstOrNull { it.alias == alias } } }
+        val configs = members.associate { it.alias to it.config }
         val approval = if (command.json) RepositoryApproval.SKIP else terminalApproval
         val creation = CreateGroupUseCase(executor, fileManager, provisioningSource, prepareEnvironment, trust, approval, provisioningRecords)(
             members,
-            command.taskId.orEmpty(),
+            command.taskId!!,
             command.branchType,
             fetch = command.fetch,
         ).getOrThrow()
@@ -914,15 +922,13 @@ class ShogunCli(
             creation.repositories.forEach { result ->
                 when (result.outcome) {
                     GroupRepositoryOutcome.CREATED -> {
-                        out.line(result.path.orEmpty())
+                        out.line(result.path!!)
                         err.line("${result.alias}: created ${result.path} on ${creation.branch}")
-                        members.firstOrNull { it.alias == result.alias }?.let {
-                            noteSkipped(it.config.baseRepositoryPath, result.skippedPostCreateCommands, result.skippedVariables)
-                        }
+                        noteSkipped(configs.getValue(result.alias).baseRepositoryPath, result.skippedPostCreateCommands, result.skippedVariables)
                     }
                     GroupRepositoryOutcome.EXISTING -> err.line("${result.alias}: already in the group at ${result.path}")
                     GroupRepositoryOutcome.FAILED -> err.line(
-                        "shogun: ${result.alias}: couldn't create its worktree" + (result.path?.let { " ($it kept)" } ?: "") + ": " +
+                        "shogun: ${result.alias}: couldn't create its worktree" + (if (result.path == null) "" else " (${result.path} kept)") + ": " +
                             failureReason(result.error ?: IllegalStateException("unknown failure")),
                     )
                 }
@@ -952,21 +958,23 @@ class ShogunCli(
 
     private fun groupWorktreeLine(state: GroupWorktreeState, showBranch: Boolean): String {
         val worktree = state.member.worktree
-        val status = state.status?.getOrNull()
         val details = buildList {
             add(state.member.alias)
             add(worktree.path)
             if (showBranch) add(worktree.branch ?: "(detached)")
             state.agents.takeIf { it.isNotEmpty() }?.let { agents -> add("agents=${agents.joinToString(",") { agentLabel(it) }}") }
-            when {
-                worktree.isPrunable -> add("folder-missing")
-                status == null -> add(state.status?.exceptionOrNull()?.let { "status-unavailable (${failureReason(it)})" } ?: "status-unavailable")
-                else -> {
-                    add("changes=${status.uncommittedChanges}")
-                    status.base?.let { add("ahead=${it.ahead} behind=${it.behind}" + (status.baseName?.let { base -> " of $base" } ?: "")) }
-                    if (status.isMerged) add("merged")
-                    if (status.isNotStarted) add("not-started")
-                }
+            if (worktree.isPrunable) {
+                add("folder-missing")
+            } else {
+                state.status!!.fold(
+                    onSuccess = { status ->
+                        add("changes=${status.uncommittedChanges}")
+                        status.base?.let { add("ahead=${it.ahead} behind=${it.behind} of ${status.baseName}") }
+                        if (status.isMerged) add("merged")
+                        if (status.isNotStarted) add("not-started")
+                    },
+                    onFailure = { add(statusUnavailable(failureReason(it))) },
+                )
             }
         }
         return details.joinToString("  ")
@@ -1471,13 +1479,12 @@ class ShogunCli(
                 RunnerOutcome.STARTED_AGENT -> "started $agent in $path's open Herdr workspace (pane $handle)"
                 RunnerOutcome.FOCUSED -> "focused $path in Herdr (already open, pane $handle)"
             }
-            RunnerId.ORCA -> when (opening.outcome) {
-                RunnerOutcome.OPENED, RunnerOutcome.STARTED_AGENT -> "opened $path in Orca with $agent (terminal $handle)"
-                RunnerOutcome.FOCUSED -> "focused $path's running agent in Orca (terminal $handle)"
-            }
+            RunnerId.ORCA ->
+                if (opening.outcome == RunnerOutcome.FOCUSED) "focused $path's running agent in Orca (terminal $handle)" else "opened $path in Orca with $agent (terminal $handle)"
         }
-        val named = opening.sessionName?.let { "$line as session $it" } ?: line
-        return (opening.emulator ?: opening.simulator)?.let { "$named, with $it in its emulator view" } ?: named
+        val named = if (opening.sessionName == null) line else "$line as session ${opening.sessionName}"
+        val device = opening.emulator ?: opening.simulator
+        return if (device == null) named else "$named, with $device in its emulator view"
     }
 
     private fun reportSkippedDevices(path: String, opening: RunnerOpening) {
@@ -1605,8 +1612,10 @@ class ShogunCli(
         report.herdrFailures.forEach { err.line(herdrCloseFailure(it.path, it.error)) }
         report.orcaFailures.forEach { err.line(orcaCloseFailure(it.path, it.error)) }
         report.headlessAppFailures.forEach { err.line(headlessStopFailure(it.path, it.error)) }
-        report.composeDown?.takenDown?.forEach { say("took down Compose project $it") }
-        report.composeDown?.failures?.forEach { err.line("shogun: couldn't take down Compose project ${it.name}: ${it.detail}") }
+        report.composeDown?.let { down ->
+            down.takenDown.forEach { say("took down Compose project $it") }
+            down.failures.forEach { err.line("shogun: couldn't take down Compose project ${it.name}: ${it.detail}") }
+        }
         report.composeUnavailable?.let { err.line("shogun: Docker isn't available ($it), so the Compose projects were kept") }
         report.composeResources?.let { printLeftoversReport(it, say) }
         val deletedBranches = if (command.deleteBranches) {
@@ -1653,7 +1662,7 @@ class ShogunCli(
                     plan.copy(
                         removed = report.removed,
                         deletedBranches = deletedBranches,
-                        failures = report.failures.map { CleanFailureJson(it.path, it.error.message.orEmpty()) } + derivedDataFailures,
+                        failures = report.failures.map { CleanFailureJson(it.path, it.error.message!!) } + derivedDataFailures,
                         gradleDaemonsStopped = stoppedDaemons,
                         mavenDaemonsStopped = stoppedMavenDaemons,
                         emulatorsStopped = stoppedEmulators,
@@ -1694,8 +1703,9 @@ class ShogunCli(
     }
 
     private fun failureReason(error: Throwable): String {
-        val text = (error as? WorktreeError.GitCommandFailed)?.errorOutput?.takeIf { it.isNotBlank() } ?: error.message.orEmpty()
-        return text.lineSequence().firstOrNull { it.isNotBlank() }?.trim() ?: error::class.simpleName.orEmpty()
+        val gitOutput = (error as? WorktreeError.GitCommandFailed)?.errorOutput.orEmpty()
+        val line = gitOutput.ifBlank { error.message.orEmpty() }.lineSequence().firstOrNull { it.isNotBlank() }
+        return if (line == null) error::class.simpleName.orEmpty() else line.trim()
     }
 
     private data class SimulatorCleanup(
@@ -1746,7 +1756,7 @@ class ShogunCli(
                 readSimulatorStates(config, listOf(worktree)).getOrThrow()[worktree.path]
             }
         }
-        acquisition?.releases?.forEach { err.line("released the simulator of ${releasedName(it)} to make room") }
+        acquisition?.releases.orEmpty().forEach { err.line("released the simulator of ${releasedName(it)} to make room") }
         reportWaited(acquisition)
         if (simulator != null) reportOrcaView("simulator", simulator.udid, orcaView)
         val released = if (simulator == null) readReleaseRecord(worktree.path, ResourceKind.IOS_SIMULATOR) else null
@@ -1842,7 +1852,7 @@ class ShogunCli(
                 readEmulatorStates(config, listOf(worktree)).getOrThrow()[worktree.path]
             }
         }
-        acquisition?.releases?.forEach { err.line("released the emulator of ${releasedName(it)} to make room") }
+        acquisition?.releases.orEmpty().forEach { err.line("released the emulator of ${releasedName(it)} to make room") }
         reportWaited(acquisition)
         if (emulator != null) reportOrcaView("emulator", emulator.serial, orcaView)
         val released = if (emulator == null) readReleaseRecord(worktree.path, ResourceKind.EMULATOR) else null
@@ -1903,14 +1913,14 @@ class ShogunCli(
             usage.kind to if (usage.kind == ResourceKind.GRADLE_DAEMON) emptyList() else acquireResource.waiting(usage.kind)
         }
         if (command.json) {
-            printJson(poolJson(usages) { waiting[it].orEmpty() })
+            printJson(poolJson(usages) { waiting.getValue(it) })
             return EXIT_OK
         }
         usages.forEach { usage ->
-            val limit = usage.effectiveLimit?.toString() ?: "no limit"
+            val limit = limitText(usage.effectiveLimit)
             out.line("${usage.kind.poolLabel} ${usage.inUse}/$limit${if (usage.isOverLimit) "  over the limit" else ""}")
             usage.holders.forEach { holder -> out.line("  ${holderLine(holder)}") }
-            waiting[usage.kind].orEmpty().forEach { ticket ->
+            waiting.getValue(usage.kind).forEach { ticket ->
                 out.line("  waiting: ${ticket.displayName} since ${Instant.ofEpochMilli(ticket.since).toLocalClockTime()}")
             }
         }
@@ -1924,10 +1934,12 @@ class ShogunCli(
             return EXIT_OK
         }
         printStopReport(DaemonStopReport(stopped = trim.stopped, kept = trim.kept), saying(false))
-        val limit = trim.limit?.toString() ?: "no limit"
+        val limit = limitText(trim.limit)
         out.line("gradle daemons ${trim.remaining}/$limit")
         return EXIT_OK
     }
+
+    private fun limitText(limit: Int?): String = if (limit == null) "no limit" else limit.toString()
 
     private fun holderLine(holder: PoolHolder): String {
         val state = holder.state.name.lowercase()
@@ -1957,7 +1969,7 @@ class ShogunCli(
                 report.failures.forEach { err.line("shogun: couldn't stop Gradle daemon ${it.pid}: ${it.detail}") }
             }
             .onFailure { err.line("shogun: couldn't stop Gradle daemons: ${it.message}") }
-            .getOrNull()?.stopped?.map { it.pid }.orEmpty()
+            .getOrNull()?.stopped.orEmpty().map { it.pid }
 
     private suspend fun mavenDaemonsBeforeCleanup(config: ProjectConfig, worktrees: List<Worktree>): List<MavenDaemon> =
         ListMavenDaemonsUseCase(mavenDaemonSource, fileManager)(worktrees, worktreesRootOf(config, worktrees))
@@ -1971,7 +1983,7 @@ class ShogunCli(
                 report.failures.forEach { err.line("shogun: couldn't stop Maven daemon ${it.pid}: ${it.detail}") }
             }
             .onFailure { err.line("shogun: couldn't stop Maven daemons: ${it.message}") }
-            .getOrNull()?.stopped?.map { it.pid }.orEmpty()
+            .getOrNull()?.stopped.orEmpty().map { it.pid }
 
     private suspend fun env(command: CliCommand.Env): Int {
         val target = absolute(command.path ?: workingDirectory)
@@ -1988,19 +2000,10 @@ class ShogunCli(
         return EXIT_OK
     }
 
-    private fun unresolvedReason(reason: UnresolvedReason): String = when (reason) {
-        is UnresolvedReason.RepositoryNotApproved ->
-            "the environment of '${reason.alias}' isn't approved on this machine; run 'shogun trust' in ${reason.repositoryPath} to review it"
-        is UnresolvedReason.PortNotDeclared -> "'${reason.alias}' doesn't declare the port '${reason.key}' (\${port:${reason.key}} in its .shogunai.json)"
-        is UnresolvedReason.PortNotReserved -> "'${reason.alias}' hasn't reserved the port '${reason.key}' yet"
-        is UnresolvedReason.WorktreeUnreadable -> "the worktree of '${reason.alias}' can't be read: ${reason.detail}"
-        is UnresolvedReason.InvalidDeclaration -> "${reason.declarationPath}: ${reason.detail}"
-    }
-
     private suspend fun hookSessionStart(): Int {
         val input = hookInput("session-start") ?: return EXIT_USAGE
         val directory = input.string("cwd") ?: workingDirectory
-        val multirepo = runCatching { resolveMultirepo(directory).getOrThrow() }.getOrNull()
+        val multirepo = resolveMultirepo(directory).getOrNull()
         if (multirepo?.atFolder == true) {
             GroupContext(fileManager).multirepoLines(multirepo.multirepo, runnerInUse()).forEach { out.line(it) }
             if (multirepo.repositoryPath == null) return EXIT_OK
@@ -2139,7 +2142,7 @@ class ShogunCli(
     private suspend fun guideTarget(command: CliCommand.GuideBlock): Pair<String, String> = when {
         command.agent != null -> command.agent to guideAgentPath(command.agent)
         command.project -> "project" to projectInstructionsPath()
-        else -> "file" to absolute(command.file.orEmpty())
+        else -> "file" to absolute(command.file!!)
     }
 
     private fun guideAgentPath(agent: String): String = when (agent) {
@@ -2231,7 +2234,7 @@ class ShogunCli(
 
     private suspend fun project(command: CliCommand.Project): Int {
         val resolveRepository = ResolveRepositoryUseCase(executor)
-        val directory = command.path?.let(::absolute) ?: workingDirectory
+        val directory = absolute(command.path ?: workingDirectory)
         when (command.action) {
             ProjectAction.ADD -> {
                 val registration = RegisterProjectUseCase(projectRepository, resolveRepository, workspaceOf = resolveMultirepo.known()::withWorkspaceAt)(directory).getOrThrow()
@@ -2416,9 +2419,12 @@ class ShogunCli(
         report.kept.forEach { say("kept ${it.pid}  Maven  (${it.reason.label})") }
     }
 
-    private fun worktreesRootOf(config: ProjectConfig?, worktrees: List<Worktree>?): String? =
-        config?.worktreesRoot?.takeIf { it.isNotBlank() }
-            ?: worktrees?.firstOrNull { !it.isMain }?.path?.replace('\\', '/')?.trimEnd('/')?.substringBeforeLast('/', "")?.ifEmpty { null }
+    private fun worktreesRootOf(config: ProjectConfig?, worktrees: List<Worktree>?): String? {
+        val configured = config?.let { it.worktreesRoot.ifBlank { null } }
+        if (configured != null) return configured
+        val linked = worktrees?.firstOrNull { !it.isMain } ?: return null
+        return linked.path.replace('\\', '/').trimEnd('/').substringBeforeLast('/', "").ifEmpty { null }
+    }
 
     private fun declaresCompose(repository: String): Boolean =
         runCatching { provisioningSource.read(repository).providers.dockerCompose != null }.getOrDefault(false)
@@ -2589,10 +2595,10 @@ class ShogunCli(
         listing.ofWorktrees().forEach { item ->
             val worktree = (item.owner as DerivedDataOwner.Worktree).path
             val packages = item.folder.packagesBytes?.takeIf { it > 0 }?.let { "  (packages ${formatMemory(it)})" }.orEmpty()
-            out.line("$worktree  ${formatMemory(item.folder.sizeBytes ?: 0L)}$packages")
+            out.line("$worktree  ${formatMemory(item.folder.sizeOrZero())}$packages")
         }
         val orphans = listing.orphans
-        out.line("orphans: ${orphans.size} (${formatMemory(orphans.sumOf { it.sizeBytes ?: 0L })})")
+        out.line("orphans: ${orphans.size} (${formatMemory(orphans.sumOf { it.sizeOrZero() })})")
         val unavailableCount = listing.folders.count { it.owner == DerivedDataOwner.UnavailableVolume }
         if (unavailableCount > 0) {
             out.line("folders on unavailable volumes: $unavailableCount")
@@ -2642,11 +2648,11 @@ class ShogunCli(
         val configs = (listOf(configFor(workingDirectory)) + projectRepository.list().map { it.config })
             .distinctBy { it.baseRepositoryPath.trimEnd('/') }
         val searches = configs.mapNotNull { config ->
-            ListWorktreesUseCase(config, executor)().getOrNull()?.filterNot { it.isPrunable }?.let { AgentSearch(config.agents.map { agent -> agent.agentCommand }, it) }
+            ListWorktreesUseCase(config, executor)().getOrNull()?.let { listed -> AgentSearch(config.agents.map { agent -> agent.agentCommand }, listed.filterNot { it.isPrunable }) }
         }
         val worktrees = searches.flatMap { it.worktrees }.distinctBy { it.path.trimEnd('/') }
         val listing = listDerivedData(worktrees, includeCompilationCache = false, measure = DerivedDataMeasure.ALL).getOrThrow()
-        val quota = ResolveDerivedDataQuotaUseCase(derivedDataSource)(settings, listing.folders.sumOf { it.folder.sizeBytes ?: 0L })
+        val quota = ResolveDerivedDataQuotaUseCase(derivedDataSource)(settings, listing.folders.sumOf { it.folder.sizeOrZero() })
         val quotaBytes = quota.bytes ?: return noDerivedDataQuota(command, quota)
         val agents = DetectRunningAgentsUseCase(executor, herdr, sessionStore, orca = orcaReader)(searches).getOrNull().orEmpty()
         val active = agents.filterValues { running -> running.any { it.state == AgentState.WORKING || it.state == AgentState.BLOCKED } }.keys
@@ -2657,7 +2663,7 @@ class ShogunCli(
             return if (trim.failures.isEmpty()) EXIT_OK else EXIT_FAILURE
         }
         val releasedLabel = if (trim.dryRun) "would release" else "released"
-        trim.released.forEach { out.line("$releasedLabel ${it.folder.path}  ${formatMemory(it.folder.sizeBytes ?: 0L)}") }
+        trim.released.forEach { out.line("$releasedLabel ${it.folder.path}  ${formatMemory(it.folder.sizeOrZero())}") }
         if (trim.released.isNotEmpty()) {
             out.line("${if (trim.dryRun) "would free" else "freed"} ${formatMemory(trim.bytesFreed)}")
         }
@@ -2743,7 +2749,7 @@ class ShogunCli(
         val target = config.worktreePathFor(normalizeTaskId(name))
         val existing = ListWorktreesUseCase(config, executor)().getOrThrow()
             .firstOrNull { !it.isMain && sameDirectory(it.path, target) }
-        val path = existing?.path ?: run {
+        val path = if (existing != null) existing.path else run {
             val created = CreateWorktreeUseCase(config, executor, fileManager, provisioningSource, prepareEnvironment, trust, records = provisioningRecords)(
                 name,
                 BranchType.FEATURE,
@@ -3011,7 +3017,7 @@ class ShogunCli(
         if (event != HERDR_WORKTREE_CREATED && event != HERDR_WORKTREE_REMOVED) return EXIT_OK
         val json = environmentVariable(HERDR_PLUGIN_EVENT_JSON)
             ?: return hookUsageError("herdr", "$HERDR_PLUGIN_EVENT_JSON isn't set")
-        val envelope = runCatching { Json.parseToJsonElement(json) }.getOrNull() as? JsonObject
+        val envelope = runCatching { Json.parseToJsonElement(json).jsonObject }.getOrNull()
             ?: return hookUsageError("herdr", "$HERDR_PLUGIN_EVENT_JSON isn't JSON")
         val data = envelope["data"] as? JsonObject
         val removed = data?.get("worktree") as? JsonObject
@@ -3053,7 +3059,7 @@ class ShogunCli(
             listOf(error)
         }
         failures.forEach { error ->
-            val reason = (error as? WorktreeError)?.orcaDetail() ?: failureReason(error)
+            val reason = if (error is WorktreeError) error.orcaDetail() else failureReason(error)
             err.line("shogun: couldn't update ${worktree.path} in Orca: $reason")
         }
     }
@@ -3141,12 +3147,12 @@ class ShogunCli(
     }
 
     private fun JsonObject.string(key: String): String? =
-        (this[key] as? JsonPrimitive)?.takeIf { it.isString }?.content?.takeIf { it.isNotBlank() }
+        (this[key] as? JsonPrimitive)?.takeIf { it.isString }?.let { primitive -> primitive.content.takeIf { it.isNotBlank() } }
 
     private suspend fun configFor(directory: String, worktreesRoot: String? = null): ProjectConfig {
         val repository = ResolveRepositoryUseCase(executor)(directory).getOrThrow()
         val project = projectRepository.list().firstOrNull { sameDirectory(it.config.baseRepositoryPath, repository) }
-        val config = project?.config ?: ProjectConfig(baseRepositoryPath = repository, worktreesRoot = "", secretFiles = emptyList())
+        val config = if (project == null) ProjectConfig(baseRepositoryPath = repository, worktreesRoot = "", secretFiles = emptyList()) else project.config
         return if (worktreesRoot != null) config.copy(worktreesRoot = worktreesRoot) else config
     }
 
@@ -3163,11 +3169,11 @@ class ShogunCli(
             desktopTurnStatusNote(entry.desktop, worktree.path)?.let(::add)
             when {
                 worktree.isPrunable -> add("folder-missing")
-                status == null -> add(entry.statusProblem?.let { "status-unavailable ($it)" } ?: "status-unavailable")
+                status == null -> add(statusUnavailable(entry.statusProblem!!))
                 else -> {
                     add("changes=${status.uncommittedChanges}")
                     status.upstream?.let { add("ahead=${it.ahead} behind=${it.behind}") }
-                    status.base?.let { add("base-ahead=${it.ahead} base-behind=${it.behind}" + (status.baseName?.let { base -> " of $base" } ?: "")) }
+                    status.base?.let { add("base-ahead=${it.ahead} base-behind=${it.behind} of ${status.baseName}") }
                     if (status.isMerged) add("merged")
                     if (status.isNotStarted) add("not-started")
                 }
@@ -3176,11 +3182,13 @@ class ShogunCli(
         return (listOf(worktree.path) + details).joinToString("  ")
     }
 
+    private fun statusUnavailable(problem: String): String = "status-unavailable ($problem)"
+
     private fun appendToEnvironmentFile(path: String, content: String) {
         try {
             File(path).appendText(content)
         } catch (error: FileNotFoundException) {
-            throw FileNotFoundException(error.message.orEmpty().replaceFirst(File(path).path, path))
+            throw FileNotFoundException(error.message!!.replaceFirst(File(path).path, path))
         }
     }
 
@@ -3188,12 +3196,11 @@ class ShogunCli(
         path.trimEnd('/', '\\').substringAfterLast('/').substringAfterLast('\\')
 
     private fun agentLabel(agent: RunningAgent): String {
-        val details = listOfNotNull(agent.state?.name?.lowercase()) + agent.sessions.map { it.name }
+        val details = listOfNotNull(agent.state?.let { it.name.lowercase() }) + agent.sessions.map { it.name }
         return if (details.isEmpty()) agent.name else "${agent.name}(${details.joinToString(", ")})"
     }
 
-    private fun absolute(path: String): String =
-        if (path.startsWith('/') || File(path).isAbsolute) path else File(workingDirectory, path).toPath().normalize().toString().replace('\\', '/')
+    private fun absolute(path: String): String = absolutePath(path, workingDirectory)
 
     private fun sameDirectory(first: String, second: String): Boolean =
         runCatching { canonicalPath(first) == canonicalPath(second) }.getOrDefault(first == second)
@@ -3270,9 +3277,24 @@ class ShogunCli(
     }
 }
 
-internal fun claudeAncestorPid(): Long? =
-    generateSequence(ProcessHandle.current().parent().orElse(null)) { it.parent().orElse(null) }
-        .firstOrNull { it.info().command().orElse("").substringAfterLast('/') == "claude" }
+internal fun unresolvedReason(reason: UnresolvedReason): String = when (reason) {
+    is UnresolvedReason.RepositoryNotApproved ->
+        "the environment of '${reason.alias}' isn't approved on this machine; run 'shogun trust' in ${reason.repositoryPath} to review it"
+    is UnresolvedReason.PortNotDeclared -> "'${reason.alias}' doesn't declare the port '${reason.key}' (\${port:${reason.key}} in its .shogunai.json)"
+    is UnresolvedReason.PortNotReserved -> "'${reason.alias}' hasn't reserved the port '${reason.key}' yet"
+    is UnresolvedReason.WorktreeUnreadable -> "the worktree of '${reason.alias}' can't be read: ${reason.detail}"
+    is UnresolvedReason.InvalidDeclaration -> "${reason.declarationPath}: ${reason.detail}"
+}
+
+internal fun absolutePath(path: String, workingDirectory: String, isAbsolute: (String) -> Boolean = { File(it).isAbsolute }): String =
+    if (path.startsWith('/') || isAbsolute(path)) path else File(workingDirectory, path).toPath().normalize().toString().replace('\\', '/')
+
+internal fun claudeAncestorPid(
+    start: ProcessHandle? = ProcessHandle.current().parent().orElse(null),
+    commandOf: (ProcessHandle) -> String = { it.info().command().orElse("") },
+): Long? =
+    generateSequence(start) { it.parent().orElse(null) }
+        .firstOrNull { commandOf(it).substringAfterLast('/') == "claude" }
         ?.pid()
 
 private fun addJvmShutdownHook(hook: Thread): () -> Unit {

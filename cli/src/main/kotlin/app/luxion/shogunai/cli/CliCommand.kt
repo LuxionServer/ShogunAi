@@ -261,7 +261,7 @@ fun parseArguments(args: List<String>): ParsedArguments {
             }.withJsonOutput(json),
         )
     } catch (error: UsageException) {
-        ParsedArguments.UsageError(error.message.orEmpty())
+        ParsedArguments.UsageError(error.message)
     }
 }
 
@@ -275,9 +275,9 @@ private fun isSimulatorGradleInit(name: String, rest: List<String>) = name == "s
 
 private fun isGuideReading(name: String, rest: List<String>) = name == "guide" && rest.firstOrNull() !in GUIDE_ACTIONS
 
-private fun CliCommand.withJsonOutput(json: Boolean): CliCommand = if (json && this is JsonOutput) withJson() else this
+private fun CliCommand.withJsonOutput(json: Boolean): CliCommand = if (json) (this as JsonOutput).withJson() else this
 
-private class UsageException(message: String) : Exception(message)
+private class UsageException(override val message: String) : Exception(message)
 
 private fun noArguments(name: String, rest: List<String>, command: CliCommand): CliCommand {
     rest.firstOrNull()?.let {
