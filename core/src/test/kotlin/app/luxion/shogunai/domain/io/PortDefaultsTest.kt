@@ -40,8 +40,14 @@ class PortDefaultsTest {
             override fun isInstalled(): Boolean = super<OrcaClient>.isInstalled()
         }
 
+        val located = object : OrcaClient by FakeOrcaClient() {
+            override fun location(): String = "/usr/local/bin/orca"
+            override fun isInstalled(): Boolean = super<OrcaClient>.isInstalled()
+        }
+
         assertNull(orca.location())
         assertFalse(orca.isInstalled())
+        assertTrue(located.isInstalled())
     }
 
     @Test

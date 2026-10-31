@@ -265,4 +265,37 @@ class JsonMultirepoSourceTest {
             Files.setPosixFilePermissions(file, PosixFilePermissions.fromString("rw-------"))
         }
     }
+
+    @Test
+    fun `blank or relative folders have no declaration`() {
+        assertNull(source.read(" "))
+        assertNull(source.read("product"))
+    }
+
+    @Test
+    fun `registered entries at the root are kept as they are`() {
+        Files.createDirectories(registry.parent)
+        registry.writeText("""{"multirepos":["root.json"]}""")
+
+        assertEquals(listOf("root.json"), source.knownFolders())
+        assertEquals(listOf("root.json"), source.forgetMissing())
+    }
+
+    @Test
+    fun `a blank or unreadable registry reads as empty`() {
+        Files.createDirectories(registry.parent)
+        registry.writeText(" ")
+        assertEquals(emptyList(), source.knownFolders())
+
+        Files.delete(registry)
+        Files.createDirectories(registry)
+        assertEquals(emptyList(), source.knownFolders())
+    }
+
+    @Test
+    fun `forgetMissing with every folder present forgets nothing`() {
+        source.remember(folder.toString())
+
+        assertEquals(emptyList(), source.forgetMissing())
+    }
 }

@@ -42,10 +42,10 @@ class CommandLineTool(
     suspend fun status(): CommandLineToolStatus {
         val canInstall = appLauncher != null
         val owned = ownedLauncher()
-        if (owned != null && !targetExists(owned)) {
-            return CommandLineToolStatus(CommandLineToolState.BROKEN, owned, folderOf(owned), canInstall = canInstall, installedByApp = true)
+        if (owned != null && owned.target?.let(files::exists) != true) {
+            return CommandLineToolStatus(CommandLineToolState.BROKEN, owned.path, folderOf(owned.path), canInstall = canInstall, installedByApp = true)
         }
-        val found = owned ?: findShogun()
+        val found = if (owned != null) owned.path else findShogun()
         if (found == null) return CommandLineToolStatus(CommandLineToolState.MISSING, canInstall = canInstall)
         val folder = folderOf(found)
         if (isOnPath(folder)) return CommandLineToolStatus(CommandLineToolState.AVAILABLE, found, folder, canInstall = canInstall, installedByApp = owned != null)
@@ -61,11 +61,11 @@ class CommandLineTool(
     suspend fun remove(): Result<Unit> = runCatching {
         val owned = ownedLauncher() ?: return@runCatching
         try {
-            files.delete(owned)
+            files.delete(owned.path)
         } catch (error: Exception) {
-            throw CommandLineToolError.WriteFailed(owned, error)
+            throw CommandLineToolError.WriteFailed(owned.path, error)
         }
-        if (os == HostOs.WINDOWS) userPath.remove(folderOf(owned))
+        if (os == HostOs.WINDOWS) userPath.remove(folderOf(owned.path))
     }
 
     private fun installLink(launcher: String): CommandLineToolInstallation {
@@ -98,18 +98,26 @@ class CommandLineTool(
 
     private fun linkFolders(): List<String> = userBinFolders
 
-    private fun ownedLauncher(): String? =
-        if (os == HostOs.WINDOWS) "$windowsFolder\\shogun.cmd".takeIf { files.exists(it) && files.readText(it)?.contains(ShimMarker) == true }
-        else (linkFolders() + "$home/.local/bin").distinct().map { "$it/shogun" }.firstOrNull { isOwnLink(it) }
+    private class OwnedLauncher(val path: String, val target: String?)
 
-    private fun isOwnLink(link: String): Boolean =
-        files.linkTarget(link)?.substringAfterLast('/')?.startsWith(AppLauncherName, ignoreCase = true) == true
+    private fun ownedLauncher(): OwnedLauncher? =
+        if (os == HostOs.WINDOWS) ownedShim()
+        else (linkFolders() + "$home/.local/bin").distinct().firstNotNullOfOrNull { ownedLink("$it/shogun") }
 
-    private fun targetExists(owned: String): Boolean =
-        if (os == HostOs.WINDOWS) files.readText(owned)?.let { body -> windowsJava(body)?.let(files::exists) } ?: false
-        else files.linkTarget(owned)?.let(files::exists) ?: false
+    private fun ownedShim(): OwnedLauncher? {
+        val shim = "$windowsFolder\\shogun.cmd"
+        val body = files.readText(shim)?.takeIf { it.contains(ShimMarker) } ?: return null
+        return OwnedLauncher(shim, windowsJava(body))
+    }
 
-    private fun windowsJava(body: String): String? = Regex("@\"([^\"]+java\\.exe)\"").find(body)?.groupValues?.get(1)
+    private fun ownedLink(link: String): OwnedLauncher? {
+        val target = files.linkTarget(link)?.takeIf { it.substringAfterLast('/').startsWith(AppLauncherName, ignoreCase = true) } ?: return null
+        return OwnedLauncher(link, target)
+    }
+
+    private fun isOwnLink(link: String): Boolean = ownedLink(link) != null
+
+    private fun windowsJava(body: String): String? = Regex("@\"([^\"]+java\\.exe)\"").find(body)?.let { it.groupValues[1] }
 
     private fun isOnPath(folder: String): Boolean {
         val wanted = normalize(folder)

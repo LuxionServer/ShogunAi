@@ -137,4 +137,17 @@ class PrepareCocoaPodsUseCaseTest {
         assertEquals("not a git repository", assertNotNull(result.error))
         assertTrue(result.cloned.isEmpty())
     }
+    @Test
+    fun `does nothing without the xcode provider`() = runTest {
+        assertEquals(PodsPreparation(), prepare(source = source(null)))
+    }
+
+    @Test
+    fun `a failing listing reports git's message, a generic one or the error's name`() = runTest {
+        val silent = executor(listing = { FakeShellCommandExecutor.failure(it, stderr = " ") })
+        val throwing = executor(listing = { throw IllegalStateException() })
+
+        assertEquals(PodsPreparation(error = "git ls-files failed"), prepare(executor = silent))
+        assertEquals(PodsPreparation(error = "IllegalStateException"), prepare(executor = throwing))
+    }
 }

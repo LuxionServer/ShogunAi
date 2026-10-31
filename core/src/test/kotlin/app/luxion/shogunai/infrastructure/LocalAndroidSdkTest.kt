@@ -11,6 +11,7 @@ import kotlinx.coroutines.test.runTest
 import java.io.File
 import java.nio.file.Files
 import kotlin.test.AfterTest
+import kotlin.test.assertFalse
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -247,5 +248,43 @@ class LocalAndroidSdkTest {
         while (process.isAlive) Thread.sleep(20)
 
         assertEquals("booted", process.lastLogLines(1).trim())
+    }
+
+    @Test
+    fun `blank variables and SDK folders are skipped and Windows falls back to the user's local app data`() {
+        val windows = sdk(environment = mapOf("ANDROID_HOME" to " ", "ANDROID_SDK_ROOT" to " "), properties = mapOf("$repository/local.properties" to mapOf("sdk.dir" to " ")), osName = "Windows 11")
+
+        val error = assertFailsWith<WorktreeError.AndroidSdkNotFound> { windows.locate(repository) }
+
+        assertEquals(listOf("default location (/home/dev\\AppData\\Local\\Android\\Sdk)"), error.checked)
+    }
+
+    @Test
+    fun `devices lines without a state are skipped and the null device follows the platform`() {
+        assertEquals(emptyMap(), parseAdbDevices("emulator-5554\n"))
+        assertEquals(File("NUL"), nullDevice('\\'))
+        assertEquals(File("/dev/null"), nullDevice('/'))
+        assertEquals(listOf("/e", "-avd", "Pixel", "-port", "5554", "-read-only", "-no-boot-anim", "-no-window"), emulatorCommand(SdkLocation("/s", "/e", "/a"), "Pixel", 5554, noWindow = true))
+    }
+
+    @Test
+    fun `a detached process whose log is gone has no last lines`() {
+        val log = logs.resolve("gone.log").toFile()
+        val process = launchDetached(listOf("true"), log)
+        log.delete()
+
+        assertEquals("", process.lastLogLines(5))
+    }
+
+    @Test
+    fun `an emulator whose boot property can't be read is still booting and a windowed one isn't headless`() = runTest {
+        val android = sdk(
+            executor = FakeShellCommandExecutor { command ->
+                if (command.contains("devices")) FakeShellCommandExecutor.success(command, listing("emulator-5554")) else FakeShellCommandExecutor.failure(command)
+            },
+        )
+
+        assertEquals(mapOf("emulator-5554" to EmulatorState.BOOTING), android.deviceStates(location))
+        assertFalse("-no-window" in emulatorCommand(location, "Pixel", 5554, noWindow = false))
     }
 }

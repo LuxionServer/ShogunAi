@@ -323,4 +323,32 @@ class ReadWorktreeStatusUseCaseTest {
 
         assertNull(ReadWorktreeStatusUseCase(executor(), files)(worktree, mainBranch).getOrThrow().createdAt)
     }
+
+    @Test
+    fun `an empty gitdir or an administrative folder without a date leaves the creation time empty`() = runTest {
+        val empty = FakeFileManager().apply { writtenTexts["${worktree.path}/.git"] = "gitdir: \n" }
+        val undated = FakeFileManager().apply { writtenTexts["${worktree.path}/.git"] = "gitdir: /repo/.git/worktrees/TASK-123\n" }
+
+        assertNull(ReadWorktreeStatusUseCase(executor(), empty)(worktree, mainBranch).getOrThrow().createdAt)
+        assertNull(ReadWorktreeStatusUseCase(executor(), undated)(worktree, mainBranch).getOrThrow().createdAt)
+    }
+
+    @Test
+    fun `a merged-looking detached HEAD or one whose HEAD can't be read keeps the merged reading`() = runTest {
+        val unreadableHead = executor(mergedMainBranch + (reflogCommand to { command -> success(command, stdout = "abc123\n") }) + (headCommand to { command -> failure(command) }))
+
+        assertFalse(ReadWorktreeStatusUseCase(executor(mergedMainBranch), FakeFileManager())(worktree.copy(branch = null), mainBranch).getOrThrow().neverCommitted)
+        assertFalse(ReadWorktreeStatusUseCase(unreadableHead, FakeFileManager())(worktree, mainBranch).getOrThrow().neverCommitted)
+    }
+
+    @Test
+    fun `a base without a main branch is read on its own`() = runTest {
+        val base = MainBranch("epic/x", "origin/epic/x")
+        val baseCommand = listOf("git", "rev-list", "--left-right", "--count", "origin/epic/x...HEAD")
+        val executor = executor(mapOf(baseCommand to { command -> success(command, stdout = "0\t3\n") }))
+
+        val status = ReadWorktreeStatusUseCase(executor, FakeFileManager())(worktree, null, base).getOrThrow()
+
+        assertEquals(Divergence(ahead = 3, behind = 0), status.base)
+    }
 }

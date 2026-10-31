@@ -3,6 +3,7 @@ package app.luxion.shogunai.domain.usecase
 import kotlin.io.path.createDirectory
 import kotlin.io.path.createTempDirectory
 import kotlin.io.path.writeText
+import org.junit.Assume.assumeTrue
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -42,5 +43,21 @@ class WorktreeEnvironmentCacheTest {
         cache.remember(folder.toString(), directories)
 
         assertNull(cache.directoriesOf(folder.toString()))
+    }
+
+    @Test
+    fun `an unreadable git file is not cached`() {
+        val worktree = createTempDirectory("unreadable-worktree")
+        assumeTrue(worktree.fileSystem.supportedFileAttributeViews().contains("posix"))
+        val gitFile = worktree.resolve(".git").apply { writeText("gitdir: /projects/main-repo/.git/worktrees/TASK-1") }
+        val cache = WorktreeEnvironmentCache()
+        cache.remember(worktree.toString(), directories)
+
+        gitFile.toFile().setReadable(false)
+        try {
+            assertNull(cache.directoriesOf(worktree.toString()))
+        } finally {
+            gitFile.toFile().setReadable(true)
+        }
     }
 }

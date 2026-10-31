@@ -14,20 +14,20 @@ class NioLauncherFiles : LauncherFiles {
 
     override fun writeText(path: String, text: String) {
         val file = Path.of(path)
-        file.parent?.let { Files.createDirectories(it) }
+        Files.createDirectories(file.toAbsolutePath().parent)
         Files.writeString(file, text)
     }
 
     override fun readText(path: String): String? = runCatching { Files.readString(Path.of(path)) }.getOrNull()
 
-    override fun linkTarget(link: String): String? {
+    override fun linkTarget(link: String): String? = runCatching {
         val path = Path.of(link)
-        return if (Files.isSymbolicLink(path)) runCatching { Files.readSymbolicLink(path).toString() }.getOrNull() else null
-    }
+        if (Files.isSymbolicLink(path)) Files.readSymbolicLink(path).toString() else null
+    }.getOrNull()
 
     override fun createLink(target: String, link: String) {
         val path = Path.of(link)
-        path.parent?.let { Files.createDirectories(it) }
+        Files.createDirectories(path.toAbsolutePath().parent)
         Files.deleteIfExists(path)
         Files.createSymbolicLink(path, Path.of(target))
     }

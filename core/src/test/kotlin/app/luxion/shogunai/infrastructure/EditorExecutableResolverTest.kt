@@ -175,4 +175,17 @@ class EditorExecutableResolverTest {
     fun `without an uninstall source there are no uninstall locations`() = runTest {
         assertEquals(emptyList(), EditorExecutableResolver(HostOs.WINDOWS, ExecutableLocator(HostOs.WINDOWS, "C:\\Users\\dev", { emptyList() })).snapshot().locations())
     }
+
+    @Test
+    fun `Toolbox products, channels and builds without the executable are skipped`() = runTest {
+        val toolbox = "$localAppData\\JetBrains\\Toolbox\\apps"
+        val apps = "$toolbox\\AndroidStudio\\ch-0"
+        val folders = setOf(
+            "$toolbox\\AndroidStudioBeta", "$toolbox\\AndroidStudio", "$toolbox\\AndroidStudio\\ch-1", apps,
+            "$apps\\251", "$apps\\251.0.1", "$apps\\251.0.1-x", "$apps\\abc",
+        )
+        val files = setOf("$apps\\251\\bin\\studio64.exe", "$apps\\abc\\bin\\studio64.exe")
+
+        assertEquals("$apps\\251\\bin\\studio64.exe", resolver(files, folders).find(EditorId.ANDROID_STUDIO))
+    }
 }

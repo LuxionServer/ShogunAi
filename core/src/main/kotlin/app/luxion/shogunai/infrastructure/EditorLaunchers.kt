@@ -25,7 +25,7 @@ class CommandEditorLauncher(
         try {
             openExecutable(target)
         } catch (executableFailure: ToolCommandFailed) {
-            throw WorktreeError.EditorLaunchFailed(editor, failure?.detail ?: executableFailure.detail)
+            throw WorktreeError.EditorLaunchFailed(editor, if (failure != null) failure.detail else executableFailure.detail)
         }
     }
 

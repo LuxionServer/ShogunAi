@@ -17,6 +17,8 @@ import kotlin.io.path.createDirectories
 import kotlin.io.path.writeBytes
 import kotlin.io.path.writeText
 import kotlin.test.AfterTest
+import java.nio.file.FileVisitResult
+import java.nio.file.attribute.BasicFileAttributes
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -376,6 +378,58 @@ class MacDerivedDataSourceTest {
     private fun assertWithinReads(before: Long, after: Long, free: Long?) {
         assertNotNull(free)
         assertTrue(free in minOf(before, after) - FreeSpaceDrift..maxOf(before, after) + FreeSpaceDrift, "$free not near $before..$after")
+    }
+
+    @Test
+    fun `a location that is a file has no folders`() = runTest {
+        defaultLocation.parent.createDirectories()
+        defaultLocation.writeText("not a folder")
+
+        assertEquals(emptyList(), dataSource().folders())
+    }
+
+    @Test
+    fun `measuring stops when told to and counts only regular files`() {
+        val tree = home.resolve("tree").createDirectories()
+        tree.resolve("file").writeText("1234")
+        Files.createSymbolicLink(tree.resolve("link"), tree.resolve("file"))
+        val counting = SizeVisitor { true }
+        val stopped = SizeVisitor { false }
+
+        Files.walkFileTree(tree, counting)
+        Files.walkFileTree(tree, stopped)
+
+        assertEquals(4L, counting.total)
+        assertEquals(0L, stopped.total)
+        assertEquals(FileVisitResult.TERMINATE, stopped.visitFile(tree.resolve("file"), Files.readAttributes(tree.resolve("file"), BasicFileAttributes::class.java)))
+    }
+
+    @Test
+    fun `the volumes root itself isn't an unavailable volume and a blank preference counts as unset`() = runTest {
+        volumes.createDirectories()
+        assertFalse(dataSource().isOnUnavailableVolume(volumes.toString()))
+        val blank = defaultsExecutor("IDECustomDerivedDataLocation" to " ")
+        folder("Main-hash").apply { writePlist(this, "/home/dev/projects/main-repo/App.xcodeproj") }
+
+        assertEquals(1, dataSource(blank).folders().size)
+    }
+
+    @Test
+    fun `a tilde alone is the home folder and other paths are kept`() = runTest {
+        val custom = home.resolve("custom").createDirectories()
+        folder("CompilationCache.noindex")
+
+        assertTrue(dataSource(defaultsExecutor("IDECustomCompilationCacheLocation" to "~")).compilationCacheBytes() != null)
+        assertEquals(0L, dataSource(defaultsExecutor("IDECustomCompilationCacheLocation" to custom.toString())).compilationCacheBytes())
+    }
+
+    @Test
+    fun `short plists, keys without a value and empty workspace paths are skipped`() = runTest {
+        folder("Short-hash").resolve("info.plist").writeText("bp")
+        folder("Dangling-hash").resolve("info.plist").writeText("<plist><dict><key>WorkspacePath</key></dict></plist>")
+        folder("Empty-hash").resolve("info.plist").writeText("<plist><dict><key>WorkspacePath</key><string> </string></dict></plist>")
+
+        assertEquals(emptyList(), dataSource().folders())
     }
 }
 

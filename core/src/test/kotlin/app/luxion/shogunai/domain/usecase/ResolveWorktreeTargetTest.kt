@@ -50,4 +50,10 @@ class ResolveWorktreeTargetTest {
         assertIs<WorktreeError.AmbiguousWorktreeTarget>(error)
         assertEquals(listOf(task.path, twin.path), error.candidates)
     }
+
+    @Test
+    fun `a blank target or a project without a worktrees folder isn't a task id`() {
+        assertFailsWith<WorktreeError.WorktreeTargetNotFound> { resolveWorktreeTarget(" ", worktrees, config) { it } }
+        assertFailsWith<WorktreeError.WorktreeTargetNotFound> { resolveWorktreeTarget("TASK-123", worktrees, config.copy(worktreesRoot = "")) { it } }
+    }
 }

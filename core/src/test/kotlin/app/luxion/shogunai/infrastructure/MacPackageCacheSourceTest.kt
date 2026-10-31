@@ -26,4 +26,13 @@ class MacPackageCacheSourceTest {
 
         assertEquals(PackageCacheSizes(), MacPackageCacheSource(files, home, "Linux").sizes())
     }
+
+    @Test
+    fun `a cache that can't be measured has no size`() = runTest {
+        val files = object : app.luxion.shogunai.domain.io.FileManager by FakeFileManager(directories = setOf(swiftPm)) {
+            override fun directorySize(path: String, excluding: Set<String>): Long = throw java.io.IOException("gone")
+        }
+
+        assertEquals(PackageCacheSizes(), MacPackageCacheSource(files, home, "Mac OS X").sizes())
+    }
 }

@@ -171,4 +171,15 @@ class WorktreeOverviewTest {
 
         assertEquals(Activity.Unfinished, activity)
     }
+
+    @Test
+    fun `a worktree outside Herdr's folder keeps its other origin`() {
+        assertEquals(WorktreeOrigin.SHOGUNAI, classifyOrigin(worktreeAt("/home/dev/projects/TASK-1"), config, herdrWorktreesRoot = "/home/dev/.herdr/worktrees"))
+    }
+
+    @Test
+    fun `nothing is inside an empty folder`() {
+        assertFalse(isInside("/home/dev/projects", ""))
+        assertTrue(isInside("/home/dev/projects", "/home/dev/projects"))
+    }
 }

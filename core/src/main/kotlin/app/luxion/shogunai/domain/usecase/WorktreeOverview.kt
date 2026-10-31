@@ -49,9 +49,9 @@ fun isInactive(
     inactiveAfter: Duration,
 ): Boolean {
     if (worktree.isMain || status == null || !status.hasOwnCommits || status.isMerged) return false
-    val lastActivity = activityDate(worktree, status)?.at ?: return false
+    val lastActivity = activityDate(worktree, status) ?: return false
     return agents.isNullOrEmpty() &&
-        Duration.between(lastActivity, now) > inactiveAfter
+        Duration.between(lastActivity.at, now) > inactiveAfter
 }
 
 enum class Activity { WaitingForYou, AgentWorking, Unfinished, New, Stopped, Merged, Inactive, Missing, Idle, Unknown }
@@ -85,7 +85,7 @@ val RunningAgent.waitsForUser: Boolean
     get() = state == AgentState.BLOCKED || state == AgentState.DONE
 
 val WorktreeStatus.hasUnpushedCommits: Boolean
-    get() = upstream?.let { it.ahead > 0 } ?: isUnpushedBranch
+    get() = if (upstream != null) upstream.ahead > 0 else isUnpushedBranch
 
 val WorktreeStatus.isUnpushedBranch: Boolean
     get() = upstream == null && hasOwnCommits && !isNotStarted && !isMerged

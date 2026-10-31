@@ -161,4 +161,14 @@ class JsonRepositoryTrustTest {
 
         assertFalse(trust.isApproved(repository, install))
     }
+
+    @Test
+    fun `a blank store approves nothing and a missing repository is keyed by its path`() {
+        storage.parent.createDirectories()
+        storage.writeText(" ")
+
+        assertFalse(trust.isApproved(repository, install))
+        trust.approve("$home/gone", install)
+        assertTrue(trust.isApproved("$home/gone", install))
+    }
 }

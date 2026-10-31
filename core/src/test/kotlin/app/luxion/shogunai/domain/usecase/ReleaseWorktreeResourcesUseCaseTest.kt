@@ -26,6 +26,9 @@ import app.luxion.shogunai.domain.model.SimulatorState
 import app.luxion.shogunai.domain.model.Worktree
 import kotlinx.coroutines.test.runTest
 import java.time.Instant
+import app.luxion.shogunai.domain.io.AppleSimulators
+import app.luxion.shogunai.domain.io.GradleDaemonSource
+import app.luxion.shogunai.domain.model.DaemonProcess
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -52,11 +55,13 @@ class ReleaseWorktreeResourcesUseCaseTest {
     private fun releaseWith(
         providers: RepositoryProviders,
         sdk: FakeAndroidSdk = FakeAndroidSdk(),
-        simulators: FakeAppleSimulators = FakeAppleSimulators(),
-        daemons: FakeGradleDaemonSource = FakeGradleDaemonSource(),
+        simulators: AppleSimulators = FakeAppleSimulators(),
+        daemons: GradleDaemonSource = FakeGradleDaemonSource(),
+        unreadable: Set<String> = emptySet(),
     ): ReleaseWorktreeResourcesUseCase {
         val source = FakeRepositoryProvisioningSource(
             byRepository = mapOf(repository to RepositoryProvisioning(providers = providers)),
+            unreadable = unreadable,
         )
         val acquired = FakeEnvironmentStateStore(mapOf("$common/worktrees/TASK-123" to mapOf("emulator" to 5554)))
         acquired.writeResources("$common/worktrees/TASK-123", mapOf(IOS_SIMULATOR_KEY to "UDID-1"))
@@ -116,5 +121,70 @@ class ReleaseWorktreeResourcesUseCaseTest {
         assertEquals(listOf("UDID-1"), released.stoppedSimulators)
         assertEquals(listOf(41L), released.stoppedDaemons)
         assertTrue(released.failures.isEmpty())
+    }
+
+    private val everything = RepositoryProviders(emulator = EmulatorProvider(), iosSimulator = IosSimulatorProvider(), gradle = GradleProvider())
+
+    private val failingSimulators = object : AppleSimulators by FakeAppleSimulators() {
+        override suspend fun devices(): List<SimulatorDevice> = throw IllegalStateException("simctl failed")
+        override suspend fun shutdown(udid: String) = throw IllegalStateException("simctl failed")
+    }
+
+    private val failingDaemons = object : GradleDaemonSource by FakeGradleDaemonSource() {
+        override suspend fun list(): List<DaemonProcess> = throw IllegalStateException("jps failed")
+    }
+
+    @Test
+    fun `a prunable worktree plans nothing`() = runTest {
+        assertEquals(WorktreeResourcePlan(), releaseWith(everything).plan(config, worktree.copy(isPrunable = true), listOf(worktree)))
+    }
+
+    @Test
+    fun `providers that can't be read are reported as the plan's only failure`() = runTest {
+        val plan = releaseWith(everything, unreadable = setOf(repository)).plan(config, worktree, listOf(worktree))
+
+        assertTrue(plan.failures.single().startsWith("couldn't read the repository's providers: "))
+    }
+
+    @Test
+    fun `devices and daemons that can't be read are reported and planned as nothing`() = runTest {
+        val plan = releaseWith(everything, FakeAndroidSdk(missing = true), failingSimulators, failingDaemons).plan(config, worktree, listOf(worktree))
+
+        assertEquals(WorktreeResourcePlan(failures = plan.failures), plan)
+        assertEquals(
+            listOf("couldn't read the emulator: ", "couldn't read the simulator: ", "couldn't list Gradle daemons: "),
+            plan.failures.map { it.substringBefore(": ") + ": " },
+        )
+    }
+
+    @Test
+    fun `devices without a state or a simulator shut down are planned as nothing`() = runTest {
+        val simulators = FakeAppleSimulators().also {
+            it.devicesByUdid["UDID-1"] = SimulatorDevice("UDID-1", "ShogunAi · main-repo · TASK-123", SimulatorState.SHUTDOWN)
+        }
+
+        val plan = releaseWith(everything, simulators = simulators).plan(config, Worktree("/home/dev/projects/worktrees/OTHER", "feature/OTHER"), listOf(worktree))
+
+        assertNull(plan.emulatorSerial)
+        assertNull(plan.simulatorUdid)
+    }
+
+    @Test
+    fun `stops that fail are reported and nothing counts as stopped`() = runTest {
+        val plan = WorktreeResourcePlan(emulatorSerial = "emulator-5554", simulatorUdid = "UDID-1", idleDaemonPids = listOf(41L))
+
+        val released = releaseWith(everything, FakeAndroidSdk(missing = true), failingSimulators, failingDaemons).release(config, plan)
+
+        assertEquals(ReleasedResources(failures = released.failures), released)
+        assertEquals(3, released.failures.size)
+    }
+
+    @Test
+    fun `a simulator already shut down is planned as nothing`() = runTest {
+        val simulators = FakeAppleSimulators().also {
+            it.devicesByUdid["UDID-1"] = SimulatorDevice("UDID-1", "ShogunAi · main-repo · TASK-123", SimulatorState.SHUTDOWN)
+        }
+
+        assertNull(releaseWith(RepositoryProviders(iosSimulator = IosSimulatorProvider()), simulators = simulators).plan(config, worktree, listOf(worktree)).simulatorUdid)
     }
 }

@@ -50,4 +50,22 @@ class JsonOrcaWorkspaceStoreTest {
         assertEquals(emptyMap(), JsonOrcaWorkspaceStore(file).boardStatuses())
         assertEquals("/home/dev/orca/workspaces", JsonOrcaWorkspaceStore(file).workspacesRoot())
     }
+
+    @Test
+    fun `remembering what is already stored writes nothing and a blank or unreadable file remembers nothing`() {
+        val store = JsonOrcaWorkspaceStore(file)
+        store.remember("/home/dev/workspaces")
+        store.rememberBoardStatuses(mapOf("/w" to "todo"))
+        val written = Files.getLastModifiedTime(file)
+
+        store.remember("/home/dev/workspaces")
+        store.rememberBoardStatuses(mapOf("/w" to "todo"))
+        assertEquals(written, Files.getLastModifiedTime(file))
+
+        Files.writeString(file, " ")
+        assertNull(store.workspacesRoot())
+        Files.delete(file)
+        Files.createDirectories(file)
+        assertNull(store.workspacesRoot())
+    }
 }

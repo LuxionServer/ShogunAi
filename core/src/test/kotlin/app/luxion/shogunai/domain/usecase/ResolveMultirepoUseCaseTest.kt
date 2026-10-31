@@ -4,6 +4,7 @@ import app.luxion.shogunai.domain.FakeFileManager
 import app.luxion.shogunai.domain.FakeGitRepositories
 import app.luxion.shogunai.domain.FakeMultirepoSource
 import app.luxion.shogunai.domain.model.AgentLaunchConfig
+import app.luxion.shogunai.domain.model.MAX_MULTIREPO_NAME_LENGTH
 import app.luxion.shogunai.domain.model.MultirepoDeclaration
 import app.luxion.shogunai.domain.model.WorkspaceSetting
 import app.luxion.shogunai.domain.model.WorktreeError
@@ -264,5 +265,71 @@ class ResolveMultirepoUseCaseTest {
 
         assertEquals("hub", multirepo.workspaceRepository?.alias)
         assertIs<WorktreeError.MultirepoNotFound>(world.resolver.at("/home/dev/projects/nowhere").exceptionOrNull())
+    }
+
+    private suspend fun rejected(declaration: MultirepoDeclaration, resolver: ResolveMultirepoUseCase = world.resolver): String {
+        world.source.declarations[world.folder] = declaration
+        return assertIs<WorktreeError.InvalidMultirepo>(resolver.at(world.folder).exceptionOrNull()).detail
+    }
+
+    @Test
+    fun `every invalid part of a declaration is named`() = runTest {
+        world.makeFolderARepository()
+        val pickyPaths = ResolveMultirepoUseCase(world.source, world.git, world.fileManager) { "<" !in it }
+
+        assertEquals("worktreesRoot is missing", rejected(world.declaration.copy(worktreesRoot = " ")))
+        assertEquals("the workspace alias contains control characters", rejected(world.declaration.copy(workspace = WorkspaceSetting(alias = "hub\u0007"))))
+        assertTrue(rejected(world.declaration.copy(name = "x".repeat(MAX_MULTIREPO_NAME_LENGTH + 1))).startsWith("the name must have"))
+        assertEquals("worktreesRoot isn't a valid path", rejected(world.declaration.copy(worktreesRoot = "../w<"), pickyPaths))
+        assertEquals("the path of 'app' isn't a valid path", rejected(world.declaration.copy(repos = mapOf("app" to "product-app<"), defaultRepos = emptyList()), pickyPaths))
+        assertTrue(rejected(world.declaration.copy(workspace = WorkspaceSetting(alias = "No Good"))).startsWith("workspace alias 'No Good' must use"))
+        assertEquals("workspace alias 'app' is already a repository", rejected(world.declaration.copy(workspace = WorkspaceSetting(alias = "app"))))
+    }
+
+    @Test
+    fun `a disabled workspace and a workspace listed under its own alias are valid`() = runTest {
+        world.makeFolderARepository()
+
+        world.source.declarations[world.folder] = world.declaration.copy(workspace = WorkspaceSetting(enabled = false))
+        assertTrue(world.resolver.at(world.folder).isSuccess)
+        world.source.declarations[world.folder] = world.declaration.copy(repos = world.declaration.repos + ("hub" to "."), workspace = WorkspaceSetting(alias = "hub"))
+        assertTrue(world.resolver.at(world.folder).isSuccess)
+    }
+
+    @Test
+    fun `a repository whose folder is gone or that is another repository's subfolder is rejected`() = runTest {
+        world.fileManager.writeText("${world.appBase}/docs", "")
+        assertTrue(rejected(world.declaration.copy(repos = world.declaration.repos + ("docs" to "product-app/docs"))).startsWith("repository 'docs'"))
+
+        world.fileManager.deleteRecursively(world.docsBase)
+        assertTrue(rejected(world.declaration).startsWith("repository 'docs'"))
+    }
+
+    @Test
+    fun `known multirepos skip unreadable or missing declarations and a context outside a repository has no alias`() = runTest {
+        world.source.known += "/home/dev/projects/gone"
+        world.source.unreadable["/home/dev/projects/broken"] = IllegalStateException("unreadable")
+        world.source.known += "/home/dev/projects/broken"
+
+        assertEquals(listOf(world.folder), world.resolver.known().map { it.folder })
+        assertNull(MultirepoContext(world.multirepo, world.folder, null).alias)
+    }
+
+    @Test
+    fun `a registered folder without a declaration is passed over and a context in another repository has no alias`() = runTest {
+        world.source.known += "/home/dev/projects/gone"
+
+        assertNull(world.resolver("/home/dev/projects/gone/src").getOrThrow())
+        assertNull(MultirepoContext(world.multirepo, world.folder, "/home/dev/elsewhere").alias)
+    }
+
+    @Test
+    fun `a named declaration is valid and a folder that isn't a repository is rejected`() = runTest {
+        assertTrue(world.resolver.at(world.folder).isSuccess)
+        world.source.declarations[world.folder] = world.declaration.copy(name = "Product")
+        assertTrue(world.resolver.at(world.folder).isSuccess)
+
+        world.fileManager.writeText("${world.folder}/loose", "")
+        assertTrue(rejected(world.declaration.copy(repos = world.declaration.repos + ("loose" to "loose"))).startsWith("repository 'loose'"))
     }
 }

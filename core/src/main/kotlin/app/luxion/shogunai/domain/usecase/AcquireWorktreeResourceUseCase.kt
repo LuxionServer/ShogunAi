@@ -133,7 +133,7 @@ class AcquireWorktreeResourceUseCase(
         ticketId: String?,
     ): LockedOutcome {
         var usage = readPool.of(kind, repositoryPath)
-        val own = usage.holders.firstOrNull { it.adminDirectory?.let(::normalizePath) == normalizePath(directories.admin) }
+        val own = usage.holders.firstOrNull { normalizePath(it.adminDirectory!!) == normalizePath(directories.admin) }
         if (own != null && !isStale(kind, own)) {
             touch(directories.admin, key)
             return LockedOutcome(acquiredNow = false, released = emptyList())
@@ -214,14 +214,14 @@ class AcquireWorktreeResourceUseCase(
     }
 
     private suspend fun release(holder: PoolHolder, key: String, repositoryPath: String, beneficiary: String) {
-        val admin = checkNotNull(holder.adminDirectory)
+        val admin = holder.adminDirectory!!
         if (holder.state == PoolHolderState.RUNNING) {
-            val serial = checkNotNull(holder.reference)
+            val serial = holder.reference!!
             sdk.stopEmulator(sdk.locate(repositoryPath), serial)
         }
         if (holder.kind == ResourceKind.IOS_SIMULATOR) {
-            val udid = holder.reference
-            if (udid != null && simulators.devices().any { it.udid == udid }) {
+            val udid = holder.reference!!
+            if (simulators.devices().any { it.udid == udid }) {
                 if (holder.state == PoolHolderState.BOOTED) simulators.shutdown(udid)
                 simulators.delete(udid)
             }
@@ -248,7 +248,7 @@ class AcquireWorktreeResourceUseCase(
         kind == ResourceKind.IOS_SIMULATOR && simulators.devices().none { it.udid == holder.reference }
 
     private fun nextVictim(holders: List<PoolHolder>): PoolHolder? =
-        holders.filter { it.releaseRank != null && it.adminDirectory != null }
+        holders.filter { it.releaseRank != null }
             .minWithOrNull(compareBy<PoolHolder> { it.releaseRank }.thenBy { it.lastUsed != null }.thenBy { it.lastUsed })
 
     private fun touch(admin: String, key: String) {

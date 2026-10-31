@@ -238,4 +238,13 @@ class EditorLaunchersTest {
             assertTrue(executor.executedCommands.isEmpty())
         }
     }
+
+    @Test
+    fun `on Windows other exit codes and a missing Explorer are failures`() = runTest {
+        val exitTwo = FakeShellCommandExecutor { FakeShellCommandExecutor.failure(it, exitCode = 2, stderr = "denied") }
+        val missing = FakeShellCommandExecutor { throw app.luxion.shogunai.domain.executor.CommandExecutionException(it, java.io.IOException("not found")) }
+
+        assertIs<WorktreeError.FolderOpenFailed>(SystemFolderLauncher(exitTwo, HostOs.WINDOWS).open(path).exceptionOrNull())
+        assertIs<WorktreeError.FolderOpenFailed>(SystemFolderLauncher(missing, HostOs.WINDOWS).open(path).exceptionOrNull())
+    }
 }

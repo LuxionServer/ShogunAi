@@ -28,7 +28,7 @@ class TmuxTerminalLauncher(private val executor: ShellCommandExecutor) : Termina
 
     private suspend fun requireEnvironmentSupport() {
         val version = executor.runTool(listOf("tmux", "-V")).stdout
-        val major = VERSION.find(version)?.groupValues?.get(1)?.toIntOrNull()
+        val major = VERSION.find(version)?.let { it.groupValues[1].toIntOrNull() }
         if (major != null && major < MINIMUM_MAJOR) {
             throw WorktreeError.TerminalUnsupported(terminal, "it needs tmux $MINIMUM_MAJOR.0 or later, found ${version.trim()}")
         }
@@ -36,10 +36,11 @@ class TmuxTerminalLauncher(private val executor: ShellCommandExecutor) : Termina
 
     private suspend fun mostRecentSession(): String {
         val listing = executor.runTool(listOf("tmux", "list-sessions", "-F", "#{session_last_attached}\t#{session_name}")).stdout
-        return listing.lines().filter { it.isNotBlank() }
+        val latest = listing.lines().filter { it.isNotBlank() }
             .map { line -> line.substringBefore('\t').toLongOrNull().orZero() to line.substringAfter('\t') }
-            .maxByOrNull { it.first }?.second
+            .maxByOrNull { it.first }
             ?: throw ToolCommandFailed(null, "no tmux session is running")
+        return latest.second
     }
 
     private fun Long?.orZero(): Long = this ?: 0L

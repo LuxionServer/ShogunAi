@@ -45,4 +45,10 @@ class GradleBuildsTest {
 
         assertEquals(emptyList(), found)
     }
+    @Test
+    fun `a build in the main folder isn't nested`() {
+        val fileManager = FakeFileManager(existing = listOf("$root/settings.gradle"))
+
+        assertEquals(emptyList(), nestedGradleBuildFolders(fileManager, root))
+    }
 }

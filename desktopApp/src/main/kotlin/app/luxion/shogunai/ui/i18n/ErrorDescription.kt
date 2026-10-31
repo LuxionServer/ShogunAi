@@ -77,10 +77,10 @@ private fun technicalDetailsOf(error: Throwable): TechnicalDetails? = when (erro
     is WorktreeError.LocalFileUnreadable -> error.reason?.let { TechnicalDetails(null, null, it) }
     is WorktreeError.AndroidSdkNotFound -> TechnicalDetails(null, null, error.checked.joinToString("\n"))
     is WorktreeError.SecretCopyFailed -> causeDetails(error)
-    is WorktreeError.LocalFilesUnavailable -> TechnicalDetails(null, null, error.message.toString().lines().drop(1).joinToString("\n") { it.trim() })
+    is WorktreeError.LocalFilesUnavailable -> TechnicalDetails(null, null, error.message.lines().drop(1).joinToString("\n") { it.trim() })
     is WorktreeError.ClipboardWriteFailed -> causeDetails(error)
     is WorktreeError.EnvironmentFileWriteFailed -> causeDetails(error)
-    is CommandExecutionException -> TechnicalDetails(error.command, null, error.cause?.message.orEmpty())
+    is CommandExecutionException -> TechnicalDetails(error.command, null, error.cause.message.orEmpty())
     is WorktreeError -> null
     else -> error.message?.let { TechnicalDetails(null, null, it) }
 }

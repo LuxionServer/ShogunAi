@@ -14,6 +14,7 @@ import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class OrcaWorktreeReaderTest {
 
@@ -217,5 +218,50 @@ class OrcaWorktreeReaderTest {
         }
 
         assertNull(OrcaWorktreeReader(silent, userHome = "/home/dev", now = { clock }, canonical = { it }).read())
+    }
+    @Test
+    fun `a port with an address comes before the same port without one`() = runTest {
+        val reader = reader(FakeOrcaClient(listeningPorts = listOf(OrcaPort(8080, shogunai.path, "node"), OrcaPort(8080, shogunai.path, "node", "http://localhost:8080"))))
+
+        reader.read()
+
+        assertEquals(listOf(ObservedPort(8080, "node", "http://localhost:8080")), reader.ports(listOf(shogunai))?.get(shogunai.path))
+    }
+
+    @Test
+    fun `a cancelled read cancels the caller`() = runTest {
+        val reader = reader(FakeOrcaClient(psFailure = kotlinx.coroutines.CancellationException("stopped")))
+
+        assertTrue(runCatching { reader.read() }.exceptionOrNull() is kotlinx.coroutines.CancellationException)
+    }
+
+    @Test
+    fun `an unreadable remembered folder falls back to Orca's default`() = runTest {
+        val store = object : OrcaWorkspaceStore by MemoryStore() {
+            override fun workspacesRoot(): String? = throw IllegalStateException("unreadable")
+        }
+
+        val reader = OrcaWorktreeReader(FakeOrcaClient(running = false), store, userHome = "/home/dev", now = { clock }, canonical = { it })
+
+        assertEquals(WorktreeOrigin.ORCA, origin(inDefault, reader))
+    }
+
+    @Test
+    fun `a created worktree too close to the root remembers no folder`() = runTest {
+        val store = MemoryStore()
+
+        reader(FakeOrcaClient(psRows = listOf(OrcaWorktree("/TASK-9", createdByOrca = true))), store).read()
+        reader(FakeOrcaClient(psRows = listOf(OrcaWorktree("TASK-9", createdByOrca = true))), store).read()
+
+        assertNull(store.root)
+    }
+
+    @Test
+    fun `a created worktree whose path can't be read remembers no folder`() = runTest {
+        val store = MemoryStore()
+
+        reader(FakeOrcaClient(psRows = listOf(OrcaWorktree("/home/dev/work\u0000spaces/x/TASK-9", createdByOrca = true))), store).read()
+
+        assertNull(store.root)
     }
 }

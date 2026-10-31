@@ -66,4 +66,18 @@ class CliGitHubClientTest {
         assertFalse(client(executor, installed = false).issueExists(worktree, 7))
         assertTrue(executor.executedCommands.isEmpty())
     }
+
+    @Test
+    fun `answers of the wrong shape find nothing`() = runTest {
+        fun answering(stdout: String) = client(FakeShellCommandExecutor { FakeShellCommandExecutor.success(it, stdout) })
+
+        assertNull(answering("""{"number":1}""").pullRequestFor(worktree, "b"))
+        assertNull(answering("""["x"]""").pullRequestFor(worktree, "b"))
+        assertNull(answering("""[{"number":"x"}]""").pullRequestFor(worktree, "b"))
+        assertNull(answering("""[{"number":{}}]""").pullRequestFor(worktree, "b"))
+        assertFalse(answering("""[1]""").issueExists(worktree, 1))
+        assertFalse(answering("not json").issueExists(worktree, 1))
+        assertFalse(answering("""{"number":2}""").issueExists(worktree, 1))
+        assertFalse(answering("""{}""").issueExists(worktree, 1))
+    }
 }

@@ -11,6 +11,9 @@ import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.WorktreeError
 import kotlinx.coroutines.test.runTest
+import app.luxion.shogunai.domain.FakeOrcaClient
+import app.luxion.shogunai.domain.model.OrcaTerminal
+import kotlin.test.assertFalse
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -259,5 +262,34 @@ class LockedWorktreeFolderTest {
         assertEquals(listOf(other.path, path, third.path), report.removed)
         assertTrue(report.failures.isEmpty())
         assertEquals(listOf(path), files.deletedRecursively)
+    }
+
+    @Test
+    fun `a worktree that isn't a working tree any more fails without a file manager`() = runTest {
+        assertIs<WorktreeError.GitCommandFailed>(removal(executor(fails(notAWorkingTree)), null)(path).exceptionOrNull())
+    }
+
+    @Test
+    fun `a still locked folder whose registration can't be read counts as registered`() = runTest {
+        val executor = FakeShellCommandExecutor { command ->
+            when (command) {
+                removeCommand -> failure(command, exitCode = 255, stderr = locked)
+                else -> failure(command)
+            }
+        }
+
+        val error = assertIs<WorktreeError.WorktreeFolderInUse>(removal(executor, null)(path).exceptionOrNull())
+
+        assertFalse(error.unregistered)
+    }
+
+    @Test
+    fun `a locked folder with Orca terminals closes them before retrying and reports a failed close`() = runTest {
+        val failure = WorktreeError.OrcaCommandFailed(listOf("orca"), "runtime_unavailable")
+        val orca = FakeOrcaClient(terminals = mapOf(path to listOf(OrcaTerminal("term_1", path))), closeFailures = mapOf(path to failure))
+
+        val result = RemoveWorktreeUseCase(config, executor(fails(locked), ok), closeOrcaTerminals = CloseOrcaTerminalsUseCase(orca))(path).getOrThrow()
+
+        assertEquals(failure, result.orcaFailure)
     }
 }

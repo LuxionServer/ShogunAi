@@ -36,24 +36,19 @@ class NioFileManager(
     private fun readFailure(file: Path): String? = try {
         if (Files.isDirectory(file)) Files.newDirectoryStream(file).close() else Files.newByteChannel(file).close()
         null
-    } catch (error: AccessDeniedException) {
-        error.reason ?: "permission denied"
-    } catch (error: FileSystemException) {
-        error.reason ?: error.javaClass.simpleName
     } catch (error: IOException) {
-        error.message ?: error.javaClass.simpleName
+        readFailureReason(error)
     }
 
     override fun isInside(root: String, path: String): Boolean = runCatching {
         val realRoot = Path.of(root).toRealPath()
-        var existing = Path.of(path).toAbsolutePath().normalize()
-        while (!Files.exists(existing, LinkOption.NOFOLLOW_LINKS)) existing = existing.parent ?: return false
+        val existing = generateSequence(Path.of(path).toAbsolutePath().normalize()) { it.parent }.first { Files.exists(it, LinkOption.NOFOLLOW_LINKS) }
         existing.toRealPath().startsWith(realRoot)
     }.getOrDefault(false)
 
     override fun copy(source: String, destination: String) {
         val destinationPath = Path.of(destination)
-        destinationPath.parent?.let { Files.createDirectories(it) }
+        Files.createDirectories(destinationPath.toAbsolutePath().parent)
         Files.copy(
             Path.of(source),
             destinationPath,
@@ -64,7 +59,7 @@ class NioFileManager(
 
     override fun createSymbolicLink(target: String, link: String) {
         val linkPath = Path.of(link)
-        linkPath.parent?.let { Files.createDirectories(it) }
+        Files.createDirectories(linkPath.toAbsolutePath().parent)
         Files.deleteIfExists(linkPath)
         try {
             linkTo(linkPath, Path.of(target))
@@ -101,28 +96,14 @@ class NioFileManager(
     private fun deleteTree(path: String) {
         val root = Path.of(path)
         if (!Files.exists(root, LinkOption.NOFOLLOW_LINKS)) return
-        Files.walkFileTree(
-            root,
-            object : SimpleFileVisitor<Path>() {
-                override fun visitFile(file: Path, attrs: BasicFileAttributes): FileVisitResult {
-                    deleteEvenIfReadOnly(file)
-                    return FileVisitResult.CONTINUE
-                }
-
-                override fun postVisitDirectory(dir: Path, exc: IOException?): FileVisitResult {
-                    if (exc != null) throw exc
-                    deleteEvenIfReadOnly(dir)
-                    return FileVisitResult.CONTINUE
-                }
-            },
-        )
+        Files.walkFileTree(root, TreeDeleter(::deleteEvenIfReadOnly))
     }
 
     private fun deleteEvenIfReadOnly(path: Path) {
         try {
             Files.delete(path)
         } catch (error: AccessDeniedException) {
-            if (!path.toFile().setWritable(true)) throw error
+            path.toFile().setWritable(true)
             Files.delete(path)
         }
     }
@@ -238,5 +219,24 @@ class NioFileManager(
             },
         )
         return total
+    }
+}
+
+internal fun readFailureReason(error: IOException): String = when (error) {
+    is AccessDeniedException -> error.reason ?: "permission denied"
+    is FileSystemException -> error.reason ?: error.javaClass.simpleName
+    else -> error.message ?: error.javaClass.simpleName
+}
+
+internal class TreeDeleter(private val delete: (Path) -> Unit) : SimpleFileVisitor<Path>() {
+    override fun visitFile(file: Path, attrs: BasicFileAttributes): FileVisitResult {
+        delete(file)
+        return FileVisitResult.CONTINUE
+    }
+
+    override fun postVisitDirectory(dir: Path, exc: IOException?): FileVisitResult {
+        if (exc != null) throw exc
+        delete(dir)
+        return FileVisitResult.CONTINUE
     }
 }

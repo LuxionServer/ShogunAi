@@ -22,6 +22,7 @@ import app.luxion.shogunai.domain.model.WaitQueueName
 import app.luxion.shogunai.domain.model.WaitTicket
 import app.luxion.shogunai.domain.model.WorktreeError
 import kotlinx.coroutines.test.runTest
+import app.luxion.shogunai.domain.executor.CommandExecutionException
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -295,5 +296,18 @@ class RemoveWorktreeUseCaseTest {
         val removal = RemoveWorktreeUseCase(config, FakeShellCommandExecutor { success(it) })(worktreePath).getOrThrow()
 
         assertEquals(WorktreeRemoval(), removal)
+    }
+
+    @Test
+    fun `a branch that looks like an option isn't deleted and an unresolvable main branch keeps the branch`() = runTest {
+        val unresolvable = FakeShellCommandExecutor { command ->
+            if (command.getOrNull(1) == "symbolic-ref") throw CommandExecutionException(command, java.io.IOException("no git")) else success(command)
+        }
+
+        val optionLike = RemoveWorktreeUseCase(config, FakeShellCommandExecutor { success(it) })(worktreePath, branchToDelete = "--force").getOrThrow()
+        val kept = RemoveWorktreeUseCase(config, unresolvable)(worktreePath, branchToDelete = "feature/TASK-123").getOrThrow()
+
+        assertIs<BranchDeletion.KeptFailed>(optionLike.branch)
+        assertEquals(BranchDeletion.KeptNotMerged, kept.branch)
     }
 }

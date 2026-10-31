@@ -182,4 +182,27 @@ class SharedEnvironmentResolutionTest {
 
         assertEquals("http://localhost:${store.readPorts("$apiBase/.git")["port:http"]}", app.variables.toMap()["API_URL"])
     }
+
+    @Test
+    fun `a worktree that fails without a reason is reported unreadable with no detail`() = runTest {
+        target = SharedTarget.Located(apiBase, "/home/dev/projects/product-worktrees/api/GONE")
+        val silent = object : ShellCommandExecutor {
+            override suspend fun execute(command: List<String>, workingDirectory: String?): CommandResult {
+                val (admin, common) = directories[workingDirectory] ?: throw IllegalStateException()
+                return FakeShellCommandExecutor.success(command, "$admin\n$common\n")
+            }
+        }
+        val resolver = ResolveWorktreeEnvironmentUseCase(
+            silent,
+            FakeRepositoryProvisioningSource(mapOf(appBase to appProvisioning, apiBase to apiProvisioning)),
+            store,
+            FakePortProbe(),
+            trust = trust,
+            sharedEnvironment = source(),
+        )
+
+        val environment = resolver(appBase, appTask).getOrThrow()
+
+        assertEquals(listOf(UnresolvedVariable("API_URL", UnresolvedReason.WorktreeUnreadable("api", ""))), environment.unresolved)
+    }
 }

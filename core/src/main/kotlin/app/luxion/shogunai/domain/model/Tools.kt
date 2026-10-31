@@ -7,6 +7,8 @@ enum class HostOs {
     WINDOWS,
     LINUX;
 
+    val isWindows: Boolean get() = this == WINDOWS
+
     companion object {
         fun of(osName: String): HostOs = when {
             osName.startsWith("Mac", ignoreCase = true) -> MACOS
@@ -14,7 +16,7 @@ enum class HostOs {
             else -> LINUX
         }
 
-        fun current(): HostOs = of(System.getProperty("os.name").orEmpty())
+        fun current(): HostOs = of(System.getProperty("os.name", ""))
     }
 }
 

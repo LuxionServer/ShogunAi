@@ -249,4 +249,8 @@ class DetectRepositoryStacksUseCaseTest {
         )
         assertTrue(suggestProviders(stacks, RepositoryProviders(), isMac = false).suggestions.isEmpty())
     }
+    @Test
+    fun `an unreadable pubspec isn't flutter`() {
+        assertTrue(detect(listOf("pubspec.yaml"), unreadable = setOf("pubspec.yaml")).none { it.stack == Stack.FLUTTER })
+    }
 }

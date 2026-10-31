@@ -162,4 +162,12 @@ class CheckForUpdateUseCaseTest {
 
         assertTrue(check.exceptionOrNull() is WorktreeError.UpdateCheckFailed)
     }
+    @Test
+    fun `a running version that isn't a release counts as a development build`() = runTest {
+        val source = source()
+
+        val check = useCase(source, preferences(), running = "local-build")(UpdateCheckMode.AUTOMATIC)
+
+        assertEquals(UpdateCheck.NotDue, check.getOrThrow())
+    }
 }

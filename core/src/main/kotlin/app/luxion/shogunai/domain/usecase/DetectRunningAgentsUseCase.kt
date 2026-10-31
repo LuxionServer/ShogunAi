@@ -27,7 +27,7 @@ class DetectRunningAgentsUseCase(
     private val executor: ShellCommandExecutor,
     private val herdr: HerdrClient? = null,
     private val sessionStore: AgentSessionStore? = null,
-    private val transcriptModifiedAt: (String) -> Long? = { path -> File(path).lastModified().takeIf { it > 0 } },
+    private val transcriptModifiedAt: (String) -> Long? = ::fileModifiedAt,
     private val now: () -> Long = System::currentTimeMillis,
     private val hasGitEntry: (String) -> Boolean = { directory -> File(directory, ".git").exists() },
     private val claudeSessions: ClaudeSessionRegistry? = null,
@@ -74,7 +74,7 @@ class DetectRunningAgentsUseCase(
             .toMap()
         val attributed = candidates.mapNotNull { (pid, name) -> worktreeByPid[pid]?.let { Triple(pid, name, it) } }
         val agents = attributed
-            .filter { (_, name, path) -> name in agentNamesByPath[path].orEmpty() }
+            .filter { (_, name, path) -> name in agentNamesByPath.getValue(path) }
             .groupBy({ it.third }, { RunningAgent(it.second) })
             .mapValues { (_, agents) -> agents.distinct() }
         val claudePids = attributed
@@ -104,7 +104,7 @@ class DetectRunningAgentsUseCase(
         return scan.agents.mapValues { (path, agents) ->
             val state = states[path] ?: return@mapValues agents
             agents.map { agent ->
-                if (agent.name == CLAUDE && agent.state == null) agent.copy(state = state, stateSource = AgentStateSource.CLAUDE_CODE) else agent
+                if (agent.name == CLAUDE) agent.copy(state = state, stateSource = AgentStateSource.CLAUDE_CODE) else agent
             }
         }
     }
@@ -182,7 +182,10 @@ class DetectRunningAgentsUseCase(
         return (processAgents.keys + herdrByPath.keys).associateWith { path ->
             val herdrByName = herdrByPath[path].orEmpty().groupBy { it.name }.mapValues { (_, agents) -> mostUrgent(agents) }
             val processNames = processAgents[path].orEmpty().map { it.name }.toSet()
-            processAgents[path].orEmpty().map { agent -> herdrByName[agent.name]?.let { runningAgent(it, agent) } ?: agent } +
+            processAgents[path].orEmpty().map { agent ->
+                val herdrAgent = herdrByName[agent.name]
+                if (herdrAgent != null) runningAgent(herdrAgent, agent) else agent
+            } +
                 herdrByName.filterKeys { it !in processNames }.values.map(::runningAgent)
         }
     }
@@ -203,7 +206,10 @@ class DetectRunningAgentsUseCase(
             val orcaByName = orcaByPath[path].orEmpty().groupBy { it.agent }.mapValues { (_, same) -> same.maxBy { urgency(it.state) } }
             val known = agents[path].orEmpty()
             val knownNames = known.map { it.name }.toSet()
-            known.map { agent -> orcaByName[agent.name]?.let { withOrcaState(agent, it) } ?: agent } +
+            known.map { agent ->
+                val orcaAgent = orcaByName[agent.name]
+                if (orcaAgent != null) withOrcaState(agent, orcaAgent) else agent
+            } +
                 orcaByName.filterKeys { it !in knownNames }.values.map {
                     RunningAgent(it.agent, it.state, stateSource = it.state?.let { AgentStateSource.ORCA }, activity = it.activity)
                 }
@@ -231,18 +237,17 @@ class DetectRunningAgentsUseCase(
 
     private fun mostUrgent(agents: List<HerdrAgent>): HerdrAgent = agents.maxBy { urgency(it.state) }
 
-    private fun urgency(state: AgentState?): Int = when (state) {
+    private fun urgency(state: AgentState?): Int = if (state == null) 0 else when (state) {
         AgentState.BLOCKED -> 4
         AgentState.DONE -> 3
         AgentState.WORKING -> 2
         AgentState.IDLE -> 1
-        null -> 0
     }
 
     private fun runningAgent(agent: HerdrAgent) = RunningAgent(agent.name, agent.state, agent.paneId, agent.state?.let { AgentStateSource.HERDR })
 
-    private fun runningAgent(agent: HerdrAgent, process: RunningAgent?): RunningAgent =
-        if (agent.state == null && process != null) process.copy(herdrPaneId = agent.paneId) else runningAgent(agent)
+    private fun runningAgent(agent: HerdrAgent, process: RunningAgent): RunningAgent =
+        if (agent.state == null) process.copy(herdrPaneId = agent.paneId) else runningAgent(agent)
 
     private fun agentName(agentCommand: String): String? =
         agentCommand.trim().substringBefore(' ').substringAfterLast('/').ifEmpty { null }
@@ -277,6 +282,8 @@ data class AgentSearch(val agentCommands: List<String>, val worktrees: List<Work
             AgentSearch(listOf(agentCommand), listOf(Worktree(path = folder, branch = null)), exact = true)
     }
 }
+
+internal fun fileModifiedAt(path: String): Long? = File(path).lastModified().takeIf { it > 0 }
 
 fun owningWorktree(cwd: String, worktrees: List<Worktree>): Worktree? {
     val path = normalizePath(cwd)

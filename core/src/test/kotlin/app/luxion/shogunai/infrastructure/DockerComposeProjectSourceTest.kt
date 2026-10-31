@@ -7,6 +7,7 @@ import app.luxion.shogunai.domain.model.ComposeResource
 import app.luxion.shogunai.domain.model.ComposeResourceKind
 import app.luxion.shogunai.domain.model.WorktreeError
 import kotlinx.coroutines.test.runTest
+import app.luxion.shogunai.domain.model.ComposeProject
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -177,5 +178,28 @@ class DockerComposeProjectSourceTest {
 
         assertIs<WorktreeError.DockerUnavailable>(source.run("p", ComposeAction.Up(), "/w", emptyMap()).exceptionOrNull())
         assertFailsWith<WorktreeError.DockerUnavailable> { source.listResources() }
+    }
+
+    @Test
+    fun `entries without a name or fields are skipped and output that isn't a list is no projects`() {
+        assertEquals(
+            listOf(ComposeProject("p", "", emptyList())),
+            parseComposeProjects("""["x", {"Status":"running(1)"}, {"Name":"p"}]"""),
+        )
+        assertEquals(null, parseComposeProjects("{}"))
+    }
+
+    @Test
+    fun `labelled lines without every field, a name or a label are skipped`() {
+        assertEquals(emptyList(), parseVolumes("only\n|label\nname|\n "))
+    }
+
+    @Test
+    fun `a failure without a reason reports the exit code`() = runTest {
+        val silent = FakeShellCommandExecutor { FakeShellCommandExecutor.failure(it, exitCode = 4, stderr = " ") }
+
+        assertEquals(null, assertFailsWith<WorktreeError.DockerUnavailable> { DockerComposeProjectSource(silent).list() }.reason)
+        assertEquals("exit code 4", (DockerComposeProjectSource(silent).down("p", removeVolumes = false).exceptionOrNull() as WorktreeError.DockerUnavailable).reason)
+        assertEquals("exit code 4", (DockerComposeProjectSource(silent).run("p", ComposeAction.Up(), "/w", emptyMap()).exceptionOrNull() as WorktreeError.ComposeCommandFailed).detail)
     }
 }
