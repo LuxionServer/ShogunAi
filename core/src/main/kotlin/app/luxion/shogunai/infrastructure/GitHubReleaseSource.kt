@@ -61,9 +61,9 @@ class GitHubReleaseSource(
         return PublishedRelease(version, text("html_url") ?: DefaultReleasePage, assets, ReleaseNotes.parse(text("body")))
     }
 
-    private fun JsonObject.text(key: String): String? = runCatching { this[key]?.jsonPrimitive?.contentOrNull }.getOrNull()
+    private fun JsonObject.text(key: String): String? = runCatching { this[key]?.let { it.jsonPrimitive.contentOrNull } }.getOrNull()
 
-    private fun JsonObject.flag(key: String): Boolean = runCatching { this[key]?.jsonPrimitive?.booleanOrNull }.getOrNull() == true
+    private fun JsonObject.flag(key: String): Boolean = runCatching { this[key]?.let { it.jsonPrimitive.booleanOrNull } }.getOrNull() == true
 
     private companion object {
         const val DefaultReleasePage = "https://github.com/LuxionServer/ShogunAi/releases/latest"

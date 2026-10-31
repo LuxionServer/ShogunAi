@@ -27,7 +27,7 @@ class RegistryUninstallLocations(private val executor: ShellCommandExecutor) : U
         private val VALUE = Regex("""^\s+InstallLocation\s+REG_SZ\s+(\S.*?)\s*$""")
 
         fun parse(output: String): List<String> =
-            output.lineSequence().mapNotNull { VALUE.find(it)?.groupValues?.get(1) }.distinct().toList()
+            output.lineSequence().mapNotNull { line -> VALUE.find(line)?.let { it.groupValues[1] } }.distinct().toList()
     }
 }
 
@@ -66,7 +66,7 @@ class EditorExecutableResolver(
         val roots = locator.programFolders + listOfNotNull(locator.localAppData?.let { "$it\\Programs" })
         for (install in ToolCatalog.windowsInstalls(editor)) {
             for (root in roots) {
-                val parent = install.parent?.let { join(root, it) } ?: root
+                val parent = if (install.parent != null) join(root, install.parent) else root
                 for (folder in installFolders(parent, install)) {
                     install.executables.map { join(folder, it) }.firstOrNull(locator.isFile)?.let { return it }
                 }

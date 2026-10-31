@@ -140,4 +140,24 @@ class BaseBranchesTest {
 
         assertEquals(null, recordedBaseRef(executor, config, "feature/TASK-1"))
     }
+
+    @Test
+    fun `only base entries of named branches with a value are read`() {
+        val output = listOf(
+            "branch.feature/a.gh-merge-base develop",
+            "remote.origin.gh-merge-base develop",
+            "branch.feature/b.other develop",
+            "branch.feature/c.gh-merge-base",
+            "branch..gh-merge-base develop",
+        ).joinToString("\n")
+
+        assertEquals(mapOf("feature/a" to "develop"), parseBaseBranches(output))
+    }
+
+    @Test
+    fun `a status one with output is a failure`() = runTest {
+        val executor = FakeShellCommandExecutor { failure(it, exitCode = 1, stderr = "").copy(stdout = "unexpected") }
+
+        assertIs<WorktreeError.GitCommandFailed>(ReadBaseBranchesUseCase(config, executor)().exceptionOrNull())
+    }
 }

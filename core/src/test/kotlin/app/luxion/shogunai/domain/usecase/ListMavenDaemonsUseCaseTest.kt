@@ -84,4 +84,10 @@ class ListMavenDaemonsUseCaseTest {
 
         assertEquals(listOf(1L), idleMavenDaemonsOfRemovedWorktrees(daemons, listOf(removed, kept), listOf(removed.path)))
     }
+    @Test
+    fun `a gone folder is a removed worktree only inside the worktrees folder`() = runTest {
+        assertEquals(DaemonOwner.RemovedWorktree, ownerOf("$worktreesRoot/task-9", existing = false))
+        assertEquals(DaemonOwner.OtherProject, ownerOf("/home/dev/gone", existing = false))
+        assertEquals(DaemonOwner.OtherProject, ownerOf("$worktreesRoot/task-9", existing = false, root = null))
+    }
 }

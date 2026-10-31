@@ -43,4 +43,4 @@ class CloseOrcaTerminalsUseCase(private val orca: OrcaClient) {
     }
 }
 
-fun WorktreeError.orcaDetail(): String = (this as? WorktreeError.OrcaCommandFailed)?.detail ?: message.orEmpty()
+fun WorktreeError.orcaDetail(): String = if (this is WorktreeError.OrcaCommandFailed) detail else message

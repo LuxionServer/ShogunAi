@@ -27,7 +27,7 @@ class MacDerivedDataSource(
     private val executor: ShellCommandExecutor,
     private val fileManager: FileManager,
     private val home: String,
-    private val osName: String = System.getProperty("os.name").orEmpty(),
+    private val osName: String = System.getProperty("os.name", ""),
     private val volumesRoot: String = "/Volumes",
 ) : DerivedDataSource {
 
@@ -37,18 +37,16 @@ class MacDerivedDataSource(
         val locationPath = Path.of(location())
         return withContext(Dispatchers.IO) {
             if (!fileManager.exists(locationPath.toString())) return@withContext emptyList()
-            locationPath.toFile().listFiles()
-                ?.filter { it.isDirectory }
-                ?.mapNotNull { folder ->
-                    val entry = plistEntry(folder.toPath().resolve(INFO_PLIST)) ?: return@mapNotNull null
-                    DerivedDataFolder(
-                        path = folder.toString(),
-                        workspacePath = realPathOrRecorded(entry.workspacePath),
-                        sizeBytes = null,
-                        lastAccessed = entry.lastAccessed,
-                    )
-                }
-                .orEmpty()
+            val children = locationPath.toFile().listFiles() ?: return@withContext emptyList()
+            children.filter { it.isDirectory }.mapNotNull { folder ->
+                val entry = plistEntry(folder.toPath().resolve(INFO_PLIST)) ?: return@mapNotNull null
+                DerivedDataFolder(
+                    path = folder.toString(),
+                    workspacePath = realPathOrRecorded(entry.workspacePath),
+                    sizeBytes = null,
+                    lastAccessed = entry.lastAccessed,
+                )
+            }
         }
     }
 
@@ -60,17 +58,17 @@ class MacDerivedDataSource(
     }
 
     override suspend fun compilationCacheBytes(): Long? {
-        val cache = defaults(CUSTOM_COMPILATION_CACHE_LOCATION_KEY)?.let(::expandHome)
-            ?: Path.of(location(), COMPILATION_CACHE_NAME).toString()
+        val custom = defaults(CUSTOM_COMPILATION_CACHE_LOCATION_KEY)
+        val cache = if (custom != null) expandHome(custom) else Path.of(location(), COMPILATION_CACHE_NAME).toString()
         return if (fileManager.exists(cache)) measure(cache) else null
     }
 
     override suspend fun freeBytes(): Long? {
         val location = Path.of(location()).toAbsolutePath()
         return withContext(Dispatchers.IO) {
-            val existing = generateSequence(location) { it.parent }.firstOrNull { Files.exists(it) } ?: return@withContext null
+            val existing = generateSequence(location) { it.parent }.first { Files.exists(it) }
             try {
-                Files.getFileStore(existing).usableSpace.takeIf { it >= 0 }
+                Files.getFileStore(existing).usableSpace
             } catch (error: IOException) {
                 null
             }
@@ -79,23 +77,10 @@ class MacDerivedDataSource(
 
     private suspend fun measure(path: String): Long = withContext(Dispatchers.IO) {
         val job = coroutineContext.job
-        var total = 0L
-        Files.walkFileTree(
-            Path.of(path),
-            object : SimpleFileVisitor<Path>() {
-                override fun preVisitDirectory(dir: Path, attrs: BasicFileAttributes): FileVisitResult =
-                    if (job.isActive) FileVisitResult.CONTINUE else FileVisitResult.TERMINATE
-
-                override fun visitFile(file: Path, attrs: BasicFileAttributes): FileVisitResult {
-                    if (attrs.isRegularFile) total += attrs.size()
-                    return if (job.isActive) FileVisitResult.CONTINUE else FileVisitResult.TERMINATE
-                }
-
-                override fun visitFileFailed(file: Path, exc: IOException): FileVisitResult = FileVisitResult.CONTINUE
-            },
-        )
+        val visitor = SizeVisitor { job.isActive }
+        Files.walkFileTree(Path.of(path), visitor)
         job.ensureActive()
-        total
+        visitor.total
     }
 
     override fun projectExists(workspacePath: String): Boolean = fileManager.exists(workspacePath)
@@ -105,7 +90,6 @@ class MacDerivedDataSource(
         val path = Path.of(workspacePath).normalize()
         if (!path.startsWith(root)) return false
         val relative = root.relativize(path)
-        if (relative.nameCount == 0) return false
         return !fileManager.exists(root.resolve(relative.getName(0)).toString())
     }
 
@@ -228,10 +212,26 @@ class MacDerivedDataSource(
 
 internal data class PlistEntry(val workspacePath: String, val lastAccessed: Instant?)
 
+internal class SizeVisitor(private val keepGoing: () -> Boolean) : SimpleFileVisitor<Path>() {
+    var total = 0L
+        private set
+
+    override fun preVisitDirectory(dir: Path, attrs: BasicFileAttributes): FileVisitResult = next()
+
+    override fun visitFile(file: Path, attrs: BasicFileAttributes): FileVisitResult {
+        if (attrs.isRegularFile) total += attrs.size()
+        return next()
+    }
+
+    override fun visitFileFailed(file: Path, exc: IOException): FileVisitResult = FileVisitResult.CONTINUE
+
+    private fun next(): FileVisitResult = if (keepGoing()) FileVisitResult.CONTINUE else FileVisitResult.TERMINATE
+}
+
 private fun Node.nextSiblingElement(): Element? {
     var current = nextSibling
     while (current != null && current.nodeType != Node.ELEMENT_NODE) {
         current = current.nextSibling
     }
-    return current as? Element
+    return current as Element?
 }

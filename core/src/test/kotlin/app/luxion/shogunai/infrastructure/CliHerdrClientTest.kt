@@ -358,4 +358,48 @@ class CliHerdrClientTest {
         assertEquals("unknown", pane.agentStatus)
         assertFalse(pane.hasLiveAgent)
     }
+
+    private fun replying(result: String) = FakeShellCommandExecutor { FakeShellCommandExecutor.success(it, """{"result":$result}""") }
+
+    @Test
+    fun `openings without a workspace or a root pane are unexpected and already open is read only when boolean`() = runTest {
+        listOf("{}", """{"workspace":{"workspace_id":"w1"}}""", """{"root_pane":{"pane_id":"p1"}}""").forEach { result ->
+            assertFailsWith<WorktreeError.HerdrCommandFailed>(result) { client(replying(result)).openWorktree("/repo", worktree, "TASK-9") }
+            assertFailsWith<WorktreeError.HerdrCommandFailed>(result) { client(replying(result)).createWorkspace("/repo", "TASK-9") }
+        }
+        val opened = """{"workspace":{"workspace_id":"w1"},"root_pane":{"pane_id":"p1"},"already_open":"yes"}"""
+        assertEquals(false, client(replying(opened)).openWorktree("/repo", worktree, "TASK-9").alreadyOpen)
+        assertFailsWith<WorktreeError.HerdrCommandFailed> { client(replying("""{"pane":{}}""")).splitPane("p1", worktree, emptyList()) }
+        assertFailsWith<WorktreeError.HerdrCommandFailed> { client(replying("{}")).listWorkspaces() }
+        assertFailsWith<WorktreeError.HerdrCommandFailed> { client(replying("{}")).listPanes(null) }
+    }
+
+    @Test
+    fun `rows without the fields they need are skipped`() = runTest {
+        val worktrees = """{"worktrees":[{"path":"/a"},{"open_workspace_id":"w"},{"path":"/b","open_workspace_id":"w2"}]}"""
+        val agents = """{"agents":[{"agent":"claude","pane_id":"p"},{"cwd":"/a","pane_id":"p"},{"agent":"claude","cwd":"/a"},{"agent":"claude","cwd":"/a","pane_id":"p"}]}"""
+        val workspaces = """{"workspaces":[{"label":"x"},{"workspace_id":"w1"},{"workspace_id":"w2","worktree":"x"}]}"""
+        val panes = """{"panes":[{"workspace_id":"w"},{"pane_id":"p"},{"pane_id":"p2","workspace_id":"w"}]}"""
+
+        assertEquals(mapOf("/b" to "w2"), client(replying(worktrees)).openWorktreeWorkspaces("/repo"))
+        assertEquals(listOf("p"), client(replying(agents)).listAgents().map { it.paneId })
+        assertEquals(listOf(HerdrWorkspace("w1", "", null), HerdrWorkspace("w2", "", null)), client(replying(workspaces)).listWorkspaces())
+        assertEquals(listOf("p2"), client(replying(panes)).listPanes(null).map { it.paneId })
+    }
+
+    @Test
+    fun `process info without both ids or with text ids has no processes`() = runTest {
+        assertNull(client(replying("""{"process_info":{"shell_pid":1}}""")).paneProcesses("p"))
+        assertNull(client(replying("""{"process_info":{"shell_pid":"1","foreground_process_group_id":1}}""")).paneProcesses("p"))
+        assertNull(client(replying("""{"process_info":{"foreground_process_group_id":1}}""")).paneProcesses("p"))
+    }
+
+    @Test
+    fun `a failure is described by the error output or the exit code, and an answer that isn't JSON is empty`() = runTest {
+        fun failing(stdout: String, stderr: String) = FakeShellCommandExecutor { CommandResult(it, 2, stdout, stderr) }
+
+        assertEquals("from stderr", assertFailsWith<WorktreeError.HerdrCommandFailed> { client(failing("", """{"error":{"message":"from stderr"}}""")).closePane("p") }.detail)
+        assertEquals("exit code 2", assertFailsWith<WorktreeError.HerdrCommandFailed> { client(failing("[]", " ")).closePane("p") }.detail)
+        assertFailsWith<WorktreeError.HerdrCommandFailed> { client(FakeShellCommandExecutor { FakeShellCommandExecutor.success(it, "done") }).listPanes(null) }
+    }
 }

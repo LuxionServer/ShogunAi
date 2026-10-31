@@ -190,4 +190,20 @@ class CloseOrcaTerminalsUseCaseTest {
         assertTrue(error is WorktreeError.GitCommandFailed)
         assertEquals(2, attempts)
     }
+    @Test
+    fun `without Orca installed no path has terminals`() = runTest {
+        val orca = FakeOrcaClient(installed = false, terminals = mapOf(path to listOf(OrcaTerminal("term_1", path))))
+
+        assertEquals(emptySet(), CloseOrcaTerminalsUseCase(orca).withTerminals(listOf(path)))
+        assertEquals(emptySet(), CloseOrcaTerminalsUseCase(openIn(path)).withTerminals(emptyList()))
+    }
+
+    @Test
+    fun `a generic error closing terminals becomes an Orca failure without detail`() = runTest {
+        val failure = CloseOrcaTerminalsUseCase(openIn(path, closeFailures = mapOf(path to IllegalStateException()))).closeOne(path)
+
+        assertEquals("", failure?.orcaDetail())
+        assertEquals("closed", CloseOrcaTerminalsUseCase(openIn(path, closeFailures = mapOf(path to IllegalStateException("closed")))).closeOne(path)?.orcaDetail())
+        assertEquals("No multirepo found at /x", WorktreeError.MultirepoNotFound("/x").orcaDetail())
+    }
 }

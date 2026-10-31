@@ -903,4 +903,20 @@ class CreateWorktreeUseCaseTest {
         assertEquals(listOf("local.properties"), error.files.map { it.path })
         assertTrue(fileManager.symbolicLinks.isEmpty())
     }
+    @Test
+    fun `a git ref segment can't start or end with a dot or a slash`() {
+        listOf(".task", "task.", "/task", "task/", "task.lock", "a..b", "a b", "").forEach { assertFalse(isValidGitRefSegment(it), it) }
+        assertTrue(isValidGitRefSegment("feature/task-1"))
+    }
+
+    @Test
+    fun `an entry the listing couldn't read is unreadable even when its reason is unknown`() = runTest {
+        val fileManager = fileManagerWithKeys()
+        fileManager.directoryUnreadable[keysFolder] = listOf("private")
+
+        val error = CreateWorktreeUseCase(folderConfig(), FakeShellCommandExecutor { success(it) }, fileManager, FakeRepositoryProvisioningSource())("TASK-123", BranchType.FEATURE).exceptionOrNull()
+
+        assertIs<WorktreeError.LocalFilesUnavailable>(error)
+        assertEquals(UnavailableReason.Unreadable(null), error.files.single().reason)
+    }
 }

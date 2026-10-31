@@ -6,7 +6,7 @@ import java.io.File
 class HerdrConfigFile(
     private val environmentVariable: (String) -> String?,
     private val userHome: String,
-    private val osName: String = System.getProperty("os.name").orEmpty(),
+    private val osName: String = System.getProperty("os.name", ""),
 ) : HerdrConfigSource {
 
     private val isWindows: Boolean get() = osName.startsWith("Windows", ignoreCase = true)
@@ -47,7 +47,7 @@ class HerdrConfigFile(
                 if (table != "worktrees") return@forEach
                 DIRECTORY_ENTRY.matchEntire(line)?.let { match ->
                     val basic = match.groups[1]?.value
-                    val value = basic?.let(::unescape) ?: match.groupValues[2]
+                    val value = if (basic != null) unescape(basic) else match.groupValues[2]
                     return value.takeIf { it.isNotBlank() }
                 }
             }

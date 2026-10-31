@@ -8,6 +8,7 @@ import app.luxion.shogunai.domain.model.IosSimulatorProvider
 import app.luxion.shogunai.domain.model.SimulatorSettings
 import app.luxion.shogunai.domain.model.WorktreeError
 import kotlinx.coroutines.test.runTest
+import kotlin.test.assertFalse
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -41,5 +42,16 @@ class EnvironmentContributionRequestsTest {
 
         assertEquals(listOf("UDID-1"), simulators.deleted)
         assertTrue(files.writtenTexts.isEmpty())
+    }
+
+    @Test
+    fun `a compilation cache file with other content doesn't count as existing`() = runTest {
+        val files = FakeFileManager()
+        val resource = xcodeCompilationCacheContribution(files, "/home/dev").resources.single()
+        val path = xcodeCompilationCachePath("/home/dev")
+
+        assertFalse(resource.exists(path))
+        files.writeText(path, "other")
+        assertFalse(resource.exists(path))
     }
 }

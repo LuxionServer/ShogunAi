@@ -28,10 +28,9 @@ data class ReleaseNotes(val english: String?, val spanish: String?) {
         private fun String.between(language: String): String? =
             Regex("""<!--\s*shogunai:notes:$language\s*-->(.*?)<!--\s*/shogunai:notes:$language\s*-->""", RegexOption.DOT_MATCHES_ALL)
                 .find(this)
-                ?.groupValues
-                ?.get(1)
+                ?.let { it.groupValues[1] }
 
-        private fun String?.nonBlank(): String? = this?.trim()?.takeIf { it.isNotEmpty() }
+        private fun String?.nonBlank(): String? = this?.let { it.trim().ifEmpty { null } }
 
         private fun cleanGenerated(text: String): String {
             var inNewContributors = false

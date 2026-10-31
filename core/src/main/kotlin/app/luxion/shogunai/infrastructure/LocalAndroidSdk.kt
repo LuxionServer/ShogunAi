@@ -20,7 +20,7 @@ class LocalAndroidSdk(
     private val fileManager: FileManager,
     private val environmentVariable: (String) -> String?,
     private val userHome: String,
-    private val osName: String = System.getProperty("os.name").orEmpty(),
+    private val osName: String = System.getProperty("os.name", ""),
     private val logDirectory: Path,
     private val launch: (command: List<String>, log: File) -> EmulatorProcess = ::launchDetached,
 ) : AndroidSdk {
@@ -125,11 +125,13 @@ internal fun parseAdbDevices(output: String): Map<String, String> =
         }
         .toMap()
 
+internal fun nullDevice(separator: Char): File = File(if (separator == '\\') "NUL" else "/dev/null")
+
 internal fun launchDetached(command: List<String>, log: File): EmulatorProcess {
     val process = ProcessBuilder(WindowsArguments.prepare(command, System.getProperty("os.name")))
         .redirectErrorStream(true)
         .redirectOutput(ProcessBuilder.Redirect.appendTo(log))
-        .redirectInput(ProcessBuilder.Redirect.from(File(if (File.separatorChar == '\\') "NUL" else "/dev/null")))
+        .redirectInput(ProcessBuilder.Redirect.from(nullDevice(File.separatorChar)))
         .start()
     return object : EmulatorProcess {
         override val isAlive: Boolean get() = process.isAlive

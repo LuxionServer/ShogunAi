@@ -274,4 +274,14 @@ class WorktreeActivityTest {
 
         assertEquals(Activity.Stopped, worktreeActivity(worktree, old, null, now, Duration.ofDays(7)))
     }
+
+    @Test
+    fun `only a started branch with its own unmerged commits and no upstream is unpushed`() {
+        assertTrue(WorktreeStatus(0, null, Divergence(2, 0), null).isUnpushedBranch)
+        assertFalse(WorktreeStatus(0, Divergence(0, 0), Divergence(2, 0), null).isUnpushedBranch)
+        assertFalse(WorktreeStatus(0, null, Divergence(0, 0), null).isUnpushedBranch)
+        assertFalse(WorktreeStatus(0, null, null, null, neverCommitted = true).isUnpushedBranch)
+        assertFalse(WorktreeStatus(0, null, null, null, neverCommitted = true, base = Divergence(1, 0)).isUnpushedBranch)
+        assertFalse(WorktreeStatus(0, null, Divergence(0, 3), null, base = Divergence(2, 0)).isUnpushedBranch)
+    }
 }

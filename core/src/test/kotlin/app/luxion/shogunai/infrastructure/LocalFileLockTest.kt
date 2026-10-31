@@ -5,6 +5,7 @@ import java.nio.file.Files
 import kotlin.io.path.createTempDirectory
 import kotlin.io.path.writeText
 import kotlin.test.AfterTest
+import kotlin.test.assertFailsWith
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -31,5 +32,15 @@ class LocalFileLockTest {
 
         assertEquals("unlocked", LocalFileLock.withLock(blocker.resolve("settings.json")) { "unlocked" })
         assertEquals("unlocked", LocalFileLock.withLock(root.resolve("projects.json"), { throw IOException("locks unsupported") }) { "unlocked" })
+    }
+
+    @Test
+    fun `a nested lock on the same file runs at once and a failing block still releases it`() {
+        val target = root.resolve("settings.json")
+
+        assertEquals("inner", LocalFileLock.withLock(target) { LocalFileLock.withLock(target) { "inner" } })
+        assertFailsWith<IllegalStateException> { LocalFileLock.withLock(target) { error("boom") } }
+        assertFailsWith<IllegalStateException> { LocalFileLock.withLock(root.resolve("other.json"), { throw IOException("locks unsupported") }) { error("boom") } }
+        assertEquals("again", LocalFileLock.withLock(target) { "again" })
     }
 }

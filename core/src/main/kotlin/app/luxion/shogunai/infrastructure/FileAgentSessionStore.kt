@@ -51,7 +51,7 @@ class FileAgentSessionStore(
     }
 
     private fun folderKey(folder: Path): String {
-        val canonical = runCatching { folder.toRealPath() }.getOrDefault(folder.toAbsolutePath().normalize()).toString()
+        val canonical = folder.toRealPath().toString()
         return MessageDigest.getInstance("SHA-256").digest(canonical.toByteArray()).joinToString("") { "%02x".format(it) }.take(KEY_LENGTH)
     }
 
@@ -61,9 +61,7 @@ class FileAgentSessionStore(
             dotGit.isDirectory() -> dotGit
             dotGit.isRegularFile() -> dotGit.readText().lineSequence()
                 .firstOrNull { it.startsWith(GITDIR_PREFIX) }
-                ?.removePrefix(GITDIR_PREFIX)?.trim()
-                ?.let { worktree.resolve(it).normalize() }
-                ?.takeIf { it.exists() }
+                ?.let { line -> worktree.resolve(line.removePrefix(GITDIR_PREFIX).trim()).normalize().takeIf { it.exists() } }
             else -> null
         }
     }
@@ -92,7 +90,7 @@ class FileAgentSessionStore(
         )
     }
 
-    private fun JsonObject.string(key: String): String? = (this[key] as? JsonPrimitive)?.takeIf { it.isString }?.content
+    private fun JsonObject.string(key: String): String? = (this[key] as? JsonPrimitive)?.stringOrNull()
 
     private companion object {
         const val KEY_LENGTH = 24

@@ -148,4 +148,21 @@ class GitHubReleaseSourceTest {
 
         assertIs<WorktreeError.UpdateCheckFailed>(source().published().exceptionOrNull())
     }
+
+    @Test
+    fun `entries that aren't releases or assets are skipped and a release without a page links the latest`() = runTest {
+        body = """
+            [
+              "x",
+              { "tag_name": {"v": 1} },
+              { "tag_name": "v1.2.0", "draft": "maybe", "prerelease": {}, "assets": ["x", {"name": "a"}, {"browser_download_url": "u"}, {"name": "b", "browser_download_url": "https://example.test/b"}] }
+            ]
+        """.trimIndent()
+
+        val release = source().published().getOrThrow().single()
+
+        assertEquals(AppVersion(1, 2, 0), release.version)
+        assertEquals("https://github.com/LuxionServer/ShogunAi/releases/latest", release.pageUrl)
+        assertEquals(listOf("b"), release.assets.map { it.name })
+    }
 }

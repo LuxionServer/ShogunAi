@@ -88,4 +88,23 @@ class RotatingFileDiagnosticsLogTest {
 
         assertEquals("line\r\nC:\\Users\\dev", log.recent(1).single().message)
     }
+
+    @Test
+    fun `lines that aren't entries, entries that can't be parsed and a trailing backslash are read leniently`() {
+        Files.writeString(
+            directory.resolve("diagnostics.log"),
+            "only\tthree\tfields\n" +
+                "not-a-time\tFREEZE\tm\t\n" +
+                "2026-01-01T00:00:00Z\tFREEZE\tends with \\\t\n",
+        )
+
+        assertEquals(listOf("ends with \\"), log().recent(10).map { it.message })
+    }
+
+    @Test
+    fun `a rotated file that can't be read is skipped`() {
+        Files.write(directory.resolve("diagnostics.1.log"), byteArrayOf(0xC3.toByte(), 0x28))
+
+        assertEquals(emptyList(), log().recent(10))
+    }
 }

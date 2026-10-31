@@ -293,4 +293,27 @@ class DesktopTurnUseCasesTest {
 
         assertIs<WorktreeError.DesktopTurnWaitTimedOut>(error)
     }
+    @Test
+    fun `forcing a release of a free desktop says nobody held it`() = runTest {
+        assertEquals(DesktopTurnRelease.NobodyHolds, release.force().getOrThrow())
+    }
+
+    @Test
+    fun `removing a worktree whose admin folder can't be found leaves the turn`() = runTest {
+        val turn = held("TASK-1", Duration.ofMinutes(5))
+        val blind = DesktopTurnLedger(store, FakeEnvironmentStateStore(), queue, liveness, adminDirectoryOf = { error("not a worktree") }, clock = { now })
+
+        ReleaseDesktopTurnUseCase(blind).onWorktreeRemoved(worktree("TASK-1"))
+
+        assertEquals(turn, store.turn)
+    }
+
+    @Test
+    fun `a wait stops at an error that isn't a taken desktop`() = runTest {
+        val failing = AcquireDesktopTurnUseCase(ledger) { error("unreadable settings") }
+
+        val error = failing(worktree("TASK-1"), DesktopWait(timeout = Duration.ofMinutes(1))).exceptionOrNull()
+
+        assertIs<IllegalStateException>(error)
+    }
 }

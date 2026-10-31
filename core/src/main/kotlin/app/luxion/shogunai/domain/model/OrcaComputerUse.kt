@@ -24,7 +24,8 @@ object OrcaComputerUse {
 
     private fun isOrca(word: String): Boolean {
         val name = word.substringAfterLast('/').substringAfterLast('\\').lowercase()
-        val bare = windowsSuffixes.firstOrNull { name.endsWith(it) }?.let { name.removeSuffix(it) } ?: name
+        val suffix = windowsSuffixes.firstOrNull { name.endsWith(it) }
+        val bare = if (suffix != null) name.removeSuffix(suffix) else name
         return bare in executables
     }
 

@@ -20,7 +20,7 @@ class OpenGroupInOrcaUseCase(
     private val orca: OrcaClient,
     private val resolveEnvironment: ResolveWorktreeEnvironmentUseCase,
     private val naming: ClaudeSessionNaming = ClaudeSessionNaming(),
-    private val usesPowerShell: Boolean = HostOs.current() == HostOs.WINDOWS,
+    private val usesPowerShell: Boolean = HostOs.current().isWindows,
     private val samePath: (String, String) -> Boolean = ::sameDirectory,
     private val timeout: Duration = AGENT_START_SECONDS.seconds,
     private val pollInterval: Duration = 500.milliseconds,

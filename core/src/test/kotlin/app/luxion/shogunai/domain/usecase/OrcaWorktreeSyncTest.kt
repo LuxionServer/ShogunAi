@@ -319,4 +319,69 @@ class OrcaWorktreeSyncTest {
 
         assertEquals(mapOf("/projects/elsewhere" to "todo", path to "in-review"), store.statuses)
     }
+    @Test
+    fun `every activity has its comment or none`() {
+        val comments = Activity.entries.associateWith { orcaComment(it, null, emptyList()) }
+
+        assertEquals("ShogunAi: agent working", comments[Activity.AgentWorking])
+        assertEquals("ShogunAi: new, no commits yet", comments[Activity.New])
+        assertEquals("ShogunAi: pushed, waiting", comments[Activity.Stopped])
+        assertEquals("ShogunAi: merged into its base", comments[Activity.Merged])
+        assertEquals("ShogunAi: inactive", comments[Activity.Inactive])
+        assertNull(comments[Activity.Missing])
+        assertNull(comments[Activity.Idle])
+        assertNull(comments[Activity.Unknown])
+    }
+
+    @Test
+    fun `a merged worktree or one without commits or a base adds no divergence`() {
+        assertEquals("ShogunAi: merged into develop", orcaComment(Activity.Merged, status(upstream = null, base = Divergence(0, 0)), emptyList()))
+        assertEquals("ShogunAi: inactive · 1 behind develop", orcaComment(Activity.Inactive, status(base = Divergence(0, 1)), emptyList()))
+        assertEquals("ShogunAi: inactive", orcaComment(Activity.Inactive, status(base = null), emptyList()))
+    }
+
+    @Test
+    fun `issue numbers come only from a number or an issue prefix`() {
+        assertEquals(42, issueNumberOf("feature/42-login"))
+        assertEquals(7, issueNumberOf("fix/gh-7"))
+        assertNull(issueNumberOf("feature/login"))
+        assertNull(issueNumberOf("feature/99999999999"))
+        assertNull(issueNumberOf(null))
+    }
+
+    @Test
+    fun `folder rows, unreadable statuses and worktrees without a branch are handled`() = runTest {
+        val orca = FakeOrcaClient()
+        val store = object : OrcaWorkspaceStore by MemoryStore() {
+            override fun boardStatuses(): Map<String, String> = throw IllegalStateException("unreadable")
+        }
+        val detached = Worktree("/projects/main-repo-worktrees/detached", null)
+
+        val failures = OrcaWorktreeSync(orca, store, FakeGitHubClient(), { 0L }, canonical = { it }).sync(
+            listOf(item(Activity.Stopped, status = null), item(Activity.Stopped, target = detached)),
+            listOf(row(), row(rowPath = detached.path), row(rowPath = "/folder").copy(folderId = "f1")),
+        )
+
+        assertTrue(failures.isEmpty())
+        assertEquals(listOf(path, detached.path), orca.updates.map { it.first })
+    }
+
+    @Test
+    fun `a comment written by someone else is kept`() = runTest {
+        val orca = FakeOrcaClient()
+
+        sync(orca).sync(listOf(item(Activity.Stopped)), listOf(row(comment = "reviewing tomorrow", workspaceStatus = "in-review")))
+        sync(orca).sync(listOf(item(Activity.Stopped)), listOf(row(comment = null, workspaceStatus = "in-review")))
+
+        assertEquals(listOf<String?>("ShogunAi: pushed, waiting · 2 ahead of develop"), orca.updates.map { it.second.comment })
+    }
+
+    @Test
+    fun `a comment already up to date isn't written again`() = runTest {
+        val orca = FakeOrcaClient()
+
+        sync(orca).sync(listOf(item(Activity.Stopped)), listOf(row(comment = "ShogunAi: pushed, waiting · 2 ahead of develop", workspaceStatus = "in-review")))
+
+        assertTrue(orca.updates.isEmpty())
+    }
 }

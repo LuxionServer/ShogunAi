@@ -103,4 +103,14 @@ class CreateGroupUseCaseTest {
         assertEquals("${world.worktreesRoot}/app/TASK-12", result.path)
         assertIs<WorktreeError.PostCreateCommandFailed>(result.error)
     }
+    @Test
+    fun `a repository whose project has no worktrees folder fails alone`() = runTest {
+        val app = world.member("app")
+        val withoutFolder = app.copy(config = app.config.copy(worktreesRoot = " "))
+
+        val creation = create(listOf(withoutFolder, world.member("docs")), "TASK-12", BranchType.FEATURE).getOrThrow()
+
+        assertIs<WorktreeError.InvalidRepositoryConfig>(creation.repositories[0].error)
+        assertEquals(GroupRepositoryOutcome.CREATED, creation.repositories[1].outcome)
+    }
 }

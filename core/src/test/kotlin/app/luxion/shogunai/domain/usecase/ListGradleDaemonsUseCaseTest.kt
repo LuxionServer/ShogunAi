@@ -17,6 +17,7 @@ import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.WorktreeError
 import kotlinx.coroutines.test.runTest
 import java.time.Instant
+import app.luxion.shogunai.domain.io.AgentSessionStore
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -149,5 +150,32 @@ class ListGradleDaemonsUseCaseTest {
         val daemons = listOf(GradleDaemon(kotlinDaemon(1, memoryBytes = 300L), null), GradleDaemon(kotlinDaemon(2, memoryBytes = 200L), null))
 
         assertEquals(500L, totalResidentMemory(daemons))
+    }
+    @Test
+    fun `sessions are skipped without a store, worktrees, a readable store or a process id`() = runTest {
+        val source = FakeGradleDaemonSource(listOf(held(listOf(81200, 700, 500))))
+        val unreadable = object : AgentSessionStore by FakeAgentSessionStore() {
+            override fun list(worktreePath: String): List<AgentSessionRecord> = throw IllegalStateException("unreadable")
+        }
+        val withoutPid = FakeAgentSessionStore(mapOf(apps to listOf(AgentSessionRecord("963d9441", "claude", AgentState.WORKING, 0))))
+
+        val clients = listOf(
+            ListGradleDaemonsUseCase(source, FakeFileManager(existing))(worktrees) { listOf(apps) },
+            ListGradleDaemonsUseCase(source, FakeFileManager(existing), sessions)(null),
+            ListGradleDaemonsUseCase(source, FakeFileManager(existing), unreadable)(worktrees) { listOf(apps) },
+            ListGradleDaemonsUseCase(source, FakeFileManager(existing), withoutPid)(worktrees) { listOf(apps) },
+        ).map { it.getOrThrow().single().process.holder?.client?.session }
+
+        assertEquals(listOf<AgentSessionRef?>(null, null, null, null), clients)
+    }
+
+    @Test
+    fun `idle daemons without a build folder or outside every worktree aren't selected`() {
+        val daemons = listOf(
+            GradleDaemon(gradleDaemon(1, idle), null),
+            GradleDaemon(gradleDaemon(2, idle, lastBuildDirectory = "/home/dev/other-project"), null),
+        )
+
+        assertEquals(emptyList(), idleDaemonsOfRemovedWorktrees(daemons, worktrees, listOf(sibling.path)))
     }
 }

@@ -1,5 +1,20 @@
 package app.luxion.shogunai.domain.usecase
 
+import app.luxion.shogunai.domain.FakeAppWindowService
+import app.luxion.shogunai.domain.FakeComposeProjectRegistry
+import app.luxion.shogunai.domain.FakeComposeProjectSource
+import app.luxion.shogunai.domain.FakeFileManager
+import app.luxion.shogunai.domain.FakeHeadlessAppLauncher
+import app.luxion.shogunai.domain.FakeOrcaClient
+import app.luxion.shogunai.domain.FakeRepositoryProvisioningSource
+import app.luxion.shogunai.domain.io.ComposeProjectRegistry
+import app.luxion.shogunai.domain.io.ComposeProjectSource
+import app.luxion.shogunai.domain.io.ComposeRegistryEntry
+import app.luxion.shogunai.domain.model.ComposeProject
+import app.luxion.shogunai.domain.model.DesktopAppProvider
+import app.luxion.shogunai.domain.model.OrcaTerminal
+import app.luxion.shogunai.domain.model.RepositoryProviders
+import app.luxion.shogunai.domain.model.RepositoryProvisioning
 import app.luxion.shogunai.domain.FakeDesktopTurnStore
 import app.luxion.shogunai.domain.FakeDeviceWaitQueue
 import app.luxion.shogunai.domain.FakeEnvironmentStateStore
@@ -25,6 +40,7 @@ import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class CleanUpWorktreesUseCaseTest {
@@ -304,5 +320,134 @@ class CleanUpWorktreesUseCaseTest {
         assertEquals(listOf(first.path, second.path), report.removed)
         assertEquals(listOf(first.path), report.herdrFailures.map { it.path })
         assertEquals(listOf("w3"), herdr.closedWorkspaces)
+    }
+    private val locked = "error: failed to delete '${first.path}': Permission denied"
+
+    private fun lockedOnce(): FakeShellCommandExecutor {
+        var attempts = 0
+        return FakeShellCommandExecutor { command ->
+            if (command == listOf("git", "worktree", "remove", first.path) && attempts++ == 0) failure(command, stderr = locked) else success(command)
+        }
+    }
+
+    @Test
+    fun `holders closed while removing a locked folder report their failures once`() = runTest {
+        val orcaFailure = WorktreeError.OrcaCommandFailed(listOf("orca"), "runtime_unavailable")
+        val herdrFailure = WorktreeError.HerdrCommandFailed(listOf("herdr"), "busy")
+        val orca = FakeOrcaClient(terminals = mapOf(first.path to listOf(OrcaTerminal("term_1", first.path))), closeFailures = mapOf(first.path to orcaFailure))
+        val herdr = FakeHerdrClient(openWorkspaces = mapOf(first.path to "w2"), closeFailures = mapOf("w2" to herdrFailure))
+
+        val report = CleanUpWorktreesUseCase(
+            config,
+            lockedOnce(),
+            CloseHerdrWorkspacesUseCase(config, herdr),
+            closeOrcaTerminals = CloseOrcaTerminalsUseCase(orca),
+        )(listOf(first), mainBranch, deleteBranches = false).getOrThrow()
+
+        assertEquals(listOf(first.path), report.removed)
+        assertEquals(listOf(CleanupFailure(first.path, orcaFailure)), report.orcaFailures)
+        assertTrue(CleanupFailure(first.path, herdrFailure) in report.herdrFailures)
+    }
+
+    @Test
+    fun `a locked folder's Orca terminals are closed once`() = runTest {
+        val orca = FakeOrcaClient(terminals = mapOf(first.path to listOf(OrcaTerminal("term_1", first.path))))
+
+        val report = CleanUpWorktreesUseCase(config, lockedOnce(), closeOrcaTerminals = CloseOrcaTerminalsUseCase(orca))(
+            listOf(first),
+            mainBranch,
+            deleteBranches = false,
+        ).getOrThrow()
+
+        assertEquals(listOf(first.path), report.removed)
+        assertEquals(listOf(first.path), orca.closedWorktrees)
+        assertTrue(report.orcaFailures.isEmpty())
+    }
+
+    @Test
+    fun `a locked folder without terminals or workspaces closes nothing in Orca`() = runTest {
+        val orca = FakeOrcaClient()
+
+        val report = CleanUpWorktreesUseCase(config, lockedOnce(), closeOrcaTerminals = CloseOrcaTerminalsUseCase(orca))(
+            listOf(first),
+            mainBranch,
+            deleteBranches = false,
+        ).getOrThrow()
+
+        assertEquals(listOf(first.path), report.removed)
+        assertTrue(orca.closedWorktrees.isEmpty())
+    }
+
+    @Test
+    fun `a headless app that fails to stop is reported and the worktree is still removed`() = runTest {
+        val files = FakeFileManager()
+        val pidFile = "${first.path}/desktopApp/build/run/main/main.pid"
+        files.writtenProperties[pidFile] = mapOf("pid" to "4242")
+        val launcher = FakeHeadlessAppLauncher(files, pidFile)
+        launcher.alive += 4242L
+        launcher.failStop = IllegalStateException("operation not permitted")
+        val provisioning = FakeRepositoryProvisioningSource(
+            mapOf(first.path to RepositoryProvisioning(providers = RepositoryProviders(desktopApp = DesktopAppProvider(":desktopApp")))),
+        )
+        val worktrees = HeadlessAppWorktrees(provisioning, { "${config.baseRepositoryPath}/.git/worktrees/TASK-1" }, launcher, FakeAppWindowService(), files)
+
+        val report = CleanUpWorktreesUseCase(config, executor(), stopHeadlessApp = StopHeadlessAppUseCase(worktrees, launcher))(
+            listOf(first),
+            mainBranch,
+            deleteBranches = false,
+        ).getOrThrow()
+
+        assertEquals(listOf(first.path), report.removed)
+        assertIs<WorktreeError.HeadlessAppStopFailed>(report.headlessAppFailures.single().error)
+    }
+
+    private suspend fun composeCleanup(source: ComposeProjectSource?, registry: ComposeProjectRegistry? = null, executor: FakeShellCommandExecutor = executor()) =
+        CleanUpWorktreesUseCase(config, executor, composeProjects = source, composeRegistry = registry)(
+            listOf(first),
+            mainBranch,
+            deleteBranches = false,
+            downComposeProjects = true,
+        ).getOrThrow()
+
+    @Test
+    fun `compose projects are only taken down with a source and removed worktrees`() = runTest {
+        val source = FakeComposeProjectSource()
+        val failingRemoval = executor(mapOf(listOf("git", "worktree", "remove", first.path) to { command -> failure(command) }))
+
+        val withoutSource = composeCleanup(null)
+        val nothingRemoved = composeCleanup(source, executor = failingRemoval)
+
+        assertNull(withoutSource.composeDown)
+        assertNull(withoutSource.composeUnavailable)
+        assertNull(nothingRemoved.composeDown)
+        assertTrue(source.listings.isEmpty())
+    }
+
+    @Test
+    fun `docker being unavailable is reported with its reason or the error's message`() = runTest {
+        fun failingWith(error: Exception) = object : ComposeProjectSource by FakeComposeProjectSource() {
+            override suspend fun list(): List<ComposeProject> = throw error
+        }
+
+        assertEquals("daemon stopped", composeCleanup(FakeComposeProjectSource(unavailable = "daemon stopped")).composeUnavailable)
+        assertEquals("Docker isn't available", composeCleanup(failingWith(WorktreeError.DockerUnavailable(null))).composeUnavailable)
+        assertEquals("socket closed", composeCleanup(failingWith(IllegalStateException("socket closed"))).composeUnavailable)
+        assertEquals("", composeCleanup(failingWith(IllegalStateException())).composeUnavailable)
+    }
+
+    @Test
+    fun `projects recorded for removed worktrees are taken down and an unreadable registry is skipped`() = runTest {
+        val recorded = ComposeProject("custom-name", "running(1)", emptyList())
+        val source = FakeComposeProjectSource(projects = listOf(recorded))
+        val registry = FakeComposeProjectRegistry(
+            mapOf(config.baseRepositoryPath to listOf(ComposeRegistryEntry("custom-name", first.path), ComposeRegistryEntry("other", second.path))),
+        )
+        val unreadable = object : ComposeProjectRegistry by FakeComposeProjectRegistry() {
+            override fun entries(repositoryPath: String): List<ComposeRegistryEntry> = throw IllegalStateException("unreadable")
+        }
+
+        composeCleanup(source, registry)
+        assertEquals(listOf("custom-name" to false), source.downs)
+        assertTrue(composeCleanup(FakeComposeProjectSource(projects = listOf(recorded)), unreadable).composeDown!!.failures.isEmpty())
     }
 }

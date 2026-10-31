@@ -63,4 +63,27 @@ class ReadAgentActivityUseCaseTest {
 
         assertEquals(AgentState.DONE, activity()(worktree))
     }
+    @Test
+    fun `a done session without a transcript or with an unreadable one stays done`() {
+        session("s1", AgentState.DONE)
+        assertEquals(AgentState.DONE, activity()(worktree))
+
+        store.write(worktree, AgentSessionRecord("s1", "claude", AgentState.DONE, now - 60_000, "/transcripts/missing.jsonl", 10))
+        assertEquals(AgentState.DONE, activity()(worktree))
+    }
+
+    @Test
+    fun `by default a live process and the transcript file on disk decide`() {
+        store.write(worktree, AgentSessionRecord("s1", "claude", AgentState.DONE, now, "/transcripts/missing.jsonl", ProcessHandle.current().pid()))
+
+        assertEquals(AgentState.DONE, ReadAgentActivityUseCase(store)(worktree))
+    }
+
+    @Test
+    fun `a transcript written before the done state doesn't resume the agent`() {
+        transcripts = mapOf("/transcripts/s1.jsonl" to now - 120_000)
+        session("s1", AgentState.DONE, transcript = "/transcripts/s1.jsonl")
+
+        assertEquals(AgentState.DONE, activity()(worktree))
+    }
 }

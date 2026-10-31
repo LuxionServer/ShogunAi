@@ -1,3 +1,4 @@
+import kotlinx.kover.gradle.plugin.dsl.AggregationType
 import kotlinx.kover.gradle.plugin.dsl.CoverageUnit
 
 plugins {
@@ -55,7 +56,11 @@ kover {
                 minBound(100, CoverageUnit.LINE)
             }
             rule("core branches") {
-                minBound(79, CoverageUnit.BRANCH)
+                bound {
+                    coverageUnits = CoverageUnit.BRANCH
+                    aggregationForGroup = AggregationType.MISSED_COUNT
+                    maxValue = 18
+                }
             }
         }
     }

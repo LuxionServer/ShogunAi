@@ -5,7 +5,6 @@ import app.luxion.shogunai.domain.model.AgentLaunchConfig
 import app.luxion.shogunai.domain.model.MULTIREPO_FILE_NAME
 import app.luxion.shogunai.domain.model.MultirepoDeclaration
 import app.luxion.shogunai.domain.model.WorktreeError
-import kotlinx.serialization.SerializationException
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
@@ -35,14 +34,12 @@ class JsonMultirepoSource(
         val text = try {
             file.readText()
         } catch (error: IOException) {
-            throw WorktreeError.InvalidMultirepo(file.toString(), error.message ?: "unreadable")
+            throw WorktreeError.InvalidMultirepo(file.toString(), readFailureReason(error))
         }
         return try {
             json.decodeFromString<MultirepoDeclaration>(text)
-        } catch (error: SerializationException) {
-            throw WorktreeError.InvalidMultirepo(file.toString(), firstLine(error))
         } catch (error: IllegalArgumentException) {
-            throw WorktreeError.InvalidMultirepo(file.toString(), firstLine(error))
+            throw WorktreeError.InvalidMultirepo(file.toString(), firstLineOf(error))
         }
     }
 
@@ -55,7 +52,7 @@ class JsonMultirepoSource(
     }
 
     override fun knownFolders(): List<String> =
-        LocalFileLock.withLock(registryPath) { readRegistry() }.multirepos.map { Path.of(it).parent?.toString() ?: it }
+        LocalFileLock.withLock(registryPath) { readRegistry() }.multirepos.map(::folderOf)
 
     override fun remember(folder: String) = updateRegistry { registry ->
         val path = declarationKey(folder)
@@ -71,7 +68,12 @@ class JsonMultirepoSource(
         val registry = readRegistry()
         val missing = registry.multirepos.filter { path -> Path.of(path).parent?.exists() != true }
         if (missing.isNotEmpty()) writeRegistry(Registry(registry.multirepos - missing.toSet(), registry.local - missing.toSet()))
-        missing.map { Path.of(it).parent?.toString() ?: it }
+        missing.map(::folderOf)
+    }
+
+    private fun folderOf(declaration: String): String {
+        val parent = Path.of(declaration).parent
+        return if (parent != null) parent.toString() else declaration
     }
 
     override fun isApproved(folder: String, subject: String): Boolean =
@@ -130,14 +132,12 @@ class JsonMultirepoSource(
     private fun digestOf(subject: String): String =
         MessageDigest.getInstance("SHA-256").digest(subject.toByteArray()).joinToString("") { "%02x".format(it) }
 
-    private fun firstLine(error: Exception): String = error.message?.lineSequence()?.firstOrNull().orEmpty().ifBlank { "invalid JSON" }
-
     @Serializable
-    private data class Registry(
+    internal data class Registry(
         val multirepos: List<String> = emptyList(),
         val local: Map<String, LocalSettings> = emptyMap(),
     )
 
     @Serializable
-    private data class LocalSettings(val approved: String? = null, val agent: AgentLaunchConfig? = null)
+    internal data class LocalSettings(val approved: String? = null, val agent: AgentLaunchConfig? = null)
 }

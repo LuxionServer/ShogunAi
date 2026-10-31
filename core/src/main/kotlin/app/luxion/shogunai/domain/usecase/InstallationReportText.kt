@@ -45,7 +45,7 @@ object InstallationReportText {
         }
         is InstallationFinding.Hooks -> hooksSummary(check.state, finding)
         is InstallationFinding.AgentTool ->
-            finding.location?.let { "${finding.tool.displayName} at $it" } ?: "${finding.tool.displayName} not found"
+            if (finding.location != null) "${finding.tool.displayName} at ${finding.location}" else "${finding.tool.displayName} not found"
         is InstallationFinding.ProjectFiles -> projectSummary(finding)
         is InstallationFinding.ProviderTool -> providerSummary(finding)
         is InstallationFinding.MultirepoCheck -> multirepoSummary(finding)
@@ -73,7 +73,7 @@ object InstallationReportText {
                 finding.detail != null -> "Check that ${finding.basePath} is a Git repository you can read"
                 else -> finding.unavailable.joinToString("\n") { "${it.path}: ${it.problemText()}, ${it.removalText()}" }
             }
-            is InstallationFinding.ProviderTool -> finding.problem?.let { providerFix(finding.tool, it) }
+            is InstallationFinding.ProviderTool -> if (finding.problem != null) providerFix(finding.tool, finding.problem) else null
             is InstallationFinding.MultirepoCheck -> finding.problems.joinToString("\n") { multirepoFix(finding, it) }
         }
     }

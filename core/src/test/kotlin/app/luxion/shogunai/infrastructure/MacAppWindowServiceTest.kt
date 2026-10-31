@@ -96,4 +96,46 @@ class MacAppWindowServiceTest {
         }
         assertTrue("could not create image" in error.detail)
     }
+
+    @Test
+    fun `missing or non boolean fields read as off screen, zero sized, denied or not granted`() = runTest {
+        assertEquals(AppWindow(0, isOnScreen = false), MacAppWindowService.parseMainWindow("""[{"onScreen":"yes"}]"""))
+        assertEquals(AppWindow(7, isOnScreen = false), MacAppWindowService.parseMainWindow("""[{"id":7,"width":"x"}]"""))
+        assertNull(MacAppWindowService.parseMainWindow("{}"))
+        assertEquals(HideOutcome.DENIED, MacAppWindowService.parseHide("{}"))
+        assertEquals(HideOutcome.DENIED, MacAppWindowService.parseHide("""{"code":"x"}"""))
+        val executor = FakeShellCommandExecutor { success(it, stdout = """{"accessibility":"yes"}""") }
+        val service = MacAppWindowService(executor, scripts.toString(), osName = "Mac OS X")
+        assertFalse(service.isGranted(MacPermission.SCREEN_RECORDING))
+        assertFalse(service.isGranted(MacPermission.ACCESSIBILITY))
+    }
+
+    @Test
+    fun `the helper script is written once and rewritten when it changes, and its failure is reported`() = runTest {
+        val service = MacAppWindowService(FakeShellCommandExecutor { success(it, stdout = "[]") }, scripts.toString(), osName = "Mac OS X")
+
+        service.mainWindow(1)
+        service.mainWindow(1)
+        scripts.resolve(MacAppWindowService.SCRIPT_NAME).toFile().writeText("old")
+        service.mainWindow(1)
+
+        assertEquals(MacAppWindowService.SCRIPT, scripts.resolve(MacAppWindowService.SCRIPT_NAME).readText())
+        val failing = MacAppWindowService(FakeShellCommandExecutor { failure(it, stderr = "denied") }, scripts.toString(), osName = "Mac OS X")
+        assertEquals("denied", assertFailsWith<WorktreeError.MacWindowToolFailed> { failing.hide(1) }.detail)
+    }
+
+    @Test
+    fun `a capture that fails silently reports its output`() = runTest {
+        val executor = FakeShellCommandExecutor { failure(it, stderr = " ").copy(stdout = "no window") }
+
+        val error = assertFailsWith<WorktreeError.MacWindowToolFailed> {
+            MacAppWindowService(executor, scripts.toString(), osName = "Mac OS X").capture(AppWindow(1, false), scripts.resolve("w.png").toString())
+        }
+        assertEquals("no window", error.detail)
+    }
+
+    @Test
+    fun `a window with a size that isn't a number counts as empty`() {
+        assertEquals(AppWindow(2, isOnScreen = false), MacAppWindowService.parseMainWindow("""[{"id":1,"width":"x","height":5},{"id":2,"width":2,"height":2}]"""))
+    }
 }

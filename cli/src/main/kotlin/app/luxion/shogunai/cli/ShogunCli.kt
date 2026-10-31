@@ -1662,7 +1662,7 @@ class ShogunCli(
                     plan.copy(
                         removed = report.removed,
                         deletedBranches = deletedBranches,
-                        failures = report.failures.map { CleanFailureJson(it.path, it.error.message!!) } + derivedDataFailures,
+                        failures = report.failures.map { CleanFailureJson(it.path, it.error.message) } + derivedDataFailures,
                         gradleDaemonsStopped = stoppedDaemons,
                         mavenDaemonsStopped = stoppedMavenDaemons,
                         emulatorsStopped = stoppedEmulators,

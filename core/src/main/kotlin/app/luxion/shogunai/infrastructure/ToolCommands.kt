@@ -11,7 +11,7 @@ internal suspend fun ShellCommandExecutor.runTool(command: List<String>, bounded
     val result = try {
         if (bounded) executeWithin(command, CommandTimeouts.LISTING) else execute(command)
     } catch (error: CommandExecutionException) {
-        throw ToolCommandFailed(null, error.cause?.message ?: error.message.orEmpty())
+        throw ToolCommandFailed(null, error.cause.message ?: error.message)
     }
     if (!result.isSuccess) throw ToolCommandFailed(result, result.failureDetail())
     return result

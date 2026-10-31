@@ -16,7 +16,7 @@ class FileClaudeSessionRegistry(private val directory: String) : ClaudeSessionRe
 
     override fun list(): List<ClaudeSession> {
         val files = runCatching { Path.of(directory).listDirectoryEntries("*$EXTENSION") }.getOrDefault(emptyList())
-        return files.filter { runCatching { it.isRegularFile() }.getOrDefault(false) }.mapNotNull(::read)
+        return files.filter { it.isRegularFile() }.mapNotNull(::read)
     }
 
     private fun read(file: Path): ClaudeSession? {
@@ -32,12 +32,12 @@ class FileClaudeSessionRegistry(private val directory: String) : ClaudeSessionRe
     }
 
     private fun status(value: JsonElement?): ClaudeSessionStatus? {
-        val text = (value as? JsonPrimitive)?.takeIf { it.isString }?.content ?: return null
+        val text = (value as? JsonPrimitive)?.stringOrNull() ?: return null
         return ClaudeSessionStatus.entries.firstOrNull { it.name.equals(text, ignoreCase = true) }
     }
 
     @Serializable
-    private data class SessionFile(
+    internal data class SessionFile(
         val pid: Long? = null,
         val cwd: String? = null,
         val name: String? = null,

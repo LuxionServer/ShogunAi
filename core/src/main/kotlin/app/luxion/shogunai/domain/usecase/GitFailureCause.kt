@@ -12,7 +12,7 @@ sealed interface GitFailureCause {
 fun classifyGitFailure(stderr: String): GitFailureCause {
     LOCK_FILE.find(stderr)?.let { return GitFailureCause.LockFileExists(it.groupValues[1]) }
     if (ANOTHER_PROCESS in stderr) return GitFailureCause.LockFileExists(null)
-    if (PERMISSION_DENIED in stderr) return GitFailureCause.PermissionDenied(QUOTED_PATH.find(stderr)?.groupValues?.get(1))
+    if (PERMISSION_DENIED in stderr) return GitFailureCause.PermissionDenied(QUOTED_PATH.find(stderr)?.let { it.groupValues[1] })
     if (NOT_A_REPOSITORY in stderr) return GitFailureCause.NotARepository
     BRANCH_EXISTS.find(stderr)?.let { return GitFailureCause.BranchExists(it.groupValues[1]) }
     if (LOCAL_CHANGES in stderr) return GitFailureCause.LocalChanges
@@ -40,7 +40,7 @@ fun isPathTooLongFailure(stderr: String): Boolean = FILENAME_TOO_LONG in stderr
 
 fun isLockedWorktreeFailure(stderr: String): Boolean = LOCKED_WORKTREE in stderr
 
-fun lockReason(stderr: String): String? = LOCK_REASON.find(stderr)?.groupValues?.get(1)?.trim()?.takeIf { it.isNotEmpty() }
+fun lockReason(stderr: String): String? = LOCK_REASON.find(stderr)?.let { it.groupValues[1].trim().ifEmpty { null } }
 
 private val LOCK_FILE = Regex("""Unable to create '([^']*\.lock)': File exists""")
 private const val ANOTHER_PROCESS = "Another git process seems to be running"

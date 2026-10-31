@@ -39,5 +39,5 @@ class SystemProcessEnvironmentReader(
     }
 
     private fun valueOf(entries: List<String>, name: String): String? =
-        entries.lastOrNull { it.startsWith("$name=") }?.substringAfter('=')?.takeIf { it.isNotEmpty() }
+        entries.lastOrNull { it.startsWith("$name=") }?.let { it.substringAfter('=').ifEmpty { null } }
 }

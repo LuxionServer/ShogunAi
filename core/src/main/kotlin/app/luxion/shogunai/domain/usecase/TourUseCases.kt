@@ -132,7 +132,7 @@ class CreateTourUseCase(
             val result = try {
                 executor.executeWithEnvironment(command, environment, directory)
             } catch (error: CommandExecutionException) {
-                throw WorktreeError.TourCreationFailed(command, error.cause?.message ?: error.message.orEmpty())
+                throw WorktreeError.TourCreationFailed(command, error.cause.message ?: error.message)
             }
             if (!result.isSuccess) throw WorktreeError.TourCreationFailed(command, result.stderr.ifBlank { result.stdout })
         }

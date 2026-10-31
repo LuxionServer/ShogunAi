@@ -5,6 +5,8 @@ import java.nio.file.Path
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 
+internal fun firstLineOf(error: IllegalArgumentException): String = error.message!!.lineSequence().first()
+
 internal fun keepUnreadableCopy(path: Path): Path {
     val stamp = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss").format(LocalDateTime.now())
     var kept = path.resolveSibling("${path.fileName}.unreadable-$stamp")

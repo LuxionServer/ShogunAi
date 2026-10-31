@@ -81,7 +81,7 @@ internal fun parseMavenDaemons(psOutput: String): List<MavenDaemonListing> =
         val pid = fields[0].toLongOrNull() ?: return@mapNotNull null
         val memoryBytes = (fields[1].toLongOrNull() ?: return@mapNotNull null) * 1024
         if (fields[2].split(WHITESPACE).none(::isDaemonArgument)) return@mapNotNull null
-        MavenDaemonListing(pid, memoryBytes, LOG_FILE_ARGUMENT.find(fields[2])?.groupValues?.get(1))
+        MavenDaemonListing(pid, memoryBytes, LOG_FILE_ARGUMENT.find(fields[2])?.let { it.groupValues[1] })
     }.toList()
 
 private fun isDaemonArgument(argument: String): Boolean =
@@ -89,8 +89,7 @@ private fun isDaemonArgument(argument: String): Boolean =
 
 internal fun parseMavenDaemonState(log: String, modifiedAt: Instant, zone: ZoneId): DaemonState =
     log.lines().asReversed().firstNotNullOfOrNull { STATE_LINE.matchEntire(it.trimEnd()) }
-        ?.let { match -> stateOf(match.groupValues[2], match.groupValues[1], modifiedAt, zone) }
-        ?: DaemonState.Busy
+        .let { match -> if (match != null) stateOf(match.groupValues[2], match.groupValues[1], modifiedAt, zone) else DaemonState.Busy }
 
 private fun stateOf(name: String, time: String, modifiedAt: Instant, zone: ZoneId): DaemonState = when {
     name == "Idle" -> idleSince(time, modifiedAt, zone)?.let { DaemonState.Idle(it) } ?: DaemonState.Unknown

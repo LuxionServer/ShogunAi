@@ -109,4 +109,15 @@ class StopGradleDaemonsUseCaseTest {
         assertEquals("Operation not permitted", report.failures.single().detail)
         assertEquals(listOf(2L), report.stopped.map { it.pid })
     }
+
+    @Test
+    fun `an untracked daemon is kept and a silent failed kill reports its exit code`() = runTest {
+        val silent = FakeShellCommandExecutor { FakeShellCommandExecutor.failure(it, exitCode = 3, stderr = " ") }
+        val source = FakeGradleDaemonSource(listOf(gradleDaemon(1, DaemonState.Untracked), gradleDaemon(2, idle)))
+
+        val report = StopGradleDaemonsUseCase(source, silent)().getOrThrow()
+
+        assertEquals(DaemonKeptReason.STATE_UNKNOWN, report.kept.single().reason)
+        assertEquals("exit code 3", report.failures.single().detail)
+    }
 }

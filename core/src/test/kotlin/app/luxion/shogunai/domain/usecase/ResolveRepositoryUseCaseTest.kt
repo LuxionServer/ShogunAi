@@ -112,4 +112,19 @@ class ResolveRepositoryUseCaseTest {
 
         assertIs<WorktreeError.BareRepositoryNotSupported>(error)
     }
+
+    @Test
+    fun `an empty common folder or a failing worktree listing is no repository`() = runTest {
+        val emptyLayout = FakeShellCommandExecutor { success(it, stdout = "\nfalse\n") }
+        val failingListing = FakeShellCommandExecutor { command ->
+            when (command.getOrNull(1)) {
+                "rev-parse" -> success(command, stdout = "/home/dev/git-dirs/main-repo.git\nfalse\n")
+                "config" -> if ("core.worktree" in command) failure(command) else success(command, stdout = "false\n")
+                else -> failure(command)
+            }
+        }
+
+        assertIs<WorktreeError.RepositoryNotFound>(ResolveRepositoryUseCase(emptyLayout)("/home/dev").exceptionOrNull())
+        assertIs<WorktreeError.RepositoryNotFound>(ResolveRepositoryUseCase(failingListing)("/home/dev/projects/main-repo/src").exceptionOrNull())
+    }
 }

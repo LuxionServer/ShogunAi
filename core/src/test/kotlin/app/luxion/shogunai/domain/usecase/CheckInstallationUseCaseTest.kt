@@ -11,6 +11,7 @@ import app.luxion.shogunai.domain.executor.CommandExecutionException
 import app.luxion.shogunai.domain.io.FileManager
 import app.luxion.shogunai.domain.io.HostPath
 import app.luxion.shogunai.domain.io.HostPathSource
+import app.luxion.shogunai.domain.io.ProjectRepository
 import app.luxion.shogunai.domain.io.MultirepoSource
 import app.luxion.shogunai.domain.model.AgentToolId
 import app.luxion.shogunai.domain.model.CheckState
@@ -72,6 +73,7 @@ class CheckInstallationUseCaseTest {
         herdr: () -> String? = { "/opt/homebrew/bin/herdr" },
         orca: () -> String? = { null },
         projects: List<Project> = emptyList(),
+        projectRepository: ProjectRepository = FakeProjectRepository(projects),
         fileManager: FakeFileManager = FakeFileManager(),
         hooksFiles: FileManager = fileManager,
         provisioning: FakeRepositoryProvisioningSource = FakeRepositoryProvisioningSource(),
@@ -92,7 +94,7 @@ class CheckInstallationUseCaseTest {
                 hooksSettingsPath = settings,
                 herdrLocation = herdr,
                 orcaLocation = orca,
-                projects = FakeProjectRepository(projects),
+                projects = projectRepository,
                 fileManager = fileManager,
                 provisioningSource = provisioning,
                 providerTools = CheckProviderToolsUseCase(executor, { executables[it] }, fileManager, FakeAndroidSdk(), FakeAppleSimulators()),
@@ -437,6 +439,52 @@ class CheckInstallationUseCaseTest {
         assertEquals(mapOf(settings to outdated), fileManager.writtenTexts)
         assertTrue(fileManager.copied.isEmpty())
         assertTrue(fileManager.deletedFiles.isEmpty())
+    }
+
+    @Test
+    fun `git whose answer has no version fails showing the answer`() {
+        val git = check(gitOutput = "unexpected\n").single<InstallationFinding.Git>()
+
+        assertEquals(InstallationCheck(CheckState.FAILED, InstallationFinding.Git("/usr/bin/git", null, "2.29", "unexpected")), git)
+    }
+
+    @Test
+    fun `git that can't start without a reason fails with the command`() {
+        val executor = FakeShellCommandExecutor { throw CommandExecutionException(it, IOException()) }
+
+        val git = check(executor = executor).single<InstallationFinding.Git>()
+
+        assertEquals("Could not start the command: /usr/bin/git --version", (git.finding as InstallationFinding.Git).detail)
+    }
+
+    @Test
+    fun `projects that can't be listed are left out`() {
+        val failing = object : ProjectRepository by FakeProjectRepository() {
+            override fun list(): List<Project> = throw IllegalStateException("unreadable")
+        }
+
+        assertEquals(7, check(projectRepository = failing).checks.size)
+    }
+
+    @Test
+    fun `a project check that throws without a message names the error`() {
+        val base = "/home/dev/projects/main-repo"
+        val project = Project("1", "main-repo", ProjectConfig(base, "/home/dev/worktrees", listOf("*.properties")))
+        val executor = FakeShellCommandExecutor { command ->
+            if (command[1] == "ls-files") throw IllegalStateException() else FakeShellCommandExecutor.success(command, "git version 2.45.1")
+        }
+
+        val result = check(projects = listOf(project), fileManager = FakeFileManager(directories = setOf(base)), executor = executor)
+            .single<InstallationFinding.ProjectFiles>()
+
+        assertEquals("IllegalStateException", (result.finding as InstallationFinding.ProjectFiles).detail)
+    }
+    @Test
+    fun `a version is at least the minimum when it is newer or as long and equal`() {
+        assertTrue(CheckInstallationUseCase.isAtLeast("2.30", "2.29"))
+        assertFalse(CheckInstallationUseCase.isAtLeast("2.28", "2.29"))
+        assertTrue(CheckInstallationUseCase.isAtLeast("2.29.0", "2.29"))
+        assertFalse(CheckInstallationUseCase.isAtLeast("2", "2.29"))
     }
 
     @Test

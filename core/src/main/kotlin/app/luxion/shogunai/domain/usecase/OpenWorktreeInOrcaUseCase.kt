@@ -20,7 +20,7 @@ class OpenWorktreeInOrcaUseCase(
     private val orca: OrcaClient,
     private val resolveEnvironment: ResolveWorktreeEnvironmentUseCase,
     naming: ClaudeSessionNaming = ClaudeSessionNaming(),
-    private val usesPowerShell: Boolean = HostOs.current() == HostOs.WINDOWS,
+    private val usesPowerShell: Boolean = HostOs.current().isWindows,
     private val samePath: (String, String) -> Boolean = ::sameDirectory,
     timeout: Duration = AGENT_START_SECONDS.seconds,
     pollInterval: Duration = 500.milliseconds,

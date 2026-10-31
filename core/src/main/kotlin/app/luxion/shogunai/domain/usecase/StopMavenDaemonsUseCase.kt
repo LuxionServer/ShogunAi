@@ -16,8 +16,8 @@ class StopMavenDaemonsUseCase(
     suspend operator fun invoke(pids: List<Long>? = null): Result<MavenDaemonStopReport> = runCatching {
         val current = source.list()
         val currentByPid = current.associateBy { it.pid }
-        val targets = pids?.distinct()?.mapNotNull { currentByPid[it] } ?: current
-        val notDaemons = pids?.distinct()?.filter { it !in currentByPid }.orEmpty()
+        val targets = if (pids == null) current else pids.distinct().mapNotNull { currentByPid[it] }
+        val notDaemons = pids.orEmpty().distinct().filter { it !in currentByPid }
 
         val stopped = mutableListOf<MavenDaemonProcess>()
         val kept = mutableListOf<KeptMavenDaemon>()
