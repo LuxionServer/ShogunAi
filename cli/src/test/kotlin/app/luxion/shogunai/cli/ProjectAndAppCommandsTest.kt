@@ -98,9 +98,11 @@ class ProjectAndAppCommandsTest {
         workingDirectory: String = base,
         appRunning: Boolean = false,
         appAvailable: Boolean = true,
+        files: FakeFileManager = FakeFileManager(existing = listOf(base, other)),
+        multirepos: app.luxion.shogunai.domain.io.MultirepoSource = app.luxion.shogunai.domain.FakeMultirepoSource(),
     ) = ShogunCli(
         executor = executor,
-        fileManager = FakeFileManager(existing = listOf(base, other)),
+        fileManager = files,
         projectRepository = projects,
         provisioningSource = FakeRepositoryProvisioningSource(),
         daemonSource = FakeGradleDaemonSource(),
@@ -124,6 +126,7 @@ class ProjectAndAppCommandsTest {
         appRequests = channel,
         appLock = FakeLock(appRunning),
         appLauncher = launcher(appAvailable),
+        multirepoSource = multirepos,
     )
 
     @Test
@@ -371,4 +374,16 @@ class ProjectAndAppCommandsTest {
 
     private fun command(vararg args: String): CliCommand =
         assertIs<ParsedArguments.Command>(parseArguments(args.toList())).command
+
+    @Test
+    fun `app in a multirepo's workspace repository opens the app without registering it`() {
+        val projects = FakeProjectRepository()
+        val multirepos = app.luxion.shogunai.domain.FakeMultirepoSource(mapOf(base to app.luxion.shogunai.domain.model.MultirepoDeclaration(worktreesRoot = "../worktrees")))
+
+        val exitCode = cli(projects, appRunning = true, files = FakeFileManager(existing = listOf(base, other, "$base/.git")), multirepos = multirepos).run(listOf("app"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertTrue(projects.list().isEmpty())
+        assertTrue(out.contains("is a multirepo, its workspace repository belongs to it"), out.toString())
+    }
 }

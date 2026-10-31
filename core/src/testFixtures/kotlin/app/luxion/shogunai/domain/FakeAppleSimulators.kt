@@ -20,6 +20,8 @@ class FakeAppleSimulators(
     val shown = mutableListOf<String>()
     var showFailure: Throwable? = null
     var shutdownFailure: Throwable? = null
+    var devicesFailure: Throwable? = null
+    var deleteFailure: Throwable? = null
     val shutDown = mutableListOf<String>()
     val deleted = mutableListOf<String>()
     var calls = 0
@@ -35,6 +37,7 @@ class FakeAppleSimulators(
 
     override suspend fun devices(): List<SimulatorDevice> {
         calls++
+        devicesFailure?.let { throw it }
         val booting = devicesByUdid.values.filter { it.state == SimulatorState.BOOTING }
         if (booting.isNotEmpty() && ++pollsSinceBoot > bootAfterPolls) {
             booting.forEach { devicesByUdid[it.udid] = it.copy(state = SimulatorState.BOOTED) }
@@ -72,6 +75,7 @@ class FakeAppleSimulators(
 
     override suspend fun delete(udid: String) {
         calls++
+        deleteFailure?.let { throw it }
         deleted += udid
         devicesByUdid.remove(udid)
     }

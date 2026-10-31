@@ -503,4 +503,81 @@ class GuideCommandsTest {
 
         assertFalse(out.contains("flutter"), out.toString())
     }
+
+    @Test
+    fun `guide migrate compares the file it is given`() {
+        assertEquals(0, cli().run(listOf("guide", "--migrate", "--file", "AGENTS.md")), err.toString())
+
+        assertTrue(out.contains("Read $linked/AGENTS.md and compare it"), out.toString())
+    }
+
+    @Test
+    fun `guide plain prints only the rules of the topic it is given`() {
+        assertEquals(0, cli().run(listOf("guide", "--plain", "worktrees")), err.toString())
+
+        assertTrue(out.lines().none { it.startsWith("## ") && it != "## worktrees" }, out.toString())
+    }
+
+    @Test
+    fun `uninstall where there is no block says so`() {
+        assertEquals(0, cli().run(listOf("guide", "uninstall", "--project", "--yes")), err.toString())
+
+        assertTrue(out.contains("There is no ShogunAi guide block in $base/AGENTS.md"), out.toString())
+    }
+
+    @Test
+    fun `install asks before writing and writes on yes`() {
+        assertEquals(0, cli(answer = "y").run(listOf("guide", "install", "--project")), err.toString())
+
+        assertTrue(err.contains("Write it? [y/N] "), err.toString())
+        assertTrue(out.contains("Installed in $base/AGENTS.md"), out.toString())
+        out.clear()
+        assertEquals(0, cli(answer = "y").run(listOf("guide", "uninstall", "--project")), err.toString())
+        assertTrue(err.contains("Remove it? [y/N] "), err.toString())
+    }
+
+    @Test
+    fun `install for Codex with a blank CODEX_HOME uses the home folder`() {
+        assertEquals(0, cli(environment = mapOf("CODEX_HOME" to " ")).run(listOf("guide", "install", "--agent", "codex", "--yes")))
+
+        assertEquals("$block\n", files.writtenTexts.getValue("$home/.codex/AGENTS.md"))
+    }
+
+    @Test
+    fun `status outside a repository lists the agents and the file it is given`() {
+        assertEquals(0, cli(workingDirectory = "/tmp").run(listOf("guide", "status", "--file", "/tmp/NOTES.md")), err.toString())
+
+        assertTrue(out.lines().none { it.startsWith("project:") }, out.toString())
+        assertTrue(out.lines().any { it.startsWith("file: ") && it.endsWith("/tmp/NOTES.md") }, out.toString())
+    }
+
+    @Test
+    fun `status doesn't warn about the hook when it isn't installed or its settings can't be read`() {
+        cli().run(listOf("guide", "install", "--project", "--yes"))
+        err.clear()
+
+        assertEquals(0, cli().run(listOf("guide", "status")), err.toString())
+        files.writeText("$home/.claude/settings.json", "{ not json")
+        assertEquals(0, cli().run(listOf("guide", "status")), err.toString())
+
+        assertFalse(err.contains("Claude Code gets the rules twice"), err.toString())
+    }
+
+    @Test
+    fun `status outside a repository warns about a file with the block when the user's hook is installed`() {
+        cli(workingDirectory = "/tmp").run(listOf("hooks", "install", "--yes"))
+        cli(workingDirectory = "/tmp").run(listOf("guide", "install", "--file", "/tmp/NOTES.md", "--yes"))
+        err.clear()
+
+        assertEquals(0, cli(workingDirectory = "/tmp").run(listOf("guide", "status", "--file", "/tmp/NOTES.md")), err.toString())
+
+        assertTrue(err.contains("Claude Code gets the rules twice"), err.toString())
+    }
+
+    @Test
+    fun `guide migrate without a file asks for the one the person points to`() {
+        assertEquals(0, cli().run(listOf("guide", "--migrate")), err.toString())
+
+        assertTrue(out.contains("Read the AGENTS.md the person points you to"), out.toString())
+    }
 }

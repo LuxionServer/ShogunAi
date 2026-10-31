@@ -9,6 +9,7 @@ import app.luxion.shogunai.domain.model.RunningAgent
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.WorktreeOrigin
 import app.luxion.shogunai.domain.model.WorktreeStatus
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonArray
@@ -52,10 +53,10 @@ private fun worktreeJson(entry: WorktreeEntry): JsonObject = buildJsonObject {
     put("origin", entry.origin?.label)
     put("base", entry.base)
     put("agents", buildJsonArray { entry.agents.forEach { add(agentJson(it)) } })
-    put("status", entry.status?.let(::statusObject) ?: JsonNull)
+    put("status", entry.status?.let(::statusObject).orJsonNull())
     entry.statusProblem?.let { put("statusProblem", it) }
-    put("desktop", worktreeDesktopJson(entry.desktop, worktree.path) ?: JsonNull)
-    put("listeningPorts", entry.listeningPorts?.let { ports -> buildJsonArray { ports.forEach { add(portJson(it)) } } } ?: JsonNull)
+    put("desktop", worktreeDesktopJson(entry.desktop, worktree.path).orJsonNull())
+    put("listeningPorts", entry.listeningPorts?.let { ports -> buildJsonArray { ports.forEach { add(portJson(it)) } } }.orJsonNull())
 }
 
 private fun portJson(port: ObservedPort): JsonObject = buildJsonObject {
@@ -66,9 +67,9 @@ private fun portJson(port: ObservedPort): JsonObject = buildJsonObject {
 
 internal fun agentJson(agent: RunningAgent): JsonObject = buildJsonObject {
     put("name", agent.name)
-    put("state", agent.state?.name?.lowercase())
+    put("state", agent.state?.let { it.name.lowercase() })
     put("stateSource", agent.stateSource?.let(::sourceLabel))
-    put("herdrState", agent.state?.takeIf { agent.stateSource == AgentStateSource.HERDR }?.name?.lowercase())
+    put("herdrState", agent.state?.takeIf { agent.stateSource == AgentStateSource.HERDR }?.let { it.name.lowercase() })
     put("sessions", buildJsonArray {
         agent.sessions.forEach { session ->
             add(buildJsonObject {
@@ -77,7 +78,7 @@ internal fun agentJson(agent: RunningAgent): JsonObject = buildJsonObject {
             })
         }
     })
-    put("activity", agent.activity?.let(::activityJson) ?: JsonNull)
+    put("activity", agent.activity?.let(::activityJson).orJsonNull())
 }
 
 private fun activityJson(activity: AgentActivity): JsonObject = buildJsonObject {
@@ -86,7 +87,7 @@ private fun activityJson(activity: AgentActivity): JsonObject = buildJsonObject 
             put("tool", tool.name)
             put("input", tool.input)
         }
-    } ?: JsonNull)
+    }.orJsonNull())
     put("prompt", activity.prompt)
     put("lastMessage", activity.lastMessage)
 }
@@ -99,19 +100,21 @@ private fun sourceLabel(source: AgentStateSource): String = when (source) {
 
 private fun statusObject(status: WorktreeStatus): JsonObject = buildJsonObject {
     put("uncommittedChanges", status.uncommittedChanges)
-    put("upstream", status.upstream?.let(::divergenceObject) ?: JsonNull)
-    put("mainBranch", status.mainBranch?.let(::divergenceObject) ?: JsonNull)
+    put("upstream", status.upstream?.let(::divergenceObject).orJsonNull())
+    put("mainBranch", status.mainBranch?.let(::divergenceObject).orJsonNull())
     put("base", status.base?.let { divergence ->
         buildJsonObject {
             put("branch", status.baseName)
             put("ahead", divergence.ahead)
             put("behind", divergence.behind)
         }
-    } ?: JsonNull)
+    }.orJsonNull())
     put("merged", status.isMerged)
     put("lastCommitAt", status.lastCommitAt?.toString())
     put("createdAt", status.createdAt?.toString())
 }
+
+internal fun JsonElement?.orJsonNull(): JsonElement = this ?: JsonNull
 
 private fun divergenceObject(divergence: Divergence): JsonObject = buildJsonObject {
     put("ahead", divergence.ahead)
