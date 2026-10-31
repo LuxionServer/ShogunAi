@@ -48,7 +48,7 @@ class TourUseCasesTest {
         val activities = activitiesByName(project)
         assertEquals(Activity.Idle, activities["sample-repo"])
         assertEquals(Activity.New, activities["new-idea"])
-        assertEquals(Activity.NeedsYou, activities["needs-you"])
+        assertEquals(Activity.Unfinished, activities["unfinished"])
         assertEquals(Activity.Stopped, activities["pushed-work"])
         assertEquals(Activity.Merged, activities["merged-fix"])
         assertEquals(Activity.Inactive, activities["old-experiment"])

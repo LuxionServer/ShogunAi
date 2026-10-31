@@ -1,6 +1,9 @@
 package app.luxion.shogunai.domain.usecase
 
+import app.luxion.shogunai.domain.FakeAndroidSdk
+import app.luxion.shogunai.domain.FakeAppleSimulators
 import app.luxion.shogunai.domain.FakeFileManager
+import app.luxion.shogunai.domain.FakeMultirepoSource
 import app.luxion.shogunai.domain.FakeProjectRepository
 import app.luxion.shogunai.domain.FakeRepositoryProvisioningSource
 import app.luxion.shogunai.domain.FakeShellCommandExecutor
@@ -8,6 +11,7 @@ import app.luxion.shogunai.domain.executor.CommandExecutionException
 import app.luxion.shogunai.domain.io.FileManager
 import app.luxion.shogunai.domain.io.HostPath
 import app.luxion.shogunai.domain.io.HostPathSource
+import app.luxion.shogunai.domain.io.MultirepoSource
 import app.luxion.shogunai.domain.model.AgentToolId
 import app.luxion.shogunai.domain.model.CheckState
 import app.luxion.shogunai.domain.model.ClaudeComputerUse
@@ -15,6 +19,12 @@ import app.luxion.shogunai.domain.model.InstallationCheck
 import app.luxion.shogunai.domain.model.InstallationFinding
 import app.luxion.shogunai.domain.model.InstallationReport
 import app.luxion.shogunai.domain.model.LocalFileOrigin
+import app.luxion.shogunai.domain.model.DockerComposeProvider
+import app.luxion.shogunai.domain.model.MultirepoDeclaration
+import app.luxion.shogunai.domain.model.ProviderToolId
+import app.luxion.shogunai.domain.model.ProviderToolProblem
+import app.luxion.shogunai.domain.model.RepositoryProviders
+import app.luxion.shogunai.domain.model.RepositoryProvisioning
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.UnavailableReason
@@ -64,6 +74,8 @@ class CheckInstallationUseCaseTest {
         projects: List<Project> = emptyList(),
         fileManager: FakeFileManager = FakeFileManager(),
         hooksFiles: FileManager = fileManager,
+        provisioning: FakeRepositoryProvisioningSource = FakeRepositoryProvisioningSource(),
+        multirepoSource: MultirepoSource = FakeMultirepoSource(),
         executor: FakeShellCommandExecutor = FakeShellCommandExecutor { command ->
             if (gitOutput == null) FakeShellCommandExecutor.failure(command) else FakeShellCommandExecutor.success(command, gitOutput)
         },
@@ -82,7 +94,14 @@ class CheckInstallationUseCaseTest {
                 orcaLocation = orca,
                 projects = FakeProjectRepository(projects),
                 fileManager = fileManager,
-                provisioningSource = FakeRepositoryProvisioningSource(),
+                provisioningSource = provisioning,
+                providerTools = CheckProviderToolsUseCase(executor, { executables[it] }, fileManager, FakeAndroidSdk(), FakeAppleSimulators()),
+                multirepos = CheckMultireposUseCase(
+                    multirepoSource,
+                    ResolveMultirepoUseCase(multirepoSource, executor, fileManager),
+                    DetectGroupsUseCase(executor),
+                    FakeProjectRepository(projects),
+                ),
             )()
         }
     }
@@ -369,6 +388,13 @@ class CheckInstallationUseCaseTest {
                 projects = FakeProjectRepository(listOf(project)),
                 fileManager = NioFileManager(),
                 provisioningSource = RepositoryProvisioningFiles(),
+                providerTools = CheckProviderToolsUseCase(git, { null }, NioFileManager(), FakeAndroidSdk(), FakeAppleSimulators()),
+                multirepos = CheckMultireposUseCase(
+                    FakeMultirepoSource(),
+                    ResolveMultirepoUseCase(FakeMultirepoSource(), git, NioFileManager()),
+                    DetectGroupsUseCase(git),
+                    FakeProjectRepository(),
+                ),
             )()
 
             val finding = assertIs<InstallationFinding.ProjectFiles>(report.checks.last().finding)
@@ -411,5 +437,75 @@ class CheckInstallationUseCaseTest {
         assertEquals(mapOf(settings to outdated), fileManager.writtenTexts)
         assertTrue(fileManager.copied.isEmpty())
         assertTrue(fileManager.deletedFiles.isEmpty())
+    }
+
+    @Test
+    fun `each project's provider tools follow its files check`() {
+        val base = "/home/dev/projects/main-repo"
+        val project = Project("1", "main-repo", ProjectConfig(base, "/home/dev/worktrees", emptyList()))
+        val provisioning = FakeRepositoryProvisioningSource(
+            mapOf(base to RepositoryProvisioning(providers = RepositoryProviders(dockerCompose = DockerComposeProvider()))),
+        )
+
+        val report = check(projects = listOf(project), fileManager = FakeFileManager(directories = setOf(base)), provisioning = provisioning)
+
+        assertEquals(listOf("project:main-repo", "provider:main-repo:docker-compose"), report.checks.drop(7).map { it.finding.id })
+        val docker = report.checks.last()
+        assertEquals(CheckState.WARNING, docker.state)
+        assertEquals(ProviderToolProblem.NotFound(emptyList(), listOf("docker")), (docker.finding as InstallationFinding.ProviderTool).problem)
+        assertFalse(report.failed)
+    }
+
+    @Test
+    fun `a project whose providers can't be read warns once`() {
+        val base = "/home/dev/projects/main-repo"
+        val project = Project("1", "main-repo", ProjectConfig(base, "/home/dev/worktrees", emptyList()))
+        val provisioning = FakeRepositoryProvisioningSource(unreadable = setOf(base))
+
+        val report = check(projects = listOf(project), fileManager = FakeFileManager(directories = setOf(base)), provisioning = provisioning)
+
+        val providers = report.single<InstallationFinding.ProviderTool>()
+        assertEquals(CheckState.WARNING, providers.state)
+        val finding = providers.finding as InstallationFinding.ProviderTool
+        assertEquals(ProviderToolId.PROVIDERS, finding.tool)
+        assertIs<ProviderToolProblem.ProvidersUnreadable>(finding.problem)
+    }
+
+    @Test
+    fun `a project whose base folder is gone has no provider checks`() {
+        val base = "/home/dev/projects/main-repo"
+        val project = Project("1", "main-repo", ProjectConfig(base, "/home/dev/worktrees", emptyList()))
+        val provisioning = FakeRepositoryProvisioningSource(
+            mapOf(base to RepositoryProvisioning(providers = RepositoryProviders(dockerCompose = DockerComposeProvider()))),
+        )
+
+        val report = check(projects = listOf(project), provisioning = provisioning)
+
+        assertTrue(report.checks.none { it.finding is InstallationFinding.ProviderTool })
+    }
+
+    @Test
+    fun `multirepos are checked last`() {
+        val folder = "/home/dev/projects/product"
+        val multirepos = FakeMultirepoSource(mapOf(folder to MultirepoDeclaration(worktreesRoot = "/home/dev/worktrees")))
+        val executor = FakeShellCommandExecutor { command ->
+            if (command.contains("rev-parse")) FakeShellCommandExecutor.failure(command) else FakeShellCommandExecutor.success(command, "git version 2.45.1")
+        }
+
+        val report = check(multirepoSource = multirepos, executor = executor)
+
+        assertEquals("multirepo:product", report.checks.last().finding.id)
+        assertEquals(CheckState.PASSED, report.checks.last().state)
+    }
+
+    @Test
+    fun `multirepos that can't be listed don't hide the other checks`() {
+        val broken = object : MultirepoSource by FakeMultirepoSource() {
+            override fun knownFolders(): List<String> = throw IOException("unreadable registry")
+        }
+
+        val report = check(multirepoSource = broken)
+
+        assertEquals(7, report.checks.size)
     }
 }

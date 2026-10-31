@@ -21,12 +21,14 @@ dependencies {
     implementation(libs.compose.materialIconsExtended)
     implementation(libs.kotlinx.coroutinesSwing)
     implementation(libs.kotlinx.coroutinesCore)
+    implementation(libs.kotlinx.serializationJson)
     implementation(libs.androidx.lifecycle.viewmodelCompose)
     implementation(libs.androidx.lifecycle.runtimeCompose)
     implementation(libs.filekit.dialogs)
 
     testImplementation(testFixtures(project(":core")))
     testImplementation(libs.kotlin.testJunit)
+    testImplementation(libs.kotlin.reflect)
     testImplementation(compose.uiTest)
     testImplementation(libs.kotlinx.coroutinesTest)
     testImplementation(libs.kotlinx.serializationJson)
@@ -160,10 +162,10 @@ kover {
         }
         verify {
             rule("desktop app lines") {
-                minBound(83, CoverageUnit.LINE)
+                minBound(88, CoverageUnit.LINE)
             }
             rule("desktop app branches") {
-                minBound(66, CoverageUnit.BRANCH)
+                minBound(74, CoverageUnit.BRANCH)
             }
         }
     }

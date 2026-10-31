@@ -85,7 +85,7 @@ class EditorLaunchersTest {
         val studio = "C:\\Program Files\\Android\\Android Studio\\bin\\studio64.exe"
         val locator = ExecutableLocator(
             HostOs.WINDOWS, "/home/dev", { emptyList() }, null,
-            listOf("C:\\Program Files"), listOf(".EXE"), { emptyList() }, { it == studio },
+            listOf("C:\\Program Files"), listOf(".EXE"), subfolders = { emptyList() }, isFile = { it == studio },
         )
 
         CommandEditorLauncher(EditorId.ANDROID_STUDIO, executor, HostOs.WINDOWS, locator).open("C:\\work\\TASK-8").getOrThrow()

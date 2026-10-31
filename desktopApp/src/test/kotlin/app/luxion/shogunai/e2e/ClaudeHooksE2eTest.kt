@@ -1,11 +1,14 @@
 package app.luxion.shogunai.e2e
 
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.v2.runComposeUiTest
 import app.luxion.shogunai.AppContainer
+import app.luxion.shogunai.domain.usecase.CommandLineToolState
+import app.luxion.shogunai.domain.usecase.CommandLineToolStatus
 import app.luxion.shogunai.domain.usecase.HooksInstallState
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -25,7 +28,7 @@ class ClaudeHooksE2eTest {
         val environment = E2eEnvironment.prepare()
         environment.installFakeShogun()
         environment.claudeSettings.apply { parentFile.mkdirs() }.writeText("""{ "model": "opus" }""")
-        val appContainer = AppContainer()
+        val appContainer = AppContainer(environment.hostEnvironment())
         val strings = setHooksSection(appContainer)
 
         awaitText(strings.claudeHooksStatus(HooksInstallState.MISSING))
@@ -46,6 +49,17 @@ class ClaudeHooksE2eTest {
         awaitText(strings.claudeHooksStatus(HooksInstallState.MISSING))
         assertEquals(emptyList(), shogunCommands(environment))
         assertEquals("opus", (settings(environment)["model"] as JsonPrimitive).content)
+    }
+
+    @Test
+    fun `without the command the hooks section says so and can't install the hooks`() = runComposeUiTest {
+        val environment = E2eEnvironment.prepare()
+        val appContainer = AppContainer(environment.hostEnvironment())
+        val strings = setHooksSection(appContainer)
+
+        awaitText(strings.commandLineToolStatus(CommandLineToolStatus(CommandLineToolState.MISSING)))
+        awaitText(strings.claudeHooksNeedsTool)
+        onNode(hasClickAction() and hasText(strings.claudeHooksInstall)).assertIsNotEnabled()
     }
 
     private fun settings(environment: E2eEnvironment): JsonObject =

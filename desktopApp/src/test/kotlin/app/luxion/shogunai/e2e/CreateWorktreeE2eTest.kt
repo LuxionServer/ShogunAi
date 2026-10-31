@@ -30,7 +30,7 @@ class CreateWorktreeE2eTest {
         val declaredLocalFiles = listOf(".env.local", "config/local.properties", "keys")
         val repository = environment.repository("sample-app", ignored = localFiles)
         val worktreesRoot = environment.workspace.resolve("sample-app-worktrees")
-        val appContainer = AppContainer()
+        val appContainer = AppContainer(environment.hostEnvironment())
         appContainer.projectRepository.save(
             Project(
                 id = "sample-app",

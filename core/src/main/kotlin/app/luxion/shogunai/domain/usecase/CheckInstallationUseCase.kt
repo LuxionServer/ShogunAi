@@ -30,6 +30,8 @@ class CheckInstallationUseCase(
     private val projects: ProjectRepository,
     private val fileManager: FileManager,
     private val provisioningSource: RepositoryProvisioningSource,
+    private val providerTools: CheckProviderToolsUseCase,
+    private val multirepos: CheckMultireposUseCase,
 ) {
 
     suspend operator fun invoke(): InstallationReport {
@@ -43,10 +45,11 @@ class CheckInstallationUseCase(
             agentTool(AgentToolId.HERDR, herdrLocation),
             agentTool(AgentToolId.ORCA, orcaLocation),
         )
-        val projectChecks = runCatchingNonCancellation { projects.list() }.getOrDefault(emptyList()).map { project ->
-            guarded({ projectFailure(project, it) }) { projectFiles(project) }
+        val projectChecks = runCatchingNonCancellation { projects.list() }.getOrDefault(emptyList()).flatMap { project ->
+            listOf(guarded({ projectFailure(project, it) }) { projectFiles(project) }) + projectProviders(project)
         }
-        return InstallationReport(listOf(git, pathSource, shogun, hooksCheck) + tools + projectChecks)
+        val multirepoChecks = runCatchingNonCancellation { multirepos() }.getOrDefault(emptyList())
+        return InstallationReport(listOf(git, pathSource, shogun, hooksCheck) + tools + projectChecks + multirepoChecks)
     }
 
     private suspend fun git(): InstallationCheck {
@@ -113,6 +116,14 @@ class CheckInstallationUseCase(
         val check = checkLocalFiles(config, executor, fileManager, provisioningSource)
         val state = if (check.unavailable.isEmpty()) CheckState.PASSED else CheckState.FAILED
         return InstallationCheck(state, InstallationFinding.ProjectFiles(project.name, config.baseRepositoryPath, false, check.checked, check.unavailable))
+    }
+
+    private suspend fun projectProviders(project: Project): List<InstallationCheck> {
+        val repository = project.config.baseRepositoryPath
+        if (!fileManager.isDirectory(repository)) return emptyList()
+        val providers = runCatchingNonCancellation { provisioningSource.read(repository).providers }
+            .getOrElse { return listOf(providerTools.unreadable(project.name, it.message)) }
+        return providerTools(project.name, repository, providers)
     }
 
     private fun projectFailure(project: Project, error: Throwable) = InstallationCheck(

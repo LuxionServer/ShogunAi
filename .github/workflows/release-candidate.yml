@@ -1,0 +1,61 @@
+name: Release candidate
+
+on:
+  push:
+    branches:
+      - "release/**"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version to package when the branch isn't release/X.Y.Z
+        type: string
+        default: "0.0.0"
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  resolve-version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.value }}
+    steps:
+      - name: Resolve version
+        id: version
+        shell: bash
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          if [[ "$GITHUB_REF" == refs/heads/release/* ]]; then
+            VERSION="${GITHUB_REF#refs/heads/release/}"
+          else
+            VERSION="$INPUT_VERSION"
+          fi
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Release version must match X.Y.Z (digits only), got: $VERSION" >&2
+            exit 1
+          fi
+          echo "value=$VERSION" >> "$GITHUB_OUTPUT"
+
+  package:
+    name: Package
+    needs: resolve-version
+    permissions:
+      contents: read
+    uses: ./.github/workflows/package.yml
+    with:
+      version: ${{ needs.resolve-version.outputs.version }}
+      ref: ${{ github.sha }}
+    secrets: inherit
+
+  smoke-test:
+    name: Smoke test
+    needs: package
+    permissions:
+      contents: read
+    uses: ./.github/workflows/smoke-test.yml
+    with:
+      ref: ${{ github.sha }}

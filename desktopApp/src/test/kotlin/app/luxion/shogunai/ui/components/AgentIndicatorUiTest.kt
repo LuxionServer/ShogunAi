@@ -3,7 +3,13 @@ package app.luxion.shogunai.ui.components
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toPixelMap
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.assertHeightIsEqualTo
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertWidthIsEqualTo
@@ -15,6 +21,7 @@ import androidx.compose.ui.test.v2.runComposeUiTest
 import app.luxion.shogunai.ui.theme.ShogunTheme
 import kotlin.math.abs
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 @OptIn(ExperimentalTestApi::class)
@@ -70,6 +77,31 @@ class AgentIndicatorUiTest {
         val pixels = onNodeWithContentDescription("Claude · needs you +1").captureToImage().toPixelMap()
         val colors = (0 until pixels.width).flatMap { x -> (0 until pixels.height).map { y -> pixels[x, y] } }
         assertTrue(colors.any { it.isCloseTo(warning) }, "no pixel of the icon has the warning color")
+    }
+
+    @Test
+    fun `a clickable indicator is a button that runs its action`() {
+        listOf(false, true).forEach { compact ->
+            runComposeUiTest {
+                var clicks = 0
+                setContent { MaterialTheme { AgentIndicator(model, compact = compact, onClick = { clicks++ }) } }
+
+                onNodeWithContentDescription("Claude · needs you +1")
+                    .assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button))
+                    .performClick()
+
+                assertEquals(1, clicks, "compact = $compact")
+            }
+        }
+    }
+
+    @Test
+    fun `an indicator without an action can't be clicked`() = runComposeUiTest {
+        setContent { MaterialTheme { AgentIndicator(model) } }
+
+        onNodeWithContentDescription("Claude · needs you +1")
+            .assert(SemanticsMatcher.keyNotDefined(SemanticsActions.OnClick))
+            .assert(SemanticsMatcher.keyNotDefined(SemanticsProperties.Role))
     }
 
     private fun Color.isCloseTo(other: Color) =

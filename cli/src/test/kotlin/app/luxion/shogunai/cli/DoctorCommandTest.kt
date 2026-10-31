@@ -10,6 +10,7 @@ import app.luxion.shogunai.domain.FakeHerdrClient
 import app.luxion.shogunai.domain.FakeHerdrConfigSource
 import app.luxion.shogunai.domain.FakeKmpTestWiring
 import app.luxion.shogunai.domain.FakeMachineCapacity
+import app.luxion.shogunai.domain.FakeMultirepoSource
 import app.luxion.shogunai.domain.FakeOrcaClient
 import app.luxion.shogunai.domain.FakePortProbe
 import app.luxion.shogunai.domain.FakeProjectRepository
@@ -19,9 +20,13 @@ import app.luxion.shogunai.domain.FakeShellCommandExecutor
 import app.luxion.shogunai.domain.io.LauncherFiles
 import app.luxion.shogunai.domain.io.UserPathEntries
 import app.luxion.shogunai.domain.model.CapacityProfile
+import app.luxion.shogunai.domain.model.DockerComposeProvider
 import app.luxion.shogunai.domain.model.HostOs
+import app.luxion.shogunai.domain.model.MultirepoDeclaration
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.ProjectConfig
+import app.luxion.shogunai.domain.model.RepositoryProviders
+import app.luxion.shogunai.domain.model.RepositoryProvisioning
 import app.luxion.shogunai.domain.model.ResourceSettings
 import app.luxion.shogunai.domain.usecase.CommandLineTool
 import app.luxion.shogunai.infrastructure.ExecutableLocator
@@ -65,16 +70,19 @@ class DoctorCommandTest {
         hooks: String? = null,
         projects: List<Project> = emptyList(),
         fileManager: FakeFileManager = FakeFileManager(),
+        provisioning: FakeRepositoryProvisioningSource = FakeRepositoryProvisioningSource(),
+        multirepos: FakeMultirepoSource = FakeMultirepoSource(),
+        executor: FakeShellCommandExecutor = FakeShellCommandExecutor { command -> FakeShellCommandExecutor.success(command, "$gitVersion\n") },
     ): ShogunCli {
         hooks?.let { fileManager.writtenTexts[settings] = it }
         val environment = SystemHostEnvironment(HostOs.LINUX, mapOf("PATH" to "/usr/bin", "SHELL" to "/bin/bash"), home, loginShell = null)
         val locator = ExecutableLocator(HostOs.LINUX, home, { listOf("/usr/bin") }, isFile = { it in executables })
-        val executor = FakeShellCommandExecutor { command -> FakeShellCommandExecutor.success(command, "$gitVersion\n") }
         return ShogunCli(
             executor = executor,
             fileManager = fileManager,
             projectRepository = FakeProjectRepository(projects),
-            provisioningSource = FakeRepositoryProvisioningSource(),
+            provisioningSource = provisioning,
+            multirepoSource = multirepos,
             daemonSource = FakeGradleDaemonSource(),
             gradleUserHome = "$home/.gradle",
             environmentStateStore = FakeEnvironmentStateStore(),
@@ -180,5 +188,42 @@ class DoctorCommandTest {
     fun `doctor has its help`() {
         assertTrue(CliHelp.forCommand("doctor").orEmpty().contains("doctor [--json]"))
         assertTrue(CliHelp.USAGE.contains("doctor [--json]"))
+    }
+
+    @Test
+    fun `a missing provider tool warns with its fix and doesn't fail`() {
+        val base = "$home/projects/main-repo"
+        val project = Project("1", "main-repo", ProjectConfig(base, "$home/worktrees", emptyList()))
+        val provisioning = FakeRepositoryProvisioningSource(
+            mapOf(base to RepositoryProvisioning(providers = RepositoryProviders(dockerCompose = DockerComposeProvider()))),
+        )
+
+        val exit = cli(projects = listOf(project), fileManager = FakeFileManager(directories = setOf(base)), provisioning = provisioning).run(listOf("doctor"))
+
+        assertEquals(0, exit)
+        val lines = out.lines()
+        val index = lines.indexOf("warn  main-repo: Docker Compose not found, needed by the docker-compose provider (looked in docker on the PATH)")
+        assertTrue(index >= 0, out.toString())
+        assertTrue(lines[index + 1].startsWith("      fix: Install Docker with its Compose plugin"))
+    }
+
+    @Test
+    fun `a multirepo whose repository is gone fails, in text and json`() {
+        val folder = "$home/projects/product"
+        val multirepos = FakeMultirepoSource(mapOf(folder to MultirepoDeclaration(mapOf("api" to "product-api"), "../product-worktrees")))
+        val executor = FakeShellCommandExecutor { command ->
+            if (command.last() == "--version") FakeShellCommandExecutor.success(command, "git version 2.45.1\n") else FakeShellCommandExecutor.failure(command)
+        }
+
+        assertEquals(1, cli(multirepos = multirepos, executor = executor).run(listOf("doctor")))
+        assertTrue("fail  Multirepo product ($folder): 1 problem" in out.lines(), out.toString())
+
+        out.clear()
+        assertEquals(1, cli(multirepos = multirepos, executor = executor).run(listOf("doctor", "--json")))
+        val checks = Json.parseToJsonElement(out.toString()).jsonObject.getValue("checks").jsonArray.map { it.jsonObject }
+        val multirepo = checks.last()
+        assertEquals("multirepo:product", multirepo.getValue("id").jsonPrimitive.content)
+        assertEquals("failed", multirepo.getValue("state").jsonPrimitive.content)
+        assertTrue(multirepo.getValue("fix").jsonPrimitive.content.startsWith("'api': $folder/product-api isn't a Git repository"))
     }
 }

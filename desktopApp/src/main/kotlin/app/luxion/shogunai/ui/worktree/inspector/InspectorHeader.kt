@@ -3,7 +3,6 @@ package app.luxion.shogunai.ui.worktree.inspector
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -12,12 +11,14 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboard
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.WorktreeOrigin
 import app.luxion.shogunai.ui.components.InlineConfirmIconAction
 import app.luxion.shogunai.ui.components.Spacing
 import app.luxion.shogunai.ui.components.StatusChip
+import app.luxion.shogunai.ui.components.WithTooltip
 import app.luxion.shogunai.ui.components.copyText
 import app.luxion.shogunai.ui.components.rememberInlineConfirm
 import app.luxion.shogunai.ui.i18n.LocalStrings
@@ -27,7 +28,7 @@ import app.luxion.shogunai.ui.worktree.originLabel
 import kotlinx.coroutines.launch
 
 @Composable
-fun InspectorHeader(worktree: Worktree, origin: WorktreeOrigin?, projectName: String?) {
+fun InspectorHeader(worktree: Worktree, origin: WorktreeOrigin?, projectName: String?, worktreesRoot: String, home: String) {
     val strings = LocalStrings.current
     val secondary = MaterialTheme.colorScheme.onSurfaceVariant
     val clipboard = LocalClipboard.current
@@ -44,11 +45,19 @@ fun InspectorHeader(worktree: Worktree, origin: WorktreeOrigin?, projectName: St
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f, fill = false),
             )
-            origin?.let { StatusChip(Status.NEUTRAL, originLabel(it, strings)) }
+            if (worktree.isMain) StatusChip(Status.NEUTRAL, strings.mainWorktree)
+            origin?.takeIf { it != WorktreeOrigin.SHOGUNAI }?.let { StatusChip(Status.NEUTRAL, originLabel(it, strings)) }
         }
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-            SelectionContainer(Modifier.weight(1f)) {
-                Text(worktree.path, style = ShogunTheme.typography.dataSmall, color = secondary)
+            WithTooltip(label = worktree.path, modifier = Modifier.weight(1f)) {
+                Text(
+                    displayPath(worktree.path, worktreesRoot, home),
+                    style = ShogunTheme.typography.dataSmall,
+                    color = secondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.MiddleEllipsis,
+                    modifier = Modifier.testTag(InspectorPathTag),
+                )
             }
             InlineConfirmIconAction(
                 label = strings.copyPath,
@@ -58,3 +67,5 @@ fun InspectorHeader(worktree: Worktree, origin: WorktreeOrigin?, projectName: St
         }
     }
 }
+
+internal const val InspectorPathTag = "inspector-path"

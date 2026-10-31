@@ -126,12 +126,12 @@ class TrayMenuModelTest {
 
     @Test
     fun `an agent waiting for the user marks the label as needing attention`() {
-        assertEquals("! feature/TASK-123 — api", trayWorktreeLabel(worktree(Activity.NeedsYou)))
+        assertEquals("! feature/TASK-123 — api", trayWorktreeLabel(worktree(Activity.WaitingForYou)))
     }
 
     @Test
     fun `other activities leave the label unmarked`() {
-        listOf(Activity.New, Activity.Stopped, Activity.Merged, Activity.Inactive, Activity.Idle, Activity.Unknown).forEach {
+        listOf(Activity.Unfinished, Activity.New, Activity.Stopped, Activity.Merged, Activity.Inactive, Activity.Idle, Activity.Unknown).forEach {
             assertEquals("feature/TASK-123 — api", trayWorktreeLabel(worktree(it)))
         }
     }

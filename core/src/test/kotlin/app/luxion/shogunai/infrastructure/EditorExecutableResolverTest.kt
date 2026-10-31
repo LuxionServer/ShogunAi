@@ -29,8 +29,8 @@ class EditorExecutableResolverTest {
             localAppData,
             listOf(programFiles, "C:\\Program Files (x86)"),
             pathExtensions,
-            { parent -> folders.filter { it.startsWith("$parent\\") }.map { it.removePrefix("$parent\\") }.filter { '\\' !in it } },
-            { it in files },
+            subfolders = { parent -> folders.filter { it.startsWith("$parent\\") }.map { it.removePrefix("$parent\\") }.filter { '\\' !in it } },
+            isFile = { it in files },
         )
         return EditorExecutableResolver(HostOs.WINDOWS, locator) { registry }
     }
@@ -123,7 +123,7 @@ class EditorExecutableResolverTest {
     @Test
     fun `reads the registry once per snapshot and only when needed`() = runTest {
         var reads = 0
-        val locator = ExecutableLocator(HostOs.WINDOWS, "C:\\Users\\dev", { emptyList() }, null, emptyList(), listOf(".EXE"), { emptyList() }, { false })
+        val locator = ExecutableLocator(HostOs.WINDOWS, "C:\\Users\\dev", { emptyList() }, null, emptyList(), listOf(".EXE"), subfolders = { emptyList() }, isFile = { false })
         val resolver = EditorExecutableResolver(HostOs.WINDOWS, locator) { reads++; emptyList() }
         val snapshot = resolver.snapshot()
 

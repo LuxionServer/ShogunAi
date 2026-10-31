@@ -53,7 +53,7 @@ No production behavior changed. Kotlin emits a null check for some constructs wh
 
 ## Test fixtures
 
-`core`'s test fixtures, excluded from coverage, gained what the tests needed to provoke failures: a prunable worktree in `FakeGitRepositories`, failures listing and deleting simulators in `FakeAppleSimulators`, a failure stopping an emulator in `FakeAndroidSdk`, a failure on the second listing in `FakeGradleDaemonSource` and `FakeMavenDaemonSource`, Compose standard output in `FakeComposeProjectSource`, and a failure loading the settings in `FakeResourceLimitsRepository`. Nothing in `core`'s production code changed.
+`core`'s test fixtures, excluded from coverage, gained what the tests needed to provoke failures (the prunable worktree of `FakeGitRepositories` arrived from `doctor-provider-checks` too, and its version is kept): failures listing and deleting simulators in `FakeAppleSimulators`, a failure stopping an emulator in `FakeAndroidSdk`, a failure on the second listing in `FakeGradleDaemonSource` and `FakeMavenDaemonSource`, Compose standard output in `FakeComposeProjectSource`, and a failure loading the settings in `FakeResourceLimitsRepository`. Nothing in `core`'s production code changed.
 
 ## Risks / Trade-offs
 

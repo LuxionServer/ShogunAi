@@ -3749,6 +3749,39 @@ class ShogunCliTest {
     }
 
     @Test
+    fun `remove refuses a locked worktree and suggests force`() {
+        val executor = repositoryExecutor { command, _ ->
+            if (command.take(3) == listOf("git", "worktree", "remove")) {
+                Executor.fail(command, "fatal: cannot remove a locked working tree, lock reason: orca-create-preparation:v1\nuse 'remove -f -f' to override or unlock first")
+            } else {
+                null
+            }
+        }
+
+        val exitCode = cli(executor).run(listOf("remove", "TASK-1"))
+
+        assertEquals(1, exitCode)
+        assertEquals("shogun: $merged is locked (orca-create-preparation:v1); use --force to remove it anyway\n", err.toString())
+        assertEquals("", out.toString())
+    }
+
+    @Test
+    fun `remove refuses a worktree locked without a reason`() {
+        val executor = repositoryExecutor { command, _ ->
+            if (command.take(3) == listOf("git", "worktree", "remove")) {
+                Executor.fail(command, "fatal: cannot remove a locked working tree;\nuse 'remove -f -f' to override or unlock first")
+            } else {
+                null
+            }
+        }
+
+        val exitCode = cli(executor).run(listOf("remove", "TASK-1"))
+
+        assertEquals(1, exitCode)
+        assertEquals("shogun: $merged is locked; use --force to remove it anyway\n", err.toString())
+    }
+
+    @Test
     fun `remove with force passes force to git`() {
         val executor = repositoryExecutor()
 

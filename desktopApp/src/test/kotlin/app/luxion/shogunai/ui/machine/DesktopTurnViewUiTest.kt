@@ -113,7 +113,7 @@ class DesktopTurnViewUiTest {
             readEmulatorStates = { _, _ -> Result.failure(unused) },
             readRunningEmulators = { Result.failure(unused) },
             startEmulator = { _, _ -> Result.failure(unused) },
-            readPool = { _, _, _ -> Result.failure(unused) },
+            readPool = { _, _, _, _ -> Result.failure(unused) },
             trimGradleDaemons = { Result.failure(unused) },
             resourceSettings = { ResourceSettings() },
             stopEmulator = { _, _ -> Result.failure(unused) },
