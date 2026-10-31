@@ -5,3 +5,30 @@ updates:
     target-branch: develop
     schedule:
       interval: weekly
+
+  - package-ecosystem: gradle
+    directory: /
+    target-branch: develop
+    schedule:
+      interval: weekly
+    groups:
+      kotlinx:
+        patterns:
+          - "org.jetbrains.kotlinx*"
+      kotlin:
+        patterns:
+          - "org.jetbrains.kotlin*"
+      compose:
+        patterns:
+          - "org.jetbrains.compose*"
+          - "org.jetbrains.androidx*"
+
+  - package-ecosystem: pip
+    directory: /
+    target-branch: develop
+    schedule:
+      interval: weekly
+    groups:
+      docs:
+        patterns:
+          - "*"
