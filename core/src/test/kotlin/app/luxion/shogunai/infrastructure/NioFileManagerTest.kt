@@ -432,20 +432,26 @@ class NioFileManagerTest {
     }
 
     @Test
-    fun `missing paths have no time, names, sameness or containment, and special files aren't listed`() {
+    fun `missing paths have no time, names or containment`() {
+        assertNull(fileManager.lastModifiedMillis(root.resolve("missing").toString()))
+        assertNull(fileManager.listNames(root.resolve("missing").toString()))
+        assertFalse(fileManager.isInside(root.resolve("missing").toString(), root.toString()))
+    }
+
+    @Test
+    fun `special files aren't listed and a dangling link points nowhere`() {
+        assumeTrue(root.fileSystem.supportedFileAttributeViews().contains("posix"))
         val folder = Files.createDirectories(root.resolve("special"))
         ProcessBuilder("mkfifo", folder.resolve("pipe").toString()).start().waitFor()
 
         assertEquals(emptyList(), fileManager.listTree(folder.toString()).files)
-        assertNull(fileManager.lastModifiedMillis(root.resolve("missing").toString()))
-        assertNull(fileManager.listNames(root.resolve("missing").toString()))
-        assertFalse(fileManager.isInside(root.resolve("missing").toString(), root.toString()))
         val dangling = Files.createSymbolicLink(root.resolve("dangling"), root.resolve("nowhere"))
         assertFalse(fileManager.isSymbolicLinkTo(dangling.toString(), root.resolve("nowhere").toString()))
     }
 
     @Test
     fun `a file that can't be read has no text`() {
+        assumeTrue(root.fileSystem.supportedFileAttributeViews().contains("posix"))
         val file = Files.writeString(root.resolve("secret.txt"), "x")
         file.toFile().setReadable(false)
         try {

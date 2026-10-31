@@ -3,6 +3,7 @@ package app.luxion.shogunai.infrastructure
 import java.io.File
 import java.nio.file.Files
 import kotlin.test.AfterTest
+import org.junit.Assume.assumeTrue
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -120,6 +121,7 @@ class HerdrConfigFileTest {
 
     @Test
     fun `a config file that can't be read falls back to the default`() {
+        assumeTrue(home.toPath().fileSystem.supportedFileAttributeViews().contains("posix"))
         val file = File(home, ".config/herdr/config.toml")
         writeConfig("[worktrees]\ndirectory = \"/trees\"\n", file)
         file.setReadable(false)

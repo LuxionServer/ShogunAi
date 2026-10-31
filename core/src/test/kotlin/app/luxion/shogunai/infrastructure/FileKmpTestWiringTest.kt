@@ -107,6 +107,7 @@ class FileKmpTestWiringTest {
 
     @Test
     fun `a missing repository, unreadable scripts, links and folders named like scripts are ignored`() {
+        assumeTrue(root.fileSystem.supportedFileAttributeViews().contains("posix"))
         assertFalse(FileKmpTestWiring(gradleHome.toString()).usesKotlinMultiplatform(root.resolve("missing").toString()))
         val plugin = "plugins { kotlin(\"multiplatform\") }"
         repository.resolve("folder.gradle.kts").createDirectories()
