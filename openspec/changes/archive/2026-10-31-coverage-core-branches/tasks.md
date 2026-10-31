@@ -19,7 +19,7 @@
 
 ## 4. Integration
 
-- [ ] 4.1 Run `./gradlew test koverVerify` for every module and verify it passes with `core` at 100% of lines and of its reachable branches
+- [x] 4.1 Run `./gradlew test koverVerify` for every module and verify it passes with `core` at 100% of lines and of its reachable branches
 
 ## Workflow follow-up
 
