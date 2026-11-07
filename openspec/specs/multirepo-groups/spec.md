@@ -659,23 +659,12 @@ A multirepo SHALL be named by the optional `name` of its declaration when it's s
 - **WHEN** the user runs `shogun multirepo name "  "`
 - **THEN** the command says the name can't be blank, changes nothing and exits with code 2
 
-### Requirement: Forget multirepos whose folder is gone
-`shogun multirepo init` SHALL remove from `~/.shogunai/multirepos.json` every entry whose folder no longer exists, keeping the entries whose folder exists even when its declaration is missing or invalid.
-
-#### Scenario: Folder moved away
-- **WHEN** `~/.shogunai/multirepos.json` lists `~/projects/product/.shogunai-multirepo.json`, `~/projects/product` no longer exists, and the user runs `shogun multirepo init` anywhere
-- **THEN** that entry is removed from `~/.shogunai/multirepos.json`
-
-#### Scenario: Declaration deleted but folder present
-- **WHEN** an entry's folder exists but has no declaration
-- **THEN** the entry is kept, and it's still ignored as before
-
 ### Requirement: Register an existing multirepo
 `shogun multirepo init [--yes]` in a folder that already has a declaration SHALL validate it, review and approve it as `shogun multirepo trust` does, and then add it to the known multirepos and register a project for each declared repository that has none, as `add-repo` does; it SHALL leave the declaration unchanged. `--worktrees-root` and `--name` SHALL be rejected there. A repository another known multirepo declares SHALL make it fail without changes.
 
 #### Scenario: Folder moved
 - **WHEN** `~/projects/product` moved to `~/work/product` with its repositories side by side, and the user runs `shogun multirepo init` in `~/work/product`
-- **THEN** the command shows the review and, when the user answers yes, the multirepo `~/work/product` is known and approved, the entry for `~/projects/product` is dropped because that folder is gone, each declared repository without a project at its new path gets one, and the command says it approved and registered an existing multirepo
+- **THEN** the command shows the review and, when the user answers yes, the multirepo `~/work/product` is known and approved, the entry for `~/projects/product` stays known, unchanged and ignored, each declared repository without a project at its new path gets one, and the command says it approved and registered an existing multirepo
 
 #### Scenario: No terminal
 - **WHEN** the declaration isn't approved and the command runs without a terminal, or with `--json`, and without `--yes`
@@ -698,7 +687,7 @@ A multirepo SHALL be named by the optional `name` of its declaration when it's s
 - **THEN** the command says to use `shogun multirepo name` or `worktrees-root` instead, changes nothing and exits with code 2
 
 #### Scenario: Repository claimed by another multirepo
-- **WHEN** a declared repository is also declared by another known multirepo whose folder still exists
+- **WHEN** a declared repository is also declared by another known multirepo whose declaration can be read
 - **THEN** the command names the other multirepo, registers nothing and exits with code 1
 
 ### Requirement: Open a group's worktrees in Orca
@@ -781,3 +770,14 @@ ShogunAi SHALL NOT create an Orca workspace for a multirepo folder that isn't a 
 #### Scenario: Orca not running
 - **WHEN** Orca is installed but closed
 - **THEN** Orca is started as for a worktree before looking for the folder's workspace
+
+### Requirement: Commands never forget a multirepo on their own
+No `shogun` command SHALL remove an entry, its approval or its local agent from `~/.shogunai/multirepos.json` because its folder or declaration can't be found; only `shogun multirepo delete`, `shogun multirepo trust --revoke` and the app's explicit removal forget a multirepo.
+
+#### Scenario: Volume unmounted
+- **WHEN** `~/.shogunai/multirepos.json` lists `/Volumes/External/main-multirepo`, `/Volumes/External` isn't mounted, and the user runs `shogun multirepo init` anywhere
+- **THEN** `~/.shogunai/multirepos.json` still lists it with its approval and local agent
+
+#### Scenario: Volume mounted again
+- **WHEN** the volume is mounted again and the user runs a command inside one of its repositories
+- **THEN** the command finds the multirepo, still approved, without registering it again

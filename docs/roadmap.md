@@ -80,7 +80,8 @@ ShogunAi's view is only neutral if it sees every agent:
 Multirepos and groups by branch are done in the CLI and the desktop app, and they're also how people who don't write the code follow a change across repositories. Left out:
 
 - Checking every repository of a group before creating any of its worktrees: each repository's local files are checked before its own worktree is created, so a group whose second repository has an unavailable file keeps the worktree already created in the first.
-- Carrying the multirepo agent set on this machine over when its folder moves: `shogun multirepo init` (or "Add multirepo") in the new folder registers it after reviewing it and forgets the old entry, but the local agent goes with that entry and has to be set again.
+- Carrying the multirepo agent set on this machine over when its folder moves: `shogun multirepo init` (or "Add multirepo") in the new folder registers it after reviewing it, but the local agent stays with the old entry and has to be set again.
+- Forgetting from the command line a known multirepo whose declaration can't be read (`trust --revoke` and `delete` need the declaration); today only the desktop app's "Remove" does it.
 - Associating worktrees whose branches don't match, e.g. `shogun group add <id> <worktree>`. It needs a design of its own: groups have no state today, and the association would reach group detection, the ports shared variables resolve against, cleanup and every group view.
 - Showing the Claude session names of a group's worktrees and of the multirepo agent in the desktop app's views; today `shogun open --herdr` and `shogun status` report them, and the app only names the sessions it opens.
 - A single session for the whole group, with a combined environment, as an option next to one agent per repository.

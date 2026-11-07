@@ -32,13 +32,13 @@ The peer's minimum was "don't prune when the volume root or an ancestor is missi
 - `MultirepoCatalog` takes `() -> KnownMultirepos` and exposes `multirepos` and `unavailable` (sorted by name); a failure reading the registry keeps today's empty fallback for both.
 - `ShellViewModel` drops `forgetMissingMultirepos` and takes `forgetMultirepo: (String) -> Unit` (`AppContainer` → `multirepoSource.forget`). Removal is view-model state so it's unit-testable: `requestMultirepoRemoval(folder)` sets `multirepoPendingRemoval`, `cancelMultirepoRemoval()` clears it and `confirmMultirepoRemoval()` forgets the folder, clears its collapsed state, refreshes and falls back to the active worktrees when the destination referenced it.
 - `isAvailable(MultirepoView(folder))` is true when the folder is available or unavailable, so an app opened with the volume out lands on the unavailable view instead of losing the saved destination. `MultirepoSettings` of an unavailable folder isn't available.
-- The sidebar keeps a single folder entry type: `SidebarMultirepo` gains `unavailableReason: String?` (the localized reason). Unavailable entries use the same `multirepo:<folder>` key, so the saved order survives while the volume is out. The row shows a "folder off" icon instead of the disclosure toggle, the name in the muted color and a tooltip with the reason; its context menu offers "Remove" and the reordering items. In the rail it's a folder-off item with the name as tooltip.
+- The sidebar keeps a single folder entry type: `SidebarMultirepo` gains `unavailable: MultirepoUnavailability?`, localized by the sidebar. Unavailable entries use the same `multirepo:<folder>` key, so the saved order survives while the volume is out. The row shows a "folder off" icon instead of the disclosure toggle, the name in the muted color and a tooltip with the reason; its context menu offers "Remove" and the reordering items. In the rail it's a folder-off item with the name as tooltip.
 - `ShellContent` renders `MultirepoView` of an unavailable folder with an `UnavailableMultirepoView`: the folder path in the data font, the reason, and "Try again" (`viewModel.refresh()`) and "Remove" (opens the confirmation). The confirmation reuses `ShogunDialog` with `DangerButton`, like "Remove project".
 - Strings (English and Spanish): the three reasons, the view's title and actions, and the confirmation's title and message saying the folder's files aren't touched and that the approval and local agent are forgotten.
 
 ### Coverage
 
-No new `@Serializable` class, so `core`'s missed-branch maximum is unchanged. Removing `forgetMissing` removes lines and tests in `core`; the new `listing()` branches are covered by `ResolveMultirepoUseCaseTest`.
+No new `@Serializable` class, so `core`'s missed-branch maximum is unchanged. Removing `forgetMissing` removes lines and tests in `core`; the new `listing()` branches are covered by `ResolveMultirepoUseCaseTest`. The desktop app's line coverage went from 88.92% on `develop` to 89.04%, so its line floor rises from 88 to 89; branches went from 75.21% to 75.41% and their floor of 74 stays.
 
 ## Risks / Trade-offs
 
