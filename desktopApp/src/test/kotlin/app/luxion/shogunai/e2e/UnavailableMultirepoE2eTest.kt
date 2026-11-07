@@ -7,6 +7,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.v2.runComposeUiTest
 import app.luxion.shogunai.AppContainer
+import kotlinx.serialization.json.JsonPrimitive
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -18,8 +19,9 @@ class UnavailableMultirepoE2eTest {
     fun `opening the app with a multirepo on an unmounted volume keeps it registered until it's removed`() = runComposeUiTest {
         val environment = E2eEnvironment.prepare()
         val declaration = environment.workspace.resolve("External/main-multirepo/.shogunai-multirepo.json").absolutePath
+        val declarationJson = JsonPrimitive(declaration).toString()
         val registry = environment.shogunaiFolder.resolve("multirepos.json").apply { parentFile.mkdirs() }
-        val registered = """{"multirepos":["$declaration"],"local":{"$declaration":{"approved":"digest","agent":{"agentCommand":"claude"}}}}"""
+        val registered = """{"multirepos":[$declarationJson],"local":{$declarationJson:{"approved":"digest","agent":{"agentCommand":"claude"}}}}"""
         registry.writeText(registered)
         val appContainer = AppContainer(environment.hostEnvironment())
         val strings = setShell(appContainer)
