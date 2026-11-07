@@ -139,6 +139,9 @@ fun AppShell(
     }
     val declaredMachine = machine.declared
     LaunchedEffect(declaredMachine) { machine.runSummaryTicks() }
+    LaunchedEffect(machine) {
+        snapshotFlow { appContainer.resources.settings }.drop(1).collectLatest { machine.applyResourceSettings() }
+    }
     LaunchedEffect(viewModel) { viewModel.watchCatalog(CatalogCheckInterval) }
     LaunchedEffect(viewModel.destination, board.isCatalogLoaded) {
         val destination = viewModel.destination as? ShellDestination.Machine
