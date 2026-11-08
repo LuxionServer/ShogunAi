@@ -18,6 +18,7 @@ import app.luxion.shogunai.domain.model.SimulatorSettings
 import app.luxion.shogunai.domain.io.DirectoryListing
 import app.luxion.shogunai.ui.isAbsolutePath
 import app.luxion.shogunai.domain.model.DetectedStack
+import app.luxion.shogunai.domain.model.EditorId
 import app.luxion.shogunai.domain.model.LocalFileCandidate
 import app.luxion.shogunai.domain.model.MobileSecret
 import app.luxion.shogunai.domain.model.MobileSecretsReport
@@ -36,23 +37,25 @@ import kotlinx.coroutines.launch
 import java.util.UUID
 
 sealed interface SimulatorSectionState {
+    sealed interface Shown : SimulatorSectionState
     data object Hidden : SimulatorSectionState
-    data object Loading : SimulatorSectionState
+    data object Loading : Shown
     data class Available(
         val runtimes: List<SimulatorRuntime>,
         val testsWired: Boolean,
         val kotlinMultiplatform: Boolean,
         val initScriptInstalled: Boolean = false,
-    ) : SimulatorSectionState
-    data class Failed(val error: Throwable) : SimulatorSectionState
+    ) : Shown
+    data class Failed(val error: Throwable) : Shown
 }
 
 sealed interface EmulatorSectionState {
+    sealed interface Shown : EmulatorSectionState
     data object Hidden : EmulatorSectionState
-    data object Loading : EmulatorSectionState
-    data class Available(val avds: List<String>) : EmulatorSectionState
-    data class SdkNotFound(val checked: List<String>) : EmulatorSectionState
-    data class Failed(val error: Throwable) : EmulatorSectionState
+    data object Loading : Shown
+    data class Available(val avds: List<String>) : Shown
+    data class SdkNotFound(val checked: List<String>) : Shown
+    data class Failed(val error: Throwable) : Shown
 }
 
 enum class ProjectConfigField { NAME, BASE_REPOSITORY_PATH, WORKTREES_ROOT, AGENT_COMMAND, AGENT_NAME }
@@ -100,9 +103,14 @@ class ProjectConfigViewModel(
     private val listLocalFileCandidates: (suspend (ProjectConfig) -> List<LocalFileCandidate>)? = null,
 ) : ViewModel(), LeaveGuard {
     private val existingId = existingProject?.id
+    private val savedConfig = if (existingProject == null) {
+        ProjectConfig(baseRepositoryPath = "", worktreesRoot = "", secretFiles = emptyList())
+    } else {
+        existingProject.config
+    }
     val isNewProject: Boolean = existingProject == null
 
-    private var _name by mutableStateOf(existingProject?.name ?: "")
+    private var _name by mutableStateOf(existingProject?.name.orEmpty())
     private var touchedFields by mutableStateOf(emptySet<ProjectConfigField>())
 
     var saveAttempted by mutableStateOf(false)
@@ -127,7 +135,7 @@ class ProjectConfigViewModel(
             touch(ProjectConfigField.NAME)
         }
 
-    private var _baseRepositoryPath by mutableStateOf(existingProject?.config?.baseRepositoryPath ?: "")
+    private var _baseRepositoryPath by mutableStateOf(savedConfig.baseRepositoryPath)
     private var loadedRepositoryPath = _baseRepositoryPath
     private val otherProjects = runCatching { projectRepository.list() }.getOrDefault(emptyList()).filter { it.id != existingId }
     private var inspectedPath: String? = null
@@ -141,15 +149,15 @@ class ProjectConfigViewModel(
 
     val duplicateProject: Project?
         get() = otherProjects.firstOrNull { it.config.baseRepositoryPath.isSameDirectoryAs(_baseRepositoryPath) }
-    var worktreesRoot by mutableStateOf(existingProject?.config?.worktreesRoot ?: "")
+    var worktreesRoot by mutableStateOf(savedConfig.worktreesRoot)
 
     var secretFiles by mutableStateOf(
-        existingProject?.config?.secretFiles.orEmpty().map { normalizeSecretFile(_baseRepositoryPath, it) },
+        savedConfig.secretFiles.map { normalizeSecretFile(_baseRepositoryPath, it) },
     )
         private set
 
     var linkedSecretFiles by mutableStateOf(
-        existingProject?.config?.linkedSecretFiles.orEmpty().map { normalizeSecretFile(_baseRepositoryPath, it) }.toSet(),
+        savedConfig.linkedSecretFiles.map { normalizeSecretFile(_baseRepositoryPath, it) }.toSet(),
     )
         private set
 
@@ -217,21 +225,21 @@ class ProjectConfigViewModel(
         }
 
     var agents by mutableStateOf(
-        existingProject?.config?.agents?.map(AgentDraft::from) ?: listOf(AgentDraft()),
+        savedConfig.agents.map(AgentDraft::from),
     )
         private set
-    var mainBranch by mutableStateOf(existingProject?.config?.mainBranch.orEmpty())
-    var editorOverride by mutableStateOf(existingProject?.config?.editorOverride)
-    val editorOverrideMissing: Boolean get() = editorOverride?.let { it !in tools.availableEditors } == true
-    var emulatorAvd by mutableStateOf(existingProject?.config?.emulator?.avd)
-    var emulatorNoWindow by mutableStateOf(existingProject?.config?.emulator?.noWindow ?: false)
+    var mainBranch by mutableStateOf(savedConfig.mainBranch.orEmpty())
+    var editorOverride by mutableStateOf(savedConfig.editorOverride)
+    val missingEditorOverride: EditorId? get() = editorOverride?.takeIf { it !in tools.availableEditors }
+    var emulatorAvd by mutableStateOf(savedConfig.emulator.avd)
+    var emulatorNoWindow by mutableStateOf(savedConfig.emulator.noWindow)
 
     var emulatorSection by mutableStateOf<EmulatorSectionState>(EmulatorSectionState.Hidden)
         private set
     private var emulatorLoad: Job? = null
 
-    var simulatorDevice by mutableStateOf(existingProject?.config?.simulator?.device)
-    var simulatorRuntime by mutableStateOf(existingProject?.config?.simulator?.runtime)
+    var simulatorDevice by mutableStateOf(savedConfig.simulator.device)
+    var simulatorRuntime by mutableStateOf(savedConfig.simulator.runtime)
 
     var simulatorSection by mutableStateOf<SimulatorSectionState>(SimulatorSectionState.Hidden)
         private set
@@ -318,7 +326,7 @@ class ProjectConfigViewModel(
         }
         repositoryFingerprint = if (path.isBlank()) ABSENT_FINGERPRINT else runCatching { provisioningSource.fingerprint(path) }.getOrDefault(ABSENT_FINGERPRINT)
         repositoryDraft = RepositoryConfigDraft.of(provisioning)
-        approvalSubject = provisioning?.approvalSubject ?: RepositoryApprovalSubject()
+        approvalSubject = if (provisioning == null) RepositoryApprovalSubject() else provisioning.approvalSubject
         detectedStacks = if (path.isBlank()) emptyList() else runCatching { detectStacks(path) }.getOrDefault(emptyList())
         refreshLocalEntries()
         initialRepositoryDraft = repositoryDraft
@@ -330,13 +338,13 @@ class ProjectConfigViewModel(
 
     private fun refreshRepositoryApproval() {
         val subject = approvalSubject
-        repositoryApproved = !subject.isEmpty && loadedRepositoryPath.isNotBlank() &&
+        repositoryApproved = !subject.isEmpty &&
             runCatching { trust.isApproved(loadedRepositoryPath, subject) }.getOrDefault(false)
     }
 
     fun approveRepository() {
         val subject = approvalSubject
-        if (subject.isEmpty || loadedRepositoryPath.isBlank()) return
+        if (subject.isEmpty) return
         trust.approve(loadedRepositoryPath, subject)
         refreshRepositoryApproval()
     }
@@ -455,7 +463,7 @@ class ProjectConfigViewModel(
     private fun refreshEmulatorSection() {
         emulatorLoad?.cancel()
         val repositoryPath = loadedRepositoryPath
-        val declared = (repositoryProvisioning as? RepositoryProvisioningState.Declared)?.provisioning?.providers?.emulator
+        val declared = (repositoryProvisioning as? RepositoryProvisioningState.Declared)?.let { it.provisioning.providers.emulator }
             ?: runCatching { provisioningSource.read(repositoryPath).providers.emulator }.getOrNull()
         if (repositoryPath.isBlank() || declared == null) {
             emulatorSection = EmulatorSectionState.Hidden
@@ -475,9 +483,6 @@ class ProjectConfigViewModel(
             )
         }
     }
-
-    val isValid: Boolean
-        get() = firstInvalidField == null
 
     val firstInvalidField: ProjectConfigField?
         get() = ProjectConfigField.entries.firstOrNull(::isInvalid)
@@ -658,34 +663,41 @@ class ProjectConfigViewModel(
 
     private fun repositoryPatternOf(entry: String): String = if (isLocalPattern(entry)) entry else anchoredPattern(entry)
 
-    var localFilePicker by mutableStateOf<LocalFilePickerState?>(null)
-        private set
+    private class OpenLocalFilePicker(
+        val state: LocalFilePickerState,
+        val list: suspend (ProjectConfig) -> List<LocalFileCandidate>,
+    )
+
+    private var openLocalFilePicker by mutableStateOf<OpenLocalFilePicker?>(null)
+
+    val localFilePicker: LocalFilePickerState?
+        get() = openLocalFilePicker?.state
 
     val canChooseLocalFiles: Boolean
         get() = listLocalFileCandidates != null && baseRepositoryPath.isNotBlank()
 
     fun openLocalFilePicker() {
-        if (!canChooseLocalFiles) return
-        val picker = LocalFilePickerState(secretFiles.toSet())
-        localFilePicker = picker
+        val list = listLocalFileCandidates
+        if (list == null || baseRepositoryPath.isBlank()) return
+        val picker = OpenLocalFilePicker(LocalFilePickerState(secretFiles.toSet()), list)
+        openLocalFilePicker = picker
         loadLocalFileCandidates(picker)
     }
 
     fun retryLocalFileCandidates() {
-        localFilePicker?.let(::loadLocalFileCandidates)
+        openLocalFilePicker?.let(::loadLocalFileCandidates)
     }
 
-    private fun loadLocalFileCandidates(picker: LocalFilePickerState) {
-        val list = listLocalFileCandidates ?: return
+    private fun loadLocalFileCandidates(picker: OpenLocalFilePicker) {
         val config = ProjectConfig(
             baseRepositoryPath = baseRepositoryPath,
             worktreesRoot = worktreesRoot,
             secretFiles = secretFiles,
             linkedSecretFiles = linkedSecretFiles.toList(),
         )
-        picker.load = LocalFileCandidatesLoad.Loading
+        picker.state.load = LocalFileCandidatesLoad.Loading
         viewModelScope.launch {
-            picker.load = runCatching { list(config) }.fold(
+            picker.state.load = runCatching { picker.list(config) }.fold(
                 onSuccess = { LocalFileCandidatesLoad.Loaded(it) },
                 onFailure = { LocalFileCandidatesLoad.Failed(it) },
             )
@@ -693,14 +705,15 @@ class ProjectConfigViewModel(
     }
 
     fun applyLocalFilePicker() {
-        val selection = localFilePicker?.selection() ?: return
-        localFilePicker = null
+        val picker = localFilePicker ?: return
+        val selection = picker.selection()
+        openLocalFilePicker = null
         selection.removed.forEach(::removeSecretFile)
         (selection.added + selection.patterns).forEach(::addSecretFile)
     }
 
     fun cancelLocalFilePicker() {
-        localFilePicker = null
+        openLocalFilePicker = null
     }
 
     val mobileSecretSuggestions: List<MobileSecret>
@@ -792,7 +805,7 @@ class ProjectConfigViewModel(
                 agentLaunchConfig = agents.first().toConfig(),
                 additionalAgents = agents.drop(1).map(AgentDraft::toConfig),
                 mainBranch = mainBranch.trim().ifEmpty { null },
-                emulator = EmulatorSettings(avd = emulatorAvd?.trim()?.ifEmpty { null }, noWindow = emulatorNoWindow),
+                emulator = EmulatorSettings(avd = emulatorAvd?.let { it.trim().ifEmpty { null } }, noWindow = emulatorNoWindow),
                 simulator = SimulatorSettings(device = simulatorDevice, runtime = simulatorRuntime),
                 editorOverride = editorOverride,
             ),
