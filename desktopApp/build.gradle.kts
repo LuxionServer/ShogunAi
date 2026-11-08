@@ -1,5 +1,6 @@
 import kotlinx.kover.gradle.plugin.dsl.CoverageUnit
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
+import org.jetbrains.compose.desktop.application.tasks.AbstractJPackageTask
 
 plugins {
     alias(libs.plugins.kotlinJvm)
@@ -139,6 +140,43 @@ tasks.withType<org.jetbrains.compose.desktop.application.tasks.AbstractJLinkTask
         val javaExecutable = File(javaHome.get(), "bin/java.exe")
         if (javaExecutable.exists()) {
             javaExecutable.copyTo(destinationDir.get().asFile.resolve("bin/java.exe"), overwrite = true)
+        }
+    }
+}
+
+tasks.withType<AbstractJPackageTask>().configureEach {
+    if (targetFormat == TargetFormat.Deb) {
+        val packageFolder = destinationDir
+        val unpackedRoot = temporaryDir
+        doLast {
+            fun run(vararg command: String) {
+                val exitCode = ProcessBuilder(*command).inheritIO().start().waitFor()
+                check(exitCode == 0) { "${command.joinToString(" ")} exited with $exitCode" }
+            }
+            val menuCommand = "xdg-desktop-menu "
+            val warnings = mapOf(
+                "postinst" to "ShogunAi: not added to the applications menu, which needs a writable /etc/xdg/menus.",
+                "prerm" to "ShogunAi: no applications menu entry to remove.",
+            )
+            packageFolder.get().asFile.listFiles { file -> file.extension == "deb" }.orEmpty().forEach { deb ->
+                val unpacked = unpackedRoot.resolve(deb.nameWithoutExtension)
+                unpacked.deleteRecursively()
+                run("dpkg-deb", "--raw-extract", deb.path, unpacked.path)
+                warnings.forEach { (script, warning) ->
+                    val file = unpacked.resolve("DEBIAN/$script")
+                    val lines = file.readLines()
+                    check(lines.any { it.startsWith(menuCommand) }) {
+                        "jpackage's $script no longer runs $menuCommand, so the .deb's maintainer scripts can't be rewritten."
+                    }
+                    file.writeText(
+                        lines.joinToString("\n", postfix = "\n") { line ->
+                            if (line.startsWith(menuCommand)) "$line || echo \"$warning\" >&2" else line
+                        },
+                    )
+                }
+                run("dpkg-deb", "--root-owner-group", "--build", unpacked.path, deb.path)
+                unpacked.deleteRecursively()
+            }
         }
     }
 }

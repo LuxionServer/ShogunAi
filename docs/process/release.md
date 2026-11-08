@@ -26,8 +26,8 @@ graph LR
       5. creates and pushes the `vX.X.X` tag on the merge commit (the version comes from the branch name, no need to write it twice) and creates the GitHub Release in **draft** mode with the release notes as its body (see [Release notes](#release-notes)) titled `vX.X.X — <headline>` (the headline read from `.github/release-title`, see [Release title](#release-title)), only once,
       6. a job that holds only the permissions to sign attestations (it doesn't check out the repository or run the build) generates a signed build provenance attestation for each installer and the zip (`actions/attest`). The release isn't published until every attestation exists,
       7. once every attestation exists, the only job that writes to the repository writes `SHA256SUMS` with the checksum of every asset, uploads everything to the draft and publishes the release (takes it out of draft),
-      8. regenerates the Homebrew Cask from `.github/homebrew/shogunai.rb` with the new version and the `.dmg` checksums read from `SHA256SUMS`, and pushes it to the `LuxionServer/homebrew-shogunai` tap. The Cask installs the app and links its launcher as the `shogun` command,
-      9. regenerates `bucket/shogunai.json` in the `LuxionServer/scoop-shogunai` bucket from `.github/scoop/shogunai.json` with the new version and the `.msi` checksum read from `SHA256SUMS`, and pushes it,
+      8. regenerates the Homebrew Cask from `.github/homebrew/shogunai.rb` with `.github/homebrew/render-cask.sh`, the same rendering the smoke test installed, with the new version and the `.dmg` checksums read from `SHA256SUMS`, and pushes it to the `LuxionServer/homebrew-shogunai` tap. The Cask installs the app and links its launcher as the `shogun` command,
+      9. regenerates `bucket/shogunai.json` in the `LuxionServer/scoop-shogunai` bucket from `.github/scoop/shogunai.json` with `.github/scoop/render-manifest.sh`, the same rendering the smoke test installed, with the new version and the `.msi` checksum read from `SHA256SUMS`, and pushes it,
       10. opens a pull request to `microsoft/winget-pkgs` updating `LuxionServer.ShogunAi` to the new `.msi` (`winget-releaser` action).
 
 Steps 8, 9 and 10 run in parallel and are independent: if one fails, the release stays published and the others still run.
@@ -42,11 +42,20 @@ The test suite runs the code from Gradle on a machine set up like the developer'
 |---|---|---|---|
 | macOS Apple Silicon and Intel | the `.dmg` into `/Applications` | with `open`, so it gets the Dock's minimal `PATH` | `shogun` linked into Homebrew's `bin`, the hooks installed, the tour started, then `shogun new` from a login shell |
 | Windows | the `.msi`, silently | with the `PATH` a new session reads from the registry | `shogun.cmd` installed and its folder added to the user's `PATH`, the hooks installed, then `shogun new` through `shogun.cmd` from a new session |
-| Linux | the `.deb` | as a new user without `~/.local/bin`, twice | first `shogun` installed into `~/.local/bin` but not on the `PATH`; after the restart, available and the hooks installed; then `shogun new` from a login shell |
+| Linux | the `.deb`, on a runner without the system menus folder `/etc/xdg/menus`, as on a server | as a new user without `~/.local/bin`, twice | the package fully installed; first `shogun` installed into `~/.local/bin` but not on the `PATH`; after the restart, available and the hooks installed; then `shogun new` from a login shell; then the package removed, and installed and removed again with the menus folders a desktop has, adding and removing its applications menu entry |
 
 The app does the work in its smoke-test mode: started with `SHOGUNAI_SMOKE_TEST_REPORT=<file>`, it opens no window and, with the same objects its buttons use, installs the command and Claude Code's hooks, goes through the start of the guided tour and ends it, adds the sample repository (`SHOGUNAI_SMOKE_TEST_REPOSITORY`) as a project with its local files (`SHOGUNAI_SMOKE_TEST_LOCAL_FILES`), creates a worktree and checks the copied files. It writes a JSON report of every step and exits with a non-zero status when a step failed. Each script then compares the report with what its machine should show, and checks the files `shogun new` copied (a `.env.local` listed in the project and a `config/local.json` declared in the repository's `.shogunai.json`).
 
-A failure fails its job with the step or file that went wrong. Every job uploads a `smoke-test-<runner>` artifact with the report, the app's log and the installer's log, to diagnose it. In the `Release` workflow a failure means no tag, no release, no attestation and no updated manifest: fix it on a new `release/` branch (or the same one, before merging) and release again.
+Two more jobs install the package manager manifests the release will push, rendered by the same scripts from the installers just built, before anything is published:
+
+| Runner | Installs | Then checks |
+|---|---|---|
+| macOS Apple Silicon and Intel | the Homebrew Cask, from a local tap, with `brew install --cask` | the Cask downloads the `.dmg` the release publishes for that architecture, with its checksum; the app in `/Applications`; `shogun --version` from a login shell; `brew uninstall --cask` removes the app and the `shogun` link |
+| Windows | the Scoop manifest, with `scoop install` from the local file, after installing Scoop | the manifest downloads the `.msi` the release publishes, with its checksum; the Start menu shortcut; `shogun --version` from a new session with no Java on the `PATH`; `scoop uninstall` removes the app, the command and the shortcut |
+
+The release's download URLs don't exist yet, so each script copies the built installer into the package manager's download cache, where it looks for that URL (`brew --cache --cask`, Scoop's `cache_path`), and the package manager checks its checksum as it would a download. winget isn't smoke tested: its manifest is generated from the published release, and it installs the same `.msi`.
+
+A failure fails its job with the step or file that went wrong. Every job uploads a `smoke-test-<runner>` artifact (`smoke-test-homebrew-<runner>` and `smoke-test-scoop` for the manifests) with the report, the app's log and the installer's or package manager's log, to diagnose it. In the `Release` workflow a failure means no tag, no release, no attestation and no updated manifest: fix it on a new `release/` branch (or the same one, before merging) and release again.
 
 To try the smoke-test mode locally without touching your own settings, build the app (`./gradlew :desktopApp:createReleaseDistributable -PappVersion=1.0.0`), prepare a repository with `.github/smoke/prepare-repository.sh <folder>`, and run the launcher with an isolated home: `JAVA_TOOL_OPTIONS=-Duser.home=<empty folder>`, plus the three variables above.
 
@@ -138,7 +147,11 @@ One-time setup by the maintainer, before the first release that runs steps 8 and
 
 The `.msi` declares a fixed upgrade code (`upgradeUuid` in `desktopApp/build.gradle.kts`), so a newer `.msi` replaces the installed version; don't change it. jpackage strips `java.exe` from the bundled runtime, so `desktopApp/build.gradle.kts` copies it back from the build JDK after `createRuntimeImage`: the Scoop `shogun` command runs it.
 
-After a Compose Desktop or jpackage upgrade, check on Windows that the `.msi` layout still matches the Scoop manifest: install from the rendered manifest (`scoop install` with a local copy of `.github/scoop/shogunai.json` with the version and `sha256` filled in) and run `shogun --version`.
+The Scoop job of the [packaged smoke test](#packaged-smoke-test) checks that the `.msi` layout still matches the manifest on every release candidate, so a Compose Desktop or jpackage upgrade that changes it fails there.
+
+## Linux package
+
+jpackage's `.deb` maintainer scripts add and remove the applications menu entry with `xdg-desktop-menu`, which fails on a machine without a writable `/etc/xdg/menus` (servers, minimal containers). Compose doesn't let the build give jpackage its own scripts, so the Debian packaging tasks in `desktopApp/build.gradle.kts` rewrite the built `.deb`: each `xdg-desktop-menu` line in `postinst` and `prerm` prints a warning instead of failing the install or the removal. The build fails if jpackage's scripts stop having those lines, so a jpackage upgrade that changes them is noticed. The rewrite needs `dpkg-deb`, which Debian and Ubuntu have.
 
 ## Release checksums
 

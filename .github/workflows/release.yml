@@ -72,6 +72,7 @@ jobs:
       contents: read
     uses: ./.github/workflows/smoke-test.yml
     with:
+      version: ${{ needs.resolve-version.outputs.version }}
       ref: ${{ needs.resolve-version.outputs.ref }}
 
   create-release:
@@ -226,18 +227,11 @@ jobs:
           SHA256_ARM: ${{ steps.sha.outputs.arm }}
           SHA256_INTEL: ${{ steps.sha.outputs.intel }}
         run: |
-          if [ -z "$SHA256_ARM" ] || [ -z "$SHA256_INTEL" ]; then
-            echo "Missing dmg checksums in SHA256SUMS." >&2
-            exit 1
-          fi
+          source/.github/homebrew/render-cask.sh "$VERSION" "$SHA256_ARM" "$SHA256_INTEL" > "$RUNNER_TEMP/shogunai.rb"
 
           git clone "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/LuxionServer/homebrew-shogunai.git" tap
 
-          sed -e "s|@VERSION@|${VERSION}|" \
-              -e "s|@SHA256_ARM@|${SHA256_ARM}|" \
-              -e "s|@SHA256_INTEL@|${SHA256_INTEL}|" \
-              source/.github/homebrew/shogunai.rb > tap/Casks/shogunai.rb
-
+          cp "$RUNNER_TEMP/shogunai.rb" tap/Casks/shogunai.rb
           cat tap/Casks/shogunai.rb
 
           cd tap
@@ -279,18 +273,12 @@ jobs:
           VERSION: ${{ needs.resolve-version.outputs.version }}
           SHA256_MSI: ${{ steps.sha.outputs.msi }}
         run: |
-          if [ -z "$SHA256_MSI" ]; then
-            echo "Missing msi checksum in SHA256SUMS." >&2
-            exit 1
-          fi
+          source/.github/scoop/render-manifest.sh "$VERSION" "$SHA256_MSI" > "$RUNNER_TEMP/shogunai.json"
 
           git clone "https://x-access-token:${SCOOP_BUCKET_TOKEN}@github.com/LuxionServer/scoop-shogunai.git" bucket
           mkdir -p bucket/bucket
 
-          sed -e "s|@VERSION@|${VERSION}|g" \
-              -e "s|@SHA256_MSI@|${SHA256_MSI}|" \
-              source/.github/scoop/shogunai.json > bucket/bucket/shogunai.json
-
+          cp "$RUNNER_TEMP/shogunai.json" bucket/bucket/shogunai.json
           cat bucket/bucket/shogunai.json
 
           cd bucket
