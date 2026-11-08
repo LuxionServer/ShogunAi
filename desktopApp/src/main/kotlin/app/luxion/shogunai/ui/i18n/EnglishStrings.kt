@@ -899,6 +899,7 @@ object EnglishStrings : Strings {
     override val openAllInOrca = "Open all in Orca"
     override val addRepositoryToGroup = "Add repository"
     override val openAllWith = "Open all with…"
+    override val showInMultirepo = "Show in multirepo"
     override val openMultirepoAgentWith = "Open multirepo agent with…"
     override val cleanUpGroup = "Clean up group"
     override val cleanUpGroupTitle = "Clean up group"

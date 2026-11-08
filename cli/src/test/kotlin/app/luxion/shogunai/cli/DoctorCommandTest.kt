@@ -17,11 +17,14 @@ import app.luxion.shogunai.domain.FakeProjectRepository
 import app.luxion.shogunai.domain.FakeRepositoryProvisioningSource
 import app.luxion.shogunai.domain.FakeResourceLimitsRepository
 import app.luxion.shogunai.domain.FakeShellCommandExecutor
+import app.luxion.shogunai.domain.executor.CommandResult
 import app.luxion.shogunai.domain.io.LauncherFiles
 import app.luxion.shogunai.domain.io.UserPathEntries
 import app.luxion.shogunai.domain.model.CapacityProfile
 import app.luxion.shogunai.domain.model.DockerComposeProvider
+import app.luxion.shogunai.domain.model.GradleProvider
 import app.luxion.shogunai.domain.model.HostOs
+import app.luxion.shogunai.domain.model.MavenProvider
 import app.luxion.shogunai.domain.model.MultirepoDeclaration
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.ProjectConfig
@@ -73,9 +76,10 @@ class DoctorCommandTest {
         provisioning: FakeRepositoryProvisioningSource = FakeRepositoryProvisioningSource(),
         multirepos: FakeMultirepoSource = FakeMultirepoSource(),
         executor: FakeShellCommandExecutor = FakeShellCommandExecutor { command -> FakeShellCommandExecutor.success(command, "$gitVersion\n") },
+        variables: Map<String, String> = emptyMap(),
     ): ShogunCli {
         hooks?.let { fileManager.writtenTexts[settings] = it }
-        val environment = SystemHostEnvironment(HostOs.LINUX, mapOf("PATH" to "/usr/bin", "SHELL" to "/bin/bash"), home, loginShell = null)
+        val environment = SystemHostEnvironment(HostOs.LINUX, mapOf("PATH" to "/usr/bin", "SHELL" to "/bin/bash") + variables, home, loginShell = null)
         val locator = ExecutableLocator(HostOs.LINUX, home, { listOf("/usr/bin") }, isFile = { it in executables })
         return ShogunCli(
             executor = executor,
@@ -225,5 +229,71 @@ class DoctorCommandTest {
         assertEquals("multirepo:product", multirepo.getValue("id").jsonPrimitive.content)
         assertEquals("failed", multirepo.getValue("state").jsonPrimitive.content)
         assertTrue(multirepo.getValue("fix").jsonPrimitive.content.startsWith("'api': $folder/product-api isn't a Git repository"))
+    }
+
+    @Test
+    fun `provider runtimes are checked, in text and json`() {
+        val base = "$home/projects/main-repo"
+        val project = Project("1", "main-repo", ProjectConfig(base, "$home/worktrees", emptyList()))
+        val provisioning = FakeRepositoryProvisioningSource(
+            mapOf(base to RepositoryProvisioning(providers = RepositoryProviders(gradle = GradleProvider(), dockerCompose = DockerComposeProvider()))),
+        )
+        val fileManager = FakeFileManager(
+            existing = listOf("$base/gradlew"),
+            directories = setOf(base),
+            properties = mapOf("$base/gradle/wrapper/gradle-wrapper.properties" to mapOf("distributionUrl" to "https://services.gradle.org/distributions/gradle-9.1.0-bin.zip")),
+        )
+        val executor = FakeShellCommandExecutor { command ->
+            when (command.getOrNull(1)) {
+                "-version" -> CommandResult(command, 0, "", "openjdk version \"11.0.24\" 2024-07-16\n")
+                "compose" -> FakeShellCommandExecutor.success(command, "Docker Compose version v2.29.1\n")
+                "info" -> FakeShellCommandExecutor.failure(command, stderr = "Cannot connect to the Docker daemon at unix:///var/run/docker.sock")
+                else -> FakeShellCommandExecutor.success(command, "git version 2.45.1\n")
+            }
+        }
+        val run = { arguments: List<String> ->
+            out.clear()
+            cli(
+                executables = setOf("/usr/bin/git", "/usr/bin/shogun", "/usr/bin/java", "/usr/bin/docker"),
+                projects = listOf(project),
+                fileManager = fileManager,
+                provisioning = provisioning,
+                executor = executor,
+            ).run(arguments)
+        }
+
+        assertEquals(0, run(listOf("doctor")))
+        val lines = out.lines()
+        assertTrue("ok    main-repo: Gradle 9.1.0 at $base/gradlew" in lines, out.toString())
+        val java = lines.indexOf("warn  main-repo: Java for Gradle is Java 11 at /usr/bin/java, but Gradle 9.1.0 needs Java 17 or newer")
+        assertTrue(java >= 0, out.toString())
+        assertEquals("      fix: Install Java 17 or newer and point JAVA_HOME at it", lines[java + 1])
+        assertTrue("ok    main-repo: Docker Compose 2.29.1 at /usr/bin/docker" in lines, out.toString())
+        val daemon = lines.indexOf("warn  main-repo: Docker's daemon isn't running: Cannot connect to the Docker daemon at unix:///var/run/docker.sock")
+        assertTrue(lines[daemon + 1].startsWith("      fix: Start the Docker service with 'sudo systemctl start docker'"), out.toString())
+
+        assertEquals(0, run(listOf("doctor", "--json")))
+        val ids = Json.parseToJsonElement(out.toString()).jsonObject.getValue("checks").jsonArray.map { it.jsonObject.getValue("id").jsonPrimitive.content }
+        assertTrue(
+            ids.containsAll(listOf("provider:main-repo:gradle", "provider:main-repo:gradle-java", "provider:main-repo:docker-compose", "provider:main-repo:docker-daemon")),
+            "$ids",
+        )
+    }
+
+    @Test
+    fun `the doctor reads JAVA_HOME from the environment`() {
+        val base = "$home/projects/main-repo"
+        val project = Project("1", "main-repo", ProjectConfig(base, "$home/worktrees", emptyList()))
+        val provisioning = FakeRepositoryProvisioningSource(mapOf(base to RepositoryProvisioning(providers = RepositoryProviders(maven = MavenProvider()))))
+
+        val exit = cli(
+            projects = listOf(project),
+            fileManager = FakeFileManager(existing = listOf("$base/mvnw"), directories = setOf(base)),
+            provisioning = provisioning,
+            variables = mapOf("JAVA_HOME" to "/opt/jdk-gone"),
+        ).run(listOf("doctor"))
+
+        assertEquals(0, exit)
+        assertTrue("warn  main-repo: Java for Maven not found: JAVA_HOME is /opt/jdk-gone, which has no bin/java" in out.lines(), out.toString())
     }
 }

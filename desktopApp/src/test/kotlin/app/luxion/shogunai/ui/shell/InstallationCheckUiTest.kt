@@ -12,6 +12,7 @@ import androidx.compose.ui.test.v2.runComposeUiTest
 import app.luxion.shogunai.domain.io.HostPathSource
 import app.luxion.shogunai.domain.model.AgentToolId
 import app.luxion.shogunai.domain.model.CheckState
+import app.luxion.shogunai.domain.model.HostOs
 import app.luxion.shogunai.domain.model.InstallationCheck
 import app.luxion.shogunai.domain.model.InstallationFinding
 import app.luxion.shogunai.domain.model.InstallationReport
@@ -99,6 +100,17 @@ class InstallationCheckUiTest {
         InstallationCheck(CheckState.WARNING, InstallationFinding.ProviderTool("main-repo", ProviderToolId.ANDROID_SDK, "/opt/android-sdk", ProviderToolProblem.NoAndroidVirtualDevice, 0)),
         InstallationCheck(CheckState.WARNING, InstallationFinding.ProviderTool("main-repo", ProviderToolId.IOS_SIMULATOR, null, ProviderToolProblem.NoIosRuntime, 0)),
         InstallationCheck(CheckState.WARNING, InstallationFinding.ProviderTool("main-repo", ProviderToolId.PROVIDERS, null, ProviderToolProblem.ProvidersUnreadable("malformed"))),
+        InstallationCheck(CheckState.PASSED, InstallationFinding.ProviderTool("main-repo", ProviderToolId.GRADLE, "/repo/gradlew", version = "8.10.2")),
+        InstallationCheck(CheckState.PASSED, InstallationFinding.ProviderTool("main-repo", ProviderToolId.MAVEN_JAVA, "/usr/bin/java", version = "17")),
+        InstallationCheck(CheckState.PASSED, InstallationFinding.ProviderTool("main-repo", ProviderToolId.DOCKER_DAEMON, null, version = "27.3.1")),
+        InstallationCheck(CheckState.WARNING, InstallationFinding.ProviderTool("main-repo", ProviderToolId.GRADLE_JAVA, null, ProviderToolProblem.JavaHomeInvalid("/opt/jdk-gone"))),
+        InstallationCheck(CheckState.WARNING, InstallationFinding.ProviderTool("main-repo", ProviderToolId.GRADLE_JAVA, "/usr/bin/java", ProviderToolProblem.JavaTooOld(11, 17, "9.1.0"))),
+        InstallationCheck(CheckState.WARNING, InstallationFinding.ProviderTool("main-repo", ProviderToolId.MAVEN_JAVA, "/usr/bin/java", ProviderToolProblem.JavaTooOld(11, 17, "4.0.0"))),
+        InstallationCheck(CheckState.WARNING, InstallationFinding.ProviderTool("main-repo", ProviderToolId.GRADLE_JAVA, "/usr/bin/java", ProviderToolProblem.GradleTooOld(21, "8.4", "8.5"))),
+        InstallationCheck(CheckState.WARNING, InstallationFinding.ProviderTool("main-repo", ProviderToolId.DOCKER_COMPOSE, "/usr/bin/docker", ProviderToolProblem.TooOld("1.29.2", "2.0"))),
+        InstallationCheck(CheckState.WARNING, InstallationFinding.ProviderTool("main-repo", ProviderToolId.DOCKER_DAEMON, null, ProviderToolProblem.DaemonNotRunning(HostOs.MACOS, "Cannot connect"))),
+        InstallationCheck(CheckState.WARNING, InstallationFinding.ProviderTool("main-repo", ProviderToolId.DOCKER_DAEMON, null, ProviderToolProblem.DaemonNotRunning(HostOs.LINUX, null))),
+        InstallationCheck(CheckState.WARNING, InstallationFinding.ProviderTool("main-repo", ProviderToolId.DOCKER_DAEMON, null, ProviderToolProblem.DaemonNotRunning(HostOs.WINDOWS, null))),
         InstallationCheck(CheckState.PASSED, InstallationFinding.MultirepoCheck(multirepo, "product", listOf("app", "api"), 1, emptyList())),
         InstallationCheck(CheckState.PASSED, InstallationFinding.MultirepoCheck(multirepo, "product", listOf("app", "api"), 2, emptyList())),
         InstallationCheck(CheckState.WARNING, InstallationFinding.MultirepoCheck(multirepo, "product", emptyList(), 0, listOf(MultirepoProblem.DeclarationMissing))),
@@ -165,6 +177,28 @@ class InstallationCheckUiTest {
             "Group feature/TASK-123: the folder /home/dev/worktrees/app/TASK-123 of its app worktree doesn't exist. Restore it, or run git worktree prune in app.",
             EnglishStrings.installationFix(group),
         )
+    }
+
+    @Test
+    fun `provider runtimes read in both languages`() {
+        val java = InstallationCheck(
+            CheckState.WARNING,
+            InstallationFinding.ProviderTool("main-repo", ProviderToolId.GRADLE_JAVA, "/usr/bin/java", ProviderToolProblem.JavaTooOld(11, 17, "9.1.0")),
+        )
+        assertEquals("main-repo: Java for Gradle is Java 11 at /usr/bin/java, but Gradle 9.1.0 needs Java 17 or newer", EnglishStrings.installationSummary(java))
+        assertEquals("main-repo: Java de Gradle es Java 11 en /usr/bin/java, pero Gradle 9.1.0 necesita Java 17 o posterior", SpanishStrings.installationSummary(java))
+
+        val passed = InstallationCheck(CheckState.PASSED, InstallationFinding.ProviderTool("main-repo", ProviderToolId.GRADLE_JAVA, "/usr/bin/java", version = "21"))
+        assertEquals("main-repo: Java for Gradle is Java 21 at /usr/bin/java", EnglishStrings.installationSummary(passed))
+
+        val daemon = InstallationCheck(
+            CheckState.WARNING,
+            InstallationFinding.ProviderTool("main-repo", ProviderToolId.DOCKER_DAEMON, null, ProviderToolProblem.DaemonNotRunning(HostOs.LINUX, "Cannot connect")),
+        )
+        assertEquals("main-repo: Docker's daemon isn't running: Cannot connect", EnglishStrings.installationSummary(daemon))
+        assertEquals("main-repo: el daemon de Docker no está en marcha: Cannot connect", SpanishStrings.installationSummary(daemon))
+        assertTrue(EnglishStrings.installationFix(daemon)!!.contains("sudo systemctl start docker"))
+        assertTrue(SpanishStrings.installationFix(daemon)!!.startsWith("Arranca el servicio de Docker"))
     }
 
     @Test

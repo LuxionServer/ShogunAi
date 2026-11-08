@@ -732,6 +732,7 @@ interface Strings {
     val openAllInOrca: String
     val addRepositoryToGroup: String
     val openAllWith: String
+    val showInMultirepo: String
     val openMultirepoAgentWith: String
     val cleanUpGroup: String
     val cleanUpGroupTitle: String

@@ -69,7 +69,7 @@ A `Worktree` returned by creation also carries `skippedPostCreateCommands` and `
 
 - `MainBranch` — the branch worktrees are compared against: its `name` (`develop`) and the `ref` used in Git commands (`origin/develop`, or `develop` when there's no remote-tracking branch).
 - `Divergence` — commits `ahead` and `behind` with respect to another branch.
-- `WorktreeStatus` — the state of one worktree: `uncommittedChanges`, `upstream` and `mainBranch` divergences (`null` when they don't apply), `lastCommitAt`, `createdAt` (when the worktree was created, read from the modification time of the `commondir` file in Git's administrative folder for it, found through the worktree's `.git` file; `null` for the main worktree or when it can't be read) and `neverCommitted`. `base` is the divergence from the worktree's base (its recorded base branch, or the main branch when none resolves) and `baseName` that branch's name; both are `null` when there's no base or the worktree is on it. `hasOwnCommits` is true when the base comparison has `ahead > 0` (or, without a base, when the branch isn't "not started"). `isNotStarted` is `neverCommitted`: the branch never had commits of its own (see `ReadWorktreeStatusUseCase`). `isMergedIntoBase` and `isMergedIntoMainBranch` are derived from each comparison: the branch isn't "not started", has nothing that branch lacks (`ahead == 0`) and that branch has moved past it (`behind > 0`), so neither a freshly created branch nor one whose base moved on since it was created is reported as merged. `isMerged` is either of them.
+- `WorktreeStatus` — the state of one worktree: `uncommittedChanges`, `upstream` and `mainBranch` divergences (`null` when they don't apply), `lastCommitAt`, `createdAt` (when the worktree was created, read from the modification time of the `commondir` file in Git's administrative folder for it, found through the worktree's `.git` file; `null` for the main worktree or when it can't be read) and `neverCommitted`. `base` is the divergence from the worktree's base (its recorded base branch, or the main branch when none resolves) and `baseName` that branch's name; both are `null` when there's no base or the worktree is on it. `hasOwnCommits` is true when the base comparison has `ahead > 0` (or, without a base, when the branch isn't "not started"). `isNotStarted` is `neverCommitted`: the branch never had commits of its own (see `ReadWorktreeStatusUseCase`). `isMergedIntoBase` and `isMergedIntoMainBranch` are derived from each comparison: the branch isn't "not started", has nothing that branch lacks (`ahead == 0`) and that branch has moved past it (`behind > 0`), so neither a freshly created branch nor one whose base moved on since it was created is reported as merged; or, for a branch that isn't "not started", that branch already holds its changes (`mainBranchHoldsChanges`, `baseHoldsChanges`, set by `ReadWorktreeStatusUseCase` for squash and rebase merges). `isMerged` is either of them.
 
 ### `RepositoryProvisioning`
 
@@ -673,11 +673,21 @@ Reads a `WorktreeStatus`, running each command in the worktree's own folder:
 - `git rev-list --left-right --count <main ref>...HEAD` — main branch divergence, skipped when there's no main branch or the worktree is on it.
 - `git rev-list --left-right --count <base ref>...HEAD` — base divergence, for the `base` the caller passes (the main branch by default); the main branch divergence is reused when the base is the main branch, and it's skipped when the worktree is on its base.
 - `git log -1 --format=%ct` — last commit date, `null` if there are no commits.
+- The squash and rebase check (see [Squash and rebase merges](#squash-and-rebase-merges)) with `HEAD` as the branch — only for a main branch or base divergence with both `ahead > 0` and `behind > 0`, reused when the base is the main branch. It sets `mainBranchHoldsChanges` and `baseHoldsChanges`.
 - `git reflog show --format=%H refs/heads/<branch>` — only when the branch would otherwise read as merged into its base or the main branch and has no upstream: a reflog with a single entry (its creation) that is still the branch's tip means the branch never had commits of its own, so it reads as "not started" (`neverCommitted`) instead of merged.
 
 Every command runs with the Git read timeout.
 
-Squash and rebase merges aren't detected as merged, and remote-tracking branches are only as fresh as the user's last fetch.
+Remote-tracking branches are only as fresh as the user's last fetch.
+
+#### Squash and rebase merges
+
+A squash or rebase merge leaves a branch ahead of its target, because its changes land there in new commits. A branch reads as merged into a target that already holds its changes:
+
+1. `git rev-list --cherry-pick --right-only --count <target>...<branch>` counts the branch's commits without a commit with the same changes (same `git patch-id`) in the target. `0` is a rebase merge.
+2. Otherwise, `git merge-base <target> <branch>` gives the fork point and `git commit-tree <branch>^{tree} -p <fork point> -m squash` builds one unreferenced commit holding the branch's whole change, with a fixed author, committer and date so the same branch state always gives the same object. The same count over `<target>...<that commit>` being `0` is a squash merge.
+
+A failed or unreadable step means not merged. Patch ids compare each commit's own diff, so the target moving on after the merge doesn't matter; a squash whose conflict resolution changed the branch's changes, or one of several branches together, still reads as unmerged, and so does a branch whose commits cancel each other out. Branch deletion (`DeleteMergedBranchUseCase`, cleanup) applies the same check after `git merge-base --is-ancestor` fails.
 
 ### `CleanUpWorktreesUseCase`
 
@@ -785,7 +795,7 @@ Finds the base repository (main worktree) that contains a directory, for front e
 
 ### `DeleteMergedBranchUseCase`
 
-Deletes a local branch only when it is contained in its recorded base or in the project's main branch, resolved with `ResolveMainBranchUseCase` (`git merge-base --is-ancestor <branch> <ref>` against each, then `git branch -D -- <branch>`, the same rule cleanup uses), and returns whether it was deleted instead of failing. A branch merged only into its own upstream is kept, and a name starting with `-` is `InvalidRef`. Used by the CLI's Claude Code `WorktreeRemove` and Herdr hooks, where a kept branch is expected rather than an error.
+Deletes a local branch only when it is merged into its recorded base or into the project's main branch, resolved with `ResolveMainBranchUseCase` (`git merge-base --is-ancestor <branch> <ref>` against each, falling back to the [squash and rebase check](#squash-and-rebase-merges), then `git branch -D -- <branch>`, the same rule cleanup uses), and returns whether it was deleted instead of failing. A branch merged only into its own upstream is kept, and a name starting with `-` is `InvalidRef`. Used by the CLI's Claude Code `WorktreeRemove` and Herdr hooks, where a kept branch is expected rather than an error.
 
 ### `ProvisionWorktreeUseCase`
 
