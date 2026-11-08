@@ -38,8 +38,10 @@ Alternative considered: failing the whole `Result` with a new group-level `Workt
 
 `GroupRepositoryOutcome` gains `SKIPPED`, and `GroupRepositoryResult` gains `blockedBy: List<String> = emptyList()`. The use case doesn't build a message for skipped repositories; each surface words it:
 
-- CLI: `shogun: app: not created because the local files of api are unavailable` on standard error, after the failed repositories' lines; `--json` prints `result: "skipped"` with `error` set to that same sentence without the `shogun: app: ` prefix, `path` null.
+- CLI: `shogun: app: not created because the local files of api are unavailable` on standard error, in member order like the other lines; `--json` prints `result: "skipped"` with `error` set to that same sentence without the `shogun: app: ` prefix, `path` null.
 - Desktop: the "New change" dialog labels it with `groupRepositorySkipped(aliases)` ("not created: api has unavailable local files" / "no creado: api tiene ficheros locales no disponibles").
+
+The CLI's failed line used to keep only the first line of the error, which for `LocalFilesUnavailable` dropped every file and its fix. A group's failed line now prints the whole `LocalFilesUnavailable` message, as a single `shogun new` does, and keeps the first line for every other error.
 
 A new `WorktreeError` subtype would force an `ErrorTexts` entry in both error catalogues and the `ErrorDescription` mapping for a message that is never shown as an error on its own.
 

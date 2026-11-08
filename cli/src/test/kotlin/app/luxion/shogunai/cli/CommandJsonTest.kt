@@ -255,6 +255,16 @@ class CommandJsonTest {
         assertEquals("boom", groupCreationJson(creation).objects("repos").single().text("error"))
     }
 
+    @Test
+    fun `group creation json words a skipped repository's error from the repositories that stopped it`() {
+        val creation = GroupCreation("feature/TASK-1", listOf(GroupRepositoryResult("app", GroupRepositoryOutcome.SKIPPED, blockedBy = listOf("api", "docs"))))
+
+        val repo = groupCreationJson(creation).objects("repos").single()
+
+        assertEquals("skipped", repo.text("result"))
+        assertEquals("not created because the local files of api, docs are unavailable", repo.text("error"))
+    }
+
     private fun groupState(alias: String, status: Result<WorktreeStatus>?, base: MainBranch? = null) =
         GroupWorktreeState(GroupWorktree(alias, config, Worktree("/wt/$alias", "feature/TASK-1")), base, status, emptyList())
 

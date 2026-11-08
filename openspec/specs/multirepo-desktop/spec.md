@@ -199,6 +199,10 @@ The multirepo view SHALL offer "New change", a dialog like "New worktree" with t
 - **WHEN** `api`'s post-creation command fails
 - **THEN** the dialog reports `api`'s failure, and `app` and `api`'s kept worktree appear in the group, and only the worktrees that exist are opened when a runner was picked
 
+#### Scenario: Unavailable local files in one repository
+- **WHEN** `api` has a missing local file and the user confirms "New change" for `app` and `api` with a runner picked
+- **THEN** the dialog reports `api`'s failure with the local files summary and `app` as not created because of `api`, in the selected language, no worktree is created and nothing is opened
+
 ### Requirement: Multirepo agent in the multirepo view
 The multirepo view SHALL show the multirepo agent running in the multirepo folder with the agent indicator, next to "Open multirepo agent in Herdr" and "Open multirepo agent in Orca". Only an agent whose working directory is exactly the multirepo folder SHALL count, and the sidebar entry of the multirepo SHALL reflect its activity.
 

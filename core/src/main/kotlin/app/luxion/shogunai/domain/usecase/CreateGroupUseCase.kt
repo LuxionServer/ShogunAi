@@ -10,7 +10,7 @@ import app.luxion.shogunai.domain.model.BranchType
 import app.luxion.shogunai.domain.model.REMOTE_PREFIX
 import app.luxion.shogunai.domain.model.WorktreeError
 
-enum class GroupRepositoryOutcome { CREATED, EXISTING, FAILED }
+enum class GroupRepositoryOutcome { CREATED, EXISTING, FAILED, SKIPPED }
 
 data class GroupRepositoryResult(
     val alias: String,
@@ -19,6 +19,7 @@ data class GroupRepositoryResult(
     val skippedPostCreateCommands: List<List<String>> = emptyList(),
     val skippedVariables: List<String> = emptyList(),
     val error: Throwable? = null,
+    val blockedBy: List<String> = emptyList(),
 )
 
 data class GroupCreation(val branch: String, val repositories: List<GroupRepositoryResult>) {
@@ -45,11 +46,44 @@ class CreateGroupUseCase(
         val id = normalizeTaskId(taskId)
         if (!isValidGitRefSegment(id)) throw WorktreeError.InvalidTaskId(taskId)
         val branch = "${branchType.prefix}/$id"
-        val results = members.map { member ->
-            create(member, id, branchType, branch, fetch).also(onRepository)
+        val plans = members.map { member -> plan(member, branch) }
+        val unavailable = plans.mapNotNull { it.unavailable?.let { error -> it.member.alias to error } }.toMap()
+        val results = plans.map { plan ->
+            val settled = plan.settled
+            when {
+                settled != null -> settled
+                unavailable.isNotEmpty() -> stopped(plan.member.alias, unavailable)
+                else -> create(plan.member, id, branchType, branch, fetch)
+            }.also(onRepository)
         }
         GroupCreation(branch, results)
     }
+
+    private class MemberPlan(
+        val member: MultirepoMember,
+        val settled: GroupRepositoryResult? = null,
+        val unavailable: WorktreeError.LocalFilesUnavailable? = null,
+    )
+
+    private suspend fun plan(member: MultirepoMember, branch: String): MemberPlan {
+        val config = member.config
+        val existing = ListWorktreesUseCase(config, executor)()
+            .getOrElse { return MemberPlan(member, GroupRepositoryResult(member.alias, GroupRepositoryOutcome.FAILED, error = it)) }
+            .firstOrNull { !it.isMain && it.branch == branch }
+        if (existing != null) return MemberPlan(member, GroupRepositoryResult(member.alias, GroupRepositoryOutcome.EXISTING, existing.path))
+        val files = try {
+            checkLocalFiles(config, executor, fileManager, provisioningSource).unavailable
+        } catch (error: kotlinx.coroutines.CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            emptyList()
+        }
+        return MemberPlan(member, unavailable = files.takeIf { it.isNotEmpty() }?.let { WorktreeError.LocalFilesUnavailable(config.baseRepositoryPath, it) })
+    }
+
+    private fun stopped(alias: String, unavailable: Map<String, WorktreeError.LocalFilesUnavailable>): GroupRepositoryResult =
+        unavailable[alias]?.let { GroupRepositoryResult(alias, GroupRepositoryOutcome.FAILED, error = it) }
+            ?: GroupRepositoryResult(alias, GroupRepositoryOutcome.SKIPPED, blockedBy = unavailable.keys.toList())
 
     private suspend fun create(
         member: MultirepoMember,
@@ -60,9 +94,6 @@ class CreateGroupUseCase(
     ): GroupRepositoryResult {
         val config = member.config
         return try {
-            val existing = ListWorktreesUseCase(config, executor)().getOrThrow()
-                .firstOrNull { !it.isMain && it.branch == branch }
-            if (existing != null) return GroupRepositoryResult(member.alias, GroupRepositoryOutcome.EXISTING, existing.path)
             if (config.worktreesRoot.isBlank()) throw WorktreeError.InvalidRepositoryConfig(config.baseRepositoryPath, "the project has no worktrees folder")
             if (fetch) FetchRemoteUseCase(config, executor)().getOrThrow()
             val created = if (branchExists(config.baseRepositoryPath, branch)) {

@@ -118,11 +118,14 @@ fun groupCreationJson(creation: GroupCreation): JsonObject = buildJsonObject {
                     result.skippedPostCreateCommands.forEach { command -> add(buildJsonArray { command.forEach { add(JsonPrimitive(it)) } }) }
                 })
                 put("skippedVariables", buildJsonArray { result.skippedVariables.forEach { add(JsonPrimitive(it)) } })
-                put("error", result.error?.message)
+                put("error", if (result.outcome == GroupRepositoryOutcome.SKIPPED) skippedByLocalFiles(result.blockedBy) else result.error?.message)
             })
         }
     })
 }
+
+fun skippedByLocalFiles(blockedBy: List<String>): String =
+    "not created because the local files of ${blockedBy.joinToString(", ")} are unavailable"
 
 private val GroupRepositoryOutcome.label: String
     get() = name.lowercase()

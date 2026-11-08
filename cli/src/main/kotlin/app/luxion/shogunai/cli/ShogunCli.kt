@@ -929,8 +929,9 @@ class ShogunCli(
                     GroupRepositoryOutcome.EXISTING -> err.line("${result.alias}: already in the group at ${result.path}")
                     GroupRepositoryOutcome.FAILED -> err.line(
                         "shogun: ${result.alias}: couldn't create its worktree" + (if (result.path == null) "" else " (${result.path} kept)") + ": " +
-                            failureReason(result.error ?: IllegalStateException("unknown failure")),
+                            groupFailureReason(result.error ?: IllegalStateException("unknown failure")),
                     )
+                    GroupRepositoryOutcome.SKIPPED -> err.line("shogun: ${result.alias}: ${skippedByLocalFiles(result.blockedBy)}")
                 }
             }
         }
@@ -1701,6 +1702,9 @@ class ShogunCli(
         val listed = if (what.size > 1) what.dropLast(1).joinToString(", ") + " and " + what.last() else what.single()
         return "Run 'shogun clean ${flags.joinToString(" ")}' to remove $listed."
     }
+
+    private fun groupFailureReason(error: Throwable): String =
+        if (error is WorktreeError.LocalFilesUnavailable) error.message else failureReason(error)
 
     private fun failureReason(error: Throwable): String {
         val gitOutput = (error as? WorktreeError.GitCommandFailed)?.errorOutput.orEmpty()
