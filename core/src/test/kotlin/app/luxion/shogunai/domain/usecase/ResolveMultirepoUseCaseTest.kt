@@ -6,6 +6,8 @@ import app.luxion.shogunai.domain.FakeMultirepoSource
 import app.luxion.shogunai.domain.model.AgentLaunchConfig
 import app.luxion.shogunai.domain.model.MAX_MULTIREPO_NAME_LENGTH
 import app.luxion.shogunai.domain.model.MultirepoDeclaration
+import app.luxion.shogunai.domain.model.MultirepoUnavailability
+import app.luxion.shogunai.domain.model.UnavailableMultirepo
 import app.luxion.shogunai.domain.model.WorkspaceSetting
 import app.luxion.shogunai.domain.model.WorktreeError
 import kotlinx.coroutines.test.runTest
@@ -313,6 +315,33 @@ class ResolveMultirepoUseCaseTest {
 
         assertEquals(listOf(world.folder), world.resolver.known().map { it.folder })
         assertNull(MultirepoContext(world.multirepo, world.folder, null).alias)
+    }
+
+    @Test
+    fun `listing splits the known multirepos into available and unavailable with the reason`() = runTest {
+        val unreachable = "/Volumes/External/main-multirepo/"
+        val empty = "/home/dev/projects/empty"
+        world.fileManager.writeText(empty, "")
+        world.source.known += listOf(unreachable, empty, "/home/dev/projects/invalid", "/home/dev/projects/unreadable", "/home/dev/projects/silent")
+        world.source.unreadable["/home/dev/projects/invalid"] = WorktreeError.InvalidMultirepo("/home/dev/projects/invalid/.shogunai-multirepo.json", "unexpected end of input")
+        world.source.unreadable["/home/dev/projects/unreadable"] = IllegalStateException("permission denied")
+        world.source.unreadable["/home/dev/projects/silent"] = IllegalStateException()
+
+        val listing = world.resolver.listing()
+
+        assertEquals(listOf(world.folder), listing.available.map { it.folder })
+        assertEquals(
+            listOf(
+                UnavailableMultirepo("/Volumes/External/main-multirepo", MultirepoUnavailability.FolderUnreachable),
+                UnavailableMultirepo(empty, MultirepoUnavailability.DeclarationMissing),
+                UnavailableMultirepo("/home/dev/projects/invalid", MultirepoUnavailability.InvalidDeclaration("unexpected end of input")),
+                UnavailableMultirepo("/home/dev/projects/unreadable", MultirepoUnavailability.InvalidDeclaration("permission denied")),
+                UnavailableMultirepo("/home/dev/projects/silent", MultirepoUnavailability.InvalidDeclaration("")),
+            ),
+            listing.unavailable,
+        )
+        assertEquals("main-multirepo", listing.unavailable.first().name)
+        assertEquals("/", UnavailableMultirepo("/", MultirepoUnavailability.FolderUnreachable).name)
     }
 
     @Test

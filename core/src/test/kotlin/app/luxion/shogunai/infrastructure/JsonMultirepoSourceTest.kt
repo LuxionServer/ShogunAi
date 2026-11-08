@@ -161,20 +161,6 @@ class JsonMultirepoSourceTest {
     }
 
     @Test
-    fun `forgetMissing drops entries whose folder is gone and keeps folders without a declaration`() {
-        val moved = home.resolve("moved")
-        val withoutDeclaration = home.resolve("empty").also { Files.createDirectories(it) }
-        listOf(folder, moved, withoutDeclaration).forEach { source.remember(it.toString()) }
-        source.approve(moved.toString(), "subject")
-
-        val forgotten = source.forgetMissing()
-
-        assertEquals(listOf(moved.toString()), forgotten)
-        assertEquals(listOf(folder.toString(), withoutDeclaration.toString()), source.knownFolders())
-        assertFalse(registry.readText().contains(moved.toString()))
-    }
-
-    @Test
     fun `approves a subject for one folder only`() {
         val other = home.resolve("other").also { Files.createDirectories(it) }
         source.remember(folder.toString())
@@ -278,7 +264,6 @@ class JsonMultirepoSourceTest {
         registry.writeText("""{"multirepos":["root.json"]}""")
 
         assertEquals(listOf("root.json"), source.knownFolders())
-        assertEquals(listOf("root.json"), source.forgetMissing())
     }
 
     @Test
@@ -290,12 +275,5 @@ class JsonMultirepoSourceTest {
         Files.delete(registry)
         Files.createDirectories(registry)
         assertEquals(emptyList(), source.knownFolders())
-    }
-
-    @Test
-    fun `forgetMissing with every folder present forgets nothing`() {
-        source.remember(folder.toString())
-
-        assertEquals(emptyList(), source.forgetMissing())
     }
 }
