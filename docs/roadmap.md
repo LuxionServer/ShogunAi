@@ -127,9 +127,9 @@ Settings should let people customize ShogunAi without making them configure ever
 
 Compose Desktop apps can be checked in the background on macOS (`shogun headless` and the `desktop-app` provider), but two gaps remain. Real keyboard input doesn't reach an app whose window isn't active: a bridge that posts events to the app's own queue, or a key tool in Compose Hot Reload's MCP server (a feature request to JetBrains), could close it. And hiding and capturing a window are macOS-only: Windows and Linux need their own way to keep the app out of sight and capture its window, or a virtual display. Each needs a spike before becoming a change. The desktop turn that agents take for computer use (`shogun desktop`) is cooperative and only for agents: waiting for it from the desktop app, and noticing that the person is using the desktop so agents wait for them too, are left for when the turn is in use.
 
-### A follow-up view for people who don't run agents
+### A contract for external tracking tools
 
-People who don't write the code, such as a product owner or a manager, already follow changes through multirepo groups: which branches exist in each repository, how far each one is from its base and whether it's merged. A mode of the control tower for them would show that view, without the actions and agent states that only make sense on the machine where the agents run. It needs deciding what it reads (local clones, or only the remote branches) and how it relates to the pull request state of the GitHub integration below.
+Tools outside ShogunAi, such as a follow-up view for a product owner, could read how a change progresses in each repository from GitHub alone if the conventions ShogunAi follows were written down as a contract: branches named after the task id (`feature/TASK-123`) in every repository the change touches, how to infer each branch's base without local state (`develop`, or `epic/<name>` for a change branched from an epic), and where an approximate progress is read from, either the checked tasks of the change's OpenSpec `tasks.md`, each naming the repository it touches, or a trailer in the commits (`Progress: 3/9`) written by a skill or the workflow guide for agents that don't plan with OpenSpec. It needs the first such tool to say what it reads before it becomes a change.
 
 ### Integration with GitHub and task trackers
 
@@ -140,6 +140,10 @@ Creating a worktree from a GitHub issue or a tracker task (deriving the task id 
 Sending anonymous errors and crashes to a remote service, in the style of the crash reporters used in mobile apps. It would only exist as an explicit opt-in on top of the local diagnostics, and needs a decision on where reports go and how to guarantee that no paths, project names or branch names are sent, since the repository is public and the users are developers.
 
 ## Out of scope for now
+
+### A follow-up view for people who don't run agents
+
+A product owner or a manager who wants to know which repositories of a task are done (the backend merged, Android in review, iOS still in progress) doesn't run agents or keep clones, so a read-only mode of the control tower would serve a different audience with almost none of ShogunAi's domain. It's being explored as a separate project built on GitHub's API, and ShogunAi doesn't grow in that direction: its part is the contract for external tracking tools under exploration.
 
 ### Running agents inside the app
 

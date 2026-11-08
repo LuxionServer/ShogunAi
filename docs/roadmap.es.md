@@ -127,9 +127,9 @@ Los Ajustes deberían permitir personalizar ShogunAi sin obligar a configurarlo 
 
 Las apps de Compose Desktop ya se pueden comprobar en segundo plano en macOS (`shogun headless` y el provider `desktop-app`), pero quedan dos huecos. La entrada real de teclado no llega a una app cuya ventana no está activa: un puente que publique los eventos en la cola de la propia app, o una herramienta de teclas en el servidor MCP de Compose Hot Reload (una petición a JetBrains), podrían cerrarlo. Y ocultar y capturar una ventana solo funciona en macOS: Windows y Linux necesitan su propia forma de mantener la app fuera de la vista y capturar su ventana, o una pantalla virtual. Cada uno necesita un spike antes de convertirse en un cambio. El turno del escritorio que piden los agentes para computer use (`shogun desktop`) es cooperativo y solo para agentes: esperarlo desde la app de escritorio, y darse cuenta de que la persona está usando el escritorio para que los agentes también la esperen, quedan para cuando el turno esté en uso.
 
-### Una vista de seguimiento para quien no ejecuta agentes
+### Un contrato para herramientas de seguimiento externas
 
-Quienes no escriben el código, como un product owner o un manager, ya siguen los cambios a través de los grupos de los multirepos: qué ramas existen en cada repositorio, a qué distancia está cada una de su base y si está mergeada. Un modo de la torre de control para ellos mostraría esa vista, sin las acciones ni los estados de agente que solo tienen sentido en el equipo donde se ejecutan los agentes. Hay que decidir qué lee (clones locales, o solo las ramas remotas) y cómo se relaciona con el estado de los pull requests de la integración con GitHub de más abajo.
+Herramientas ajenas a ShogunAi, como una vista de seguimiento para un product owner, podrían leer cómo avanza un cambio en cada repositorio solo desde GitHub si las convenciones que sigue ShogunAi quedaran escritas como contrato: ramas con el id de la tarea (`feature/TASK-123`) en cada repositorio que toca el cambio, cómo deducir la base de cada rama sin estado local (`develop`, o `epic/<nombre>` para un cambio que sale de un epic) y de dónde se lee un progreso aproximado, ya sea de las tareas marcadas del `tasks.md` de OpenSpec del cambio, cada una con el repositorio que toca, o de un trailer en los commits (`Progress: 3/9`) que escriba una skill o la guía de flujo para los agentes que no planifican con OpenSpec. Hace falta que la primera de esas herramientas diga qué lee antes de convertirlo en un cambio.
 
 ### Integración con GitHub y gestores de tareas
 
@@ -140,6 +140,10 @@ Crear un worktree desde un issue de GitHub o una tarea de un gestor (derivando e
 Enviar errores y cuelgues anónimos a un servicio remoto, al estilo de los reporteros de fallos de las apps móviles. Solo existiría como opt-in explícito sobre el diagnóstico local, y hay que decidir adónde van los reportes y cómo garantizar que no se envían rutas, nombres de proyecto ni de rama, porque el repositorio es público y los usuarios son desarrolladores.
 
 ## Fuera de alcance por ahora
+
+### Una vista de seguimiento para quien no ejecuta agentes
+
+Un product owner o un manager que quiere saber qué repositorios de una tarea están terminados (el backend mergeado, Android en revisión, iOS aún en curso) no ejecuta agentes ni tiene clones, así que un modo de solo lectura de la torre de control serviría a otro público con casi nada del dominio de ShogunAi. Se estudia como un proyecto aparte apoyado en la API de GitHub, y ShogunAi no crece en esa dirección: su parte es el contrato para herramientas de seguimiento externas que está en estudio.
 
 ### Ejecutar agentes dentro de la app
 
