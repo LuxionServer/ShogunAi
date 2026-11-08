@@ -16,10 +16,13 @@ import androidx.compose.ui.test.v2.runComposeUiTest
 import androidx.compose.ui.unit.dp
 import app.luxion.shogunai.domain.FakeProjectRepository
 import app.luxion.shogunai.domain.FakeShellPreferenceRepository
+import app.luxion.shogunai.domain.model.KnownMultirepos
 import app.luxion.shogunai.domain.model.Multirepo
 import app.luxion.shogunai.domain.model.MultirepoDeclaration
+import app.luxion.shogunai.domain.model.MultirepoUnavailability
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.ProjectConfig
+import app.luxion.shogunai.domain.model.UnavailableMultirepo
 import app.luxion.shogunai.domain.model.WorkspaceSetting
 import app.luxion.shogunai.ui.multirepo.MultirepoCatalog
 import kotlin.test.Test
@@ -41,10 +44,12 @@ class MultirepoShellTest {
     private var known = listOf(
         Multirepo(folder, MultirepoDeclaration(repos = mapOf("app" to "app", "api" to "api", "docs" to "docs"), worktreesRoot = "../product-worktrees"), approved = true),
     )
+    private var unavailable = emptyList<UnavailableMultirepo>()
+    private val forgotten = mutableListOf<String>()
     private val repository = FakeProjectRepository(initialProjects = listOf(tools, docs, app, api))
     private val preferences = FakeShellPreferenceRepository()
 
-    private fun viewModel() = ShellViewModel(repository, preferences, multirepoCatalog = MultirepoCatalog { known })
+    private fun viewModel() = ShellViewModel(repository, preferences, multirepoCatalog = MultirepoCatalog { KnownMultirepos(known, unavailable) })
 
     @Test
     fun `the projects of a multirepo are its members`() {
@@ -95,6 +100,104 @@ class MultirepoShellTest {
         assertEquals(ShellDestination.Active, viewModel.destination)
         assertTrue(viewModel.memberships.isEmpty())
         assertEquals(4, viewModel.projects.size)
+    }
+
+    private val unreachable = UnavailableMultirepo("/Volumes/External/main-multirepo", MultirepoUnavailability.FolderUnreachable)
+
+    private fun viewModelWithForget() = ShellViewModel(
+        repository,
+        preferences,
+        multirepoCatalog = MultirepoCatalog { KnownMultirepos(known, unavailable) },
+        forgetMultirepo = { removed ->
+            forgotten += removed
+            unavailable = unavailable.filterNot { it.folder == removed }
+        },
+    )
+
+    @Test
+    fun `an unavailable multirepo is listed, never forgotten on load and its view is restored after a restart`() {
+        unavailable = listOf(unreachable)
+        val viewModel = viewModelWithForget()
+
+        viewModel.selectMultirepo(unreachable.folder)
+        viewModel.refresh()
+
+        assertEquals(listOf(unreachable), viewModel.unavailableMultirepos)
+        assertTrue(forgotten.isEmpty())
+        assertEquals(ShellDestination.MultirepoView(unreachable.folder), viewModelWithForget().destination)
+        assertTrue(forgotten.isEmpty())
+    }
+
+    @Test
+    fun `removing an unavailable multirepo asks first, forgets it and falls back`() {
+        unavailable = listOf(unreachable)
+        val viewModel = viewModelWithForget()
+        viewModel.selectMultirepo(unreachable.folder)
+        viewModel.toggleMultirepoCollapsed(unreachable.folder)
+
+        viewModel.requestMultirepoRemoval(unreachable.folder)
+        assertEquals(unreachable, viewModel.multirepoPendingRemoval)
+        assertTrue(forgotten.isEmpty())
+        viewModel.confirmMultirepoRemoval()
+
+        assertEquals(listOf(unreachable.folder), forgotten)
+        assertEquals(null, viewModel.multirepoPendingRemoval)
+        assertTrue(viewModel.unavailableMultirepos.isEmpty())
+        assertFalse(unreachable.folder in viewModel.collapsedMultirepos)
+        assertEquals(ShellDestination.Active, viewModel.destination)
+    }
+
+    @Test
+    fun `a cancelled removal changes nothing and only unavailable multirepos can be removed`() {
+        unavailable = listOf(unreachable)
+        val viewModel = viewModelWithForget()
+
+        viewModel.requestMultirepoRemoval(unreachable.folder)
+        viewModel.cancelMultirepoRemoval()
+        viewModel.confirmMultirepoRemoval()
+        viewModel.requestMultirepoRemoval(folder)
+        viewModel.confirmMultirepoRemoval()
+
+        assertTrue(forgotten.isEmpty())
+        assertEquals(listOf(unreachable), viewModel.unavailableMultirepos)
+        assertEquals(1, viewModel.memberships.size)
+    }
+
+    @Test
+    fun `an unavailable multirepo has no settings and shows its worktrees once reachable again`() {
+        unavailable = listOf(unreachable)
+        val viewModel = viewModelWithForget()
+        viewModel.editMultirepo(unreachable.folder)
+        viewModel.refresh()
+        assertEquals(ShellDestination.Active, viewModel.destination)
+        viewModel.selectMultirepo(unreachable.folder)
+
+        unavailable = emptyList()
+        known = known + Multirepo(unreachable.folder, MultirepoDeclaration(worktreesRoot = "../w"), approved = true)
+        viewModel.refresh()
+
+        assertEquals(ShellDestination.MultirepoView(unreachable.folder), viewModel.destination)
+        assertTrue(viewModel.unavailableMultirepos.isEmpty())
+        assertTrue(viewModel.memberships.any { it.folder == unreachable.folder })
+    }
+
+    @Test
+    fun `the catalog sorts the unavailable multirepos and keeps nothing when the registry can't be read`() {
+        val zeta = UnavailableMultirepo("/home/dev/projects/zeta", MultirepoUnavailability.DeclarationMissing)
+        var failing = false
+        val catalog = MultirepoCatalog {
+            check(!failing)
+            KnownMultirepos(emptyList(), listOf(zeta, unreachable))
+        }
+
+        catalog.refresh()
+        assertEquals(listOf(unreachable, zeta), catalog.unavailable)
+        assertEquals(zeta, catalog.findUnavailable(zeta.folder))
+        failing = true
+        catalog.refresh()
+
+        assertTrue(catalog.unavailable.isEmpty())
+        assertEquals(null, catalog.findUnavailable(zeta.folder))
     }
 
     @Test
@@ -269,7 +372,7 @@ class MultirepoShellTest {
         val viewModel = ShellViewModel(
             repository,
             preferences,
-            multirepoCatalog = MultirepoCatalog { known },
+            multirepoCatalog = MultirepoCatalog { KnownMultirepos(known, unavailable) },
             registerWorkspaceProject = { multirepo ->
                 registered += multirepo.folder
                 repository.save(workspaceProject)
@@ -289,7 +392,7 @@ class MultirepoShellTest {
         ShellViewModel(
             repository,
             preferences,
-            multirepoCatalog = MultirepoCatalog { known },
+            multirepoCatalog = MultirepoCatalog { KnownMultirepos(known, unavailable) },
             registerWorkspaceProject = { multirepo -> registered += multirepo.folder; true },
         )
 
