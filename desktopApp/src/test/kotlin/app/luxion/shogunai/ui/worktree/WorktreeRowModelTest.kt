@@ -70,6 +70,17 @@ class WorktreeRowModelTest {
     )
 
     @Test
+    fun `a row inside a change shows its label instead of the branch and keeps the branch in its tooltip`() {
+        val model = worktreeRowModel(
+            worktree(), WorktreeStatusState.Loaded(status()), "main", emptyList(), null, null, null, null, Duration.ofDays(3), now, EnglishStrings,
+            label = "main-repo",
+        )
+
+        assertEquals(BranchParts(null, "main-repo"), model.name.branchParts)
+        assertEquals("feature/TASK-123", model.name.branchTooltip)
+    }
+
+    @Test
     fun `a missing folder badge beats a running agent`() {
         val model = model(worktree(isPrunable = true), agents = listOf(RunningAgent("claude")))
 

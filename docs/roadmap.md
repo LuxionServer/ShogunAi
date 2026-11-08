@@ -29,7 +29,7 @@ Numbered in the order they will be picked up: the number is the priority.
 ShogunAi has to work the first time on a machine that isn't the one it's developed on, and every regression has to be caught before a release reaches anyone. A demo on another Mac showed why: the app, opened from the Dock, gets macOS's minimal `PATH`, so it reported a `shogun` command installed by Homebrew as not on the `PATH`, the guided tour refused to start and Claude Code's hooks read as unusable; and creating a worktree failed while copying its local files. Neither showed up on the developer's machine, whose own setup hides them. In order:
 
 - Tests that hold the product to it:
-  - Raising the coverage floors that CI enforces up to 100%: the lines (88% today) and branches (74%) of the desktop app outside its composables, which the end-to-end tests cover. Lines of `core` and `cli`, branches of `cli`, every branch of `core` that some input can reach and the desktop app's texts are already covered. The desktop app goes up one package per change, in this order: project settings, worktrees and their inspector, the shell and the menu bar icon, the machine views and multirepos, shared components, and last the app's wiring.
+  - Raising the coverage floors that CI enforces up to 100%: the lines (89% today) and branches (75%) of the desktop app outside its composables, which the end-to-end tests cover. Lines of `core` and `cli`, branches of `cli`, every branch of `core` that some input can reach and the desktop app's texts are already covered. The desktop app goes up one package per change, in this order: project settings, worktrees and their inspector, the shell and the menu bar icon, the machine views and multirepos, shared components, and last the app's wiring.
 - What the packaged smoke test left out: installing the `.deb` on a machine without a system menus folder (servers, minimal containers), where its post-install script fails today; and smoke testing the Homebrew Cask and the Scoop manifest rendered for a release before it's published, which today install the same `.dmg` and `.msi` the smoke test checks.
 - What the providers' tools need beyond being installed, in `shogun doctor` and "Check Installation": the Java runtime behind Gradle and Maven, Docker's daemon running, and minimum versions; today they check that each tool is found and runs.
 
@@ -37,7 +37,6 @@ ShogunAi has to work the first time on a machine that isn't the one it's develop
 
 A UX review of the implemented v2 interface, done on `develop` at `aaf42f94` with sample data, concluded that the app should first answer "what needs me?" and "where is each agent?", and that today it answers neither at a glance. Its fixes are split into changes, in order:
 
-- One row per multirepo change in Active, showing the worst state of its repositories, which expands into one child row per repository; the child rows don't repeat the branch.
 - The rest of the Machine views (Maven daemons, emulators, simulators, DerivedData, Compose projects) get what the Gradle daemons view got: an unknown owner dimmed instead of blank, ghost buttons in their rows, and the reason a disabled action is disabled written next to it.
 
 ### 3. Orca, a second first-class runner

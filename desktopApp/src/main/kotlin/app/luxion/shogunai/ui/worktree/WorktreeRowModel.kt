@@ -79,9 +79,10 @@ data class NameCell(
     val project: String?,
     val groupTag: String? = null,
     val isMain: Boolean = false,
+    val label: String? = null,
 ) {
     val branchTooltip: String get() = listOfNotNull(branch, origin).joinToString("\n")
-    val branchParts: BranchParts get() = branchParts(branch)
+    val branchParts: BranchParts get() = label?.let { BranchParts(null, it) } ?: branchParts(branch)
 }
 
 data class BranchParts(val prefix: String?, val rest: String)
@@ -157,6 +158,7 @@ fun worktreeRowModel(
     strings: Strings,
     alias: String? = null,
     groupTag: String? = null,
+    label: String? = null,
     desktopTurn: WorktreeDesktopTurn? = null,
     headlessApp: HeadlessAppProcess? = null,
     agentsReadAt: Instant? = null,
@@ -166,7 +168,7 @@ fun worktreeRowModel(
     return WorktreeRowModel(
         badge = StateBadge(kind, kind.label(strings)),
         execution = executionCell(agents, agentsReadAt, now, desktopTurn, emulator, simulator, headlessApp, strings, clickToFocus = true),
-        name = nameCell(worktree, origin, projectName, strings).copy(groupTag = groupTag),
+        name = nameCell(worktree, origin, projectName, strings).copy(groupTag = groupTag, label = label),
         git = gitCell(status, loaded, mainBranchName, strings),
         time = activityDate(worktree, loaded).let { date ->
             TimeCell(
