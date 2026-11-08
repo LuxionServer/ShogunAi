@@ -13,6 +13,8 @@ import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 import java.time.Instant
+import app.luxion.shogunai.domain.io.DerivedDataSizeStore
+import app.luxion.shogunai.domain.io.DerivedDataSource
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -176,5 +178,43 @@ class MeasureDerivedDataUseCaseTest {
 
         assertEquals(listOf(MeasuredSize(app.path, 15L, packagesBytes = 4L)), sizes)
         assertEquals(listOf(app.path), source.packagesMeasured)
+    }
+
+    @Test
+    fun `an unreadable store measures everything`() = runTest {
+        val app = folder("App", monday)
+        val store = object : DerivedDataSizeStore by FakeDerivedDataSizeStore() {
+            override fun load(): Map<String, RememberedSize> = throw IllegalStateException("unreadable")
+        }
+
+        val sizes = MeasureDerivedDataUseCase(source(app to 15L), store)(listOf(app)).toList()
+
+        assertEquals(listOf(MeasuredSize(app.path, 15L, packagesBytes = 0L)), sizes)
+    }
+
+    @Test
+    fun `a remembered size without packages or for a folder without a last access is measured again`() = runTest {
+        val app = folder("App", monday)
+        val never = folder("Never", null)
+        val source = source(app to 15L, never to 3L)
+        val store = FakeDerivedDataSizeStore(mapOf(app.path to RememberedSize(12L, monday, null), never.path to RememberedSize(2L, monday, 0L)))
+
+        MeasureDerivedDataUseCase(source, store)(listOf(app, never)).toList()
+
+        assertEquals(setOf(app.path, never.path), source.measured.toSet())
+    }
+
+    @Test
+    fun `a size whose packages can't be measured isn't remembered`() = runTest {
+        val app = folder("App", monday)
+        val source = object : DerivedDataSource by source(app to 15L) {
+            override suspend fun packagesSize(folder: DerivedDataFolder): Long = throw java.io.IOException("unreadable")
+        }
+        val store = FakeDerivedDataSizeStore()
+
+        val sizes = MeasureDerivedDataUseCase(source, store)(listOf(app)).toList()
+
+        assertEquals(listOf(MeasuredSize(app.path, 15L, packagesBytes = null)), sizes)
+        assertTrue(store.sizes.isEmpty())
     }
 }

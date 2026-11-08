@@ -4,9 +4,13 @@ import app.luxion.shogunai.domain.io.HostPathSource
 import app.luxion.shogunai.domain.model.AgentToolId
 import app.luxion.shogunai.domain.model.CheckState
 import app.luxion.shogunai.domain.model.InstallationCheck
+import app.luxion.shogunai.domain.model.HostOs
 import app.luxion.shogunai.domain.model.InstallationFinding
 import app.luxion.shogunai.domain.model.InstallationReport
 import app.luxion.shogunai.domain.model.LocalFileOrigin
+import app.luxion.shogunai.domain.model.MultirepoProblem
+import app.luxion.shogunai.domain.model.ProviderToolId
+import app.luxion.shogunai.domain.model.ProviderToolProblem
 import app.luxion.shogunai.domain.model.UnavailableLocalFile
 import app.luxion.shogunai.domain.model.UnavailableReason
 import kotlin.test.Test
@@ -183,5 +187,161 @@ class InstallationReportTextTest {
     @Test
     fun `markers name every state`() {
         assertTrue(CheckState.entries.map(InstallationReportText::marker).distinct().size == CheckState.entries.size)
+    }
+
+    @Test
+    fun `details are added only when there is one`() {
+        assertEquals("Couldn't read Git's version from /usr/bin/git", summary(CheckState.FAILED, InstallationFinding.Git("/usr/bin/git", null, "2.29")))
+        assertEquals("Couldn't read Git's version from /usr/bin/git", summary(CheckState.FAILED, InstallationFinding.Git("/usr/bin/git", null, "2.29", " ")))
+    }
+
+    @Test
+    fun `shogun fixes name its folder or say its folder`() {
+        val unknownFolder = InstallationFinding.ShogunCommand(CommandLineToolState.INSTALLED_NOT_ON_PATH, "/opt/shogun", null, true)
+
+        assertEquals("Restart your terminal and Claude Code so they pick up its folder", fix(CheckState.WARNING, unknownFolder))
+        assertEquals(
+            "The hooks run 'shogun'. Add its folder to your PATH",
+            fix(CheckState.WARNING, InstallationFinding.Hooks(settings, HooksInstallState.INSTALLED, shogun = CommandLineToolState.INSTALLED_NOT_ON_PATH)),
+        )
+        assertEquals(
+            "The hooks run 'shogun'. Install the command from the desktop app's Preferences › Claude Code, or follow the installation guide",
+            fix(CheckState.FAILED, InstallationFinding.Hooks(settings, HooksInstallState.INSTALLED, shogun = CommandLineToolState.AVAILABLE)),
+        )
+    }
+
+    private fun tool(tool: ProviderToolId, location: String? = null, problem: ProviderToolProblem? = null, installed: Int? = null, version: String? = null) =
+        InstallationFinding.ProviderTool("main-repo", tool, location, problem, installed, version)
+
+    @Test
+    fun `provider runtime texts`() {
+        assertEquals("main-repo: Gradle 8.10.2 at /repo/gradlew", summary(CheckState.PASSED, tool(ProviderToolId.GRADLE, "/repo/gradlew", version = "8.10.2")))
+        assertEquals("main-repo: Java for Gradle 21 at /usr/bin/java", summary(CheckState.PASSED, tool(ProviderToolId.GRADLE_JAVA, "/usr/bin/java", version = "21")))
+        assertEquals("main-repo: Docker daemon 27.3.1 is running", summary(CheckState.PASSED, tool(ProviderToolId.DOCKER_DAEMON, version = "27.3.1")))
+
+        val javaHome = tool(ProviderToolId.MAVEN_JAVA, problem = ProviderToolProblem.JavaHomeInvalid("/opt/jdk-gone"))
+        assertEquals("main-repo: Java for Maven not found: JAVA_HOME is /opt/jdk-gone, which has no bin/java", summary(CheckState.WARNING, javaHome))
+        assertTrue(fix(CheckState.WARNING, javaHome)!!.contains("unset it"))
+
+        val tooOld = tool(ProviderToolId.GRADLE_JAVA, "/usr/bin/java", ProviderToolProblem.JavaTooOld(11, 17, "9.1.0"))
+        assertEquals("main-repo: Java for Gradle is Java 11 at /usr/bin/java, but Gradle 9.1.0 needs Java 17 or newer", summary(CheckState.WARNING, tooOld))
+        assertEquals("Install Java 17 or newer and point JAVA_HOME at it", fix(CheckState.WARNING, tooOld))
+        val mavenTooOld = tool(ProviderToolId.MAVEN_JAVA, "/usr/bin/java", ProviderToolProblem.JavaTooOld(11, 17, "4.0.0"))
+        assertEquals("main-repo: Java for Maven is Java 11 at /usr/bin/java, but Maven 4.0.0 needs Java 17 or newer", summary(CheckState.WARNING, mavenTooOld))
+
+        val gradleTooOld = tool(ProviderToolId.GRADLE_JAVA, "/usr/bin/java", ProviderToolProblem.GradleTooOld(21, "8.4", "8.5"))
+        assertEquals(
+            "main-repo: Java for Gradle is Java 21 at /usr/bin/java, which needs Gradle 8.5 or newer, but the project uses Gradle 8.4",
+            summary(CheckState.WARNING, gradleTooOld),
+        )
+        assertEquals("Update the project's Gradle wrapper to 8.5 or newer, or point JAVA_HOME at an older Java", fix(CheckState.WARNING, gradleTooOld))
+
+        val compose = tool(ProviderToolId.DOCKER_COMPOSE, "/usr/bin/docker", ProviderToolProblem.TooOld("1.29.2", "2.0"))
+        assertEquals(
+            "main-repo: Docker Compose 1.29.2 at /usr/bin/docker is older than 2.0, the first with the 'docker compose ls' ShogunAi uses",
+            summary(CheckState.WARNING, compose),
+        )
+        assertTrue(fix(CheckState.WARNING, compose)!!.contains("Compose 2.0 or newer"))
+
+        val mac = tool(ProviderToolId.DOCKER_DAEMON, problem = ProviderToolProblem.DaemonNotRunning(HostOs.MACOS, "Cannot connect"))
+        assertEquals("main-repo: Docker's daemon isn't running: Cannot connect", summary(CheckState.WARNING, mac))
+        assertEquals("Start Docker Desktop, or the Docker engine you use, and check again", fix(CheckState.WARNING, mac))
+        val windows = tool(ProviderToolId.DOCKER_DAEMON, problem = ProviderToolProblem.DaemonNotRunning(HostOs.WINDOWS, null))
+        assertEquals(fix(CheckState.WARNING, mac), fix(CheckState.WARNING, windows))
+        val linux = tool(ProviderToolId.DOCKER_DAEMON, problem = ProviderToolProblem.DaemonNotRunning(HostOs.LINUX, null))
+        assertTrue(fix(CheckState.WARNING, linux)!!.contains("sudo systemctl start docker"))
+    }
+
+    @Test
+    fun `passed provider tool texts`() {
+        assertEquals("main-repo: Gradle at /home/dev/projects/main-repo/gradlew", summary(CheckState.PASSED, tool(ProviderToolId.GRADLE, "/home/dev/projects/main-repo/gradlew")))
+        assertEquals("main-repo: Android SDK at /opt/android-sdk (2 virtual devices)", summary(CheckState.PASSED, tool(ProviderToolId.ANDROID_SDK, "/opt/android-sdk", installed = 2)))
+        assertEquals("main-repo: iOS Simulator (1 iOS runtime)", summary(CheckState.PASSED, tool(ProviderToolId.IOS_SIMULATOR, installed = 1)))
+        assertEquals("main-repo: iOS Simulator (0 iOS runtimes)", summary(CheckState.PASSED, tool(ProviderToolId.IOS_SIMULATOR)))
+        assertEquals("main-repo: Android SDK at /opt/android-sdk (0 virtual devices)", summary(CheckState.PASSED, tool(ProviderToolId.ANDROID_SDK, "/opt/android-sdk")))
+        assertNull(fix(CheckState.PASSED, tool(ProviderToolId.GRADLE, "/usr/bin/gradle")))
+    }
+
+    @Test
+    fun `provider tool problem texts`() {
+        val missing = tool(ProviderToolId.DOCKER_COMPOSE, problem = ProviderToolProblem.NotFound(listOf("/usr/local/bin/docker"), listOf("docker")))
+        assertEquals("main-repo: Docker Compose not found, needed by the docker-compose provider (looked in /usr/local/bin/docker, docker on the PATH)", summary(CheckState.WARNING, missing))
+        assertEquals("Install Docker with its Compose plugin, for example Docker Desktop: https://docs.docker.com/get-docker/", fix(CheckState.WARNING, missing))
+
+        val unusable = tool(ProviderToolId.XCODE, "/usr/bin/xcodebuild", ProviderToolProblem.Unusable("requires Xcode"))
+        assertEquals("main-repo: Xcode at /usr/bin/xcodebuild doesn't work: requires Xcode", summary(CheckState.WARNING, unusable))
+        assertEquals("Install Xcode from the App Store and select it: sudo xcode-select -s /Applications/Xcode.app", fix(CheckState.WARNING, unusable))
+        assertEquals("main-repo: Flutter doesn't work", summary(CheckState.WARNING, tool(ProviderToolId.FLUTTER, problem = ProviderToolProblem.Unusable(null))))
+
+        val mac = tool(ProviderToolId.IOS_SIMULATOR, problem = ProviderToolProblem.NeedsMacOs)
+        assertEquals("main-repo: the ios-simulator provider needs macOS with Xcode", summary(CheckState.WARNING, mac))
+        assertEquals("Use the ios-simulator provider on a Mac with Xcode, or ignore this on other systems", fix(CheckState.WARNING, mac))
+
+        val noAvd = tool(ProviderToolId.ANDROID_SDK, "/opt/android-sdk", ProviderToolProblem.NoAndroidVirtualDevice, 0)
+        assertEquals("main-repo: Android SDK at /opt/android-sdk has no Android Virtual Device", summary(CheckState.WARNING, noAvd))
+        assertEquals("Create a virtual device in Android Studio's Device Manager", fix(CheckState.WARNING, noAvd))
+
+        val noRuntime = tool(ProviderToolId.IOS_SIMULATOR, problem = ProviderToolProblem.NoIosRuntime)
+        assertEquals("main-repo: no iOS simulator runtime is installed", summary(CheckState.WARNING, noRuntime))
+        assertEquals("Install an iOS runtime from Xcode's Settings › Components", fix(CheckState.WARNING, noRuntime))
+
+        val unreadable = tool(ProviderToolId.PROVIDERS, problem = ProviderToolProblem.ProvidersUnreadable("malformed"))
+        assertEquals("main-repo: couldn't read its providers: malformed", summary(CheckState.WARNING, unreadable))
+        assertEquals("Correct the repository's .shogunai.json so it's valid", fix(CheckState.WARNING, unreadable))
+    }
+
+    @Test
+    fun `every provider tool has an install fix`() {
+        val fixes = ProviderToolId.entries.associateWith { fix(CheckState.WARNING, tool(it, problem = ProviderToolProblem.NotFound(emptyList()))) }
+
+        assertTrue(fixes.getValue(ProviderToolId.GRADLE)!!.contains("gradlew"))
+        assertTrue(fixes.getValue(ProviderToolId.MAVEN)!!.contains("mvnw"))
+        assertTrue(fixes.getValue(ProviderToolId.ANDROID_SDK)!!.contains("ANDROID_HOME"))
+        assertTrue(fixes.getValue(ProviderToolId.IOS_SIMULATOR)!!.contains("xcode-select"))
+        assertTrue(fixes.getValue(ProviderToolId.COCOAPODS)!!.contains("cocoapods.org"))
+        assertTrue(fixes.getValue(ProviderToolId.FLUTTER)!!.contains("FVM"))
+        assertTrue(fixes.getValue(ProviderToolId.GRADLE_JAVA)!!.contains("JAVA_HOME"))
+        assertEquals(fixes.getValue(ProviderToolId.DOCKER_COMPOSE), fixes.getValue(ProviderToolId.DOCKER_DAEMON))
+        assertTrue(fixes.getValue(ProviderToolId.PROVIDERS)!!.contains(".shogunai.json"))
+    }
+
+    @Test
+    fun `multirepo texts`() {
+        val folder = "/home/dev/projects/product"
+        val healthy = InstallationFinding.MultirepoCheck(folder, "product", listOf("app", "api"), 1, emptyList())
+        assertEquals("Multirepo product (/home/dev/projects/product): app, api; 1 group", summary(CheckState.PASSED, healthy))
+        assertEquals("Multirepo product (/home/dev/projects/product): app, api; 2 groups", summary(CheckState.PASSED, healthy.copy(groups = 2)))
+        assertNull(fix(CheckState.PASSED, healthy))
+
+        val gone = InstallationFinding.MultirepoCheck(folder, "product", emptyList(), 0, listOf(MultirepoProblem.DeclarationMissing))
+        assertEquals("Multirepo product (/home/dev/projects/product): .shogunai-multirepo.json is gone", summary(CheckState.WARNING, gone))
+        assertEquals("Restore /home/dev/projects/product; otherwise ShogunAi forgets it the next time it starts", fix(CheckState.WARNING, gone))
+
+        val broken = healthy.copy(
+            problems = listOf(
+                MultirepoProblem.InvalidDeclaration("$folder/.shogunai-multirepo.json", "worktreesRoot is missing"),
+                MultirepoProblem.RepositoryMissing("api", "$folder/product-api"),
+                MultirepoProblem.NotTrusted,
+                MultirepoProblem.ListingFailed("app", "boom"),
+                MultirepoProblem.GroupWorktreeMissing("feature/TASK-123", "app", "/home/dev/worktrees/app/TASK-123"),
+            ),
+        )
+        assertEquals("Multirepo product (/home/dev/projects/product): 5 problems", summary(CheckState.FAILED, broken))
+        assertEquals(
+            listOf(
+                "/home/dev/projects/product/.shogunai-multirepo.json: worktreesRoot is missing; correct it",
+                "'api': /home/dev/projects/product/product-api isn't a Git repository; restore it, or change its path in /home/dev/projects/product/.shogunai-multirepo.json",
+                "It isn't trusted on this machine; review it and run 'shogun multirepo trust /home/dev/projects/product'",
+                "Couldn't list the worktrees of 'app': boom; check it's a Git repository you can read",
+                "Group feature/TASK-123: the 'app' worktree's folder /home/dev/worktrees/app/TASK-123 doesn't exist; restore it, or run 'git worktree prune' in 'app'",
+            ),
+            fix(CheckState.FAILED, broken)!!.lines(),
+        )
+        assertEquals("Multirepo product (/home/dev/projects/product): 1 problem", summary(CheckState.WARNING, healthy.copy(problems = listOf(MultirepoProblem.NotTrusted))))
+    }
+
+    @Test
+    fun `a provider tool without a problem has no fix`() {
+        assertNull(fix(CheckState.WARNING, tool(ProviderToolId.GRADLE, "/home/dev/projects/main-repo/gradlew")))
     }
 }

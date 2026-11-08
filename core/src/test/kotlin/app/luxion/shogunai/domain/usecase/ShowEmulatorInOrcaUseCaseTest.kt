@@ -128,6 +128,13 @@ class ShowEmulatorInOrcaUseCaseTest {
 
         assertEquals(OrcaEmulatorView.Failed("Orca didn't answer within 30 seconds"), ShowEmulatorInOrcaUseCase(silent)(worktree, "emulator-5556"))
     }
+
+    @Test
+    fun `a failure without a message is named after its error, or left empty when it has no name`() = runTest {
+        assertEquals(OrcaEmulatorView.Failed("IllegalStateException"), useCase(FakeOrcaClient(psRows = listed, attachFailure = IllegalStateException()))(worktree, "emulator-5556"))
+        assertEquals(OrcaEmulatorView.Failed("boom"), useCase(FakeOrcaClient(psRows = listed, attachFailure = IllegalStateException("boom")))(worktree, "emulator-5556"))
+        assertEquals(OrcaEmulatorView.Failed(""), useCase(FakeOrcaClient(psRows = listed, attachFailure = object : IllegalStateException() {}))(worktree, "emulator-5556"))
+    }
 }
 
 private const val SIMULATOR_UDID = "8D2C51A4-3F0B-4C6E-9A1D-5B7E2F90C3A1"

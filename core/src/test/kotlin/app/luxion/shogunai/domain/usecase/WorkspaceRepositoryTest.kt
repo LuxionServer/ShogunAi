@@ -277,4 +277,71 @@ class WorkspaceRepositoryTest {
         assertNull(stored().env)
         assertEquals(WorkspaceSetting(enabled = false), stored().workspace)
     }
+    @Test
+    fun `detect from a declared alias without shared variables leaves them absent`() = runTest {
+        world.makeFolderARepository()
+        val declared = storing(world.declaration.copy(workspace = WorkspaceSetting(alias = "docs-root")))
+
+        configure.detectWorkspace(declared).getOrThrow()
+
+        assertNull(stored().workspace)
+        assertNull(stored().env)
+    }
+
+    @Test
+    fun `turning off a workspace listed in repos or absent keeps the shared variables`() = runTest {
+        val env = SharedVariablesDeclaration(mapOf("app" to mapOf("A" to "x")))
+        world.makeFolderARepository()
+        val listed = storing(world.declaration.copy(repos = world.declaration.repos + ("root" to "."), env = env))
+
+        configure.clearWorkspace(listed).getOrThrow()
+        assertEquals(env, stored().env)
+
+        val off = storing(world.declaration.copy(workspace = WorkspaceSetting(enabled = false), env = env))
+        configure.clearWorkspace(off).getOrThrow()
+        assertEquals(env, stored().env)
+    }
+
+    @Test
+    fun `declaring a turned off workspace uses the default alias and a listed one keeps its alias`() = runTest {
+        world.makeFolderARepository()
+        val off = storing(world.declaration.copy(workspace = WorkspaceSetting(enabled = false)))
+
+        configure.setWorkspace(off, null, default = false).getOrThrow()
+        assertEquals(WorkspaceSetting(), stored().workspace)
+
+        val listed = storing(world.declaration.copy(repos = world.declaration.repos + ("root" to ".")))
+        configure.setWorkspace(listed, "root", default = true).getOrThrow()
+        assertEquals(WorkspaceSetting(alias = "root", default = true), stored().workspace)
+    }
+
+    @Test
+    fun `renaming a detected workspace without shared variables leaves them absent`() = runTest {
+        world.makeFolderARepository()
+
+        configure.setWorkspace(storing(world.declaration), "docs-root", default = false).getOrThrow()
+
+        assertNull(stored().env)
+    }
+
+    @Test
+    fun `defaults with a workspace listed in repos or no workspace only keep the ordinary repositories`() = runTest {
+        world.makeFolderARepository()
+        val listed = storing(world.declaration.copy(repos = world.declaration.repos + ("root" to ".")))
+
+        configure.setDefaults(listed, listOf("root", "app")).getOrThrow()
+        assertEquals(listOf("root", "app"), stored().defaultRepos)
+        assertNull(stored().workspace)
+    }
+    @Test
+    fun `detect from a declared workspace under the default alias keeps the shared variables`() = runTest {
+        world.makeFolderARepository()
+        val env = SharedVariablesDeclaration(mapOf("workspace" to mapOf("A" to "x")))
+        val declared = storing(world.declaration.copy(workspace = WorkspaceSetting(default = true), env = env))
+
+        configure.detectWorkspace(declared).getOrThrow()
+
+        assertNull(stored().workspace)
+        assertEquals(env, stored().env)
+    }
 }

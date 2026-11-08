@@ -32,7 +32,7 @@ import kotlin.time.Duration.Companion.seconds
 class CliOrcaClient(
     private val executor: ShellCommandExecutor,
     private val findExecutable: (String) -> String?,
-    private val osName: String = System.getProperty("os.name").orEmpty(),
+    private val osName: String = System.getProperty("os.name", ""),
     private val isFile: (String) -> Boolean = { File(it).isFile },
 ) : OrcaClient {
 
@@ -177,7 +177,7 @@ class CliOrcaClient(
 
     private fun folderId(worktree: JsonObject): String? {
         if (worktree.string("workspaceKind") != FOLDER_WORKSPACE) return null
-        return worktree.string("worktreeId")?.takeIf { it.startsWith(FOLDER_PREFIX) }?.removePrefix(FOLDER_PREFIX)?.takeIf { it.isNotEmpty() }
+        return worktree.string("worktreeId")?.takeIf { it.startsWith(FOLDER_PREFIX) }?.let { it.removePrefix(FOLDER_PREFIX).ifEmpty { null } }
     }
 
     private fun agent(agent: JsonObject): OrcaAgent? {
@@ -261,7 +261,7 @@ class CliOrcaClient(
     private fun JsonObject?.field(name: String): JsonElement? = this?.get(name)
 
     private fun JsonObject.string(name: String): String? =
-        (this[name] as? JsonPrimitive)?.takeIf { it.isString }?.content
+        (this[name] as? JsonPrimitive)?.stringOrNull()
 
     private fun JsonObject.text(name: String): String? = string(name)?.takeIf { it.isNotBlank() }
 
@@ -276,7 +276,7 @@ class CliOrcaClient(
             val parts = version.split('.', '-').map { it.toIntOrNull() ?: 0 }
             val required = minimum.split('.').map { it.toInt() }
             for (index in required.indices) {
-                val part = parts.getOrElse(index) { 0 }
+                val part = parts.getOrNull(index) ?: 0
                 if (part != required[index]) return part < required[index]
             }
             return false

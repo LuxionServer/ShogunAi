@@ -21,6 +21,8 @@ import app.luxion.shogunai.domain.usecase.GradleTrim
 import app.luxion.shogunai.domain.usecase.ResourceAcquisition
 import app.luxion.shogunai.MachineUseCases
 import app.luxion.shogunai.domain.FakeGradleDaemonSource.Companion.gradleDaemon
+import app.luxion.shogunai.domain.FakeGradleDaemonSource.Companion.kotlinDaemon
+import app.luxion.shogunai.domain.model.DaemonKind
 import app.luxion.shogunai.domain.model.DaemonKeptReason
 import app.luxion.shogunai.domain.model.DaemonProcess
 import app.luxion.shogunai.domain.model.DaemonState
@@ -110,6 +112,9 @@ class MachineResourcesTest {
         var daemons = emptyList<DaemonProcess>()
         var daemonFailure: Throwable? = null
         var daemonListings = 0
+        var gradleLimit: Int? = null
+        var daemonStartsBeforeEachListing = false
+        private var nextStartedPid = 100L
         var emulatorReads = 0
         var simulatorReads = 0
         var derivedDataListings = 0
@@ -125,6 +130,11 @@ class MachineResourcesTest {
         var trims = 0
         val derivedDataTrims = mutableListOf<Long>()
         val dispatchers = mutableListOf<ContinuationInterceptor?>()
+
+        fun listDaemonsNow(): List<DaemonProcess> {
+            if (daemonStartsBeforeEachListing) daemons = daemons + gradleDaemon(nextStartedPid++, DaemonState.Idle(Instant.EPOCH), memoryBytes = 1_000L)
+            return daemons
+        }
 
         suspend fun recordDispatcher() {
             dispatchers += currentCoroutineContext()[ContinuationInterceptor]
@@ -152,13 +162,14 @@ class MachineResourcesTest {
         trim: GradleTrim = GradleTrim(limit = null),
         nextTrim: () -> GradleTrim = { trim },
         settings: ResourceSettings = ResourceSettings(),
+        settingsOf: () -> ResourceSettings = { settings },
         derivedDataTrim: (Long) -> DerivedDataTrim = { DerivedDataTrim(it, 0L, 0L) },
         stopDaemons: suspend (List<Long>?) -> Result<DaemonStopReport> = { pids ->
             calls.stoppedDaemons += pids
             Result.success(stopReport)
         },
     ) = MachineUseCases(
-        listDaemons = { calls.recordDispatcher(); calls.daemonListings++; calls.daemonFailure?.let { Result.failure(it) } ?: Result.success(calls.daemons) },
+        listDaemons = { calls.recordDispatcher(); calls.daemonListings++; calls.daemonFailure?.let { Result.failure(it) } ?: Result.success(calls.listDaemonsNow()) },
         stopDaemons = stopDaemons,
         listDerivedData = {
             calls.derivedDataListings++
@@ -181,9 +192,17 @@ class MachineResourcesTest {
         readEmulatorStates = { _, _ -> calls.recordDispatcher(); calls.emulatorReads++; Result.success(emulators) },
         readRunningEmulators = { calls.recordDispatcher(); Result.success(running) },
         startEmulator = startEmulator,
-        readPool = { kind, _, _ -> calls.recordDispatcher(); pools[kind]?.let { Result.success(it) } ?: Result.failure(IllegalStateException()) },
+        readPool = { kind, _, _, listed ->
+            calls.recordDispatcher()
+            val gradleLimit = calls.gradleLimit
+            if (kind == ResourceKind.GRADLE_DAEMON && gradleLimit != null) {
+                Result.success(gradlePool(gradleLimit, listed ?: calls.listDaemonsNow()))
+            } else {
+                pools[kind]?.let { Result.success(it) } ?: Result.failure(IllegalStateException())
+            }
+        },
         trimGradleDaemons = { calls.recordDispatcher(); calls.trims++; Result.success(nextTrim()) },
-        resourceSettings = { settings },
+        resourceSettings = settingsOf,
         trimDerivedData = { quota, _, _ -> calls.derivedDataTrims += quota; Result.success(derivedDataTrim(quota)) },
         stopEmulator = { _, _ -> Result.success(null) },
         stopEmulatorSerials = { _, serials -> calls.stoppedSerials += serials; Result.success(emptyList()) },
@@ -193,6 +212,15 @@ class MachineResourcesTest {
         readSimulatorOrphans = { Result.success(orphans) },
         deleteSimulators = { udids -> calls.deletedSimulators += udids; Result.success(udids) },
         resolveDerivedDataQuota = resolveQuota,
+    )
+
+    private fun gradlePool(limit: Int, daemons: List<DaemonProcess>) = PoolUsage(
+        ResourceKind.GRADLE_DAEMON,
+        limit,
+        limit,
+        daemons.filter { it.kind == DaemonKind.GRADLE }.map {
+            PoolHolder(ResourceKind.GRADLE_DAEMON, null, null, PoolHolderState.IDLE, true, null, reference = it.pid.toString())
+        },
     )
 
     private suspend fun fixedQuotaOnly(settings: ResourceSettings, usage: Long): DerivedDataQuota =
@@ -230,6 +258,7 @@ class MachineResourcesTest {
         )
 
         assertEquals(listOf(MachineResource.GRADLE_DAEMONS), machine.visibleResources)
+        assertEquals(setOf(MachineResource.GRADLE_DAEMONS, MachineResource.DESKTOP_TURN), machine.overviewResources.toSet())
     }
 
     @Test
@@ -237,6 +266,8 @@ class MachineResourcesTest {
         val machine = machine(useCases(Calls()), listOf(machineProject("main-repo", listOf(mainWorktree))))
 
         assertTrue(machine.visibleResources.isEmpty())
+        assertEquals(listOf(MachineResource.DESKTOP_TURN), machine.overviewResources)
+        assertEquals(MachineSummary(0), machine.overviewSummaries[MachineResource.DESKTOP_TURN])
     }
 
     @Test
@@ -698,6 +729,25 @@ class MachineResourcesTest {
     }
 
     @Test
+    fun `changing the resource settings applies the new emulator limit to the shown view and the status bar at once`() = machineTest {
+        val pools = mutableMapOf(ResourceKind.EMULATOR to usage(ResourceKind.EMULATOR, 2, 9))
+        val machine = machine(
+            useCases(Calls(), pools = pools),
+            listOf(machineProject("api", listOf(apiWorktree), MachineResource.ANDROID_EMULATORS)),
+        )
+        machine.refreshSummaries()
+        machine.show(MachineResource.ANDROID_EMULATORS)
+        runCurrent()
+
+        pools[ResourceKind.EMULATOR] = usage(ResourceKind.EMULATOR, 4, 9)
+        machine.applyResourceSettings()
+        runCurrent()
+
+        assertEquals(4, machine.poolOf(MachineResource.ANDROID_EMULATORS)?.effectiveLimit)
+        assertEquals(4, machine.summaries.getValue(MachineResource.ANDROID_EMULATORS).poolLimit)
+    }
+
+    @Test
     fun `a Gradle pool above its limit is over the limit`() = machineTest {
         val calls = Calls().apply { daemons = (1L..3L).map { gradleDaemon(it, DaemonState.Busy) } }
         val machine = machine(
@@ -710,6 +760,31 @@ class MachineResourcesTest {
         assertTrue(machine.poolOf(MachineResource.GRADLE_DAEMONS)?.isOverLimit == true)
         assertEquals(3, machine.summaries.getValue(MachineResource.GRADLE_DAEMONS).poolInUse)
         assertEquals(2, machine.summaries.getValue(MachineResource.GRADLE_DAEMONS).poolLimit)
+    }
+
+    @Test
+    fun `the status bar, its tooltip and the Gradle view count the daemons of a single listing`() = machineTest {
+        val calls = Calls().apply {
+            gradleLimit = 3
+            daemonStartsBeforeEachListing = true
+            daemons = (1L..3L).map { gradleDaemon(it, idle, memoryBytes = 1_000L) } + kotlinDaemon(9, memoryBytes = 1_000L)
+        }
+        val machine = machine(
+            useCases(calls),
+            listOf(machineProject("api", listOf(apiWorktree), MachineResource.GRADLE_DAEMONS)),
+        )
+
+        machine.refreshSummaries()
+        machine.show(MachineResource.GRADLE_DAEMONS)
+        runCurrent()
+
+        val strings = EnglishStrings
+        val item = machineStatusItems(machine.visibleResources, machine.summaries, machine.summaryFailures, strings).single()
+        val listed = assertIs<MachineLoad.Loaded<List<MachineDaemon>>>(machine.gradleDaemons).value
+        assertEquals(5, listed.count { it.process.kind == DaemonKind.GRADLE })
+        assertEquals(5, machine.poolOf(MachineResource.GRADLE_DAEMONS)?.inUse)
+        assertEquals("5 of 3", item.figure)
+        assertTrue(item.tooltip.startsWith("${strings.gradleDaemonsTitle}: 5 of 3 · "), item.tooltip)
     }
 
     @Test
@@ -852,6 +927,26 @@ class MachineResourcesTest {
     )
 
     private fun MachineResources.loadedFolders() = (derivedData as MachineLoad.Loaded).value
+
+    @Test
+    fun `changing the resource settings applies a new DerivedData quota without measuring again`() = machineTest {
+        val calls = Calls()
+        var settings = ResourceSettings(derivedDataQuotaMode = DerivedDataQuotaMode.NONE)
+        val machine = machine(
+            useCases(calls, derivedData = DerivedDataListing(derivedFolders, null), sizes = mapOf("/dd/A" to 300L, "/dd/B" to 200L), settingsOf = { settings }),
+            listOf(machineProject("main-repo", listOf(mainWorktree), MachineResource.XCODE_DERIVED_DATA)),
+        )
+        machine.show(MachineResource.XCODE_DERIVED_DATA)
+        runCurrent()
+        val measured = calls.measured.toList()
+
+        settings = ResourceSettings(derivedDataQuotaGigabytes = 1, derivedDataQuotaMode = DerivedDataQuotaMode.FIXED)
+        machine.applyResourceSettings()
+        runCurrent()
+
+        assertEquals(listOf(settings.fixedDerivedDataQuotaBytes), calls.derivedDataTrims)
+        assertEquals(measured, calls.measured)
+    }
 
     @Test
     fun `derived data folders are listed before their sizes are known`() = machineTest {

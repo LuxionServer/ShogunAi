@@ -83,7 +83,7 @@ The system SHALL compute each worktree's disk usage in the background, without b
 - **THEN** no size is shown for it
 
 ### Requirement: Flag inactive worktrees
-The system SHALL flag a non-main worktree as inactive, in its row and its detail, when it has commits of its own, no uncommitted changes, no AI agent running in it, and its activity date is older than the inactivity threshold. The threshold SHALL default to 3 days. A worktree without commits of its own SHALL NOT be flagged as inactive.
+The system SHALL flag a non-main worktree as inactive, in its row and its detail, when it has commits of its own, isn't merged, has no AI agent running in it, and its activity date is older than the inactivity threshold, whether or not it has uncommitted changes or unpushed commits. The threshold SHALL default to 3 days. A worktree without commits of its own SHALL NOT be flagged as inactive.
 
 #### Scenario: Abandoned worktree
 - **WHEN** a clean worktree with no running agent had its last commit of its own 5 days ago, with the default threshold
@@ -94,8 +94,12 @@ The system SHALL flag a non-main worktree as inactive, in its row and its detail
 - **THEN** it isn't flagged as inactive
 
 #### Scenario: Agent running or pending changes
-- **WHEN** a worktree whose last commit of its own is 20 days old has uncommitted changes or an agent running in it
+- **WHEN** a worktree whose last commit of its own is 20 days old has an agent running in it
 - **THEN** it isn't flagged as inactive
+
+#### Scenario: Abandoned with pending changes
+- **WHEN** a worktree with no running agent whose last commit of its own is 20 days old has 2 uncommitted changes
+- **THEN** it is flagged as inactive, and its row and detail still show the 2 changes
 
 #### Scenario: Old base commit in a new worktree
 - **WHEN** a worktree was created today from a branch whose last commit is 30 days old, and has no commits of its own
@@ -188,7 +192,7 @@ When a Claude process runs in a worktree and a live session of that worktree has
 
 #### Scenario: Blocked outside Herdr
 - **WHEN** Claude runs in a worktree outside Herdr and Orca and its session was recorded as blocked
-- **THEN** the worktree's row and detail show Claude as blocked, and the worktree is under "Needs you"
+- **THEN** the worktree's row and detail show Claude as blocked, and the worktree is under "Waiting for you"
 
 #### Scenario: Permission granted
 - **WHEN** a session recorded as blocked writes to its transcript afterwards
@@ -211,7 +215,7 @@ When Orca is running, the system SHALL read the agents Orca reports for each wor
 
 #### Scenario: Waiting agent
 - **WHEN** Orca reports a `claude` agent as waiting in a worktree
-- **THEN** the worktree's row and detail show Claude as blocked, and the worktree is under "Needs you"
+- **THEN** the worktree's row and detail show Claude as blocked, and the worktree is under "Waiting for you"
 
 #### Scenario: Several agents in the worktree
 - **WHEN** Orca reports two `claude` agents in the same worktree, one working and one waiting
@@ -249,7 +253,7 @@ When a Claude process runs in a worktree and neither Herdr, Orca nor Claude Code
 
 #### Scenario: Orca lost track of the agent
 - **WHEN** Claude runs in a worktree, Orca reports no agent there, no hook record exists, and its session in the registry is `waiting`
-- **THEN** the worktree's row and detail show Claude as blocked, and the worktree is under "Needs you"
+- **THEN** the worktree's row and detail show Claude as blocked, and the worktree is under "Waiting for you"
 
 #### Scenario: Turn finished
 - **WHEN** the worktree's only session is `idle` and its status changed well after it started

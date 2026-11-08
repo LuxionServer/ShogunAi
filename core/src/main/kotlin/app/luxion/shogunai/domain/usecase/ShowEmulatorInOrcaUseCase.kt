@@ -50,5 +50,5 @@ class ShowEmulatorInOrcaUseCase(
         }
 
     private fun message(error: Exception): String =
-        (error as? WorktreeError.OrcaCommandFailed)?.detail ?: error.message ?: error::class.simpleName.orEmpty()
+        if (error is WorktreeError.OrcaCommandFailed) error.detail else error.message ?: error::class.simpleName.orEmpty()
 }

@@ -23,23 +23,25 @@ internal class WorktreeFolderRemoval(
     }
 
     private suspend fun removeFolder(path: String, force: Boolean, workspaceId: String?, hasOrcaTerminals: Boolean): HolderClosing {
-        val removeCommand = buildList {
-            addAll(listOf("git", "worktree", "remove"))
-            if (force) add("--force")
-            add(path)
+        var removeCommand = removeCommand(path, forces = if (force) 1 else 0)
+        var first = git(removeCommand)
+        if (force && isLockedWorktreeFailure(first.stderr)) {
+            removeCommand = removeCommand(path, forces = 2)
+            first = git(removeCommand)
         }
-        val first = git(removeCommand)
         if (first.isSuccess) return HolderClosing()
+        if (isLockedWorktreeFailure(first.stderr)) throw worktreeLocked(path, first)
         if (isNotAWorkingTreeFailure(first.stderr) || isPathTooLongFailure(first.stderr)) {
             finishLeftover(path, first)
             return HolderClosing()
         }
         if (!isFolderInUseFailure(first.stderr)) throw first.toError()
 
-        val herdrClosing = closeHerdrWorkspaces?.closeHolders(path, workspaceId) ?: HolderClosing()
-        val orcaFailure = if (hasOrcaTerminals) closeOrcaTerminals?.closeOne(path) else null
+        val herdrClosing = if (closeHerdrWorkspaces != null) closeHerdrWorkspaces.closeHolders(path, workspaceId) else HolderClosing()
+        val orcaCloser = closeOrcaTerminals?.takeIf { hasOrcaTerminals }
+        val orcaFailure = orcaCloser?.closeOne(path)
         val closing = herdrClosing.copy(
-            closedOrcaTerminals = hasOrcaTerminals && closeOrcaTerminals != null && orcaFailure == null,
+            closedOrcaTerminals = orcaCloser != null && orcaFailure == null,
             orcaFailure = orcaFailure,
         )
         val retry = git(removeCommand)
@@ -52,6 +54,9 @@ internal class WorktreeFolderRemoval(
         }
         return closing
     }
+
+    private fun removeCommand(path: String, forces: Int) =
+        listOf("git", "worktree", "remove") + List(forces) { "--force" } + path
 
     private suspend fun finishLeftover(path: String, failure: CommandResult) {
         val files = fileManager ?: throw failure.toError()
@@ -66,10 +71,13 @@ internal class WorktreeFolderRemoval(
     }
 
     private suspend fun isRegistered(path: String): Boolean =
-        ListWorktreesUseCase(config, executor)().getOrNull()?.any { sameDirectory(it.path, path) } ?: true
+        ListWorktreesUseCase(config, executor)().getOrNull()?.any { sameDirectory(it.path, path) } != false
 
     private fun folderInUse(path: String, failure: CommandResult, unregistered: Boolean) =
         WorktreeError.WorktreeFolderInUse(path, unregistered, failure.command, failure.exitCode, failure.stderr)
+
+    private fun worktreeLocked(path: String, failure: CommandResult) =
+        WorktreeError.WorktreeLocked(path, lockReason(failure.stderr), failure.command, failure.exitCode, failure.stderr)
 
     private suspend fun git(command: List<String>) = executor.execute(command, workingDirectory = config.baseRepositoryPath)
 

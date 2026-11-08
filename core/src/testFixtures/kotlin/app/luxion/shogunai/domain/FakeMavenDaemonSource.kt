@@ -7,6 +7,7 @@ import app.luxion.shogunai.domain.model.WorktreeError
 class FakeMavenDaemonSource(
     var daemons: List<MavenDaemonProcess> = emptyList(),
     var failure: WorktreeError? = null,
+    var laterFailure: WorktreeError? = null,
 ) : MavenDaemonSource {
 
     var listings = 0
@@ -14,6 +15,7 @@ class FakeMavenDaemonSource(
     override suspend fun list(): List<MavenDaemonProcess> {
         listings++
         failure?.let { throw it }
+        if (listings > 1) laterFailure?.let { throw it }
         return daemons
     }
 }

@@ -18,6 +18,7 @@ import app.luxion.shogunai.domain.model.AgentState
 import app.luxion.shogunai.domain.model.RunningAgent
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.WorktreeStatus
+import app.luxion.shogunai.domain.usecase.Activity
 import app.luxion.shogunai.domain.usecase.GroupRepositoryOutcome
 import app.luxion.shogunai.domain.usecase.GroupRepositoryResult
 import app.luxion.shogunai.domain.model.AgentLaunchConfig
@@ -100,10 +101,10 @@ class MultirepoViewUiTest {
         onNodeWithText("api").assertIsDisplayed()
     }
 
-    private fun group(state: StateBadgeKind) = ChangeGroup(
+    private fun group(activity: Activity) = ChangeGroup(
         branch = "feature/TASK-1",
         entries = emptyList(),
-        state = state,
+        activity = activity,
         members = emptyList(),
     )
 
@@ -127,7 +128,7 @@ class MultirepoViewUiTest {
         setContent {
             MaterialTheme {
                 ChangeGroupHeaderView(
-                    group = group(StateBadgeKind.NEEDS_YOU),
+                    group = group(Activity.WaitingForYou),
                     catalog = context(addableAliases = listOf("docs"), cleanUpBlocked = "api isn't merged"),
                     onToggle = {},
                     onAction = {},
@@ -137,7 +138,7 @@ class MultirepoViewUiTest {
 
         onNodeWithText("TASK-1").assertIsDisplayed()
         onNode(hasText("feature/TASK-1", substring = true)).assertIsDisplayed()
-        onNodeWithText("Needs you").assertIsDisplayed()
+        onNodeWithText("Waiting for you").assertIsDisplayed()
         onNodeWithText("Open all in Herdr").assertIsEnabled()
         onNodeWithText("Clean up group").assertDoesNotExist()
     }
@@ -147,7 +148,7 @@ class MultirepoViewUiTest {
         val agent = agentIndicator(listOf(RunningAgent("claude", AgentState.BLOCKED)), null, now, EnglishStrings)
         setContent {
             MaterialTheme {
-                ChangeGroupHeaderView(group = group(StateBadgeKind.NEEDS_YOU), catalog = context(), onToggle = {}, onAction = {}, agent = agent)
+                ChangeGroupHeaderView(group = group(Activity.WaitingForYou), catalog = context(), onToggle = {}, onAction = {}, agent = agent)
             }
         }
 
@@ -159,7 +160,7 @@ class MultirepoViewUiTest {
         setContent {
             MaterialTheme {
                 ChangeGroupHeaderView(
-                    group = group(StateBadgeKind.STOPPED),
+                    group = group(Activity.Stopped),
                     catalog = context(orcaInstalled = true, isOpeningInOrca = true),
                     onToggle = {},
                     onAction = {},
@@ -180,7 +181,7 @@ class MultirepoViewUiTest {
         setContent {
             MaterialTheme {
                 ChangeGroupHeaderView(
-                    group = group(StateBadgeKind.STOPPED),
+                    group = group(Activity.Stopped),
                     catalog = context(cleanUpBlocked = "api isn't merged"),
                     onToggle = {},
                     onAction = { ran += it.id },
@@ -200,7 +201,7 @@ class MultirepoViewUiTest {
         setContent {
             MaterialTheme {
                 ChangeGroupHeaderView(
-                    group = group(StateBadgeKind.MERGED),
+                    group = group(Activity.Merged),
                     catalog = context(addableAliases = listOf("docs")),
                     onToggle = {},
                     onAction = { ran += it.id },

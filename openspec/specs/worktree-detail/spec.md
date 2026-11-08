@@ -28,7 +28,7 @@ The selection SHALL be kept by worktree path when the list reloads, including au
 - **THEN** nothing is selected and the detail pane shows the project summary
 
 ### Requirement: Detail of the selected worktree
-The detail pane SHALL show the selected worktree's branch (or that it is detached), its origin and its full path as selectable text with a copy action, then its sections in the inspector's fixed order: Status, Agent, Environment, Resources and Provisioning. Each section SHALL show its data as properties, draw placeholder rows until its data is first read, and not be drawn when it doesn't apply to the worktree.
+The detail pane SHALL show the selected worktree's branch (or that it is detached), a neutral "main" chip when it is the main checkout, its origin only when the origin is known and isn't ShogunAi, and its path, then its sections in the inspector's fixed order: Status, Agent, Environment, Resources and Provisioning. The path SHALL be shown relative to the project's worktrees folder when it is inside it, relative to the home folder (as `~/…`) when it is inside that, and whole otherwise, on one line with an ellipsis in the middle when it doesn't fit; its tooltip SHALL show the full path, and its copy action SHALL copy the full path. Each section SHALL show its data as properties, draw placeholder rows until its data is first read, and not be drawn when it doesn't apply to the worktree.
 
 #### Scenario: Worktree with an agent and ports
 - **WHEN** the selected worktree has Claude running and `PORT` reserved as 20001
@@ -40,7 +40,23 @@ The detail pane SHALL show the selected worktree's branch (or that it is detache
 
 #### Scenario: Main worktree
 - **WHEN** the main worktree is selected
-- **THEN** the detail shows no Provisioning section
+- **THEN** the header shows its branch with a neutral "main" chip, and the detail shows no Provisioning section
+
+#### Scenario: Created by ShogunAi
+- **WHEN** a worktree created by ShogunAi is selected
+- **THEN** the header shows no origin chip
+
+#### Scenario: Created by another tool
+- **WHEN** a worktree created by Claude Code is selected
+- **THEN** the header shows a neutral "Claude Code" origin chip
+
+#### Scenario: Path inside the worktrees folder
+- **WHEN** the project's worktrees folder is `~/projects/main-repo-worktrees` and the selected worktree is `~/projects/main-repo-worktrees/TASK-123`
+- **THEN** the header shows `TASK-123`, and hovering it shows the full path
+
+#### Scenario: Long path
+- **WHEN** the path doesn't fit the inspector's width
+- **THEN** it is shown on one line with its beginning and end, and an ellipsis in the middle
 
 ### Requirement: Detail actions
 The detail pane SHALL present the worktree's actions in an action bar: "Open in <default runner>" as its primary action, a split button whose second part opens the "Open with…" menu; then the icon actions "Copy launch command", "Open in <terminal>" and "Open folder" when available; then a "More" (⋯) menu with "Copy path" and, for every worktree except the main one, "Delete worktree…" last, after a separator, in danger text. The primary action SHALL be disabled with a loading indicator while that worktree is being opened in the default runner. The "Open with…" menu SHALL list every available way to open the worktree, the default runner first and marked as the default, then "Copy launch command", "Set default runner…" and, when the project has several agents, a "With agent" section with the project's agents and the worktree's one checked.
@@ -60,13 +76,6 @@ The detail pane SHALL present the worktree's actions in an action bar: "Open in 
 #### Scenario: Copy launch command is an icon
 - **WHEN** the user activates the copy icon or presses ⇧⌘C
 - **THEN** the launch command is copied and the icon confirms it in place
-
-### Requirement: Project summary when nothing is selected
-When no worktree is selected, the detail pane SHALL show the project's summary: the number of worktrees, their total size, and how many can be cleaned up. The summary SHALL be informative only and offer no action; cleaning up stays in the view's ⋯ menu.
-
-#### Scenario: Nothing selected
-- **WHEN** a project with five worktrees, two of them merged and clean, is shown with no selection
-- **THEN** the detail pane shows five worktrees, their total size and two to clean up, with no "Clean up" action
 
 ### Requirement: Row quick actions
 Hovering a row SHALL reveal a copy-launch-command icon action. Each row SHALL have a context menu built from the action catalog with "Open in <default runner>", "Open with ▸", "Copy launch command", "Copy path" and, except for the main worktree, "Delete worktree…".
@@ -95,11 +104,15 @@ With a worktree selected, Cmd/Ctrl+O SHALL open it in the default runner, Cmd/Ct
 - **THEN** the detail's "Open with…" menu opens with its first item focused
 
 ### Requirement: Detail over the list on narrow windows
-When the content area is narrower than a threshold, the detail pane SHALL open over the list when a worktree is selected, and Escape or a close action SHALL hide it and clear the selection.
+When the content area is narrower than 980 dp, the detail pane SHALL open over the list when a worktree is selected, and Escape or a close action SHALL hide it and clear the selection. At 980 dp or more, it SHALL be docked beside the list.
 
 #### Scenario: Narrow window
-- **WHEN** the content area is narrow and the user selects a worktree
+- **WHEN** the content area is 900 dp wide and the user selects a worktree
 - **THEN** the detail pane covers the list, and pressing Escape returns to the list
+
+#### Scenario: Wide window
+- **WHEN** the content area is 1000 dp wide and the user selects a worktree
+- **THEN** the detail pane is docked beside the list
 
 ### Requirement: Stopping a device shows progress
 While a worktree's emulator or simulator is stopping, its Stop action SHALL show that it is in progress and SHALL ignore further clicks until it ends.
@@ -116,7 +129,7 @@ Copying a worktree's path SHALL show the same transient confirmation as copying 
 - **THEN** a confirmation says the path was copied
 
 ### Requirement: Provisioning state in the detail
-The detail of a linked worktree SHALL show whether its provisioned files match the base repository's, listing the missing, differing and not-linked files, and SHALL offer "Provision" when any file is missing or differs, or when the worktree was created by another tool. Provisioning from the detail SHALL behave like `shogun provision` for that worktree.
+The detail of a linked worktree SHALL show its Provisioning section only when a provisioned file is missing, differs or isn't linked, or when the provisioning check failed. It SHALL list the missing, differing and not-linked files and offer "Provision"; provisioning from the detail SHALL behave like `shogun provision` for that worktree. While the check runs and when every file matches, the section SHALL NOT be drawn.
 
 #### Scenario: Worktree created by another tool
 - **WHEN** a worktree created with plain `git worktree add` is selected in a repository that declares copied files
@@ -128,7 +141,11 @@ The detail of a linked worktree SHALL show whether its provisioned files match t
 
 #### Scenario: Up to date
 - **WHEN** every provisioned file matches
-- **THEN** the detail says the files are up to date and doesn't offer "Provision"
+- **THEN** the detail shows no Provisioning section
+
+#### Scenario: Check failed
+- **WHEN** the provisioning check of the selected worktree fails
+- **THEN** the Provisioning section says the provisioning state is unavailable
 
 ### Requirement: Environment variables in the detail
 The detail SHALL show the worktree's resolved environment variables with their values, in the order `shogun env` prints them, and offer to copy them in the dotenv format. When the repository declares variables that await approval (see `worktree-environment`), the detail SHALL list their names without values, say they await approval, and leave them out of what is copied.
@@ -202,22 +219,26 @@ The detail's environment section SHALL show the ports Orca sees the worktree lis
 - **THEN** the environment section shows only the reserved ports, without any listening mark
 
 ### Requirement: Agent section
-The detail's Agent section SHALL show every agent running in the worktree with the agent indicator, and say so when no agent runs.
+The detail's Agent section SHALL show every agent running in the worktree with the agent indicator, and then, apart from them, a "Runs with" line naming the agent and the runner the worktree opens with. When no agent runs, the section's content SHALL be a single line saying that no agent is running and what it runs with.
 
 #### Scenario: Agent needing the user
 - **WHEN** Claude, reported by Herdr as blocked, runs in the selected worktree
-- **THEN** the Agent section shows a warning-colored agent icon with "Claude · needs you", and its tooltip says the state comes from Herdr
+- **THEN** the Agent section shows a warning-colored agent icon with "Claude · needs you", its tooltip says the state comes from Herdr, and below it a separate "Runs with" line reads "Claude Code · Herdr"
 
 #### Scenario: No agent
-- **WHEN** no agent runs in the selected worktree
-- **THEN** the Agent section says no agent is running
+- **WHEN** no agent runs in the selected worktree, whose project opens Claude Code and whose default runner is Herdr
+- **THEN** the Agent section is one line reading "No agent running · runs with Claude Code · Herdr" (or its translation)
 
 ### Requirement: Status section summary
-The detail's Status section SHALL show the uncommitted changes, the divergence from the upstream and from the worktree's base (its recorded base, or the main branch when it has none) naming that branch, whether the branch is merged and into which branch, and the last commit or creation date as properties, and summarize the changes and commits ahead in its label line.
+The detail's Status section SHALL show the uncommitted changes, the divergence from the upstream and from the worktree's base (its recorded base, or the main branch when it has none) naming that branch, whether the branch is merged and into which branch, and the last commit or creation date as properties, and summarize the changes and commits ahead in its label line. A branch with commits of its own and no upstream SHALL show, in place of the upstream divergence, that it isn't pushed, and its label line SHALL say so too.
 
 #### Scenario: Changes and commits ahead
 - **WHEN** the selected worktree has 4 uncommitted changes and is 2 commits ahead of its upstream
 - **THEN** the Status section's label line reads "4 changes · ↑2" and its properties show the upstream and main branch divergences and the last commit's date
+
+#### Scenario: Branch not pushed
+- **WHEN** the selected worktree's branch has 3 commits of its own and no upstream
+- **THEN** the Status section's upstream property says the branch isn't pushed, its label line ends with "not pushed", and the base divergence shows 3 ahead
 
 #### Scenario: Recorded base
 - **WHEN** the selected worktree's branch has recorded base `epic/redesign`, is 3 commits ahead of it and 9 ahead of the main branch

@@ -7,6 +7,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.DeveloperBoard
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -26,15 +28,17 @@ import app.luxion.shogunai.ui.components.Spacing
 import app.luxion.shogunai.ui.components.TooltipSide
 import app.luxion.shogunai.ui.components.WithTooltip
 import app.luxion.shogunai.ui.components.interactive
+import app.luxion.shogunai.ui.i18n.LocalStrings
 import app.luxion.shogunai.ui.machine.MachineResource
 import app.luxion.shogunai.ui.machine.MachineStatusItem
+import app.luxion.shogunai.ui.machine.NotMeasuredFigure
 import app.luxion.shogunai.ui.machine.icon
 import app.luxion.shogunai.ui.theme.ShogunTheme
 
 private val StatusBarHeight = 28.dp
 private val StatusItemHeight = 22.dp
 private val StatusIconSize = 14.dp
-private const val NotMeasuredFigure = "–"
+private val MachineOverviewIcon = Icons.Default.DeveloperBoard
 
 @Composable
 fun MachineStatusBar(
@@ -43,6 +47,8 @@ fun MachineStatusBar(
     compact: Boolean,
     onSelect: (MachineResource) -> Unit,
     modifier: Modifier = Modifier,
+    overviewSelected: Boolean = false,
+    onOpenOverview: () -> Unit = {},
 ) {
     Row(
         modifier = modifier
@@ -54,8 +60,53 @@ fun MachineStatusBar(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(Spacing.xs),
     ) {
+        MachineOverviewEntry(selected = overviewSelected, compact = compact, onClick = onOpenOverview)
         items.forEach { item ->
             MachineStatusEntry(item, selected = item.resource == selected, compact = compact) { onSelect(item.resource) }
+        }
+    }
+}
+
+@Composable
+private fun MachineOverviewEntry(selected: Boolean, compact: Boolean, onClick: () -> Unit) {
+    val strings = LocalStrings.current
+    val colors = MaterialTheme.colorScheme
+    val content = if (selected) colors.onSecondaryContainer else colors.onSurface
+    StatusBarButton(strings.machineOverviewTooltip, "machine-status-overview", selected, onClick) {
+        Icon(MachineOverviewIcon, contentDescription = null, tint = content, modifier = Modifier.size(StatusIconSize))
+        if (!compact) {
+            Text(strings.machineTitle, style = MaterialTheme.typography.labelMedium, color = content, maxLines = 1, softWrap = false)
+        }
+    }
+}
+
+@Composable
+private fun StatusBarButton(
+    label: String,
+    tag: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    content: @Composable () -> Unit,
+) {
+    val colors = MaterialTheme.colorScheme
+    WithTooltip(label = label, side = TooltipSide.Above) {
+        Row(
+            modifier = Modifier
+                .height(StatusItemHeight)
+                .interactive(onClick = onClick)
+                .background(if (selected) colors.secondaryContainer else colors.surfaceContainerLow)
+                .clearAndSetSemantics {
+                    role = Role.Button
+                    contentDescription = label
+                    this.selected = selected
+                    onClick { onClick(); true }
+                    testTag = tag
+                }
+                .padding(horizontal = Spacing.sm),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(Spacing.xs),
+        ) {
+            content()
         }
     }
 }
@@ -65,34 +116,17 @@ private fun MachineStatusEntry(item: MachineStatusItem, selected: Boolean, compa
     val colors = MaterialTheme.colorScheme
     val attention = item.attention?.let { ShogunTheme.status.of(it).color }
     val neutral = if (selected) colors.onSecondaryContainer else colors.onSurfaceVariant
-    WithTooltip(label = item.tooltip, side = TooltipSide.Above) {
-        Row(
-            modifier = Modifier
-                .height(StatusItemHeight)
-                .interactive(onClick = onClick)
-                .background(if (selected) colors.secondaryContainer else colors.surfaceContainerLow)
-                .clearAndSetSemantics {
-                    role = Role.Button
-                    contentDescription = item.tooltip
-                    this.selected = selected
-                    onClick { onClick(); true }
-                    testTag = "machine-status-${item.resource.name}"
-                }
-                .padding(horizontal = Spacing.sm),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(Spacing.xs),
-        ) {
-            Icon(item.resource.icon, contentDescription = null, tint = attention ?: neutral, modifier = Modifier.size(StatusIconSize))
-            if (!compact) {
-                Text(item.name, style = MaterialTheme.typography.labelMedium, color = neutral, maxLines = 1, softWrap = false)
-            }
-            Text(
-                item.figure ?: NotMeasuredFigure,
-                style = ShogunTheme.typography.dataSmall,
-                color = attention ?: if (selected) colors.onSecondaryContainer else colors.onSurface,
-                maxLines = 1,
-                softWrap = false,
-            )
+    StatusBarButton(item.tooltip, "machine-status-${item.resource.name}", selected, onClick) {
+        Icon(item.resource.icon, contentDescription = null, tint = attention ?: neutral, modifier = Modifier.size(StatusIconSize))
+        if (!compact) {
+            Text(item.name, style = MaterialTheme.typography.labelMedium, color = neutral, maxLines = 1, softWrap = false)
         }
+        Text(
+            item.figure ?: NotMeasuredFigure,
+            style = ShogunTheme.typography.dataSmall,
+            color = attention ?: if (selected) colors.onSecondaryContainer else colors.onSurface,
+            maxLines = 1,
+            softWrap = false,
+        )
     }
 }

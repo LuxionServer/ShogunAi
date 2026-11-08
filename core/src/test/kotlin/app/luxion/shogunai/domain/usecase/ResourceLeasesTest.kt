@@ -20,6 +20,8 @@ import app.luxion.shogunai.domain.model.WorktreeError
 import kotlinx.coroutines.test.runTest
 import java.time.Duration
 import java.time.Instant
+import app.luxion.shogunai.domain.model.ProcessIdentity
+import app.luxion.shogunai.domain.model.WaitTicket
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -310,5 +312,104 @@ class ResourceLeasesTest {
         assertEquals(expired.toEpochMilli(), store.readLastUsed(admin1)["emulator"])
         assertTrue(store.readLeases(admin2).isEmpty())
         assertTrue(store.readPorts(admin2).isEmpty())
+    }
+
+    @Test
+    fun `an unlimited pool still waits behind another worktree in line`() = runTest {
+        pool.waitQueue.write(ResourceKind.IOS_SIMULATOR, listOf(WaitTicket("ticket-3", admin3, task3, ProcessIdentity(2000, 5), pool.now.toEpochMilli())))
+
+        val error = assertIs<WorktreeError.ResourcePoolFull>(pool.acquire.simulator(repository, task2).exceptionOrNull())
+
+        assertEquals(0, error.limit)
+    }
+
+    @Test
+    fun `releases without a previous device don't bring a port back or avoid one`() = runTest {
+        store.writeReleases(admin2, mapOf("emulator" to ReleaseRecord(pool.now.toEpochMilli(), "main-repo · TASK-1", null)))
+        store.writeReleases(admin3, mapOf("emulator" to ReleaseRecord(pool.now.toEpochMilli(), "main-repo · TASK-1", null)))
+        store.writePorts(admin3, emptyMap())
+
+        pool.acquire.emulator(repository, task2).getOrThrow()
+
+        assertEquals(mapOf("emulator" to 5554), store.readPorts(admin2))
+    }
+
+    @Test
+    fun `without a free port no emulator can be reserved`() = runTest {
+        val busy = PoolHarness(git, source, store, sdk, files = files, portProbe = FakePortProbe(busy = (5554..5585).toSet()))
+
+        assertIs<WorktreeError.NoEmulatorPort>(busy.acquire.emulator(repository, task2).exceptionOrNull())
+    }
+
+    @Test
+    fun `a holder never used is released before one used long ago`() = runTest {
+        pool.limit(emulators = 2)
+        hold(admin1, 5554, EmulatorState.STOPPED)
+        store.writePorts(admin2, mapOf("emulator" to 5556))
+        store.writeLeases(admin2, mapOf("emulator" to expired.toEpochMilli()))
+
+        val acquisition = pool.acquire.emulator(repository, task3).getOrThrow()
+
+        assertEquals(listOf(task2), acquisition.releases.map { it.worktreePath })
+    }
+
+    @Test
+    fun `a simulator that no longer exists is released without being deleted`() = runTest {
+        pool.limit(simulators = 1)
+        store.writeResources(admin1, mapOf("ios-simulator" to "UDID-GONE"))
+        store.writeLeases(admin1, mapOf("ios-simulator" to expired.toEpochMilli()))
+        pool.simulators.addExisting("UDID-B", "ShogunAi · main-repo · TASK-3", SimulatorState.SHUTDOWN)
+        store.writeResources(admin3, mapOf("ios-simulator" to "UDID-B"))
+        store.writeLeases(admin3, mapOf("ios-simulator" to pool.now.toEpochMilli()))
+
+        val result = pool.acquire.simulator(repository, task2)
+
+        assertTrue(pool.simulators.deleted.none { it == "UDID-GONE" }, result.toString())
+    }
+
+    @Test
+    fun `a worktree whose folders can't be resolved has no release record`() = runTest {
+        val broken = object : ShellCommandExecutor {
+            override suspend fun execute(command: List<String>, workingDirectory: String?) = FakeShellCommandExecutor.failure(command)
+        }
+        val resolve = ResolveWorktreeEnvironmentUseCase(broken, source, store, FakePortProbe())
+
+        assertNull(ReadReleaseRecordUseCase(resolve, store)(task1, ResourceKind.EMULATOR))
+    }
+
+    @Test
+    fun `renewing touches the lease of a held simulator`() = runTest {
+        store.writeResources(admin1, mapOf("ios-simulator" to "UDID-A"))
+
+        RenewWorktreeLeasesUseCase(pool.resolve, store, clock = { pool.now })(task1).getOrThrow()
+
+        assertEquals(mapOf("ios-simulator" to pool.now.toEpochMilli()), store.readLeases(admin1))
+    }
+
+    @Test
+    fun `when every free port was released moments ago the first one is still taken`() = runTest {
+        val narrow = PoolHarness(git, source, store, sdk, files = files, portProbe = FakePortProbe(busy = (5556..5585).toSet()))
+        store.writeReleases(admin3, mapOf("emulator" to ReleaseRecord(narrow.now.toEpochMilli(), "main-repo · TASK-1", "emulator-5554")))
+
+        narrow.acquire.emulator(repository, task2).getOrThrow()
+
+        assertEquals(mapOf("emulator" to 5554), store.readPorts(admin2))
+    }
+
+    @Test
+    fun `a previous port that is busy now isn't taken back`() = runTest {
+        val narrow = PoolHarness(git, source, store, sdk, files = files, portProbe = FakePortProbe(busy = setOf(5554)))
+        store.writeReleases(admin2, mapOf("emulator" to ReleaseRecord(narrow.now.toEpochMilli(), "main-repo · TASK-1", "emulator-5554")))
+
+        narrow.acquire.emulator(repository, task2).getOrThrow()
+
+        assertEquals(mapOf("emulator" to 5556), store.readPorts(admin2))
+    }
+
+    @Test
+    fun `waiting stops at a failure other than a full pool`() = runTest {
+        val busy = PoolHarness(git, source, store, sdk, files = files, portProbe = FakePortProbe(busy = (5554..5585).toSet()))
+
+        assertIs<WorktreeError.NoEmulatorPort>(busy.acquire.emulator(repository, task2, wait = app.luxion.shogunai.domain.model.DeviceWait()).exceptionOrNull())
     }
 }

@@ -1,5 +1,9 @@
 package app.luxion.shogunai.e2e
 
+import app.luxion.shogunai.domain.io.HostEnvironment
+import app.luxion.shogunai.domain.model.HostOs
+import app.luxion.shogunai.infrastructure.ProcessBuilderShellCommandExecutor
+import app.luxion.shogunai.infrastructure.SystemHostEnvironment
 import java.io.File
 import java.nio.file.Files
 import java.util.concurrent.TimeUnit
@@ -21,6 +25,24 @@ class E2eEnvironment private constructor(val home: File, private val bin: File, 
         git(repository, "commit", "-m", "Start $name")
         ignored.forEach { (path, text) -> write(repository, path, text) }
         return repository
+    }
+
+    fun hostEnvironment(): HostEnvironment =
+        SystemHostEnvironment(HostOs.current(), System.getenv(), home.absolutePath, loginShell = null, userBinFolders = listOf(bin.absolutePath))
+
+    fun dockHostEnvironment(): HostEnvironment {
+        val loginShell = bin.parentFile.resolve("login-shell")
+        val loginPath = (listOf(bin.absolutePath) + System.getenv("PATH").orEmpty().split(File.pathSeparator)).joinToString(File.pathSeparator)
+        loginShell.writeText("#!/bin/sh\nprintf '\\n__SHOGUNAI_PATH__%s__SHOGUNAI_PATH__\\n' '$loginPath'\n")
+        loginShell.setExecutable(true)
+        val variables = System.getenv() + mapOf("PATH" to DOCK_PATH, "SHELL" to loginShell.absolutePath)
+        return SystemHostEnvironment(
+            HostOs.current(),
+            variables,
+            home.absolutePath,
+            ProcessBuilderShellCommandExecutor(path = null),
+            userBinFolders = listOf(bin.absolutePath),
+        )
     }
 
     fun installFakeShogun(): File {
@@ -50,6 +72,7 @@ class E2eEnvironment private constructor(val home: File, private val bin: File, 
 
     companion object {
         const val MAIN_BRANCH = "main"
+        const val DOCK_PATH = "/usr/bin:/bin:/usr/sbin:/sbin"
         private const val GIT_TIMEOUT_SECONDS = 30L
         private const val TASK = "./gradlew :desktopApp:desktopE2eTest"
         private val isWindows = System.getProperty("os.name").startsWith("Windows")

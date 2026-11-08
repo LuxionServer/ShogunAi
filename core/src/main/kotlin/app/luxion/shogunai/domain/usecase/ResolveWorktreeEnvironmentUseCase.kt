@@ -148,8 +148,8 @@ class ResolveWorktreeEnvironmentUseCase(
 
     private fun recordComposeProject(repositoryPath: String, worktreePath: String, environment: WorktreeEnvironment) {
         val registry = composeRegistry ?: return
-        val project = environment.variables.lastOrNull { it.first == COMPOSE_PROJECT_NAME }?.second ?: return
-        runCatching { registry.record(repositoryPath, ComposeRegistryEntry(project, normalizePath(worktreePath))) }
+        val project = environment.variables.last { it.first == COMPOSE_PROJECT_NAME }
+        runCatching { registry.record(repositoryPath, ComposeRegistryEntry(project.second, normalizePath(worktreePath))) }
     }
 
     suspend fun recordedOnMachine(repositoryPath: String, key: String): Result<Set<String>> = runCatching {

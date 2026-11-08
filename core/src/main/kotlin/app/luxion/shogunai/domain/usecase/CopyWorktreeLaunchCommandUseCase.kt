@@ -9,7 +9,7 @@ import app.luxion.shogunai.domain.model.WorktreeError
 class CopyWorktreeLaunchCommandUseCase(
     private val config: ProjectConfig,
     private val clipboard: ClipboardWriter,
-    private val windows: Boolean = System.getProperty("os.name").orEmpty().startsWith("Windows", ignoreCase = true),
+    private val windows: Boolean = System.getProperty("os.name", "").startsWith("Windows", ignoreCase = true),
 ) {
     suspend operator fun invoke(worktreePath: String,
         agent: AgentLaunchConfig = config.agentLaunchConfig,

@@ -12,7 +12,7 @@ import java.nio.file.Path
 class MacPackageCacheSource(
     private val fileManager: FileManager,
     private val home: String,
-    private val osName: String = System.getProperty("os.name").orEmpty(),
+    private val osName: String = System.getProperty("os.name", ""),
 ) : PackageCacheSource {
 
     override suspend fun sizes(): PackageCacheSizes {

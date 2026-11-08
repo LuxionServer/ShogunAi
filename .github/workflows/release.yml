@@ -54,8 +54,28 @@ jobs:
     with:
       ref: ${{ needs.resolve-version.outputs.ref }}
 
-  create-release:
+  package:
+    name: Package
     needs: [resolve-version, test]
+    permissions:
+      contents: read
+    uses: ./.github/workflows/package.yml
+    with:
+      version: ${{ needs.resolve-version.outputs.version }}
+      ref: ${{ needs.resolve-version.outputs.ref }}
+    secrets: inherit
+
+  smoke-test:
+    name: Smoke test
+    needs: [resolve-version, package]
+    permissions:
+      contents: read
+    uses: ./.github/workflows/smoke-test.yml
+    with:
+      ref: ${{ needs.resolve-version.outputs.ref }}
+
+  create-release:
+    needs: [resolve-version, smoke-test]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -125,92 +145,8 @@ jobs:
             --draft \
             "${NOTES_ARGS[@]}"
 
-  build:
-    needs: [resolve-version, create-release]
-    permissions:
-      contents: read
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: windows-latest
-            task: packageReleaseMsi
-            artifact-glob: desktopApp/build/compose/binaries/main-release/msi/*.msi
-          - os: ubuntu-latest
-            task: packageReleaseDeb
-            artifact-glob: desktopApp/build/compose/binaries/main-release/deb/*.deb
-
-    runs-on: ${{ matrix.os }}
-
-    env:
-      VERSION: ${{ needs.resolve-version.outputs.version }}
-
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          ref: ${{ needs.resolve-version.outputs.ref }}
-          persist-credentials: false
-
-      - uses: actions/setup-java@v6
-        with:
-          distribution: corretto
-          java-version: "21"
-
-      - uses: gradle/actions/setup-gradle@v6
-
-      - name: Build installer
-        env:
-          TASK: ${{ matrix.task }}
-        run: ./gradlew ":desktopApp:${TASK}" "-PappVersion=${VERSION}"
-
-      - uses: actions/upload-artifact@v7
-        with:
-          name: installer-${{ matrix.os }}
-          path: ${{ matrix.artifact-glob }}
-          if-no-files-found: error
-
-  build-macos:
-    needs: [resolve-version, create-release]
-    permissions:
-      contents: read
-    uses: ./.github/workflows/macos-installer.yml
-    with:
-      version: ${{ needs.resolve-version.outputs.version }}
-      ref: ${{ needs.resolve-version.outputs.ref }}
-    secrets: inherit
-
-  build-cli:
-    needs: [resolve-version, create-release]
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    env:
-      VERSION: ${{ needs.resolve-version.outputs.version }}
-
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          ref: ${{ needs.resolve-version.outputs.ref }}
-          persist-credentials: false
-
-      - uses: actions/setup-java@v6
-        with:
-          distribution: corretto
-          java-version: "21"
-
-      - uses: gradle/actions/setup-gradle@v6
-
-      - name: Build CLI zip
-        run: ./gradlew :cli:distZip "-PappVersion=${VERSION}"
-
-      - uses: actions/upload-artifact@v7
-        with:
-          name: cli
-          path: cli/build/distributions/shogun-${{ needs.resolve-version.outputs.version }}.zip
-          if-no-files-found: error
-
   attest-assets:
-    needs: [build, build-macos, build-cli]
+    needs: create-release
     runs-on: ubuntu-latest
     permissions:
       id-token: write
@@ -220,14 +156,20 @@ jobs:
       - uses: actions/download-artifact@v8
         with:
           path: dist
+          pattern: installer-*
           merge-multiple: true
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: cli
+          path: dist
 
       - uses: actions/attest@v4
         with:
           subject-path: dist/*
 
   publish-release:
-    needs: [resolve-version, build, build-macos, build-cli, attest-assets]
+    needs: [resolve-version, create-release, attest-assets]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -238,7 +180,13 @@ jobs:
       - uses: actions/download-artifact@v8
         with:
           path: dist
+          pattern: installer-*
           merge-multiple: true
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: cli
+          path: dist
 
       - name: Write checksums
         working-directory: dist

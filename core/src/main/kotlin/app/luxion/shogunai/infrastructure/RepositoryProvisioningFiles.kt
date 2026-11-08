@@ -49,8 +49,8 @@ class RepositoryProvisioningFiles : RepositoryProvisioningSource {
             linkPatterns = config?.let { linkPatternsOf(it, configPath) }.orEmpty(),
             postCreateCommands = config?.let { postCreateCommandsOf(it, configPath) }.orEmpty(),
             worktreeIncludePatterns = readWorktreeInclude(root.resolve(RepositoryProvisioning.WORKTREE_INCLUDE_FILE_NAME)),
-            providers = config?.let { providersOf(it, configPath) } ?: RepositoryProviders(),
-            environment = config?.let { environmentOf(it, configPath) } ?: EnvironmentDeclaration(),
+            providers = if (config != null) providersOf(config, configPath) else RepositoryProviders(),
+            environment = if (config != null) environmentOf(config, configPath) else EnvironmentDeclaration(),
         )
     }
 
@@ -64,7 +64,7 @@ class RepositoryProvisioningFiles : RepositoryProvisioningSource {
                 try {
                     parseEnvironmentVariable(name, primitive.content)
                 } catch (error: InvalidEnvironmentTemplate) {
-                    throw invalid(error.message.orEmpty())
+                    throw invalid(error.message)
                 }
             }
             else -> throw invalid("\"$ENV_FIELD\" must be an object")
@@ -72,7 +72,7 @@ class RepositoryProvisioningFiles : RepositoryProvisioningSource {
         val envFile = when (val field = config[ENV_FILE_FIELD]) {
             null, is JsonNull -> null
             is JsonPrimitive -> {
-                val value = field.takeIf { it.isString }?.content
+                val value = field.stringOrNull()
                     ?: throw invalid("\"$ENV_FILE_FIELD\" must be a relative path inside the worktree")
                 if (hasHiddenCharacters(value)) {
                     throw invalid("\"$ENV_FILE_FIELD\" can't contain line breaks, control characters or invisible format characters")
@@ -222,7 +222,7 @@ class RepositoryProvisioningFiles : RepositoryProvisioningSource {
         val element = try {
             Json.parseToJsonElement(text)
         } catch (error: SerializationException) {
-            throw WorktreeError.InvalidRepositoryConfig(path.toString(), error.message?.lineSequence()?.firstOrNull())
+            throw WorktreeError.InvalidRepositoryConfig(path.toString(), firstLineOf(error))
         }
         return element as? JsonObject
             ?: throw WorktreeError.InvalidRepositoryConfig(path.toString(), "expected a JSON object")
@@ -331,7 +331,7 @@ class RepositoryProvisioningFiles : RepositoryProvisioningSource {
             "\"$PROVIDERS_FIELD.$DESKTOP_APP_PROVIDER.$MODULE_FIELD\" must be a Gradle project path such as \":desktopApp\"",
         )
         val value = options[MODULE_FIELD] as? JsonPrimitive ?: throw invalid
-        return value.takeIf { it.isString }?.content?.takeIf(RepositoryConfigRules::isGradleProjectPath) ?: throw invalid
+        return value.stringOrNull()?.takeIf(RepositoryConfigRules::isGradleProjectPath) ?: throw invalid
     }
 
     private fun providerOptions(value: JsonElement, provider: String, path: Path): JsonObject =
@@ -345,7 +345,7 @@ class RepositoryProvisioningFiles : RepositoryProvisioningSource {
         )
         return when (val value = options[field]) {
             null, is JsonNull -> null
-            is JsonPrimitive -> value.takeIf { it.isString }?.content?.takeIf { it.isNotBlank() } ?: throw invalid
+            is JsonPrimitive -> value.stringOrNull()?.takeIf { it.isNotBlank() } ?: throw invalid
             else -> throw invalid
         }
     }
@@ -366,7 +366,7 @@ class RepositoryProvisioningFiles : RepositoryProvisioningSource {
         )
         return when (val value = options[field]) {
             null, is JsonNull -> null
-            is JsonPrimitive -> value.takeIf { it.isString }?.content?.takeIf(RepositoryConfigRules::isMemorySize) ?: throw invalid
+            is JsonPrimitive -> value.stringOrNull()?.takeIf(RepositoryConfigRules::isMemorySize) ?: throw invalid
             else -> throw invalid
         }
     }
@@ -399,7 +399,7 @@ class RepositoryProvisioningFiles : RepositoryProvisioningSource {
         )
         return when (val value = options[field]) {
             null, is JsonNull -> null
-            is JsonPrimitive -> value.takeIf { !it.isString }?.content?.let(RepositoryConfigRules::positiveWholeNumber) ?: throw invalid
+            is JsonPrimitive -> value.takeIf { !it.isString }?.let { RepositoryConfigRules.positiveWholeNumber(it.content) } ?: throw invalid
             else -> throw invalid
         }
     }

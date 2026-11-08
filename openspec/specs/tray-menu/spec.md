@@ -29,7 +29,7 @@ The menu SHALL list up to 5 recent projects and up to 8 recent worktrees, most r
 - **THEN** it no longer appears in the menu
 
 ### Requirement: Actions on a recent worktree
-Each recent worktree SHALL have a submenu with "Show in ShogunAi", "Open in <default runner>", an "Open with" submenu with the worktree's other available open actions from the action catalog, and "Copy launch command", behaving as the same actions in the worktree's detail and using the worktree's agent. Its label SHALL name the branch and the project and mark when an agent is working in it or it needs the user.
+Each recent worktree SHALL have a submenu with "Show in ShogunAi", "Open in <default runner>", an "Open with" submenu with the worktree's other available open actions from the action catalog, and "Copy launch command", behaving as the same actions in the worktree's detail and using the worktree's agent. Its label SHALL name the branch and the project and mark when an agent is working in it or it is waiting for the user. Unfinished work SHALL NOT mark the label.
 
 #### Scenario: Open in the default runner from the menu
 - **WHEN** the default runner is Herdr and the user chooses "Open in Herdr" for a recent worktree
@@ -41,7 +41,11 @@ Each recent worktree SHALL have a submenu with "Show in ShogunAi", "Open in <def
 
 #### Scenario: Agent waiting
 - **WHEN** Herdr reports a recent worktree's agent as blocked
-- **THEN** the worktree's label in the menu marks it as needing the user
+- **THEN** the worktree's label in the menu marks it as waiting for the user
+
+#### Scenario: Unfinished worktree
+- **WHEN** a recent worktree has uncommitted changes and no agent
+- **THEN** its label in the menu has no mark
 
 #### Scenario: Launch fails
 - **WHEN** a launch action from the menu fails

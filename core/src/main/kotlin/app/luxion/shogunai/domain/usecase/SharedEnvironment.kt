@@ -36,7 +36,7 @@ class MultirepoSharedEnvironment(
 
     override suspend fun forWorktree(repositoryPath: String, worktreePath: String): SharedEnvironment? {
         val multirepo = resolveMultirepo.declaring(repositoryPath) ?: return null
-        val alias = multirepo.repositories.firstOrNull { sameDirectory(it.path, repositoryPath) }?.alias ?: return null
+        val alias = multirepo.repositories.first { sameDirectory(it.path, repositoryPath) }.alias
         val variables = try {
             multirepo.sharedVariables()[alias].orEmpty()
         } catch (error: InvalidSharedEnvironment) {
@@ -51,10 +51,10 @@ class MultirepoSharedEnvironment(
     }
 
     private fun invalid(multirepo: Multirepo, alias: String, error: InvalidSharedEnvironment): SharedEnvironment? {
-        val names = multirepo.declaration.env?.byAlias?.get(alias)?.keys.orEmpty().sorted()
+        val names = multirepo.declaration.env!!.byAlias[alias]?.keys.orEmpty().sorted()
         if (names.isEmpty()) return null
         return SharedEnvironment(
-            invalid = UnresolvedReason.InvalidDeclaration(multirepo.declarationPath, error.message.orEmpty()),
+            invalid = UnresolvedReason.InvalidDeclaration(multirepo.declarationPath, error.message),
             invalidNames = names,
         )
     }
@@ -68,8 +68,8 @@ class MultirepoSharedEnvironment(
     private suspend fun locate(repositoryPath: String, branch: String?): SharedTarget =
         worktreesOf(repositoryPath).fold(
             onSuccess = { worktrees ->
-                val partner = branch?.let { wanted -> worktrees.firstOrNull { !it.isMain && !it.isBare && it.branch == wanted } }
-                SharedTarget.Located(repositoryPath, partner?.path ?: repositoryPath)
+                val partner = branch?.let { wanted -> worktrees.firstOrNull { !it.isMain && it.branch == wanted } }
+                SharedTarget.Located(repositoryPath, if (partner != null) partner.path else repositoryPath)
             },
             onFailure = { SharedTarget.Unreadable(it.message.orEmpty()) },
         )

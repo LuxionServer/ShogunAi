@@ -85,7 +85,7 @@ class EditorLaunchersTest {
         val studio = "C:\\Program Files\\Android\\Android Studio\\bin\\studio64.exe"
         val locator = ExecutableLocator(
             HostOs.WINDOWS, "/home/dev", { emptyList() }, null,
-            listOf("C:\\Program Files"), listOf(".EXE"), { emptyList() }, { it == studio },
+            listOf("C:\\Program Files"), listOf(".EXE"), subfolders = { emptyList() }, isFile = { it == studio },
         )
 
         CommandEditorLauncher(EditorId.ANDROID_STUDIO, executor, HostOs.WINDOWS, locator).open("C:\\work\\TASK-8").getOrThrow()
@@ -237,5 +237,14 @@ class EditorLaunchersTest {
             assertIs<WorktreeError.ClaudeDesktopLaunchFailed>(error)
             assertTrue(executor.executedCommands.isEmpty())
         }
+    }
+
+    @Test
+    fun `on Windows other exit codes and a missing Explorer are failures`() = runTest {
+        val exitTwo = FakeShellCommandExecutor { FakeShellCommandExecutor.failure(it, exitCode = 2, stderr = "denied") }
+        val missing = FakeShellCommandExecutor { throw app.luxion.shogunai.domain.executor.CommandExecutionException(it, java.io.IOException("not found")) }
+
+        assertIs<WorktreeError.FolderOpenFailed>(SystemFolderLauncher(exitTwo, HostOs.WINDOWS).open(path).exceptionOrNull())
+        assertIs<WorktreeError.FolderOpenFailed>(SystemFolderLauncher(missing, HostOs.WINDOWS).open(path).exceptionOrNull())
     }
 }

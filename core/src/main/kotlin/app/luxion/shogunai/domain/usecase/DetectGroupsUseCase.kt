@@ -32,8 +32,8 @@ data class MultirepoWorktrees(
 
 fun multirepoMembers(multirepo: Multirepo, projects: List<Project>): List<MultirepoMember> =
     multirepo.repositories.map { repository ->
-        val config = projects.firstOrNull { sameDirectory(it.config.baseRepositoryPath, repository.path) }?.config
-            ?: ProjectConfig(baseRepositoryPath = repository.path, worktreesRoot = "", secretFiles = emptyList())
+        val project = projects.firstOrNull { sameDirectory(it.config.baseRepositoryPath, repository.path) }
+        val config = if (project != null) project.config else ProjectConfig(baseRepositoryPath = repository.path, worktreesRoot = "", secretFiles = emptyList())
         val worktreesRoot = config.worktreesRoot.ifBlank {
             if (repository == multirepo.workspaceRepository) multirepo.proposedWorktreesFolder(repository.alias) else ""
         }

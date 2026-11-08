@@ -21,4 +21,23 @@ class IosSimulatorChoiceTest {
     fun `without an iPhone or an iPad there is no choice`() {
         assertNull(chooseSimulator(SimulatorSettings(), SimulatorSettings(), null, listOf(runtime(watch))))
     }
+    @Test
+    fun `the newest runtime wins comparing versions part by part`() {
+        fun runtimeOf(version: String) = SimulatorRuntime("id-$version", "iOS $version", version, "iOS", listOf(ipad))
+        val runtimes = listOf("18.0", "18.0.1", "18.beta", "17.4").map(::runtimeOf)
+
+        assertEquals("18.0.1", chooseSimulator(SimulatorSettings(), SimulatorSettings(), null, runtimes)?.runtime?.version)
+        assertEquals("18.0", chooseSimulator(SimulatorSettings(), SimulatorSettings(), null, listOf("18.0", "18.beta").map(::runtimeOf))?.runtime?.version)
+        assertEquals("alpha", chooseSimulator(SimulatorSettings(), SimulatorSettings(), null, listOf("alpha", "beta").map(::runtimeOf))?.runtime?.version)
+        assertEquals("18", chooseSimulator(SimulatorSettings(), SimulatorSettings(), null, listOf("18", "18.0").map(::runtimeOf))?.runtime?.version)
+    }
+
+    @Test
+    fun `numbered iPhones are preferred to unnumbered ones`() {
+        val se = SimulatorDeviceType("se", "iPhone SE", "iPhone")
+        val sixteen = SimulatorDeviceType("16", "iPhone 16", "iPhone")
+
+        assertEquals(sixteen, chooseSimulator(SimulatorSettings(), SimulatorSettings(), null, listOf(runtime(se, sixteen)))?.deviceType)
+        assertEquals(se, chooseSimulator(SimulatorSettings(), SimulatorSettings(), null, listOf(runtime(se)))?.deviceType)
+    }
 }

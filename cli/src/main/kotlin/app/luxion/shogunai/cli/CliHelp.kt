@@ -46,7 +46,7 @@ internal object CliHelp {
         "remove" to """
   remove <task id | path | branch> [--force] [--delete-branch | --force-delete-branch] [--json]
                               Remove one worktree and stop its emulator, simulator and idle Gradle daemons;
-                              refused while it has changes or an agent running unless --force;
+                              refused while it has changes, is locked or has an agent running unless --force;
                               --delete-branch also deletes its branch when it is merged into its base or the main branch,
                               --force-delete-branch deletes it even if it is not merged;
                               --json prints one JSON object instead of text
@@ -280,9 +280,8 @@ internal object CliHelp {
 """.trimIndent(),
     )
 
-    fun forCommand(name: String): String? = sections[name]?.let { section ->
-        "Usage: shogun $name [options]\n\n" + section.lines().joinToString("\n") { "  $it".trimEnd() } + "\n"
-    }
+    fun forCommand(name: String): String =
+        "Usage: shogun $name [options]\n\n" + sections.getValue(name).lines().joinToString("\n") { "  $it".trimEnd() } + "\n"
 
     val commandNames: Set<String> = sections.keys - setOf("help", "version")
 

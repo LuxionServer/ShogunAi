@@ -12,10 +12,14 @@ import androidx.compose.ui.test.v2.runComposeUiTest
 import app.luxion.shogunai.domain.io.HostPathSource
 import app.luxion.shogunai.domain.model.AgentToolId
 import app.luxion.shogunai.domain.model.CheckState
+import app.luxion.shogunai.domain.model.HostOs
 import app.luxion.shogunai.domain.model.InstallationCheck
 import app.luxion.shogunai.domain.model.InstallationFinding
 import app.luxion.shogunai.domain.model.InstallationReport
 import app.luxion.shogunai.domain.model.LocalFileOrigin
+import app.luxion.shogunai.domain.model.MultirepoProblem
+import app.luxion.shogunai.domain.model.ProviderToolId
+import app.luxion.shogunai.domain.model.ProviderToolProblem
 import app.luxion.shogunai.domain.model.ThemeMode
 import app.luxion.shogunai.domain.model.UnavailableLocalFile
 import app.luxion.shogunai.domain.model.UnavailableReason
@@ -41,6 +45,7 @@ class InstallationCheckUiTest {
 
     private val settings = "/home/dev/.claude/settings.json"
     private val base = "/home/dev/projects/main-repo"
+    private val multirepo = "/home/dev/projects/product"
     private val brokenLink = UnavailableLocalFile("keys.properties", "$base/keys.properties", LocalFileOrigin.REPOSITORY, UnavailableReason.BrokenLink("/missing/keys.properties"))
 
     private val everyFinding = listOf(
@@ -82,6 +87,47 @@ class InstallationCheckUiTest {
                 ),
             ),
         ),
+    ) + ProviderToolId.entries.filter { it != ProviderToolId.PROVIDERS }.flatMap { tool ->
+        listOf(
+            InstallationCheck(CheckState.PASSED, InstallationFinding.ProviderTool("main-repo", tool, "/usr/local/bin/${tool.id}", installed = 2)),
+            InstallationCheck(CheckState.WARNING, InstallationFinding.ProviderTool("main-repo", tool, null, ProviderToolProblem.NotFound(listOf("/opt/${tool.id}"), listOf(tool.id)))),
+            InstallationCheck(CheckState.WARNING, InstallationFinding.ProviderTool("main-repo", tool, "/usr/local/bin/${tool.id}", ProviderToolProblem.Unusable("exit code 1"))),
+        )
+    } + listOf(
+        InstallationCheck(CheckState.PASSED, InstallationFinding.ProviderTool("main-repo", ProviderToolId.IOS_SIMULATOR, null, installed = 1)),
+        InstallationCheck(CheckState.WARNING, InstallationFinding.ProviderTool("main-repo", ProviderToolId.FLUTTER, null, ProviderToolProblem.Unusable(null))),
+        InstallationCheck(CheckState.WARNING, InstallationFinding.ProviderTool("main-repo", ProviderToolId.XCODE, null, ProviderToolProblem.NeedsMacOs)),
+        InstallationCheck(CheckState.WARNING, InstallationFinding.ProviderTool("main-repo", ProviderToolId.ANDROID_SDK, "/opt/android-sdk", ProviderToolProblem.NoAndroidVirtualDevice, 0)),
+        InstallationCheck(CheckState.WARNING, InstallationFinding.ProviderTool("main-repo", ProviderToolId.IOS_SIMULATOR, null, ProviderToolProblem.NoIosRuntime, 0)),
+        InstallationCheck(CheckState.WARNING, InstallationFinding.ProviderTool("main-repo", ProviderToolId.PROVIDERS, null, ProviderToolProblem.ProvidersUnreadable("malformed"))),
+        InstallationCheck(CheckState.PASSED, InstallationFinding.ProviderTool("main-repo", ProviderToolId.GRADLE, "/repo/gradlew", version = "8.10.2")),
+        InstallationCheck(CheckState.PASSED, InstallationFinding.ProviderTool("main-repo", ProviderToolId.MAVEN_JAVA, "/usr/bin/java", version = "17")),
+        InstallationCheck(CheckState.PASSED, InstallationFinding.ProviderTool("main-repo", ProviderToolId.DOCKER_DAEMON, null, version = "27.3.1")),
+        InstallationCheck(CheckState.WARNING, InstallationFinding.ProviderTool("main-repo", ProviderToolId.GRADLE_JAVA, null, ProviderToolProblem.JavaHomeInvalid("/opt/jdk-gone"))),
+        InstallationCheck(CheckState.WARNING, InstallationFinding.ProviderTool("main-repo", ProviderToolId.GRADLE_JAVA, "/usr/bin/java", ProviderToolProblem.JavaTooOld(11, 17, "9.1.0"))),
+        InstallationCheck(CheckState.WARNING, InstallationFinding.ProviderTool("main-repo", ProviderToolId.MAVEN_JAVA, "/usr/bin/java", ProviderToolProblem.JavaTooOld(11, 17, "4.0.0"))),
+        InstallationCheck(CheckState.WARNING, InstallationFinding.ProviderTool("main-repo", ProviderToolId.GRADLE_JAVA, "/usr/bin/java", ProviderToolProblem.GradleTooOld(21, "8.4", "8.5"))),
+        InstallationCheck(CheckState.WARNING, InstallationFinding.ProviderTool("main-repo", ProviderToolId.DOCKER_COMPOSE, "/usr/bin/docker", ProviderToolProblem.TooOld("1.29.2", "2.0"))),
+        InstallationCheck(CheckState.WARNING, InstallationFinding.ProviderTool("main-repo", ProviderToolId.DOCKER_DAEMON, null, ProviderToolProblem.DaemonNotRunning(HostOs.MACOS, "Cannot connect"))),
+        InstallationCheck(CheckState.WARNING, InstallationFinding.ProviderTool("main-repo", ProviderToolId.DOCKER_DAEMON, null, ProviderToolProblem.DaemonNotRunning(HostOs.LINUX, null))),
+        InstallationCheck(CheckState.WARNING, InstallationFinding.ProviderTool("main-repo", ProviderToolId.DOCKER_DAEMON, null, ProviderToolProblem.DaemonNotRunning(HostOs.WINDOWS, null))),
+        InstallationCheck(CheckState.PASSED, InstallationFinding.MultirepoCheck(multirepo, "product", listOf("app", "api"), 1, emptyList())),
+        InstallationCheck(CheckState.PASSED, InstallationFinding.MultirepoCheck(multirepo, "product", listOf("app", "api"), 2, emptyList())),
+        InstallationCheck(CheckState.WARNING, InstallationFinding.MultirepoCheck(multirepo, "product", emptyList(), 0, listOf(MultirepoProblem.DeclarationMissing))),
+        InstallationCheck(
+            CheckState.FAILED,
+            InstallationFinding.MultirepoCheck(
+                multirepo, "product", listOf("app", "api"), 1,
+                listOf(
+                    MultirepoProblem.InvalidDeclaration("$multirepo/.shogunai-multirepo.json", "worktreesRoot is missing"),
+                    MultirepoProblem.RepositoryMissing("api", "$multirepo/product-api"),
+                    MultirepoProblem.NotTrusted,
+                    MultirepoProblem.ListingFailed("app", null),
+                    MultirepoProblem.GroupWorktreeMissing("feature/TASK-123", "app", "/home/dev/worktrees/app/TASK-123"),
+                ),
+            ),
+        ),
+        InstallationCheck(CheckState.WARNING, InstallationFinding.MultirepoCheck(multirepo, "product", listOf("app"), 0, listOf(MultirepoProblem.NotTrusted))),
     )
 
     private fun ComposeUiTest.show(strings: Strings = EnglishStrings, content: @Composable () -> Unit) = setContent {
@@ -112,6 +158,50 @@ class InstallationCheckUiTest {
     }
 
     @Test
+    fun `a missing provider tool and a broken multirepo read in both languages`() {
+        val sdk = InstallationCheck(
+            CheckState.WARNING,
+            InstallationFinding.ProviderTool("main-repo", ProviderToolId.ANDROID_SDK, null, ProviderToolProblem.NotFound(listOf("ANDROID_HOME"))),
+        )
+        assertEquals("main-repo: Android SDK isn't installed; the emulator provider needs it (looked in ANDROID_HOME)", EnglishStrings.installationSummary(sdk))
+        assertEquals("main-repo: Android SDK no está instalado; lo necesita el proveedor emulator (se ha buscado en ANDROID_HOME)", SpanishStrings.installationSummary(sdk))
+        assertTrue(SpanishStrings.installationFix(sdk)!!.startsWith("Instala el SDK de Android"))
+
+        val group = InstallationCheck(
+            CheckState.WARNING,
+            InstallationFinding.MultirepoCheck(multirepo, "product", listOf("app", "api"), 1, listOf(MultirepoProblem.GroupWorktreeMissing("feature/TASK-123", "app", "/home/dev/worktrees/app/TASK-123"))),
+        )
+        assertEquals("Multirepo product: 1 problem in $multirepo", EnglishStrings.installationSummary(group))
+        assertEquals("Multirepo product: 1 problema en $multirepo", SpanishStrings.installationSummary(group))
+        assertEquals(
+            "Group feature/TASK-123: the folder /home/dev/worktrees/app/TASK-123 of its app worktree doesn't exist. Restore it, or run git worktree prune in app.",
+            EnglishStrings.installationFix(group),
+        )
+    }
+
+    @Test
+    fun `provider runtimes read in both languages`() {
+        val java = InstallationCheck(
+            CheckState.WARNING,
+            InstallationFinding.ProviderTool("main-repo", ProviderToolId.GRADLE_JAVA, "/usr/bin/java", ProviderToolProblem.JavaTooOld(11, 17, "9.1.0")),
+        )
+        assertEquals("main-repo: Java for Gradle is Java 11 at /usr/bin/java, but Gradle 9.1.0 needs Java 17 or newer", EnglishStrings.installationSummary(java))
+        assertEquals("main-repo: Java de Gradle es Java 11 en /usr/bin/java, pero Gradle 9.1.0 necesita Java 17 o posterior", SpanishStrings.installationSummary(java))
+
+        val passed = InstallationCheck(CheckState.PASSED, InstallationFinding.ProviderTool("main-repo", ProviderToolId.GRADLE_JAVA, "/usr/bin/java", version = "21"))
+        assertEquals("main-repo: Java for Gradle is Java 21 at /usr/bin/java", EnglishStrings.installationSummary(passed))
+
+        val daemon = InstallationCheck(
+            CheckState.WARNING,
+            InstallationFinding.ProviderTool("main-repo", ProviderToolId.DOCKER_DAEMON, null, ProviderToolProblem.DaemonNotRunning(HostOs.LINUX, "Cannot connect")),
+        )
+        assertEquals("main-repo: Docker's daemon isn't running: Cannot connect", EnglishStrings.installationSummary(daemon))
+        assertEquals("main-repo: el daemon de Docker no está en marcha: Cannot connect", SpanishStrings.installationSummary(daemon))
+        assertTrue(EnglishStrings.installationFix(daemon)!!.contains("sudo systemctl start docker"))
+        assertTrue(SpanishStrings.installationFix(daemon)!!.startsWith("Arranca el servicio de Docker"))
+    }
+
+    @Test
     fun `the overview counts failures and warnings`() {
         fun report(vararg states: CheckState) =
             InstallationReport(states.map { InstallationCheck(it, InstallationFinding.AgentTool(AgentToolId.ORCA, null)) })
@@ -126,6 +216,7 @@ class InstallationCheckUiTest {
         assertEquals("3 avisos; ShogunAi funciona, pero revisa lo de abajo.", SpanishStrings.installationOverview(report(CheckState.WARNING, CheckState.WARNING, CheckState.WARNING)))
         assertEquals("1 problema impide que ShogunAi funcione.", SpanishStrings.installationOverview(report(CheckState.FAILED)))
         assertEquals("2 problemas impiden que ShogunAi funcione y hay 2 avisos.", SpanishStrings.installationOverview(report(CheckState.FAILED, CheckState.FAILED, CheckState.WARNING, CheckState.WARNING)))
+        assertEquals("1 problema impide que ShogunAi funcione y hay 1 aviso.", SpanishStrings.installationOverview(report(CheckState.FAILED, CheckState.WARNING)))
     }
 
     @Test

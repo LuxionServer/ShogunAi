@@ -9,6 +9,7 @@ import app.luxion.shogunai.domain.FakeRepositoryProvisioningSource
 import app.luxion.shogunai.domain.FakeRepositoryTrust
 import app.luxion.shogunai.domain.FakeShellCommandExecutor
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
+import app.luxion.shogunai.domain.io.OrcaClient
 import app.luxion.shogunai.domain.model.AgentLaunchConfig
 import app.luxion.shogunai.domain.model.ClaudeSession
 import app.luxion.shogunai.domain.model.EnvironmentDeclaration
@@ -538,6 +539,59 @@ class OpenWorktreeInOrcaUseCaseTest {
         val result = useCase(orca, registry = registry, environment = handles(99L to "term_other"))(task)
 
         assertIs<WorktreeError.OrcaAgentNotStarted>(result.exceptionOrNull())
+    }
+    @Test
+    fun `Orca that starts but still isn't running fails saying it didn't start`() = runTest {
+        val fake = FakeOrcaClient(running = false)
+        val orca = object : OrcaClient by fake {
+            override suspend fun start() = Unit
+        }
+
+        val error = runCatching { OrcaAgentLauncher(orca).ensureRunning() }.exceptionOrNull()
+
+        assertIs<WorktreeError.OrcaNotStarted>(error)
+    }
+
+    @Test
+    fun `a session without a start time comes after the ones that have one`() = runTest {
+        val sessions = listOf(ClaudeSession(41, task.path, "unknown"), ClaudeSession(43, task.path, "newer", startedAt = 5))
+
+        val opening = useCase(withTerminals("term_a", "term_c"), registry = FakeClaudeSessionRegistry(sessions), environment = handles(41L to "term_a", 43L to "term_c"))(task)
+
+        assertEquals("term_c", opening.getOrThrow().terminalHandle)
+    }
+
+    @Test
+    fun `a started agent that isn't claude is confirmed only by its terminal`() = runTest {
+        val orca = FakeOrcaClient(repos = listOf(known), visibleWorktrees = visible, startsAgents = false)
+        val registry = FakeClaudeSessionRegistry(listOf(ClaudeSession(99, task.path, null)))
+
+        val opening = useCase(orca, registry = registry, environment = handles(99L to "term_1"))(task, AgentLaunchConfig(agentCommand = "codex")).getOrThrow()
+
+        assertEquals(OrcaOutcome.STARTED_AGENT, opening.outcome)
+    }
+
+    @Test
+    fun `an emulator that can't be checked isn't shown`() = runTest {
+        val orca = FakeOrcaClient(repos = listOf(known), visibleWorktrees = visible)
+
+        useCase(orca, runningEmulator = { error("adb is gone") })(task).getOrThrow()
+
+        assertTrue(orca.attachedEmulators.isEmpty())
+    }
+
+    @Test
+    fun `sessions without a start time come after the ones that have it`() = runTest {
+        val sessions = listOf(
+            ClaudeSession(41, task.path, "first", startedAt = null),
+            ClaudeSession(43, task.path, "started", startedAt = 5),
+            ClaudeSession(44, task.path, "last", startedAt = null),
+        )
+        val environment = handles(41L to "term_a", 43L to "term_c", 44L to "term_d")
+
+        val opening = useCase(withTerminals("term_a", "term_c", "term_d"), registry = FakeClaudeSessionRegistry(sessions), environment = environment)(task)
+
+        assertEquals("term_c", opening.getOrThrow().terminalHandle)
     }
 }
 

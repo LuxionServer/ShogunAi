@@ -4,8 +4,9 @@ import app.luxion.shogunai.domain.usecase.Activity
 import app.luxion.shogunai.domain.usecase.isActive
 
 enum class StateGroupKind(val activities: Set<Activity>) {
-    NEEDS_YOU(setOf(Activity.NeedsYou)),
+    WAITING_FOR_YOU(setOf(Activity.WaitingForYou)),
     AGENT_WORKING(setOf(Activity.AgentWorking)),
+    UNFINISHED(setOf(Activity.Unfinished)),
     NEW(setOf(Activity.New)),
     STOPPED(setOf(Activity.Stopped)),
     MERGED(setOf(Activity.Merged)),
@@ -14,7 +15,7 @@ enum class StateGroupKind(val activities: Set<Activity>) {
     OTHER(setOf(Activity.Idle, Activity.Unknown)),
 }
 
-data class StateGroup<T>(val kind: StateGroupKind, val items: List<T>)
+data class StateGroup<T>(val kind: StateGroupKind, val items: List<T>, val collapsed: Boolean = false)
 
 data class ActivityItem<T>(val item: T, val activity: Activity)
 

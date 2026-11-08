@@ -7,6 +7,7 @@ import app.luxion.shogunai.domain.executor.CommandTimeouts
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.WorktreeError
 import kotlinx.coroutines.test.runTest
+import app.luxion.shogunai.domain.executor.CommandExecutionException
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -54,6 +55,12 @@ class FetchRemoteUseCaseTest {
     @Test
     fun `reports no origin remote when git can't find it`() = runTest {
         val executor = FakeShellCommandExecutor { failure(it, exitCode = 2, stderr = "error: No such remote 'origin'") }
+
+        assertFalse(FetchRemoteUseCase(config, executor).hasOrigin())
+    }
+    @Test
+    fun `reports no origin remote when git can't start`() = runTest {
+        val executor = FakeShellCommandExecutor { throw CommandExecutionException(it, java.io.IOException("no git")) }
 
         assertFalse(FetchRemoteUseCase(config, executor).hasOrigin())
     }

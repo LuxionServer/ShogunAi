@@ -19,6 +19,10 @@ import kotlin.io.path.createTempDirectory
 import kotlin.io.path.deleteIfExists
 import kotlin.io.path.listDirectoryEntries
 import kotlin.test.AfterTest
+import app.luxion.shogunai.domain.model.ResourceSettings
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.encodeToString
+import kotlin.io.path.writeText
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -428,5 +432,77 @@ class JsonSettingsFileTest {
         settingsFile.acknowledgeReadProblem()
 
         assertNull(settingsFile.lastReadProblem)
+    }
+
+    private val changed = JsonSettingsFile.Settings(
+        themeMode = ThemeMode.DARK,
+        language = AppLanguage.SPANISH,
+        lastDestination = "worktrees",
+        windowBounds = WindowBounds(1, 2, 3, 4),
+        sidebarCollapsed = true,
+        collapsedProjects = listOf("p"),
+        collapsedMultirepos = listOf("m"),
+        sidebarOrder = SidebarOrder(topLevel = listOf("p")),
+        lastCreateProject = "p",
+        recentPaletteItems = listOf("open"),
+        grouping = JsonSettingsFile.GroupingSettings(Grouping.BY_PROJECT, Grouping.BY_STATE, Grouping.BY_STATE),
+        sorting = JsonSettingsFile.SortingSettings(WorktreeSort.ACTIVITY, WorktreeSort.ACTIVITY, WorktreeSort.ACTIVITY),
+        inactiveAfterDays = 9,
+        terminal = TerminalId.TMUX,
+        editor = EditorId.XCODE,
+        runner = RunnerId.ORCA,
+        recentProjects = listOf("p"),
+        recentWorktrees = listOf(RecentWorktree("p", "/w")),
+        showTrayIcon = false,
+        keepRunningInTray = true,
+        checkForUpdates = false,
+        skippedVersion = "1.2.3",
+        worktreeAgents = mapOf("/w" to "Codex"),
+        claudeHooksNoticeDismissed = true,
+        tourOffered = true,
+        resources = ResourceSettings(leaseMinutes = 5),
+    )
+
+    @Test
+    fun `every setting is written and read back, and a blank file reads as the defaults`() {
+        settingsFile.update { changed }
+        assertEquals(changed, JsonSettingsFile(storagePath).read())
+
+        storagePath.writeText("  ")
+        assertEquals(JsonSettingsFile.Settings(), JsonSettingsFile(storagePath).read())
+    }
+
+    @Test
+    fun `settings serialize whether defaults are written or not`() {
+        val formats = listOf(Json, Json { encodeDefaults = true })
+        val values = listOf(
+            JsonSettingsFile.Settings(),
+            changed,
+            JsonSettingsFile.Settings(resources = ResourceSettings(leaseMinutes = 7)),
+            JsonSettingsFile.GroupingSettings(),
+            JsonSettingsFile.GroupingSettings(active = Grouping.BY_PROJECT),
+            JsonSettingsFile.GroupingSettings(all = Grouping.BY_STATE, multirepo = Grouping.BY_STATE),
+            JsonSettingsFile.SortingSettings(),
+            JsonSettingsFile.SortingSettings(active = WorktreeSort.ACTIVITY),
+            JsonSettingsFile.SortingSettings(all = WorktreeSort.ACTIVITY, project = WorktreeSort.ACTIVITY),
+        )
+
+        formats.forEach { json ->
+            values.filterIsInstance<JsonSettingsFile.Settings>().forEach { assertEquals(it, json.decodeFromString<JsonSettingsFile.Settings>(json.encodeToString(it))) }
+            values.filterIsInstance<JsonSettingsFile.GroupingSettings>().forEach { assertEquals(it, json.decodeFromString<JsonSettingsFile.GroupingSettings>(json.encodeToString(it))) }
+            values.filterIsInstance<JsonSettingsFile.SortingSettings>().forEach { assertEquals(it, json.decodeFromString<JsonSettingsFile.SortingSettings>(json.encodeToString(it))) }
+        }
+        assertEquals(JsonSettingsFile.Settings(), Json.decodeFromString<JsonSettingsFile.Settings>("{}"))
+    }
+
+    @Test
+    fun `every setting can be left to its default while the others are given`() {
+        val all = changed
+        val leftOut = listOf(
+            all.copy(themeMode = ThemeMode.SYSTEM),
+            JsonSettingsFile.Settings(language = all.language, lastDestination = all.lastDestination, windowBounds = all.windowBounds, sidebarCollapsed = all.sidebarCollapsed, collapsedProjects = all.collapsedProjects, collapsedMultirepos = all.collapsedMultirepos, sidebarOrder = all.sidebarOrder, lastCreateProject = all.lastCreateProject, recentPaletteItems = all.recentPaletteItems, grouping = all.grouping, sorting = all.sorting, inactiveAfterDays = all.inactiveAfterDays, terminal = all.terminal, editor = all.editor, runner = all.runner, recentProjects = all.recentProjects, recentWorktrees = all.recentWorktrees, showTrayIcon = all.showTrayIcon, keepRunningInTray = all.keepRunningInTray, checkForUpdates = all.checkForUpdates, skippedVersion = all.skippedVersion, worktreeAgents = all.worktreeAgents, claudeHooksNoticeDismissed = all.claudeHooksNoticeDismissed, tourOffered = all.tourOffered, resources = all.resources),
+        )
+
+        assertEquals(leftOut[0], leftOut[1])
     }
 }

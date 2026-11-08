@@ -10,6 +10,8 @@ import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.WorktreeError
 import kotlinx.coroutines.test.runTest
 import java.nio.file.Files
+import app.luxion.shogunai.domain.model.Multirepo
+import app.luxion.shogunai.domain.model.MultirepoDeclaration
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -129,5 +131,14 @@ class ProjectRegistrationTest {
 
         assertIs<WorktreeError.ProjectNotRegistered>(error)
         assertEquals(listOf(customised), projects.list())
+    }
+
+    @Test
+    fun `a multirepo whose folder isn't the repository keeps the app's default worktrees folder`() = runTest {
+        val multirepo = Multirepo("/home/dev/projects/main-repo", MultirepoDeclaration(worktreesRoot = "../product-worktrees"))
+
+        val result = RegisterProjectUseCase(RecordingRepository(emptyList()), resolver("/home/dev/projects/main-repo/.git"), { "new-id" }, workspaceOf = { multirepo })("/home/dev/projects/main-repo").getOrThrow()
+
+        assertEquals("/home/dev/projects/main-repo-worktrees", assertIs<ProjectRegistration.Added>(result).project.config.worktreesRoot)
     }
 }

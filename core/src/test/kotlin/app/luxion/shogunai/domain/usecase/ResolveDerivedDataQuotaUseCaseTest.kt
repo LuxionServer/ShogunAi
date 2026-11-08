@@ -6,6 +6,7 @@ import app.luxion.shogunai.domain.model.DerivedDataQuota
 import app.luxion.shogunai.domain.model.DerivedDataQuotaMode
 import app.luxion.shogunai.domain.model.ResourceSettings
 import kotlinx.coroutines.test.runTest
+import app.luxion.shogunai.domain.io.DerivedDataSource
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -56,5 +57,14 @@ class ResolveDerivedDataQuotaUseCaseTest {
 
         assertEquals(DerivedDataQuota(DerivedDataQuotaMode.NONE, null), quota)
         assertFalse(quota.isUnknown)
+    }
+
+    @Test
+    fun `automatic is unknown when reading the free space fails`() = runTest {
+        val source = object : DerivedDataSource by FakeDerivedDataSource() {
+            override suspend fun freeBytes(): Long? = throw IllegalStateException("statfs failed")
+        }
+
+        assertEquals(DerivedDataQuota(DerivedDataQuotaMode.AUTOMATIC, null), ResolveDerivedDataQuotaUseCase(source)(automatic, 30 * gb))
     }
 }

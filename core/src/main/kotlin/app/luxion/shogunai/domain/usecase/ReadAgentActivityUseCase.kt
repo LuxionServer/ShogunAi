@@ -3,12 +3,11 @@ package app.luxion.shogunai.domain.usecase
 import app.luxion.shogunai.domain.io.AgentSessionStore
 import app.luxion.shogunai.domain.model.AgentSessionRecord
 import app.luxion.shogunai.domain.model.AgentState
-import java.io.File
 
 class ReadAgentActivityUseCase(
     private val sessionStore: AgentSessionStore,
     private val isAlive: (Long) -> Boolean = { pid -> ProcessHandle.of(pid).isPresent },
-    private val transcriptModifiedAt: (String) -> Long? = { path -> File(path).lastModified().takeIf { it > 0 } },
+    private val transcriptModifiedAt: (String) -> Long? = ::fileModifiedAt,
     private val now: () -> Long = System::currentTimeMillis,
 ) {
     operator fun invoke(worktreePath: String): AgentState? =
@@ -22,7 +21,7 @@ class ReadAgentActivityUseCase(
 
     private fun effectiveState(record: AgentSessionRecord): AgentState {
         val resumed = record.state in setOf(AgentState.BLOCKED, AgentState.DONE) &&
-            (record.transcriptPath?.let(transcriptModifiedAt)?.let { it > record.updatedAt + TRANSCRIPT_GRACE_MILLIS } ?: false)
+            record.transcriptPath?.let(transcriptModifiedAt)?.let { it > record.updatedAt + TRANSCRIPT_GRACE_MILLIS } == true
         return if (resumed) AgentState.WORKING else record.state
     }
 

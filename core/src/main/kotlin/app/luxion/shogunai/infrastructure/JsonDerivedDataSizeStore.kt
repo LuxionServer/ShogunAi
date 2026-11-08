@@ -40,8 +40,8 @@ class JsonDerivedDataSizeStore(
     }
 
     @Serializable
-    private data class Store(val folders: Map<String, Entry> = emptyMap())
+    internal data class Store(val folders: Map<String, Entry> = emptyMap())
 
     @Serializable
-    private data class Entry(val sizeBytes: Long, val lastAccessed: String, val packagesBytes: Long? = null)
+    internal data class Entry(val sizeBytes: Long, val lastAccessed: String, val packagesBytes: Long? = null)
 }

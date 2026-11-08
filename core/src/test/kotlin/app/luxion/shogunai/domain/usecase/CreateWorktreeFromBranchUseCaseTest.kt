@@ -409,4 +409,23 @@ class CreateWorktreeFromBranchUseCaseTest {
         assertTrue(exec.executed("git", "worktree", "remove", "--force", worktreePath))
         assertFalse(exec.executedCommands.any { it.getOrNull(1) == "branch" && "-D" in it })
     }
+    @Test
+    fun `a branch with the remote prefix that the remote doesn't have isn't found`() = runTest {
+        val exec = FakeShellCommandExecutor {
+            if (it.getOrNull(1) == "show-ref") failure(it, exitCode = 1) else success(it)
+        }
+        val useCase = CreateWorktreeFromBranchUseCase(config, exec, FakeFileManager(existing = baseWithSecrets), FakeRepositoryProvisioningSource())
+
+        assertIs<WorktreeError.BranchNotFound>(useCase("origin/$branch").exceptionOrNull())
+        assertTrue(exec.executed("git", "show-ref", "--verify", "--quiet", "refs/remotes/origin/$branch"))
+    }
+
+    @Test
+    fun `a branch Git says is checked out without naming where is reported without a path`() = runTest {
+        val exec = executor(addResponse = { failure(it, exitCode = 128, stderr = "fatal: '$branch' is already checked out") })
+
+        val error = CreateWorktreeFromBranchUseCase(config, exec, FakeFileManager(existing = baseWithSecrets), FakeRepositoryProvisioningSource())(branch).exceptionOrNull()
+
+        assertEquals(null, assertIs<WorktreeError.BranchAlreadyCheckedOut>(error).path)
+    }
 }

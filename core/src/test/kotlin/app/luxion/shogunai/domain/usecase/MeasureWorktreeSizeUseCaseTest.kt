@@ -42,4 +42,10 @@ class MeasureWorktreeSizeUseCaseTest {
         assertNull(MeasureWorktreeSizeUseCase(fileManager, StandardTestDispatcher(testScheduler))(sibling, all).getOrThrow())
         assertTrue(fileManager.sizeRequests.isEmpty())
     }
+    @Test
+    fun `a prunable worktree has no size`() = runTest {
+        val fileManager = FakeFileManager(existing = all.map { it.path })
+
+        assertEquals(null, MeasureWorktreeSizeUseCase(fileManager, StandardTestDispatcher(testScheduler))(sibling.copy(isPrunable = true), all).getOrThrow())
+    }
 }

@@ -14,7 +14,7 @@ class PmsetPowerSource(private val executor: ShellCommandExecutor) : PowerSource
 }
 
 internal fun parsePowerSource(output: String): Boolean? {
-    val firstLine = output.lineSequence().firstOrNull().orEmpty()
+    val firstLine = output.lineSequence().first()
     return when {
         "'Battery Power'" in firstLine -> true
         "'AC Power'" in firstLine -> false

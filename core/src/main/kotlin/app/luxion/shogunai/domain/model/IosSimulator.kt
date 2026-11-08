@@ -58,7 +58,7 @@ private val IPHONE_MODEL_NUMBER = Regex("""^iPhone (\d+)""")
 private fun newestIphone(candidates: List<SimulatorDeviceType>): SimulatorDeviceType? =
     candidates.filter { it.productFamily == "iPhone" }
         .minWithOrNull(
-            compareByDescending<SimulatorDeviceType> { IPHONE_MODEL_NUMBER.find(it.name)?.groupValues?.get(1)?.toInt() ?: -1 }
+            compareByDescending<SimulatorDeviceType> { IPHONE_MODEL_NUMBER.find(it.name)?.let { match -> match.groupValues[1].toInt() } ?: -1 }
                 .thenBy { it.name.length },
         )
 

@@ -52,8 +52,8 @@ class ClaudeSessionNaming(
 
     fun focusedSessionName(folder: String, expectedName: String?): String? {
         val sessions = liveSessions().filter { it.name != null && sameDirectory(it.cwd, folder) }
-        return sessions.firstOrNull { it.name == expectedName }?.name
-            ?: sessions.maxByOrNull { it.startedAt ?: Long.MIN_VALUE }?.name
+        val focused = sessions.firstOrNull { it.name == expectedName } ?: sessions.maxByOrNull { it.startedAt ?: Long.MIN_VALUE }
+        return focused?.name
     }
 
     private fun liveSessions(): List<ClaudeSession> {
@@ -67,8 +67,9 @@ class ClaudeSessionNaming(
     }
 }
 
-fun isLiveClaudeProcess(pid: Long): Boolean {
-    val handle = ProcessHandle.of(pid).orElse(null) ?: return false
+fun isLiveClaudeProcess(pid: Long): Boolean = ProcessHandle.of(pid).map(::isLiveClaudeProcess).orElse(false)
+
+internal fun isLiveClaudeProcess(handle: ProcessHandle): Boolean {
     if (!handle.isAlive) return false
     val command = handle.info().command().orElse(null) ?: return true
     return command.substringAfterLast('/').substringAfterLast('\\') in setOf("claude", "claude.exe")

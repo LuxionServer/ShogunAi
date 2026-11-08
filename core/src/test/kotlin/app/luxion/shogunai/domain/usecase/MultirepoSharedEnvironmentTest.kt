@@ -3,11 +3,14 @@ package app.luxion.shogunai.domain.usecase
 import app.luxion.shogunai.domain.model.SharedVariablesDeclaration
 import app.luxion.shogunai.domain.model.UnresolvedReason
 import kotlinx.coroutines.test.runTest
+import app.luxion.shogunai.domain.executor.CommandResult
+import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.time.Duration
 
 class MultirepoSharedEnvironmentTest {
 
@@ -87,5 +90,45 @@ class MultirepoSharedEnvironmentTest {
         world.git.repositories.remove(world.api)
 
         assertIs<SharedTarget.Unreadable>(shared.forWorktree(world.appBase, appTask)!!.targets["api"])
+    }
+
+    @Test
+    fun `variables that reference no repository need no target`() = runTest {
+        sharing("APP_NAME" to "demo")
+
+        val environment = shared.forWorktree(world.appBase, world.appBase)!!
+
+        assertEquals(listOf("APP_NAME"), environment.variables.map { it.name })
+        assertTrue(environment.targets.isEmpty())
+    }
+
+    @Test
+    fun `an invalid declaration without variables of the repository gives it nothing`() = runTest {
+        sharing("API_URL" to "\${port:billing.http}", alias = "api")
+
+        assertNull(shared.forWorktree(world.appBase, world.appBase))
+    }
+
+    @Test
+    fun `a worktree its repository can't list or doesn't list refers to the main checkout`() = runTest {
+        sharing("API_URL" to "http://localhost:\${port:api.http}")
+        with(world.git) { world.api.worktree(apiTask, "feature/TASK-7") }
+
+        assertEquals(SharedTarget.Located(world.apiBase, world.apiBase), shared.forWorktree(world.appBase, appTask)!!.targets["api"])
+        world.git.repositories.remove(world.app)
+        assertEquals(SharedTarget.Located(world.apiBase, world.apiBase), shared.forWorktree(world.appBase, appTask)!!.targets["api"])
+    }
+
+    @Test
+    fun `a listing that fails without a reason is unreadable with no detail`() = runTest {
+        sharing("API_URL" to "http://localhost:\${port:api.http}")
+        val silent = object : ShellCommandExecutor by world.git {
+            override suspend fun executeWithin(command: List<String>, timeout: Duration, workingDirectory: String?): CommandResult =
+                if (workingDirectory == world.apiBase && command.getOrNull(1) == "worktree") throw IllegalStateException() else world.git.executeWithin(command, timeout, workingDirectory)
+        }
+
+        val target = MultirepoSharedEnvironment(world.resolver, silent).forWorktree(world.appBase, world.appBase)!!.targets["api"]
+
+        assertEquals(SharedTarget.Unreadable(""), target)
     }
 }

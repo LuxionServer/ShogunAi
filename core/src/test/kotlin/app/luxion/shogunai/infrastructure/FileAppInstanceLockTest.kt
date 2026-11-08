@@ -52,4 +52,31 @@ class FileAppInstanceLockTest {
         assertFalse(refusing.acquire())
         assertFalse(refusing.isHeldByAnyInstance())
     }
+
+    @Test
+    fun `an instance that holds the lock keeps it and releasing twice is harmless`() {
+        val lock = FileAppInstanceLock(lockFile)
+
+        assertTrue(lock.acquire())
+        assertTrue(lock.acquire())
+        assertTrue(lock.isHeldByAnyInstance())
+        lock.release()
+        lock.release()
+        assertFalse(lock.isHeldByAnyInstance())
+    }
+
+    @Test
+    fun `a lock file that can't be opened is neither acquired nor held`() {
+        val blocked = lockFile.parent.resolve("file")
+        blocked.toFile().writeText("x")
+        val lock = FileAppInstanceLock(blocked.resolve("app.lock"))
+
+        assertFalse(lock.acquire())
+        assertFalse(lock.isHeldByAnyInstance())
+    }
+
+    @Test
+    fun `a lock another process holds is held by another instance`() {
+        assertTrue(FileAppInstanceLock(lockFile) { null }.isHeldByAnyInstance())
+    }
 }

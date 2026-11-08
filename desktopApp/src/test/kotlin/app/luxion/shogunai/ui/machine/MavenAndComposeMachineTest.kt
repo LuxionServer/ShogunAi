@@ -84,7 +84,7 @@ class MavenAndComposeMachineTest {
         readEmulatorStates = { _, _ -> Result.success(emptyMap()) },
         readRunningEmulators = { Result.success(emptyMap()) },
         startEmulator = { _, _ -> Result.failure(IllegalStateException()) },
-        readPool = { _, _, _ -> Result.failure(IllegalStateException()) },
+        readPool = { _, _, _, _ -> Result.failure(IllegalStateException()) },
         trimGradleDaemons = { Result.success(GradleTrim(limit = null)) },
         resourceSettings = { ResourceSettings() },
         stopEmulator = { _, _ -> Result.success(null) },

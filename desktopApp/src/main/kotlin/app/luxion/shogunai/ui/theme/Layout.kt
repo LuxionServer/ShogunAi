@@ -8,4 +8,5 @@ object ShogunLayout {
     val sidebarMaxWidth: Dp = 240.dp
     val inspectorWidth: Dp = 320.dp
     val compactBreakpoint: Dp = 760.dp
+    val inspectorDockMinWidth: Dp = 980.dp
 }

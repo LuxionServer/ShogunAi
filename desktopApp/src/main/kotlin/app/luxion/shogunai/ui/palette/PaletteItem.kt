@@ -1,6 +1,7 @@
 package app.luxion.shogunai.ui.palette
 
 import app.luxion.shogunai.ui.actions.ActionId
+import app.luxion.shogunai.ui.i18n.Strings
 import app.luxion.shogunai.ui.machine.MachineResource
 import app.luxion.shogunai.ui.shell.ShellDestination
 import app.luxion.shogunai.ui.worktree.StateBadgeKind
@@ -32,3 +33,16 @@ data class PaletteItem(
     val primary: PaletteAction,
     val secondary: PaletteAction? = null,
 )
+
+fun paletteFooter(item: PaletteItem, strings: Strings, secondaryShortcut: String): String =
+    listOfNotNull(
+        "↵ ${item.primary.hint(strings)}",
+        item.secondary?.let { "$secondaryShortcut ${it.hint(strings)}" },
+    ).joinToString(" · ")
+
+private fun PaletteAction.hint(strings: Strings): String = when (this) {
+    is PaletteAction.Open -> strings.paletteEnterOpen
+    is PaletteAction.SelectWorktree -> strings.paletteEnterShowWorktree
+    is PaletteAction.CopyLaunchCommand -> strings.copyLaunchCommand
+    is PaletteAction.NewWorktreeIn, is PaletteAction.RunSelected, is PaletteAction.Run -> strings.paletteEnterRun
+}

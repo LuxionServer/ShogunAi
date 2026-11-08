@@ -39,18 +39,20 @@ class InspectorSectionUiTest {
     }
 
     @Test
-    fun `collapsing hides the content and keeps the summary`() = runComposeUiTest {
+    fun `the summary shows only while the section is collapsed`() = runComposeUiTest {
         setContent {
             MaterialTheme {
                 InspectorSection(id = "environment", title = "Environment", summary = "2 ports · 5 vars") { Text("PORT 4123") }
             }
         }
 
+        onNodeWithText("2 ports · 5 vars").assertDoesNotExist()
         onNodeWithText("ENVIRONMENT").performClick()
         onNodeWithText("PORT 4123").assertDoesNotExist()
         onNodeWithText("2 ports · 5 vars").assertIsDisplayed()
 
         onNodeWithText("ENVIRONMENT").performClick()
         onNodeWithText("PORT 4123").assertIsDisplayed()
+        onNodeWithText("2 ports · 5 vars").assertDoesNotExist()
     }
 }

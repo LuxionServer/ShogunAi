@@ -65,4 +65,11 @@ class ResolveStartPointUseCaseTest {
         assertNull(ResolveStartPointUseCase(failing).describe("/home/dev/projects/main-repo", "abc123"))
         assertNull(ResolveStartPointUseCase(silent).describe("/home/dev/projects/main-repo", "abc123"))
     }
+
+    @Test
+    fun `a ref git answers with nothing isn't a commit`() = runTest {
+        val executor = FakeShellCommandExecutor { success(it, stdout = "\n") }
+
+        assertIs<WorktreeError.StartPointNotFound>(ResolveStartPointUseCase(executor)("/home/dev/projects/main-repo", "empty").exceptionOrNull())
+    }
 }

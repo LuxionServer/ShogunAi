@@ -19,6 +19,7 @@ import kotlin.io.path.deleteIfExists
 import kotlin.io.path.listDirectoryEntries
 import kotlin.io.path.name
 import kotlin.test.AfterTest
+import kotlin.io.path.writeText
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -358,5 +359,12 @@ class JsonProjectRepositoryTest {
         storagePath.createDirectories()
 
         assertFailsWith<WorktreeError.LocalFileUnreadable> { repository.list() }
+    }
+
+    @Test
+    fun `a blank file has no projects`() {
+        storagePath.writeText(" ")
+
+        assertEquals(emptyList(), repository.list())
     }
 }

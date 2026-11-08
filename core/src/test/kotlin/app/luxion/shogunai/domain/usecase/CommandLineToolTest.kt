@@ -326,4 +326,26 @@ class CommandLineToolTest {
         assertIs<CommandLineToolError.WriteFailed>(error)
         assertEquals("/home/dev/.local/bin/shogun", error.path)
     }
+    @Test
+    fun `a Windows script that can't be read isn't ShogunAi's`() = runTest {
+        files.others += "C:\\Users\\dev\\.shogunai\\bin\\shogun.cmd"
+
+        assertIs<CommandLineToolError.ForeignFile>(windows().install().exceptionOrNull())
+        assertEquals(CommandLineToolState.MISSING, windows().status().state)
+    }
+
+    @Test
+    fun `a Windows script that doesn't name its runtime is broken`() = runTest {
+        files.texts["C:\\Users\\dev\\.shogunai\\bin\\shogun.cmd"] = "@echo app.luxion.shogunai.MainKt"
+
+        assertEquals(CommandLineToolState.BROKEN, windows().status().state)
+    }
+    @Test
+    fun `scripts and links that aren't ShogunAi's are found but not owned`() = runTest {
+        files.texts["C:\\Users\\dev\\.shogunai\\bin\\shogun.cmd"] = "@echo hi"
+        files.links["/usr/local/bin/shogun"] = "/opt/other/shogun"
+
+        assertEquals(CommandLineToolState.MISSING, windows().status().state)
+        assertEquals(false, unix(found = "/usr/local/bin/shogun").status().installedByApp)
+    }
 }

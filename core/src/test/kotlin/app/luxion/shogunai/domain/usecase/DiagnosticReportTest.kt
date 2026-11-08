@@ -111,4 +111,15 @@ class DiagnosticReportTest {
         assertTrue(report.contains("Installation:\nThe installation check couldn't run: projects.json is unreadable"))
         assertTrue(report.endsWith("No errors were recorded."))
     }
+    @Test
+    fun `missing properties, entries without a stack trace and nameless errors still read`() = runBlocking {
+        val log = FakeLog(listOf(DiagnosticEntry(Instant.parse("2026-01-01T00:00:00Z"), DiagnosticKind.FREEZE, "UI frozen", null)))
+        val blank = mapOf("os.name" to " ")
+
+        val report = DiagnosticReport("1.2.3", log, blank::get, installation = { throw IllegalStateException() }).build()
+
+        assertTrue(report.contains("Operating system: unknown unknown"))
+        assertTrue(report.contains("[FREEZE] UI frozen\n") || report.endsWith("[FREEZE] UI frozen"))
+        assertTrue(report.contains("The installation check couldn't run: IllegalStateException"))
+    }
 }

@@ -86,8 +86,10 @@ class DockerComposeProjectSource(private val executor: ShellCommandExecutor) : C
         return result.stdout
     }
 
-    private fun CommandResult.lastErrorLine(): String =
-        stderr.lineSequence().lastOrNull { it.isNotBlank() }?.trim() ?: "exit code $exitCode"
+    private fun CommandResult.lastErrorLine(): String {
+        val line = stderr.lineSequence().lastOrNull { it.isNotBlank() }
+        return if (line != null) line.trim() else "exit code $exitCode"
+    }
 
     private companion object {
         const val PROJECT_LABEL = "com.docker.compose.project"
@@ -128,11 +130,11 @@ internal fun parseComposeProjects(output: String): List<ComposeProject>? {
     } ?: return null
     return array.mapNotNull { element ->
         val fields = element as? JsonObject ?: return@mapNotNull null
-        val name = fields["Name"]?.jsonPrimitive?.content ?: return@mapNotNull null
+        val name = fields["Name"] ?: return@mapNotNull null
         ComposeProject(
-            name = name,
-            status = fields["Status"]?.jsonPrimitive?.content.orEmpty(),
-            configFiles = fields["ConfigFiles"]?.jsonPrimitive?.content.orEmpty().split(',').map { it.trim() }.filter { it.isNotEmpty() },
+            name = name.jsonPrimitive.content,
+            status = fields["Status"]?.let { it.jsonPrimitive.content }.orEmpty(),
+            configFiles = fields["ConfigFiles"]?.let { it.jsonPrimitive.content }.orEmpty().split(',').map { it.trim() }.filter { it.isNotEmpty() },
         )
     }
 }

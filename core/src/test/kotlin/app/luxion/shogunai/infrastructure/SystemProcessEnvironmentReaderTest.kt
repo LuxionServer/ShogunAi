@@ -74,4 +74,11 @@ class SystemProcessEnvironmentReaderTest {
         assertNull(SystemProcessEnvironmentReader(executor, HostOs.WINDOWS).variable(4242, "ORCA_TERMINAL_HANDLE"))
         assertTrue(executor.executedCommands.isEmpty())
     }
+
+    @Test
+    fun `an empty value is no value`() = runTest {
+        val executor = FakeShellCommandExecutor { FakeShellCommandExecutor.success(it, "claude ORCA_TERMINAL_HANDLE= TERM=xterm\n") }
+
+        assertNull(SystemProcessEnvironmentReader(executor, HostOs.MACOS).variable(4242, "ORCA_TERMINAL_HANDLE"))
+    }
 }

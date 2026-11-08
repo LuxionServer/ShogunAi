@@ -99,4 +99,14 @@ class UpdateTest {
         assertEquals(page, InstallChannel.DEB.updateAction(release.copy(assets = emptyList()), HostArchitecture.X64))
         assertEquals(page, InstallChannel.DMG.updateAction(release.copy(assets = emptyList()), HostArchitecture.ARM64))
     }
+    @Test
+    fun `a version part too large for a number isn't a version`() {
+        assertNull(AppVersion.parse("1.99999999999.0"))
+    }
+
+    @Test
+    fun `arm64 is recognised in either spelling and anything else is x64`() {
+        assertEquals(HostArchitecture.ARM64, HostArchitecture.of("ARM64"))
+        assertEquals(HostArchitecture.X64, HostArchitecture.of("amd64"))
+    }
 }

@@ -51,10 +51,10 @@ class NioDeviceWaitQueue(
     private fun queueFile(): Path = machineDirectory.resolve(QUEUE_FILE_NAME)
 
     @Serializable
-    private data class QueueFile(val queues: Map<String, List<TicketEntry>> = emptyMap())
+    internal data class QueueFile(val queues: Map<String, List<TicketEntry>> = emptyMap())
 
     @Serializable
-    private data class TicketEntry(
+    internal data class TicketEntry(
         val id: String,
         val adminDirectory: String,
         val worktreePath: String,
@@ -76,14 +76,16 @@ class ProcessHandleLiveness : ProcessLiveness {
 
     override fun current(): ProcessIdentity = identityOf(ProcessHandle.current())
 
-    override fun isAlive(process: ProcessIdentity): Boolean {
-        val handle = ProcessHandle.of(process.pid).orElse(null) ?: return false
+    override fun isAlive(process: ProcessIdentity): Boolean =
+        ProcessHandle.of(process.pid).map { isAlive(it, process.startedAt) }.orElse(false)
+
+    internal fun isAlive(handle: ProcessHandle, startedAt: Long?): Boolean {
         if (!handle.isAlive) return false
-        val startedAt = process.startedAt ?: return true
-        val actual = handle.info().startInstant().orElse(null)?.toEpochMilli() ?: return true
-        return actual == startedAt
+        if (startedAt == null) return true
+        val actual = handle.info().startInstant().orElse(null) ?: return true
+        return actual.toEpochMilli() == startedAt
     }
 
-    private fun identityOf(handle: ProcessHandle) =
-        ProcessIdentity(handle.pid(), handle.info().startInstant().orElse(null)?.toEpochMilli())
+    internal fun identityOf(handle: ProcessHandle) =
+        ProcessIdentity(handle.pid(), handle.info().startInstant().map { it.toEpochMilli() }.orElse(null))
 }

@@ -2,6 +2,7 @@ package app.luxion.shogunai.ui.palette
 
 private const val EXACT_SCORE = 1_000_000
 private const val PREFIX_SCORE = 500_000
+private const val WORD_PREFIX_SCORE = 200_000
 private const val SUBSEQUENCE_SCORE = 10_000
 private const val WORD_START_BONUS = 100
 private const val CONTIGUOUS_BONUS = 30
@@ -9,14 +10,22 @@ private const val GAP_PENALTY = 1
 private const val ContextScoreDivisor = 1000
 private val WordSeparators = setOf('/', '-', '_', ' ')
 
-fun matchScore(query: String, key: String): Int? {
+private data class Match(val score: Int, val scattered: Boolean)
+
+fun matchScore(query: String, key: String): Int? = match(query, key)?.score
+
+private fun match(query: String, key: String): Match? {
     val needle = query.filterNot(Char::isWhitespace).lowercase()
-    if (needle.isEmpty()) return 0
+    if (needle.isEmpty()) return Match(0, scattered = false)
     val haystack = key.lowercase()
-    if (haystack == needle) return EXACT_SCORE
-    if (haystack.startsWith(needle)) return PREFIX_SCORE - key.length
-    return subsequenceScore(needle, haystack, key)?.let { SUBSEQUENCE_SCORE + it }
+    if (haystack == needle) return Match(EXACT_SCORE, scattered = false)
+    if (haystack.startsWith(needle)) return Match(PREFIX_SCORE - key.length, scattered = false)
+    if (startsAWord(needle, haystack, key)) return Match(WORD_PREFIX_SCORE - key.length, scattered = false)
+    return subsequenceScore(needle, haystack, key)?.let { Match(SUBSEQUENCE_SCORE + it, scattered = true) }
 }
+
+private fun startsAWord(needle: String, haystack: String, key: String): Boolean =
+    haystack.indices.any { haystack.startsWith(needle, it) && isWordStart(key, it) }
 
 private fun subsequenceScore(needle: String, haystack: String, key: String): Int? {
     if (needle.length > haystack.length) return null
@@ -77,8 +86,11 @@ private fun PaletteKind.tieOrder(): Int = when (this) {
 }
 
 private fun bestScore(item: PaletteItem, query: String): Int? {
-    val own = item.keys.mapNotNull { matchScore(query, it) }
-    val inherited = item.contextKeys.mapNotNull { matchScore(query, it) }.map { it / ContextScoreDivisor }
+    val shown = listOfNotNull(item.title, item.context)
+    fun shownScore(key: String): Int? =
+        match(query, key)?.takeUnless { it.scattered && shown.none { text -> matchedIndices(query, text).isNotEmpty() } }?.score
+    val own = item.keys.mapNotNull(::shownScore)
+    val inherited = item.contextKeys.mapNotNull(::shownScore).map { it / ContextScoreDivisor }
     return (own + inherited).maxOrNull()
 }
 

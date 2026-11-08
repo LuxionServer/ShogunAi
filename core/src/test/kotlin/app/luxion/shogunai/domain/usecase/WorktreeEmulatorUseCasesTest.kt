@@ -18,6 +18,7 @@ import app.luxion.shogunai.domain.model.WorktreeEmulator
 import app.luxion.shogunai.domain.model.WorktreeError
 import kotlinx.coroutines.test.runTest
 import java.time.Duration
+import app.luxion.shogunai.domain.FakePortProbe
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -271,5 +272,20 @@ class WorktreeEmulatorUseCasesTest {
         assertEquals(listOf(task), started.acquisition.releases.map { it.worktreePath })
         assertEquals(1200, started.acquisition.waitedSeconds)
         assertEquals("emulator-5556", started.device.serial)
+    }
+
+    @Test
+    fun `worktrees whose environment can't be read or that failed to read have no state`() = runTest {
+        val source = provisioning()
+        val sdk = FakeAndroidSdk(missing = true)
+        val broken = object : ShellCommandExecutor {
+            override suspend fun execute(command: List<String>, workingDirectory: String?) = FakeShellCommandExecutor.failure(command)
+        }
+        val unresolvable = ReadEmulatorStatesUseCase(source, ResolveWorktreeEnvironmentUseCase(broken, source, store, FakePortProbe()), sdk)
+        start(FakeAndroidSdk(), source)(config, task).getOrThrow()
+
+        assertEquals(emptyMap(), unresolvable(config, listOf(Worktree(task, "feature/TASK-123"))).getOrThrow())
+        assertNull(ReadEmulatorStatesUseCase(source, resolve(source), sdk).runningSerial(config, task))
+        assertEquals(emptyList(), StopWorktreeEmulatorUseCase(source, resolve(source), sdk).stopSerials(config, emptyList()))
     }
 }

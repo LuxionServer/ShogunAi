@@ -99,4 +99,18 @@ class ReleaseNotesTest {
         assertEquals("English", englishOnly.forLanguage(AppLanguage.SPANISH))
         assertNull(ReleaseNotes.NONE.forLanguage(AppLanguage.SPANISH))
     }
+    @Test
+    fun `a body with only the Spanish markers has no English notes`() {
+        assertEquals(
+            ReleaseNotes(english = null, spanish = "Notas"),
+            ReleaseNotes.parse("<!-- shogunai:notes:es -->Notas<!-- /shogunai:notes:es -->"),
+        )
+    }
+
+    @Test
+    fun `a generated heading after the new contributors is dropped too`() {
+        val body = "## New Contributors\n* someone\n## What's Changed\n* Fix"
+
+        assertEquals("* Fix", ReleaseNotes.parse(body).english)
+    }
 }

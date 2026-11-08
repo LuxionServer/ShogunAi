@@ -1038,4 +1038,210 @@ class HookCommandsTest {
             err.toString(),
         )
     }
+
+    @Test
+    fun `hooks without their JSON on standard input are usage errors`() {
+        listOf("worktree-remove", "agent-state", "desktop-turn", "session-start").forEach { hook ->
+            assertEquals(2, cli(Executor(porcelain()), "[]").run(listOf("hook", hook)), hook)
+        }
+
+        assertEquals(4, err.lines().count { it.contains("expected the hook's JSON on standard input") }, err.toString())
+    }
+
+    @Test
+    fun `hooks without a cwd work from the current directory`() {
+        val executor = Executor(porcelain())
+
+        assertEquals(0, cli(executor, """{"name":"TASK-1"}""").run(listOf("hook", "worktree-create")), err.toString())
+        assertEquals(0, cli(executor, """{"session_id":"abc123","hook_event_name":"Stop"}""").run(listOf("hook", "agent-state")))
+        assertEquals(0, cli(executor, """{"tool_name":"Bash","tool_input":{"command":"orca computer click"}}""").run(listOf("hook", "desktop-turn")), err.toString())
+        assertEquals(1, cli(executor, """{"session_id":"abc123"}""").run(listOf("hook", "session-start")))
+        assertTrue(err.contains("/ is not a linked worktree of this repository"), err.toString())
+
+        assertTrue(executor.calls.any { it.second == "/" }, executor.calls.toString())
+    }
+
+    @Test
+    fun `agent-state ignores input without a session or an event`() {
+        val store = FakeAgentSessionStore()
+
+        assertEquals(0, cli(Executor(porcelain()), """{"cwd":"$base","hook_event_name":"Stop"}""", sessionStore = store).run(listOf("hook", "agent-state")))
+        assertEquals(0, cli(Executor(porcelain()), """{"cwd":"$base","session_id":"abc123"}""", sessionStore = store).run(listOf("hook", "agent-state")))
+
+        assertTrue(store.records.isEmpty(), store.records.toString())
+    }
+
+    @Test
+    fun `hook input fields that aren't text or are blank count as missing`() {
+        assertEquals(2, cli(Executor(porcelain()), """{"cwd":"$base","name":7}""").run(listOf("hook", "worktree-create")))
+        assertEquals(2, cli(Executor(porcelain()), """{"cwd":"$base","name":{"id":"TASK-1"}}""").run(listOf("hook", "worktree-create")))
+        assertEquals(2, cli(Executor(porcelain()), """{"cwd":"$base","name":"  "}""").run(listOf("hook", "worktree-create")))
+
+        assertEquals(3, err.lines().count { it.contains("no \"name\"") }, err.toString())
+    }
+
+    @Test
+    fun `worktree-remove of a folder that is already gone works from the hook's cwd or the current directory`() {
+        val path = "$worktreesRoot/TASK-123"
+
+        assertEquals(0, cli(Executor(porcelain(path to "feature/TASK-123")), """{"worktree_path":"$path","cwd":"$base"}""").run(listOf("hook", "worktree-remove")), err.toString())
+        assertEquals(0, cli(Executor(porcelain(path to "feature/TASK-123")), """{"worktree_path":"$path"}""").run(listOf("hook", "worktree-remove")), err.toString())
+    }
+
+    @Test
+    fun `worktree-remove reports a failing Orca close without changing the exit code`() {
+        val path = "$worktreesRoot/TASK-123"
+        val orca = FakeOrcaClient(
+            terminals = mapOf(path to listOf(OrcaTerminal("term_1", path))),
+            closeFailures = mapOf(path to WorktreeError.OrcaCommandFailed(listOf("orca"), "runtime_unavailable")),
+        )
+
+        val exitCode = cli(Executor(porcelain(path to "feature/TASK-123")), """{"worktree_path":"$path"}""", existing = listOf(base, path), orca = orca)
+            .run(listOf("hook", "worktree-remove"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertTrue(err.contains("couldn't close the Orca terminals of $path: runtime_unavailable"), err.toString())
+    }
+
+    @Test
+    fun `orca setup names a failure that isn't one of ShogunAi's by its reason`() {
+        val inside = "$worktreesRoot/TASK-7"
+        val orca = FakeOrcaClient(
+            psRows = listOf(OrcaWorktree(inside, createdByOrca = true, comment = "", workspaceStatus = "in-progress")),
+            updateFailures = mapOf(inside to IllegalStateException("socket closed")),
+        )
+
+        val exitCode = cli(Executor(porcelain(inside to "feature/TASK-7")), "", environment = mapOf("ORCA_WORKTREE_PATH" to inside), orca = orca).run(listOf("hook", "orca", "setup"))
+
+        assertEquals(0, exitCode)
+        assertTrue(err.contains("couldn't update $inside in Orca: socket closed"), err.toString())
+    }
+
+    @Test
+    fun `herdr and orca hooks treat blank variables as missing`() {
+        assertEquals(2, cli(Executor(porcelain()), "", environment = mapOf("HERDR_PLUGIN_EVENT" to " ")).run(listOf("hook", "herdr")))
+        assertEquals(2, cli(Executor(porcelain()), "", environment = mapOf("ORCA_WORKTREE_PATH" to " ")).run(listOf("hook", "orca", "setup")))
+    }
+
+    @Test
+    fun `herdr ignores a removed event without its worktree`() {
+        assertEquals(2, cli(Executor(porcelain()), "", environment = removedEnvironment("""{"event":"worktree_removed","data":{"worktree":"gone"}}""")).run(listOf("hook", "herdr")))
+        assertEquals(2, cli(Executor(porcelain()), "", environment = removedEnvironment("""{"event":"worktree_removed","data":[]}""")).run(listOf("hook", "herdr")))
+
+        assertEquals(2, err.lines().count { it.contains("data.worktree.path") }, err.toString())
+    }
+
+    @Test
+    fun `worktree-remove of a detached worktree deletes no branch`() {
+        val path = "$worktreesRoot/TASK-123"
+        val detached = porcelain() + "\nworktree $path\nHEAD 2222222222222222222222222222222222222222\ndetached\n"
+        val executor = Executor(detached)
+
+        assertEquals(0, cli(executor, """{"worktree_path":"$path"}""", existing = listOf(base, path)).run(listOf("hook", "worktree-remove")), err.toString())
+
+        assertTrue(executor.calls.none { it.first.take(2) == listOf("git", "branch") })
+    }
+
+    @Test
+    fun `herdr skips projects without a worktrees folder when it looks for a removed worktree's repository`() {
+        val executor = Executor(porcelain())
+        val withoutWorkspace = """{"event":"worktree_removed","data":{"type":"worktree_removed","worktree":{"path":"$removedPath","branch":"feature/TASK-9"}}}"""
+        val bare = Project("other", "Other", ProjectConfig(baseRepositoryPath = "/home/dev/projects/other", worktreesRoot = "", secretFiles = emptyList()))
+
+        val exitCode = cli(executor, "", projects = listOf(bare, project), environment = removedEnvironment(withoutWorkspace)).run(listOf("hook", "herdr"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals(listOf(listOf("git", "branch", "-D", "--", "feature/TASK-9")), executor.branchDeletions())
+    }
+
+    @Test
+    fun `herdr notification without a reason names the exit code and runs herdr when its path is blank`() {
+        val executor = Executor(porcelain(herdrWorktree to "feature/TASK-7")) { command ->
+            if (command.getOrNull(1) == "notification") CommandResult(command, 3, "", " ") else null
+        }
+
+        assertEquals(0, cli(executor, "", environment = herdrEnvironment() + ("HERDR_BIN_PATH" to " ")).run(listOf("hook", "herdr")))
+
+        assertTrue(err.contains("couldn't show Herdr's notification: exit code 3"), err.toString())
+        assertEquals("herdr", executor.notifications().single().first())
+    }
+
+    @Test
+    fun `the note about a worktree outside the worktrees folder shows that folder in full outside the home folder and as ~ for the home folder itself`() {
+        val outsideHome = "/srv/orca/TASK-7"
+        val elsewhere = project.copy(config = project.config.copy(worktreesRoot = "/srv/worktrees"))
+        val home = project.copy(config = project.config.copy(worktreesRoot = "/home/dev"))
+
+        cli(Executor(porcelain(orcaWorktree to "user/TASK-7")), "", projects = listOf(elsewhere), environment = mapOf("ORCA_WORKTREE_PATH" to orcaWorktree)).run(listOf("hook", "orca", "setup"))
+        cli(Executor(porcelain(outsideHome to "user/TASK-7")), "", projects = listOf(home), environment = mapOf("ORCA_WORKTREE_PATH" to outsideHome)).run(listOf("hook", "orca", "setup"))
+
+        assertTrue(out.contains("worktrees folder /srv/worktrees;"), out.toString())
+        assertTrue(out.contains("worktrees folder ~;"), out.toString())
+    }
+
+    @Test
+    fun `herdr ignores events other than a created or removed worktree`() {
+        val executor = Executor(porcelain())
+
+        assertEquals(0, cli(executor, "", environment = herdrEnvironment(event = "pane.focused")).run(listOf("hook", "herdr")))
+
+        assertTrue(executor.calls.isEmpty())
+    }
+
+    @Test
+    fun `herdr rejects an event that isn't a JSON object or a removed worktree without a path`() {
+        assertEquals(2, cli(Executor(porcelain()), "", environment = removedEnvironment("[]")).run(listOf("hook", "herdr")))
+        assertEquals(2, cli(Executor(porcelain()), "", environment = removedEnvironment("""{"data":{"worktree":{}}}""")).run(listOf("hook", "herdr")))
+
+        assertTrue(err.contains("isn't JSON") && err.contains("data.worktree.path"), err.toString())
+    }
+
+    @Test
+    fun `orca uses the worktree's own path when neither its Git metadata nor ORCA_ROOT_PATH name the repository`() {
+        val executor = Executor(
+            porcelain(orcaWorktree to "user/TASK-7"),
+            respondIn = { command, directory ->
+                if ("--git-common-dir" in command && directory == orcaWorktree) CommandResult(command, 128, "", "fatal: not a git repository") else null
+            },
+        )
+
+        assertEquals(1, cli(executor, "", environment = mapOf("ORCA_WORKTREE_PATH" to orcaWorktree)).run(listOf("hook", "orca", "setup")))
+        assertEquals(1, cli(executor, "", environment = mapOf("ORCA_WORKTREE_PATH" to orcaWorktree, "ORCA_ROOT_PATH" to " ")).run(listOf("hook", "orca", "setup")))
+    }
+
+    @Test
+    fun `orca setup syncs a worktree whose state can only partly be read`() {
+        val inside = "$worktreesRoot/TASK-7"
+        val executor = Executor(porcelain(inside to "feature/TASK-7")) { command ->
+            when {
+                command.take(2) == listOf("git", "symbolic-ref") -> throw CommandExecutionException(command, IOException("git timed out"))
+                command.first() == "ps" -> throw CommandExecutionException(command, IOException("ps is missing"))
+                command.take(3) == listOf("git", "config", "--get-regexp") -> CommandResult(command, 0, "branch.feature/TASK-7.gh-merge-base develop\n", "")
+                "status" in command -> CommandResult(command, 128, "", "fatal: index file corrupt")
+                else -> null
+            }
+        }
+        val orca = FakeOrcaClient(psRows = listOf(OrcaWorktree(inside, createdByOrca = true, comment = "", workspaceStatus = "in-progress")))
+
+        assertEquals(0, cli(executor, "", environment = mapOf("ORCA_WORKTREE_PATH" to inside), orca = orca).run(listOf("hook", "orca", "setup")), err.toString())
+    }
+
+    @Test
+    fun `orca setup syncs the agents running in a worktree and a detached worktree`() {
+        val inside = "$worktreesRoot/TASK-7"
+        val withAgent = Executor(porcelain(inside to "feature/TASK-7")) { command ->
+            when (command.first()) {
+                "lsof" -> CommandResult(command, 0, "p4242\nn$inside\n", "")
+                "ps" -> CommandResult(command, 0, "4242 /usr/local/bin/claude\n", "")
+                else -> null
+            }
+        }
+        val detached = Executor(porcelain() + "\nworktree $inside\nHEAD 2222222222222222222222222222222222222222\ndetached\n")
+        val orca = FakeOrcaClient(psRows = listOf(OrcaWorktree(inside, createdByOrca = true, comment = "", workspaceStatus = "in-progress")))
+
+        assertEquals(0, cli(withAgent, "", environment = mapOf("ORCA_WORKTREE_PATH" to inside), orca = orca).run(listOf("hook", "orca", "setup")), err.toString())
+        assertEquals(0, cli(detached, "", environment = mapOf("ORCA_WORKTREE_PATH" to inside), orca = orca).run(listOf("hook", "orca", "setup")), err.toString())
+
+        assertEquals(2, orca.updates.size)
+    }
 }

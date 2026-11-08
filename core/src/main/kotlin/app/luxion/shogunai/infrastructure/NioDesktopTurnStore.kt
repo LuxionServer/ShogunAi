@@ -44,7 +44,7 @@ class NioDesktopTurnStore(
     private fun turnFile(): Path = machineDirectory.resolve(TURN_FILE_NAME)
 
     @Serializable
-    private data class TurnEntry(
+    internal data class TurnEntry(
         val adminDirectory: String,
         val worktreePath: String,
         val acquiredAt: Long,

@@ -7,6 +7,7 @@ import app.luxion.shogunai.domain.model.TerminalLaunch
 import app.luxion.shogunai.domain.model.WorktreeError
 import kotlinx.coroutines.test.runTest
 import java.io.IOException
+import kotlin.test.assertFailsWith
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -204,5 +205,26 @@ class TerminalLaunchersTest {
 
         assertIs<WorktreeError.TerminalLaunchFailed>(error)
         assertEquals(TerminalId.WINDOWS_TERMINAL, error.terminal)
+    }
+
+    @Test
+    fun `an unrecognised tmux version is allowed and a single session without a timestamp is used`() = runTest {
+        val executor = FakeShellCommandExecutor { command ->
+            when (command[1]) {
+                "-V" -> FakeShellCommandExecutor.success(command, "tmux next\n")
+                "list-sessions" -> FakeShellCommandExecutor.success(command, "\tsolo\n\n \n")
+                "new-window" -> FakeShellCommandExecutor.success(command, "@1\n")
+                else -> FakeShellCommandExecutor.success(command)
+            }
+        }
+
+        TmuxTerminalLauncher(executor).open(launch).getOrThrow()
+
+        assertTrue(executor.executedCommands.single { it[1] == "new-window" }.contains("=solo:"))
+    }
+
+    @Test
+    fun `only Terminal and iTerm2 are scripted through osascript`() {
+        assertFailsWith<IllegalArgumentException> { MacTerminalLauncher(TerminalId.TMUX, FakeShellCommandExecutor()) }
     }
 }

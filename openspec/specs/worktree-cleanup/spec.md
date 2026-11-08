@@ -17,10 +17,14 @@ The system SHALL show in the worktree list which worktrees are locked and which 
 - **THEN** its row shows a "folder missing" label instead of "status unavailable"
 
 ### Requirement: Select worktrees to clean up
-The system SHALL consider for cleanup every non-main worktree that is merged into its base or into the main branch and has no uncommitted changes, plus every worktree whose folder is missing. Locked worktrees, the main worktree, worktrees with uncommitted changes, and worktrees whose status isn't loaded SHALL never be selected.
+The system SHALL consider for cleanup every non-main worktree that is merged into its base or into the main branch, including by a squash or rebase merge, and has no uncommitted changes, plus every worktree whose folder is missing. Locked worktrees, the main worktree, worktrees with uncommitted changes, and worktrees whose status isn't loaded SHALL never be selected.
 
 #### Scenario: Merged and clean worktree
 - **WHEN** a non-main, unlocked worktree is merged into the main branch and has no uncommitted changes
+- **THEN** it is selected for cleanup
+
+#### Scenario: Squash-merged and clean worktree
+- **WHEN** a non-main, unlocked worktree's branch was squash-merged into the main branch and it has no uncommitted changes
 - **THEN** it is selected for cleanup
 
 #### Scenario: Merged worktree with uncommitted changes
@@ -44,14 +48,14 @@ The system SHALL consider for cleanup every non-main worktree that is merged int
 - **THEN** it is selected for cleanup
 
 ### Requirement: Confirm before cleaning up
-The system SHALL offer a "Clean up" action as the last item of the worktree view header's "More" (⋯) menu, in danger text, covering the projects shown in the view, and in each project group's header, covering that project. Each action SHALL be enabled only when at least one worktree in its scope is selected for cleanup, and when disabled SHALL say why in a tooltip. Activating it SHALL show a confirmation dialog listing the selected worktrees grouped by project, with an option to also delete their local branches that is off by default. No Git command SHALL run until the user confirms.
+The view's header SHALL offer "Clean up N" for the shown projects, only when something in them can be cleaned up, and each project group's header a "Clean up" for its project. Each SHALL be enabled only when its scope has a cleanup candidate and no cleanup runs, saying why in a tooltip otherwise. Activating it SHALL show a confirmation listing the candidates by project, with an unchecked option to also delete their local branches. No Git command SHALL run until the user confirms.
 
 #### Scenario: Nothing to clean up
-- **WHEN** no worktree in the action's scope is selected for cleanup
-- **THEN** that "Clean up" action is disabled and its tooltip says why
+- **WHEN** no worktree in a project group's scope is selected for cleanup
+- **THEN** that group's "Clean up" action is disabled and its tooltip says why, and the view's header shows no "Clean up N" button
 
 #### Scenario: Confirmation dialog
-- **WHEN** the user activates "Clean up" in the ⋯ menu of "All worktrees" with candidates in `api` and `main-repo`
+- **WHEN** the user activates "Clean up 2" in the header of "All worktrees" with candidates in `api` and `main-repo`
 - **THEN** a dialog lists the candidates under an `api` heading and a `main-repo` heading, with an unchecked "also delete their local branches" option, and nothing is removed until the user confirms
 
 #### Scenario: User cancels
@@ -63,7 +67,7 @@ The system SHALL offer a "Clean up" action as the last item of the worktree view
 - **THEN** the dialog only lists `api`'s candidates
 
 ### Requirement: Clean up the selected worktrees
-On confirmation, the system SHALL remove each selected worktree whose folder exists without forcing, and prune the records of missing ones. When branch deletion was chosen, a worktree's branch SHALL be deleted only if it is still contained in its base or in the main branch at that moment. One failure SHALL NOT stop the rest. The screen SHALL then report the outcome and reload the list.
+On confirmation, the system SHALL remove each selected worktree whose folder exists without forcing, and prune the records of missing ones. When branch deletion was chosen, a worktree's branch SHALL be deleted only if it is still merged into its base or into the main branch at that moment, including by a squash or rebase merge. One failure SHALL NOT stop the rest. The screen SHALL then report the outcome and reload the list.
 
 #### Scenario: All worktrees removed
 - **WHEN** the user confirms and every selected worktree is removed
@@ -77,8 +81,12 @@ On confirmation, the system SHALL remove each selected worktree whose folder exi
 - **WHEN** the user chose to delete branches and a removed worktree's branch is contained in the main branch
 - **THEN** that local branch is deleted, even if the base repository's checked-out branch doesn't contain it
 
+#### Scenario: Squash-merged branch deleted
+- **WHEN** the user chose to delete branches and a removed worktree's branch was squash-merged into the main branch
+- **THEN** that local branch is deleted
+
 #### Scenario: Branch no longer merged
-- **WHEN** the user chose to delete branches but a branch is no longer contained in the main branch when the cleanup runs
+- **WHEN** the user chose to delete branches but a branch is no longer merged into the main branch when the cleanup runs
 - **THEN** its worktree is removed, the branch is kept, and the report lists it as kept
 
 #### Scenario: One removal fails
@@ -299,3 +307,26 @@ When the repository declares the Maven provider, the cleanup dialog SHALL offer 
 #### Scenario: Busy daemon
 - **WHEN** a Maven daemon of a removed worktree is busy when the cleanup runs
 - **THEN** it isn't stopped, the worktrees are still reported as removed, and the report says the daemon was kept
+
+### Requirement: Recognize squash and rebase merges
+A branch SHALL read as merged into its base or into the main branch when it is an ancestor of that target, or when the target already holds its changes: every commit of the branch has a commit with the same changes in the target (a rebase merge), or the branch's whole change since it forked has one (a squash merge). A branch whose changes the target doesn't hold SHALL NOT read as merged. The rule SHALL apply to the merged state, cleanup selection and branch deletion.
+
+#### Scenario: Squash merge
+- **WHEN** a worktree's branch was merged into `develop` with a squash commit and `develop` gained more commits since
+- **THEN** the branch reads as merged into `develop`
+
+#### Scenario: Rebase merge
+- **WHEN** a worktree's branch was merged into `develop` by replaying its commits with new hashes
+- **THEN** the branch reads as merged into `develop`
+
+#### Scenario: Squash merge into the recorded base
+- **WHEN** a worktree's branch was squash-merged into its recorded base `epic/redesign`
+- **THEN** the branch reads as merged into `epic/redesign`
+
+#### Scenario: Changes not in the target
+- **WHEN** a branch has a commit whose changes no commit of `develop` or of its base holds
+- **THEN** it doesn't read as merged
+
+#### Scenario: Commits that cancel out
+- **WHEN** a branch adds a file and removes it again, and `develop` has moved on
+- **THEN** it doesn't read as merged

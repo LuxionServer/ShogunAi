@@ -3,6 +3,9 @@ package app.luxion.shogunai.domain.usecase
 import app.luxion.shogunai.domain.FakeDerivedDataSource
 import app.luxion.shogunai.domain.FakeDerivedDataSource.Companion.derivedData
 import kotlinx.coroutines.test.runTest
+import app.luxion.shogunai.domain.io.DerivedDataSource
+import app.luxion.shogunai.domain.model.DerivedDataDeletionFailure
+import app.luxion.shogunai.domain.model.DerivedDataFolder
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -93,5 +96,16 @@ class DeleteOrphanedDerivedDataUseCaseTest {
 
         assertEquals(5_000L, deletion.bytesFreed)
         assertEquals(listOf(orphan.path), source.measured)
+    }
+    @Test
+    fun `a deletion that fails without a reason says the delete failed`() = runTest {
+        val folder = DerivedDataFolder("/dd/App-abc", "/gone/App.xcworkspace", 10, null)
+        val source = object : DerivedDataSource by FakeDerivedDataSource(existing = listOf(folder)) {
+            override suspend fun delete(folder: DerivedDataFolder) = throw IllegalStateException()
+        }
+
+        val deletion = DeleteOrphanedDerivedDataUseCase(source)().getOrThrow()
+
+        assertEquals(listOf(DerivedDataDeletionFailure("/dd/App-abc", "delete failed")), deletion.failures)
     }
 }

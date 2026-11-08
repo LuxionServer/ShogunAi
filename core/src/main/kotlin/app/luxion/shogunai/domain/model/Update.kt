@@ -13,7 +13,7 @@ data class AppVersion(val major: Int, val minor: Int, val patch: Int) : Comparab
         private val Pattern = Regex("""v?(\d+)\.(\d+)\.(\d+)""")
 
         fun parse(raw: String): AppVersion? {
-            val parts = Pattern.matchEntire(raw.trim())?.destructured ?: return null
+            val parts = (Pattern.matchEntire(raw.trim()) ?: return null).destructured
             val (major, minor, patch) = parts.toList().map { it.toIntOrNull() ?: return null }
             return AppVersion(major, minor, patch)
         }
@@ -28,7 +28,7 @@ enum class HostArchitecture {
         fun of(architecture: String): HostArchitecture =
             if (architecture.equals("aarch64", ignoreCase = true) || architecture.equals("arm64", ignoreCase = true)) ARM64 else X64
 
-        fun current(): HostArchitecture = of(System.getProperty("os.arch").orEmpty())
+        fun current(): HostArchitecture = of(System.getProperty("os.arch", ""))
     }
 }
 

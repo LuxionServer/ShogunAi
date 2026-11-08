@@ -157,4 +157,22 @@ class CheckProvisionedFilesUseCaseTest {
         assertEquals(listOf(ProvisionDrift("keys", ProvisionDriftState.NOT_LINKED)), notLinked(linked).getOrThrow())
         assertEquals(emptyList(), upToDate(linked).getOrThrow())
     }
+    @Test
+    fun `reports a missing linked file`() = runTest {
+        val files = fileManager("$base/.env", "$linked/.env", "$base/local.properties")
+        files.contents["$linked/.env"] = "KEY=1"
+
+        val drift = CheckProvisionedFilesUseCase(config, executor, files, provisioning)(linked).getOrThrow()
+
+        assertEquals(listOf(ProvisionDrift("local.properties", ProvisionDriftState.MISSING)), drift)
+    }
+
+    @Test
+    fun `a project file missing from the base repository is reported as unavailable`() = runTest {
+        val withSecret = config.copy(secretFiles = listOf("keystore.jks"))
+
+        val error = CheckProvisionedFilesUseCase(withSecret, executor, fileManager(), provisioning)(linked).exceptionOrNull()
+
+        assertIs<WorktreeError.LocalFilesUnavailable>(error)
+    }
 }

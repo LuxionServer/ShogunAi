@@ -47,20 +47,20 @@ val MachineResource.icon: ImageVector
     }
 
 fun MachineSummary.text(resource: MachineResource, strings: Strings): String {
+    val pool = poolInUse?.takeIf { poolKindOf(resource) != null }?.let { strings.poolSummary(it, poolLimit) }
     val base = when (resource) {
-        MachineResource.GRADLE_DAEMONS -> "$count · ${formatSize(bytes ?: 0)}"
+        MachineResource.GRADLE_DAEMONS -> return "${pool ?: count} · ${formatSize(bytes ?: 0)}"
         MachineResource.ANDROID_EMULATORS -> strings.runningCount(count)
         MachineResource.IOS_SIMULATORS -> strings.bootedCount(count)
         MachineResource.MAVEN_DAEMONS -> "$count · ${formatSize(bytes ?: 0)}"
         MachineResource.COMPOSE_PROJECTS -> strings.composeProjectsSummary(count)
-        MachineResource.DESKTOP_TURN -> strings.desktopTurnSummary(holder, count)
+        MachineResource.DESKTOP_TURN -> if (holder == null && count == 0) strings.desktopTurnFree else strings.desktopTurnSummary(holder, count)
         MachineResource.XCODE_DERIVED_DATA -> when {
             calculating -> "$count · ${strings.calculating}"
             quotaBytes != null -> strings.derivedDataQuotaUsage(formatSize(bytes ?: 0), formatSize(quotaBytes), quotaAutomatic)
             else -> formatSize(bytes ?: 0)
         }
     }
-    val pool = poolInUse?.takeIf { poolKindOf(resource) != null }?.let { strings.poolSummary(it, poolLimit) }
     return if (pool == null) base else "$base · $pool"
 }
 

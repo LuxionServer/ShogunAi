@@ -63,6 +63,7 @@ fun ResourcesSection(worktree: Worktree, viewModel: ProjectWorktrees, desktopTur
         title = strings.resourcesTitle,
         state = resourcesSectionState(applies, size, worktree),
         summary = size?.let(::formatSize),
+        summaryIsData = true,
     ) {
         if (showEmulator) {
             EmulatorRow(

@@ -13,9 +13,7 @@ import app.luxion.shogunai.ui.components.Property
 import app.luxion.shogunai.ui.components.PropertyList
 import app.luxion.shogunai.ui.components.SecondaryButton
 import app.luxion.shogunai.ui.components.Spacing
-import app.luxion.shogunai.ui.components.StatusChip
 import app.luxion.shogunai.ui.i18n.LocalStrings
-import app.luxion.shogunai.ui.theme.Status
 import app.luxion.shogunai.ui.worktree.ProvisioningState
 
 @Composable
@@ -27,14 +25,10 @@ fun ProvisioningSection(worktree: Worktree, state: ProvisioningState?, isProvisi
         state = provisioningSectionState(worktree, state, strings),
     ) {
         val drift = (state as? ProvisioningState.Checked)?.drift.orEmpty()
-        if (drift.isEmpty()) {
-            StatusChip(Status.SUCCESS, strings.provisioningUpToDate)
-        } else {
-            PropertyList(drift.map { Property(it.path, strings.provisionDriftState(it.state), isData = false) })
-            Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm), verticalAlignment = Alignment.CenterVertically) {
-                SecondaryButton(onClick = onProvision, enabled = !isProvisioning) { Text(strings.provisionAction) }
-                if (isProvisioning) InlineProgress(size = ProgressSize.Small)
-            }
+        PropertyList(drift.map { Property(it.path, strings.provisionDriftState(it.state), isData = false) })
+        Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm), verticalAlignment = Alignment.CenterVertically) {
+            SecondaryButton(onClick = onProvision, enabled = !isProvisioning) { Text(strings.provisionAction) }
+            if (isProvisioning) InlineProgress(size = ProgressSize.Small)
         }
     }
 }

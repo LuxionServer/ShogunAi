@@ -34,17 +34,17 @@ class RemoveWorktreeUseCase(
         val orcaTerminals = closeOrcaTerminals?.withTerminals(listOf(worktreePath)).orEmpty()
         val closing = folderRemoval.remove(worktreePath, force, workspaces[worktreePath], worktreePath in orcaTerminals)
         val remaining = if (closing.closedWorkspace) emptyMap() else workspaces
-        val herdrFailure = closeHerdrWorkspaces?.close(remaining, listOf(worktreePath))?.firstOrNull()?.error
-            ?: closing.failure
+        val closeFailure = closeHerdrWorkspaces?.close(remaining, listOf(worktreePath)).orEmpty().firstOrNull()
+        val herdrFailure = if (closeFailure != null) closeFailure.error else closing.failure
         val orcaFailure = closing.orcaFailure
-            ?: if (closing.closedOrcaTerminals) null else closeOrcaTerminals?.close(orcaTerminals, listOf(worktreePath))?.firstOrNull()?.error
+            ?: if (closing.closedOrcaTerminals) null else closeOrcaTerminals?.close(orcaTerminals, listOf(worktreePath)).orEmpty().firstOrNull()?.error
 
         val branch = branchToDelete?.let { deleteBranch(it, forceBranchDeletion) }
         WorktreeRemoval(herdrFailure, branch, closing.headlessAppFailure, orcaFailure)
     }
 
     private suspend fun deleteBranch(branch: String, forced: Boolean): BranchDeletion {
-        if (isOptionLikeRef(branch)) return BranchDeletion.KeptFailed(WorktreeError.InvalidRef(branch).message.orEmpty())
+        if (isOptionLikeRef(branch)) return BranchDeletion.KeptFailed(WorktreeError.InvalidRef(branch).message)
         if (forced) return forceDeleteBranch(executor, config, branch)
         val mainBranch = ResolveMainBranchUseCase(config, executor)().getOrNull()
         return deleteBranchIfContained(executor, config, branch, mainBranch)

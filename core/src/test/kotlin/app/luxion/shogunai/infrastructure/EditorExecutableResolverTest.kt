@@ -29,8 +29,8 @@ class EditorExecutableResolverTest {
             localAppData,
             listOf(programFiles, "C:\\Program Files (x86)"),
             pathExtensions,
-            { parent -> folders.filter { it.startsWith("$parent\\") }.map { it.removePrefix("$parent\\") }.filter { '\\' !in it } },
-            { it in files },
+            subfolders = { parent -> folders.filter { it.startsWith("$parent\\") }.map { it.removePrefix("$parent\\") }.filter { '\\' !in it } },
+            isFile = { it in files },
         )
         return EditorExecutableResolver(HostOs.WINDOWS, locator) { registry }
     }
@@ -123,7 +123,7 @@ class EditorExecutableResolverTest {
     @Test
     fun `reads the registry once per snapshot and only when needed`() = runTest {
         var reads = 0
-        val locator = ExecutableLocator(HostOs.WINDOWS, "C:\\Users\\dev", { emptyList() }, null, emptyList(), listOf(".EXE"), { emptyList() }, { false })
+        val locator = ExecutableLocator(HostOs.WINDOWS, "C:\\Users\\dev", { emptyList() }, null, emptyList(), listOf(".EXE"), subfolders = { emptyList() }, isFile = { false })
         val resolver = EditorExecutableResolver(HostOs.WINDOWS, locator) { reads++; emptyList() }
         val snapshot = resolver.snapshot()
 
@@ -174,5 +174,18 @@ class EditorExecutableResolverTest {
     @Test
     fun `without an uninstall source there are no uninstall locations`() = runTest {
         assertEquals(emptyList(), EditorExecutableResolver(HostOs.WINDOWS, ExecutableLocator(HostOs.WINDOWS, "C:\\Users\\dev", { emptyList() })).snapshot().locations())
+    }
+
+    @Test
+    fun `Toolbox products, channels and builds without the executable are skipped`() = runTest {
+        val toolbox = "$localAppData\\JetBrains\\Toolbox\\apps"
+        val apps = "$toolbox\\AndroidStudio\\ch-0"
+        val folders = setOf(
+            "$toolbox\\AndroidStudioBeta", "$toolbox\\AndroidStudio", "$toolbox\\AndroidStudio\\ch-1", apps,
+            "$apps\\251", "$apps\\251.0.1", "$apps\\251.0.1-x", "$apps\\abc",
+        )
+        val files = setOf("$apps\\251\\bin\\studio64.exe", "$apps\\abc\\bin\\studio64.exe")
+
+        assertEquals("$apps\\251\\bin\\studio64.exe", resolver(files, folders).find(EditorId.ANDROID_STUDIO))
     }
 }

@@ -34,7 +34,7 @@ class LocalToolDetectorTest {
         }
         val locator = ExecutableLocator(
             os, "/home/dev", { listOf("/usr/bin") }, "C:\\Users\\dev\\AppData\\Local",
-            programFolders, listOf(".EXE", ".CMD"), { emptyList() }, { it in files },
+            programFolders, listOf(".EXE", ".CMD"), subfolders = { emptyList() }, isFile = { it in files },
         )
         return LocalToolDetector(
             executor = executor,
@@ -211,5 +211,23 @@ class LocalToolDetectorTest {
         ).detect()
 
         assertEquals(listOf(EditorId.ANDROID_STUDIO), tools.editors)
+    }
+
+    @Test
+    fun `a failing Spotlight finds no macOS app`() = runTest {
+        val locator = ExecutableLocator(
+            HostOs.MACOS, "/home/dev", { emptyList() }, subfolders = { emptyList() }, isFile = { false },
+        )
+        val detector = LocalToolDetector(
+            executor = FakeShellCommandExecutor { FakeShellCommandExecutor.failure(it) },
+            os = HostOs.MACOS,
+            home = "/home/dev",
+            locator = locator,
+            editorResolver = EditorExecutableResolver(HostOs.MACOS, locator) { emptyList() },
+            isDirectory = { false },
+            isRunnerInstalled = { false },
+        )
+
+        assertEquals(DetectedTools(emptyList(), emptyList(), false, emptySet()), detector.detect())
     }
 }

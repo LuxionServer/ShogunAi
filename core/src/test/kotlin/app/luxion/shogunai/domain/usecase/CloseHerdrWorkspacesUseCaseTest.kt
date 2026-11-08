@@ -111,4 +111,36 @@ class CloseHerdrWorkspacesUseCaseTest {
         assertEquals("pane is gone", failure.herdrDetail())
         assertEquals("No multirepo found at /x", WorktreeError.MultirepoNotFound("/x").herdrDetail())
     }
+    @Test
+    fun `the first failure closing holders is kept and generic errors become Herdr failures`() = runTest {
+        val workspaceFailure = WorktreeError.HerdrCommandFailed(listOf("workspace"), "busy")
+        val paneFailure = WorktreeError.HerdrCommandFailed(listOf("pane"), "gone")
+        fun herdr(closePaneError: (String) -> Throwable, closeFailures: Map<String, Throwable> = emptyMap()) =
+            object : HerdrClient by FakeHerdrClient(
+                panes = listOf(HerdrPane("p1", "w9", "$first/app"), HerdrPane("p2", "w9", first), HerdrPane("p3", "w9", null)),
+                closeFailures = closeFailures,
+            ) {
+                override suspend fun closePane(paneId: String) = throw closePaneError(paneId)
+            }
+
+        val keptWorkspaceFailure = CloseHerdrWorkspacesUseCase(config, herdr({ paneFailure }, mapOf("w2" to workspaceFailure))).closeHolders(first, "w2")
+        val firstPaneFailure = CloseHerdrWorkspacesUseCase(config, herdr({ if (it == "p1") paneFailure else IllegalStateException() })).closeHolders(first, null)
+        val genericFailure = CloseHerdrWorkspacesUseCase(config, herdr({ IllegalStateException() })).closeHolders(first, null)
+
+        assertEquals(HolderClosing(closedWorkspace = false, failure = workspaceFailure), keptWorkspaceFailure)
+        assertEquals(paneFailure, firstPaneFailure.failure)
+        assertEquals("", genericFailure.failure?.herdrDetail())
+    }
+
+    @Test
+    fun `a workspace that fails to close with a generic error is reported without detail`() = runTest {
+        val herdr = FakeHerdrClient(closeFailures = mapOf("w2" to IllegalStateException()))
+
+        val failures = CloseHerdrWorkspacesUseCase(config, herdr).close(mapOf(first to "w2"), listOf(first, second))
+
+        assertEquals(listOf(first), failures.map { it.path })
+        assertEquals("", failures.single().error.herdrDetail())
+        val withMessage = FakeHerdrClient(closeFailures = mapOf("w2" to IllegalStateException("socket closed")))
+        assertEquals("socket closed", CloseHerdrWorkspacesUseCase(config, withMessage).close(mapOf(first to "w2"), listOf(first)).single().error.herdrDetail())
+    }
 }

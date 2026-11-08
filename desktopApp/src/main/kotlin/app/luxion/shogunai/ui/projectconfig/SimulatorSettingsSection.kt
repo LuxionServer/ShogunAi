@@ -33,7 +33,7 @@ private data class NamedOption(val name: String?)
 @Composable
 fun SimulatorSettingsSection(viewModel: ProjectConfigViewModel, modifier: Modifier = Modifier) {
     val state = viewModel.simulatorSection
-    if (state == SimulatorSectionState.Hidden) return
+    if (state !is SimulatorSectionState.Shown) return
     val strings = LocalStrings.current
     SettingsSection(title = strings.simulatorSection, modifier = modifier) {
         Text(strings.machineOnlyLabel, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -42,12 +42,16 @@ fun SimulatorSettingsSection(viewModel: ProjectConfigViewModel, modifier: Modifi
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        when (state) {
-            SimulatorSectionState.Loading -> InlineProgress()
-            is SimulatorSectionState.Failed -> ErrorNotice(state.error, onDismiss = null)
-            is SimulatorSectionState.Available -> AvailableSimulatorSettings(viewModel, state)
-            SimulatorSectionState.Hidden -> Unit
-        }
+        SimulatorStateContent(viewModel, state)
+    }
+}
+
+@Composable
+private fun SimulatorStateContent(viewModel: ProjectConfigViewModel, state: SimulatorSectionState.Shown) {
+    when (state) {
+        SimulatorSectionState.Loading -> InlineProgress()
+        is SimulatorSectionState.Failed -> ErrorNotice(state.error, onDismiss = null)
+        is SimulatorSectionState.Available -> AvailableSimulatorSettings(viewModel, state)
     }
 }
 

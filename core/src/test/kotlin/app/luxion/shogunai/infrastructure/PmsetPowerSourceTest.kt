@@ -43,4 +43,9 @@ class PmsetPowerSourceTest {
     fun `a failing pmset is unknown`() = runTest {
         assertNull(PmsetPowerSource(FakeShellCommandExecutor { command -> failure(command) }).isOnBattery())
     }
+
+    @Test
+    fun `a pmset that can't start is unknown`() = runTest {
+        assertNull(PmsetPowerSource(FakeShellCommandExecutor { throw app.luxion.shogunai.domain.executor.CommandExecutionException(it, java.io.IOException("missing")) }).isOnBattery())
+    }
 }

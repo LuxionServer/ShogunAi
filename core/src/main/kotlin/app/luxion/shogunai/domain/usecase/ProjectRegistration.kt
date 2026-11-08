@@ -26,9 +26,12 @@ class RegisterProjectUseCase(
         if (existing != null) return@runCatching ProjectRegistration.AlreadyRegistered(existing)
         val workspace = workspaceOf(repository)
         val created = newProject(newId(), repository)
-        val project = workspace?.workspaceRepository
-            ?.let { created.copy(config = created.config.copy(worktreesRoot = workspace.proposedWorktreesFolder(it.alias))) }
-            ?: created
+        val workspaceRepository = workspace?.workspaceRepository
+        val project = if (workspace == null || workspaceRepository == null) {
+            created
+        } else {
+            created.copy(config = created.config.copy(worktreesRoot = workspace.proposedWorktreesFolder(workspaceRepository.alias)))
+        }
         projects.save(project)
         ProjectRegistration.Added(project)
     }

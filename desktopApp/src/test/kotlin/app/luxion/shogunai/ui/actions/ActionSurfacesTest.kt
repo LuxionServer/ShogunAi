@@ -5,6 +5,7 @@ import app.luxion.shogunai.ui.i18n.EnglishStrings
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class ActionSurfacesTest {
@@ -100,17 +101,39 @@ class ActionSurfacesTest {
     }
 
     @Test
-    fun `the view header keeps one primary and moves clean up last in the overflow`() {
+    fun `the view header keeps one primary and clean up out of the overflow`() {
         val view = viewCatalog(
-            ViewActionContext(isMultirepo = true, isProjectView = false, createBlocked = null, cleanUpBlocked = "Nothing to clean up"),
+            ViewActionContext(isMultirepo = true, isProjectView = false, createBlocked = null, cleanUpBlocked = "A cleanup is already running", cleanUpCount = 2),
             strings,
         )
 
         assertEquals(ActionId.NewChange, view.primary?.id)
-        val overflow = viewOverflow(view, strings)
-        assertEquals(listOf(ActionId.OpenMultirepoAgent(OpenTarget.HERDR), ActionId.CleanUp), overflow.filterIsInstance<ActionEntry.Run>().map { it.spec.id })
-        assertEquals(ActionEntry.Divider, overflow[1])
-        assertEquals(Availability.Disabled("Nothing to clean up"), view.find(ActionId.CleanUp)?.availability)
+        assertEquals(listOf(ActionId.OpenMultirepoAgent(OpenTarget.HERDR)), viewOverflow(view, strings).filterIsInstance<ActionEntry.Run>().map { it.spec.id })
+        assertTrue(viewOverflow(view, strings).none { it == ActionEntry.Divider })
+        assertEquals("Clean up 2", view.cleanUp?.label)
+        assertEquals(Availability.Disabled("A cleanup is already running"), view.cleanUp?.availability)
+    }
+
+    @Test
+    fun `clean up is hidden when nothing can be cleaned up`() {
+        val view = viewCatalog(
+            ViewActionContext(isMultirepo = false, isProjectView = false, createBlocked = null, cleanUpBlocked = "Nothing to clean up", offersCleanUp = false),
+            strings,
+        )
+
+        assertNull(view.cleanUp)
+        assertTrue(viewOverflow(view, strings).isEmpty())
+    }
+
+    @Test
+    fun `clean up without candidate worktrees has no count`() {
+        val view = viewCatalog(
+            ViewActionContext(isMultirepo = false, isProjectView = false, createBlocked = null, cleanUpBlocked = null),
+            strings,
+        )
+
+        assertEquals("Clean up", view.cleanUp?.label)
+        assertEquals(Availability.Available, view.cleanUp?.availability)
     }
 
     @Test
@@ -121,7 +144,7 @@ class ActionSurfacesTest {
         )
 
         assertEquals(ActionId.NewWorktree, view.primary?.id)
-        assertEquals(listOf(ActionId.CleanUp), view.overflow.map { it.id })
+        assertTrue(view.overflow.isEmpty())
         assertTrue(view.find(ActionId.ProjectSettings)!!.isVisible)
         assertEquals(Availability.Hidden, view.find(ActionId.OpenMultirepoAgent(OpenTarget.HERDR))?.availability)
     }
@@ -139,8 +162,7 @@ class ActionSurfacesTest {
         assertEquals("Open multirepo agent with…", others.label)
         assertEquals(listOf("Orca"), others.entries.map { (it as ActionEntry.Run).label })
         assertEquals(ActionId.OpenMultirepoAgent(OpenTarget.ORCA), (others.entries.single() as ActionEntry.Run).spec.id)
-        assertEquals(ActionEntry.Divider, overflow[2])
-        assertEquals(ActionId.CleanUp, assertIs<ActionEntry.Run>(overflow[3]).spec.id)
+        assertEquals(2, overflow.size)
     }
 
     @Test

@@ -14,6 +14,7 @@ import app.luxion.shogunai.domain.model.RepositoryProvisioning
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.test.runTest
 import java.io.IOException
+import app.luxion.shogunai.domain.io.RepositoryProvisioningSource
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -32,7 +33,7 @@ class ResolveFlutterPackagesUseCaseTest {
     private suspend fun resolve(
         executor: FakeShellCommandExecutor,
         fileManager: FakeFileManager = FakeFileManager(),
-        source: FakeRepositoryProvisioningSource = flutterRepository,
+        source: RepositoryProvisioningSource = flutterRepository,
     ): FlutterPubGet? = ResolveFlutterPackagesUseCase(executor, fileManager, source).prepare(repository, worktree)
 
     @Test
@@ -102,5 +103,25 @@ class ResolveFlutterPackagesUseCaseTest {
 
         assertTrue(result is FlutterPubGet.Needed)
         assertTrue(executor.executedCommands.isEmpty())
+    }
+
+    @Test
+    fun `an unexpected error without a message or a name is reported empty`() = runTest {
+        val source = object : RepositoryProvisioningSource by FakeRepositoryProvisioningSource() {
+            override fun read(repositoryPath: String): RepositoryProvisioning = throw object : IllegalStateException() {}
+        }
+
+        val result = resolve(FakeShellCommandExecutor { success(it) }, source = source)
+
+        assertEquals(FlutterPubGet.Needed(FlutterPubGetFailure.Unexpected("")), result)
+    }
+
+    @Test
+    fun `an unexpected error without a message is named after its type`() = runTest {
+        val source = object : RepositoryProvisioningSource by FakeRepositoryProvisioningSource() {
+            override fun read(repositoryPath: String): RepositoryProvisioning = throw IllegalStateException()
+        }
+
+        assertEquals(FlutterPubGet.Needed(FlutterPubGetFailure.Unexpected("IllegalStateException")), resolve(FakeShellCommandExecutor { success(it) }, source = source))
     }
 }

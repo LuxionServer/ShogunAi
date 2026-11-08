@@ -30,7 +30,10 @@ class TrimDerivedDataUseCase(
         val listing = measured
             ?: list(worktrees, includeCompilationCache = false, measure = DerivedDataMeasure.ALL).getOrThrow()
         val usageBefore = listing.folders.sumOf { it.folder.sizeBytes ?: 0L }
-        val inUse = listing.folders.filter { it.owner is DerivedDataOwner.Worktree && isInUse(it, active, it.folder.lastAccessed) }
+        val inUse = listing.folders.filter { entry ->
+            val owner = entry.owner
+            owner is DerivedDataOwner.Worktree && isInUse(owner, active, entry.folder.lastAccessed)
+        }
         val candidates = candidatesOf(listing.folders, inUse)
 
         var usage = usageBefore
@@ -59,22 +62,16 @@ class TrimDerivedDataUseCase(
 
     private suspend fun stillReleasable(candidate: AttributedDerivedData, worktrees: List<Worktree>, active: Set<String>): Boolean {
         val current = source.folders().firstOrNull { it.path == candidate.folder.path } ?: return false
-        return when (candidate.owner) {
-            DerivedDataOwner.Orphaned -> !source.projectExists(current.workspacePath)
-            is DerivedDataOwner.Worktree -> {
-                val owner = ownerOf(current, worktrees)
-                owner == candidate.owner && !isInUse(AttributedDerivedData(current, owner), active, current.lastAccessed)
-            }
-            else -> false
-        }
+        val candidateOwner = candidate.owner
+        if (candidateOwner !is DerivedDataOwner.Worktree) return !source.projectExists(current.workspacePath)
+        return ownerOf(current, worktrees) == candidateOwner && !isInUse(candidateOwner, active, current.lastAccessed)
     }
 
     private fun ownerOf(folder: DerivedDataFolder, worktrees: List<Worktree>): DerivedDataOwner? =
         if (!source.projectExists(folder.workspacePath)) null
         else owningWorktree(folder.workspacePath, worktrees)?.let { DerivedDataOwner.Worktree(it.path) }
 
-    private fun isInUse(entry: AttributedDerivedData, active: Set<String>, lastAccessed: Instant?): Boolean {
-        val owner = entry.owner as? DerivedDataOwner.Worktree ?: return false
+    private fun isInUse(owner: DerivedDataOwner.Worktree, active: Set<String>, lastAccessed: Instant?): Boolean {
         if (normalizePath(owner.path) in active) return true
         return lastAccessed != null && Duration.between(lastAccessed, now()) < IN_USE_GRACE
     }

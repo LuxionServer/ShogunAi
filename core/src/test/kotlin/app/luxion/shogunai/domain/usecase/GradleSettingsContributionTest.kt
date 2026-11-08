@@ -82,4 +82,11 @@ class GradleSettingsContributionTest {
 
         assertEquals("-Xmx2g -XX:MaxMetaspaceSize=4G", gradleDaemonArguments(effective, "2g"))
     }
+    @Test
+    fun `blank arguments are skipped and leading spaces add no empty argument`() {
+        val blank = FakeFileManager(properties = mapOf("$gradleUserHome/gradle.properties" to mapOf("org.gradle.jvmargs" to "  ")))
+
+        assertNull(effectiveGradleJvmArgs(blank, gradleUserHome, repository))
+        assertEquals("-Xmx2g -Duser=1", gradleDaemonArguments("  -Duser=1", "2g"))
+    }
 }

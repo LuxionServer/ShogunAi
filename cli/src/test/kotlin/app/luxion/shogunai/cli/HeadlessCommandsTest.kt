@@ -81,11 +81,11 @@ class HeadlessCommandsTest {
         ),
     )
 
-    private fun cli(declared: Boolean = true, workingDirectory: String = linked, input: String = "") = ShogunCli(
+    private fun cli(declared: Boolean = true, workingDirectory: String = linked, input: String = "", environment: Map<String, String> = emptyMap(), provisioning: FakeRepositoryProvisioningSource = provisioning(declared)) = ShogunCli(
         executor = executor,
         fileManager = files,
         projectRepository = FakeProjectRepository(emptyList()),
-        provisioningSource = provisioning(declared),
+        provisioningSource = provisioning,
         daemonSource = FakeGradleDaemonSource(),
         gradleUserHome = "/home/dev/.gradle",
         environmentStateStore = FakeEnvironmentStateStore(),
@@ -103,7 +103,7 @@ class HeadlessCommandsTest {
         err = err,
         readInput = { input },
         canonicalPath = { it.trimEnd('/') },
-        environment = hostEnvironment(),
+        environment = hostEnvironment(variables = environment),
         headlessLauncher = launcher,
         appWindows = windows,
         pauseWhileStartingApp = {},
@@ -346,5 +346,32 @@ class HeadlessCommandsTest {
         assertEquals(2, cli().run(listOf("headless", "start", "--output", "x.png")))
         assertEquals(2, cli().run(listOf("headless", "launch")))
         assertFalse(launcher.launches.isNotEmpty())
+    }
+
+    @Test
+    fun `stop of a given worktree whose app isn't running just says stopped`() {
+        assertEquals(0, cli(workingDirectory = base).run(listOf("headless", "stop", linked)), err.toString())
+
+        assertEquals("stopped\n", out.toString())
+    }
+
+    @Test
+    fun `the worktree-remove hook and Orca's archive say when the desktop app can't be stopped`() {
+        appWindow()
+        cli().run(listOf("headless", "start"))
+        launcher.failStop = java.io.IOException("kill denied")
+
+        cli(workingDirectory = base, environment = mapOf("ORCA_WORKTREE_PATH" to linked)).run(listOf("hook", "orca", "archive"))
+        cli(workingDirectory = base, input = """{"worktree_path":"$linked"}""").run(listOf("hook", "worktree-remove"))
+
+        assertEquals(2, err.lines().count { it.contains("couldn't stop the desktop app of $linked") }, err.toString())
+    }
+
+    @Test
+    fun `the session start context has no desktop app line when the worktree's declaration can't be read`() {
+        val exitCode = cli(input = """{"cwd": "$linked"}""", provisioning = FakeRepositoryProvisioningSource(unreadable = setOf(linked))).run(listOf("hook", "session-start"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertFalse(out.contains("shogun headless start"), out.toString())
     }
 }

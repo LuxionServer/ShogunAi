@@ -164,4 +164,13 @@ class ListLocalFileCandidatesUseCaseTest {
 
         assertTrue("not a git repository" in error.errorOutput)
     }
+    @Test
+    fun `an empty folder isn't provided by the repository`() = runTest {
+        val fileManager = FakeFileManager().apply { directoryFiles["$base/keys"] = emptyList() }
+        val executor = executor(ignored = listOf("keys/"), provided = listOf("other.jks"))
+
+        val candidates = list(executor, RepositoryProvisioning(copyPatterns = listOf("*.jks")), fileManager)
+
+        assertEquals(listOf(false), candidates.map { it.providedByRepository })
+    }
 }

@@ -613,4 +613,19 @@ class ResolveWorktreeEnvironmentUseCaseTest {
 
         assertEquals(value, output)
     }
+
+    @Test
+    fun `json escapes backslashes, line breaks, tabs and control characters`() {
+        val environment = WorktreeEnvironment(variables = listOf("VALUE" to "a\\b\nc\rd\te\u0001f"))
+
+        assertEquals("{\"VALUE\":\"a\\\\b\\nc\\rd\\te\\u0001f\"}\n", formatEnvironment(environment, EnvironmentFormat.JSON))
+    }
+
+    @Test
+    fun `a git answer without both folders isn't a repository`() = runTest {
+        val git = FakeShellCommandExecutor { FakeShellCommandExecutor.success(it, "/repo/.git\n") }
+        val resolve = ResolveWorktreeEnvironmentUseCase(git, FakeRepositoryProvisioningSource(), FakeEnvironmentStateStore(), FakePortProbe())
+
+        assertIs<WorktreeError.RepositoryNotFound>(runCatching { resolve.directoriesOf("/repo") }.exceptionOrNull())
+    }
 }

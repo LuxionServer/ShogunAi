@@ -27,7 +27,7 @@ class GroupContext(private val fileManager: FileManager) {
             multirepo.repositories.joinToString { "${it.alias} (${it.path})" }.ifEmpty { "none yet" } + ".",
         joinPath(multirepo.folder, AGENTS_FILE).takeIf(fileManager::exists)?.let { "Read $it for what all the repositories share." },
         "Run `shogun status` to list the groups, `shogun new <id>` to create one" +
-            (multirepo.defaultRepos.takeIf { it.isNotEmpty() }?.let { " in ${it.joinToString()}" } ?: " with --repos") +
+            (if (multirepo.defaultRepos.isNotEmpty()) " in ${multirepo.defaultRepos.joinToString()}" else " with --repos") +
             " and `shogun open <id> --${runner.flag}` to open its worktrees, each with its own agent.",
     )
 
@@ -39,7 +39,8 @@ class GroupContext(private val fileManager: FileManager) {
 
     private fun openSpecLine(multirepo: Multirepo, group: WorktreeGroup): String? {
         val paths = multirepo.repositories.mapNotNull { repository ->
-            val folder = group.worktrees.firstOrNull { it.alias == repository.alias }?.worktree?.path ?: repository.path
+            val member = group.worktrees.firstOrNull { it.alias == repository.alias }
+            val folder = if (member != null) member.worktree.path else repository.path
             if (fileManager.exists(joinPath(folder, OPENSPEC_FOLDER))) joinPath(folder, AGENTS_FILE) else null
         }
         if (paths.isEmpty()) return null

@@ -284,13 +284,43 @@ class DesktopTurnUseCasesTest {
     }
 
     @Test
-    fun `by default the wait sleeps on the real clock until it times out`() = runTest {
-        val realTime = DesktopTurnLedger(store, FakeEnvironmentStateStore(), queue, liveness, adminDirectoryOf = { path -> admin(path.substringAfterLast('/')) })
+    fun `by default the wait pauses with a coroutine delay until it times out`() = runTest {
         val start = Instant.now()
+        val delayed = DesktopTurnLedger(
+            store,
+            FakeEnvironmentStateStore(),
+            queue,
+            liveness,
+            adminDirectoryOf = { path -> admin(path.substringAfterLast('/')) },
+            clock = { start.plusMillis(testScheduler.currentTime) },
+        )
         store.turn = DesktopTurn(admin("TASK-1"), worktree("TASK-1"), start.toEpochMilli(), (start + Duration.ofHours(1)).toEpochMilli())
 
-        val error = AcquireDesktopTurnUseCase(realTime) { Duration.ofMinutes(minutes) }(worktree("TASK-2"), DesktopWait(timeout = Duration.ofMillis(50))).exceptionOrNull()
+        val error = AcquireDesktopTurnUseCase(delayed) { Duration.ofMinutes(minutes) }(worktree("TASK-2"), DesktopWait(timeout = Duration.ofMinutes(1))).exceptionOrNull()
 
         assertIs<WorktreeError.DesktopTurnWaitTimedOut>(error)
+    }
+    @Test
+    fun `forcing a release of a free desktop says nobody held it`() = runTest {
+        assertEquals(DesktopTurnRelease.NobodyHolds, release.force().getOrThrow())
+    }
+
+    @Test
+    fun `removing a worktree whose admin folder can't be found leaves the turn`() = runTest {
+        val turn = held("TASK-1", Duration.ofMinutes(5))
+        val blind = DesktopTurnLedger(store, FakeEnvironmentStateStore(), queue, liveness, adminDirectoryOf = { error("not a worktree") }, clock = { now })
+
+        ReleaseDesktopTurnUseCase(blind).onWorktreeRemoved(worktree("TASK-1"))
+
+        assertEquals(turn, store.turn)
+    }
+
+    @Test
+    fun `a wait stops at an error that isn't a taken desktop`() = runTest {
+        val failing = AcquireDesktopTurnUseCase(ledger) { error("unreadable settings") }
+
+        val error = failing(worktree("TASK-1"), DesktopWait(timeout = Duration.ofMinutes(1))).exceptionOrNull()
+
+        assertIs<IllegalStateException>(error)
     }
 }

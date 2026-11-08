@@ -14,6 +14,7 @@ import java.util.concurrent.TimeUnit
 class GradleHeadlessAppLauncher(
     private val executor: ShellCommandExecutor,
     private val scriptDirectory: String,
+    private val stopGraceSeconds: Long = STOP_GRACE_SECONDS,
 ) : HeadlessAppLauncher {
 
     override suspend fun launch(launch: HeadlessLaunch): HeadlessLaunchResult {
@@ -39,7 +40,7 @@ class GradleHeadlessAppLauncher(
         val processes = handle.descendants().toList() + handle
         processes.forEach { it.destroy() }
         processes.forEach { process ->
-            runCatching { process.onExit().get(STOP_GRACE_SECONDS, TimeUnit.SECONDS) }
+            runCatching { process.onExit().get(stopGraceSeconds, TimeUnit.SECONDS) }
             if (process.isAlive) process.destroyForcibly()
         }
     }
@@ -56,7 +57,7 @@ class GradleHeadlessAppLauncher(
         private const val STOP_GRACE_SECONDS = 5L
         private val STARTED_LINE = Regex("Started '[^']*' in background \\((\\d+)\\)")
 
-        fun startedPid(output: String): Long? = STARTED_LINE.findAll(output).lastOrNull()?.groupValues?.get(1)?.toLongOrNull()
+        fun startedPid(output: String): Long? = STARTED_LINE.findAll(output).lastOrNull()?.let { it.groupValues[1].toLongOrNull() }
 
         fun command(launch: HeadlessLaunch, initScript: Path): List<String> = buildList {
             add(Path.of(launch.worktreePath, "gradlew").toString())

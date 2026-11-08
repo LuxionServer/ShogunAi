@@ -17,7 +17,8 @@ class WorktreeGroupingTest {
                 "new" to Activity.New,
                 "stopped" to Activity.Stopped,
                 "merged" to Activity.Merged,
-                "needs" to Activity.NeedsYou,
+                "unfinished" to Activity.Unfinished,
+                "waiting" to Activity.WaitingForYou,
                 "agent" to Activity.AgentWorking,
                 "idle" to Activity.Idle,
                 "unknown" to Activity.Unknown,
@@ -26,10 +27,11 @@ class WorktreeGroupingTest {
         )
 
         assertEquals(
-            listOf(StateGroupKind.NEEDS_YOU, StateGroupKind.AGENT_WORKING, StateGroupKind.NEW, StateGroupKind.STOPPED),
+            listOf(StateGroupKind.WAITING_FOR_YOU, StateGroupKind.AGENT_WORKING, StateGroupKind.UNFINISHED, StateGroupKind.NEW, StateGroupKind.STOPPED),
             kinds(groups),
         )
-        assertEquals(listOf("needs"), groups.first().items)
+        assertEquals(listOf("waiting"), groups.first().items)
+        assertEquals(listOf("unfinished"), groups[2].items)
     }
 
     @Test

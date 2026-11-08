@@ -46,8 +46,12 @@ The multirepo view SHALL list its repositories' worktrees grouped by change by d
 Each change group's header SHALL show as its title the group's branch without the prefix up to its last `/` (`TASK-12`), with the full branch as detail, its repositories' aliases and a combined state: "Merged" only when every worktree of the group is merged, and otherwise the most urgent state among its worktrees in the order of the worktree states.
 
 #### Scenario: One worktree needs the user
-- **WHEN** `app`'s worktree on `feature/TASK-1` is "Agent working" and `api`'s is "Needs you"
-- **THEN** the header shows `TASK-1`, the detail `feature/TASK-1` and "Needs you"
+- **WHEN** `app`'s worktree on `feature/TASK-1` is "Agent working" and `api`'s is "Waiting for you"
+- **THEN** the header shows `TASK-1`, the detail `feature/TASK-1` and "Waiting for you"
+
+#### Scenario: Agent working before unfinished work
+- **WHEN** `app`'s worktree on `feature/TASK-1` is "Unfinished" and `api`'s is "Agent working"
+- **THEN** the header shows "Agent working"
 
 #### Scenario: Partly merged
 - **WHEN** `app`'s worktree of the group is "Merged" and `api`'s is "Stopped"
@@ -108,7 +112,7 @@ The multirepo view SHALL offer opening the multirepo agent in Herdr in its heade
 - **THEN** the view shows the error naming the pane and the command
 
 ### Requirement: Group tag in other views
-In every view other than the multirepo view, the row of a worktree that belongs to a group SHALL show a tag with the group's title and the other repositories of the group (e.g. `TASK-12 · +api`), and activating the tag SHALL open the multirepo view with that group shown and selected.
+In every view other than the multirepo view, the row of a worktree that belongs to a group SHALL show a tag with the group's title and the other repositories of the group (e.g. `TASK-12 · +api`), and activating the tag SHALL open the multirepo view with that group shown and selected. "Active" grouped by state SHALL NOT show the tag, since it lists the group as one change row whose child rows are its worktrees.
 
 #### Scenario: Tag in a repository's view
 - **WHEN** `app`'s view lists its worktree on `feature/TASK-12`, a group with `app` and `api`
@@ -117,6 +121,10 @@ In every view other than the multirepo view, the row of a worktree that belongs 
 #### Scenario: Follow the tag
 - **WHEN** the user activates the tag
 - **THEN** the multirepo view opens with that group expanded and scrolled into view
+
+#### Scenario: No tag inside a change row
+- **WHEN** "Active", grouped by state, shows the `TASK-12` change row expanded
+- **THEN** its `app` and `api` child rows show no group tag
 
 ### Requirement: Add a multirepo from the app
 The user SHALL be able to add a multirepo by dropping a folder on the sidebar or choosing it with "Add multirepo". Before confirming, the app SHALL list the Git repositories directly inside the folder, and any added from elsewhere, with their aliases, which already are projects, the proposed worktrees folder of each (optional) and the groups detected by branch. A folder's existing declaration SHALL be shown as `shogun multirepo trust` shows it. Confirming SHALL write the declaration as `shogun multirepo init` and `add-repo` do, and approve it.
@@ -195,6 +203,10 @@ The multirepo view SHALL offer "New change", a dialog like "New worktree" with t
 - **WHEN** `api`'s post-creation command fails
 - **THEN** the dialog reports `api`'s failure, and `app` and `api`'s kept worktree appear in the group, and only the worktrees that exist are opened when a runner was picked
 
+#### Scenario: Unavailable local files in one repository
+- **WHEN** `api` has a missing local file and the user confirms "New change" for `app` and `api` with a runner picked
+- **THEN** the dialog reports `api`'s failure with the local files summary and `app` as not created because of `api`, in the selected language, no worktree is created and nothing is opened
+
 ### Requirement: Multirepo agent in the multirepo view
 The multirepo view SHALL show the multirepo agent running in the multirepo folder with the agent indicator, next to "Open multirepo agent in Herdr" and "Open multirepo agent in Orca". Only an agent whose working directory is exactly the multirepo folder SHALL count, and the sidebar entry of the multirepo SHALL reflect its activity.
 
@@ -254,13 +266,6 @@ Adding a multirepo from the app with a folder that already has a declaration SHA
 #### Scenario: Moved multirepo dropped on the sidebar
 - **WHEN** the user drops `~/work/product`, whose declaration lists `app` and `api`, and the multirepo isn't known
 - **THEN** the dialog says the folder already declares a multirepo and lists `app` and `api` with their paths, and confirming approves it and makes the sidebar show the folder with both projects
-
-### Requirement: The app forgets multirepos whose folder is gone
-When the app reloads the known multirepos it SHALL remove from `~/.shogunai/multirepos.json` every entry whose folder no longer exists, as `shogun multirepo init` does.
-
-#### Scenario: Folder deleted while the app is open
-- **WHEN** `~/projects/product` is deleted and the app reloads
-- **THEN** the folder `product` leaves the sidebar, its projects stay listed at the top level, and `~/.shogunai/multirepos.json` no longer lists it
 
 ### Requirement: Shared variables in the multirepo settings
 The multirepo settings SHALL list each shared variable with its repository, name and template, let the user edit its template, remove it and add one choosing the repository, and save them with the rest of the settings as `shogun multirepo env` does. An invalid row SHALL be marked with its problem and SHALL keep the settings from saving.
@@ -350,3 +355,55 @@ The multirepo view's repository alias column SHALL be as wide as its longest ali
 #### Scenario: Very long alias
 - **WHEN** an alias doesn't fit the maximum width
 - **THEN** it is truncated and its tooltip shows it whole
+
+### Requirement: The app never forgets a multirepo on its own
+Loading or reloading the known multirepos SHALL NOT change `~/.shogunai/multirepos.json`: an entry, its approval and its local agent SHALL stay until the user removes it.
+
+#### Scenario: Volume unmounted when the app opens
+- **WHEN** `~/.shogunai/multirepos.json` lists `/Volumes/External/main-multirepo`, approved and with a local agent, and the app opens while `/Volumes/External` isn't mounted
+- **THEN** `~/.shogunai/multirepos.json` is unchanged
+
+#### Scenario: Volume mounted again
+- **WHEN** the volume is mounted again and the app reloads
+- **THEN** the sidebar shows the multirepo with its projects as before, approved and with its local agent
+
+### Requirement: Unavailable multirepos in the sidebar
+The sidebar SHALL list each known multirepo whose declaration can't be read, named after its folder, marked as unavailable with the reason (the folder can't be reached, the folder has no declaration, or the declaration is invalid) and with no projects nested under it.
+
+#### Scenario: Folder unreachable
+- **WHEN** the known multirepo `/Volumes/External/main-multirepo` can't be reached
+- **THEN** the sidebar shows `main-multirepo` marked as unavailable, its tooltip says its folder can't be reached, and the projects of its repositories are listed at the top level
+
+#### Scenario: Declaration deleted
+- **WHEN** the known multirepo's folder exists but has no `.shogunai-multirepo.json`
+- **THEN** the sidebar shows it as unavailable because the folder has no declaration
+
+#### Scenario: Declaration invalid
+- **WHEN** the known multirepo's declaration isn't valid JSON
+- **THEN** the sidebar shows it as unavailable with the problem found in the declaration
+
+### Requirement: Remove an unavailable multirepo
+Selecting an unavailable multirepo SHALL show its folder, why it's unavailable and the actions "Try again", which reloads the known multirepos, and "Remove", which after a confirmation forgets the entry with its approval and local agent and touches no file in its folder.
+
+#### Scenario: Remove after confirming
+- **WHEN** the user selects the unavailable `main-multirepo`, clicks "Remove" and confirms
+- **THEN** `~/.shogunai/multirepos.json` no longer lists it nor keeps its approval or local agent, it leaves the sidebar and the app shows the active worktrees
+
+#### Scenario: Removal cancelled
+- **WHEN** the user clicks "Remove" and cancels the confirmation
+- **THEN** nothing changes and the multirepo stays listed as unavailable
+
+#### Scenario: Remove from the context menu
+- **WHEN** the user opens the context menu of an unavailable multirepo in the sidebar
+- **THEN** it offers "Remove", with the same confirmation, and the reordering actions
+
+#### Scenario: Try again once reachable
+- **WHEN** the volume is mounted again and the user clicks "Try again"
+- **THEN** the multirepo shows its worktrees as any available multirepo
+
+### Requirement: Group actions outside the multirepo view
+A group's actions SHALL work from any view that offers them, acting on the group's own multirepo: "Add repository" SHALL list the repositories of that multirepo the group lacks, and "Clean up group" SHALL clean up the group's worktrees, whichever view is shown.
+
+#### Scenario: Add a repository from Active
+- **WHEN** `product` has `app`, `api` and `docs`, the group `feature/TASK-1` has `app` and `api`, and the user opens the `TASK-1` row's menu in "Active"
+- **THEN** "Add repository" offers `docs`, and picking it creates `docs`'s worktree as `shogun new TASK-1 --repos docs` would

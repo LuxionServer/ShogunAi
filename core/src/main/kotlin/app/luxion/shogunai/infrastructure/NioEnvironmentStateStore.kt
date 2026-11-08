@@ -45,7 +45,7 @@ class NioEnvironmentStateStore(
     override fun readResources(adminDirectory: String): Map<String, String> {
         val resources = readObject(stateFile(Path.of(adminDirectory)))[RESOURCES_FIELD] as? JsonObject ?: return emptyMap()
         return resources.mapNotNull { (key, value) ->
-            (value as? JsonPrimitive)?.takeIf { it.isString }?.content?.let { key to it }
+            (value as? JsonPrimitive)?.stringOrNull()?.let { key to it }
         }.toMap()
     }
 
@@ -73,8 +73,8 @@ class NioEnvironmentStateStore(
         return records.mapNotNull { (key, value) ->
             val record = value as? JsonObject ?: return@mapNotNull null
             val releasedAt = (record[RELEASED_AT_FIELD] as? JsonPrimitive)?.longOrNull ?: return@mapNotNull null
-            val forWorktree = (record[FOR_WORKTREE_FIELD] as? JsonPrimitive)?.takeIf { it.isString }?.content ?: return@mapNotNull null
-            val previous = (record[PREVIOUS_FIELD] as? JsonPrimitive)?.takeIf { it.isString }?.content
+            val forWorktree = (record[FOR_WORKTREE_FIELD] as? JsonPrimitive)?.stringOrNull() ?: return@mapNotNull null
+            val previous = (record[PREVIOUS_FIELD] as? JsonPrimitive)?.stringOrNull()
             key to ReleaseRecord(releasedAt, forWorktree, previous)
         }.toMap()
     }
@@ -140,8 +140,7 @@ class NioEnvironmentStateStore(
     private fun repositoryAdminDirectories(common: Path): List<Path> {
         val linked = common.resolve("worktrees")
             .takeIf { it.isDirectory() }
-            ?.listDirectoryEntries()
-            ?.filter { it.isDirectory() }
+            ?.let { folder -> folder.listDirectoryEntries().filter { it.isDirectory() } }
             .orEmpty()
         return listOf(common) + linked
     }
@@ -152,7 +151,7 @@ class NioEnvironmentStateStore(
 
     private fun readIndex(): Set<String> {
         val entries = readObject(indexFile())[WORKTREES_FIELD] as? JsonArray ?: return emptySet()
-        return entries.mapNotNull { (it as? JsonPrimitive)?.takeIf { primitive -> primitive.isString }?.content }.toSet()
+        return entries.mapNotNull { (it as? JsonPrimitive)?.stringOrNull() }.toSet()
     }
 
     private fun writeIndex(entries: Set<String>) {

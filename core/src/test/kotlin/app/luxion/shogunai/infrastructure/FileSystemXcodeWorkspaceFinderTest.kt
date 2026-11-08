@@ -90,4 +90,11 @@ class FileSystemXcodeWorkspaceFinderTest {
 
         assertEquals("", found())
     }
+
+    @Test
+    fun `without depth the worktree itself is used`() = runTest {
+        folder("App.xcworkspace")
+
+        assertEquals(root.path, FileSystemXcodeWorkspaceFinder(maxDepth = 0).find(root.path))
+    }
 }

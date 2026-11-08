@@ -59,6 +59,7 @@ import app.luxion.shogunai.domain.model.AgentLaunchConfig
 import app.luxion.shogunai.ui.shell.AgentChoices
 import app.luxion.shogunai.SimulatorUseCases
 import app.luxion.shogunai.domain.model.AgentState
+import app.luxion.shogunai.domain.model.AgentStateSource
 import app.luxion.shogunai.domain.model.HerdrOpening
 import app.luxion.shogunai.domain.model.ObservedPort
 import app.luxion.shogunai.domain.model.OrcaOpening
@@ -824,6 +825,62 @@ class ProjectWorktreesTest {
     }
 
     @Test
+    fun `a locked worktree offers the force retry with its lock reason and removes it forcing twice`() = runTest(dispatcher) {
+        val executed = mutableListOf<List<String>>()
+        val doublyForced = listOf("git", "worktree", "remove", "--force", "--force", worktreePath)
+        val viewModel = projectWorktrees(
+            useCases { command ->
+                executed += command
+                when (command) {
+                    listCommand -> success(command, porcelainOutput)
+                    removeCommand, forceRemoveCommand -> failure(
+                        command,
+                        exitCode = 128,
+                        stderr = "fatal: cannot remove a locked working tree, lock reason: orca-create-preparation:v1\n" +
+                            "use 'remove -f -f' to override or unlock first",
+                    )
+                    else -> success(command)
+                }
+            },
+        )
+        advanceUntilIdle()
+
+        viewModel.remove(worktree, branchToDelete = null)
+        advanceUntilIdle()
+
+        assertTrue(viewModel.pendingRemovalRequiresForce)
+        assertEquals("orca-create-preparation:v1", viewModel.pendingRemovalLock?.reason)
+        assertNull(viewModel.removeError)
+
+        viewModel.confirmPendingRemoval()
+        advanceUntilIdle()
+
+        assertTrue(doublyForced in executed)
+        assertNull(viewModel.worktreePendingRemoval)
+        assertTrue(viewModel.worktrees.none { it.path == worktreePath })
+    }
+
+    @Test
+    fun `a failure suggesting force carries no lock`() = runTest(dispatcher) {
+        val viewModel = projectWorktrees(
+            useCases { command ->
+                when (command) {
+                    listCommand -> success(command, porcelainOutput)
+                    removeCommand -> failure(command, stderr = "use --force to delete it")
+                    else -> success(command)
+                }
+            },
+        )
+        advanceUntilIdle()
+
+        viewModel.remove(worktree, branchToDelete = null)
+        advanceUntilIdle()
+
+        assertTrue(viewModel.pendingRemovalRequiresForce)
+        assertNull(viewModel.pendingRemovalLock)
+    }
+
+    @Test
     fun `a removal failing for a reason unrelated to force stays in the dialog with its error`() = runTest(dispatcher) {
         val viewModel = projectWorktrees(
             useCases { command ->
@@ -1188,7 +1245,7 @@ class ProjectWorktreesTest {
                     success(command, stdout = "refs/heads/develop\nrefs/heads/feature/TASK-123\n$remoteBranches")
                 command.take(2) == listOf("git", "symbolic-ref") ->
                     mainBranch?.let { success(command, stdout = "origin/$it\n") } ?: failure(command)
-                command.take(2) == listOf("git", "rev-parse") && command.last() == "refs/remotes/origin/develop" -> success(command)
+                command.take(2) == listOf("git", "rev-parse") && command.last() == "refs/remotes/origin/${mainBranch ?: "develop"}" -> success(command)
                 command.take(2) == listOf("git", "rev-parse") && command.last() == "origin/develop^{commit}" ->
                     success(command, stdout = "fetched1\n")
                 command.take(2) == listOf("git", "rev-parse") && command.last() == "develop^{commit}" ->
@@ -1207,16 +1264,32 @@ class ProjectWorktreesTest {
     }
 
     @Test
-    fun `the new branch starts at the main branch by default`() = runTest(dispatcher) {
-        val (board, executor) = startPointScenario()
+    fun `the new branch starts at the repository's current branch by default, as shogun new does`() = runTest(dispatcher) {
+        val (board, executor) = startPointScenario(mainBranch = "main")
         advanceUntilIdle()
         board.openCreateDialog()
         advanceUntilIdle()
         board.updateTaskId("TASK-456")
 
+        assertEquals(StartOption.Current, board.effectiveStartFrom)
+        assertEquals(listOf(StartOption.Current, StartOption.Branch("origin/main")), board.startOptions.take(2))
+
+        board.confirmCreate()
+        advanceUntilIdle()
+
+        assertTrue(executor.executed("git", "worktree", "add", "/home/dev/projects/TASK-456", "-b", "feature/TASK-456"), executor.executedCommands.toString())
+        assertTrue(executor.executed("git", "config", "branch.feature/TASK-456.gh-merge-base", "develop"), executor.executedCommands.toString())
+    }
+
+    @Test
+    fun `choosing the main branch starts the new branch at its commit`() = runTest(dispatcher) {
+        val (board, executor) = startPointScenario()
+        advanceUntilIdle()
+        board.openCreateDialog()
+        advanceUntilIdle()
+        board.updateTaskId("TASK-456")
+        board.startFrom = board.startOptions[1]
         assertEquals(StartOption.Branch("origin/develop"), board.effectiveStartFrom)
-        assertEquals(StartOption.Branch("origin/develop"), board.startOptions.first())
-        assertEquals(StartOption.Current, board.startOptions[1])
 
         board.confirmCreate()
         advanceUntilIdle()
@@ -1250,6 +1323,7 @@ class ProjectWorktreesTest {
         advanceUntilIdle()
 
         assertEquals(StartOption.Current, board.effectiveStartFrom)
+        assertEquals(StartOption.Current, board.startOptions.first())
         assertEquals("develop", board.currentBranchName)
     }
 
@@ -1278,6 +1352,7 @@ class ProjectWorktreesTest {
         board.openCreateDialog()
         advanceUntilIdle()
         board.updateTaskId("TASK-456")
+        board.startFrom = StartOption.Branch("origin/develop")
         board.fetchFirst = true
 
         board.confirmCreate()
@@ -1300,6 +1375,7 @@ class ProjectWorktreesTest {
         board.openCreateDialog()
         advanceUntilIdle()
         board.updateTaskId("TASK-456")
+        board.startFrom = StartOption.Branch("origin/develop")
         board.fetchFirst = true
 
         board.confirmCreate()
@@ -1327,6 +1403,7 @@ class ProjectWorktreesTest {
         board.openCreateDialog()
         advanceUntilIdle()
         board.updateTaskId("TASK-456")
+        board.startFrom = StartOption.Branch("origin/develop")
         board.fetchFirst = true
         board.confirmCreate()
         advanceUntilIdle()
@@ -2728,10 +2805,15 @@ class ProjectWorktreesTest {
     fun `the detail shows the compose section and starts the services from it`() = runComposeUiTest {
         val actions = mutableListOf<ComposeAction>()
         val compose = composeSection(run = { _, action -> actions += action; Result.success(worktreeComposeName) })
-        val holder = loadedProjectWorktrees(useCases(listingResponder()).copy(compose = compose))
+        val stale = ProvisioningUseCases(
+            check = { Result.success(listOf(ProvisionDrift(".env", ProvisionDriftState.DIFFERS))) },
+            provision = { Result.success(ProvisionResult(emptyList())) },
+        )
+        val holder = loadedProjectWorktrees(useCases(listingResponder()).copy(compose = compose, provisioning = stale))
         setContent { MaterialTheme { WorktreeDetailPane(worktree, config, holder) } }
 
         waitUntil { onAllNodesWithText("Not started").fetchSemanticsNodes().isNotEmpty() }
+        waitUntil { onAllNodesWithText("PROVISIONED FILES").fetchSemanticsNodes().isNotEmpty() }
         onNodeWithText(worktreeComposeName).assertIsDisplayed()
         onNodeWithText("Not started").assertIsDisplayed()
         onNodeWithText("Build").assertIsDisplayed()
@@ -2756,15 +2838,20 @@ class ProjectWorktreesTest {
     @Test
     fun `the detail shows its sections in the inspector's fixed order`() = runComposeUiTest {
         val compose = composeSection(run = { _, _ -> Result.success(worktreeComposeName) })
-        val holder = loadedProjectWorktrees(useCases(listingResponder()).copy(compose = compose))
+        val stale = ProvisioningUseCases(
+            check = { Result.success(listOf(ProvisionDrift(".env", ProvisionDriftState.DIFFERS))) },
+            provision = { Result.success(ProvisionResult(emptyList())) },
+        )
+        val holder = loadedProjectWorktrees(useCases(listingResponder()).copy(compose = compose, provisioning = stale))
         setContent { MaterialTheme { WorktreeDetailPane(worktree, config, holder) } }
 
         waitUntil { onAllNodesWithText("Not started").fetchSemanticsNodes().isNotEmpty() }
+        waitUntil { onAllNodesWithText("PROVISIONED FILES").fetchSemanticsNodes().isNotEmpty() }
         val headings = onAllNodes(SemanticsMatcher.keyIsDefined(SemanticsProperties.Heading)).fetchSemanticsNodes()
             .sortedBy { it.boundsInRoot.top }
             .mapNotNull { it.config.getOrNull(SemanticsProperties.Text)?.joinToString() }
 
-        assertEquals(listOf("STATUS", "AGENT", "RESOURCES", "PROVISIONED FILES"), headings.filter { it == it.uppercase() })
+        assertEquals(listOf("STATUS", "AGENT", "RESOURCES", "PROVISIONED FILES"), headings.map { it.substringBefore(", ") }.filter { it == it.uppercase() })
     }
 
     @Test
@@ -3169,6 +3256,115 @@ class ProjectWorktreesTest {
         assertEquals(listOf("w1:p2"), focused)
         assertEquals(0, opened)
         assertEquals(WorktreeSuccess.OpenedInHerdr(worktreePath, HerdrOutcome.FOCUSED), viewModel.success)
+    }
+
+    @Test
+    fun `focusing the agent focuses the pane of the most urgent agent in Herdr`() = runTest(dispatcher) {
+        val focused = mutableListOf<String>()
+        val used = mutableListOf<String>()
+        val herdr = HerdrUseCases.NONE.copy(focusAgent = { pane -> focused += pane; Result.success(Unit) })
+        val viewModel = projectWorktrees(useCases(listingResponder()).copy(herdr = herdr), onUsed = { used += it })
+        advanceUntilIdle()
+        viewModel.applyAgents(
+            mapOf(
+                worktreePath to listOf(
+                    RunningAgent("codex", AgentState.DONE, "w1:p1", AgentStateSource.HERDR),
+                    RunningAgent("claude", AgentState.BLOCKED, "w1:p2", AgentStateSource.HERDR),
+                ),
+            ),
+        )
+
+        assertTrue(viewModel.focusAgent(viewModel.worktrees.first { it.path == worktreePath }))
+        assertTrue(worktreePath in viewModel.openingInHerdr)
+        advanceUntilIdle()
+
+        assertEquals(listOf("w1:p2"), focused)
+        assertEquals(listOf(worktreePath), used)
+        assertEquals(WorktreeSuccess.OpenedInHerdr(worktreePath, HerdrOutcome.FOCUSED), viewModel.success)
+        assertTrue(viewModel.openingInHerdr.isEmpty())
+    }
+
+    @Test
+    fun `focusing the agent while Herdr is opening the worktree does nothing more`() = runTest(dispatcher) {
+        val focused = mutableListOf<String>()
+        val herdr = HerdrUseCases.NONE.copy(focusAgent = { pane -> focused += pane; Result.success(Unit) })
+        val viewModel = projectWorktrees(useCases(listingResponder()).copy(herdr = herdr))
+        advanceUntilIdle()
+        viewModel.applyAgents(mapOf(worktreePath to listOf(RunningAgent("claude", AgentState.BLOCKED, "w1:p2", AgentStateSource.HERDR))))
+        val target = viewModel.worktrees.first { it.path == worktreePath }
+
+        viewModel.focusAgent(target)
+        assertTrue(viewModel.focusAgent(target))
+        advanceUntilIdle()
+
+        assertEquals(listOf("w1:p2"), focused)
+    }
+
+    @Test
+    fun `focusing the agent records Herdr's error for the worktree`() = runTest(dispatcher) {
+        val herdr = HerdrUseCases.NONE.copy(focusAgent = { Result.failure(WorktreeError.HerdrNotInstalled) })
+        val viewModel = projectWorktrees(useCases(listingResponder()).copy(herdr = herdr))
+        advanceUntilIdle()
+        viewModel.applyAgents(mapOf(worktreePath to listOf(RunningAgent("claude", AgentState.BLOCKED, "w1:p2", AgentStateSource.HERDR))))
+
+        viewModel.focusAgent(viewModel.worktrees.first { it.path == worktreePath })
+        advanceUntilIdle()
+
+        assertIs<WorktreeError.HerdrNotInstalled>(viewModel.actionErrors[worktreePath])
+        assertNull(viewModel.success)
+    }
+
+    @Test
+    fun `focusing an agent in Orca opens the worktree in Orca`() = runTest(dispatcher) {
+        val calls = mutableListOf<Worktree>()
+        val orca = OrcaUseCases.NONE.copy(open = { target, _ -> calls += target; Result.success(OrcaOpening(OrcaOutcome.FOCUSED, "term_9", "codex")) })
+        val viewModel = projectWorktrees(useCases(listingResponder()).copy(orca = orca))
+        advanceUntilIdle()
+        viewModel.applyAgents(mapOf(worktreePath to listOf(RunningAgent("codex", AgentState.WORKING, stateSource = AgentStateSource.ORCA))))
+        val target = viewModel.worktrees.first { it.path == worktreePath }
+
+        assertTrue(viewModel.focusAgent(target))
+        advanceUntilIdle()
+
+        assertEquals(target, calls.single())
+        assertEquals(WorktreeSuccess.OpenedInOrca(worktreePath, OrcaOutcome.FOCUSED), viewModel.success)
+    }
+
+    @Test
+    fun `focusing an agent without a known runner does nothing`() = runTest(dispatcher) {
+        var opened = 0
+        val herdr = HerdrUseCases.NONE.copy(
+            open = { _, _ -> opened++; Result.success(HerdrOpening(HerdrOutcome.OPENED, "w1:p1", "Claude")) },
+            focusAgent = { opened++; Result.success(Unit) },
+        )
+        val viewModel = projectWorktrees(useCases(listingResponder()).copy(herdr = herdr))
+        advanceUntilIdle()
+        viewModel.applyAgents(mapOf(worktreePath to listOf(RunningAgent("claude"))))
+
+        assertFalse(viewModel.focusAgent(viewModel.worktrees.first { it.path == worktreePath }))
+        advanceUntilIdle()
+
+        assertEquals(0, opened)
+        assertNull(viewModel.success)
+    }
+
+    @Test
+    fun `Enter focuses the selected worktree's agent`() = runTest(dispatcher) {
+        val focused = mutableListOf<String>()
+        val herdr = HerdrUseCases.NONE.copy(focusAgent = { pane -> focused += pane; Result.success(Unit) })
+        val board = board(useCases(listingResponder()).copy(herdr = herdr))
+        advanceUntilIdle()
+
+        assertFalse(board.focusSelectedAgent())
+
+        board.selectPath(worktreePath)
+        assertFalse(board.focusSelectedAgent())
+
+        board.project.applyAgents(mapOf(worktreePath to listOf(RunningAgent("claude", AgentState.BLOCKED, "w1:p2", AgentStateSource.HERDR))))
+        assertTrue(board.focusSelectedAgent())
+        advanceUntilIdle()
+
+        assertEquals(listOf("w1:p2"), focused)
     }
 
     @Test

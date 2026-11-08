@@ -7,6 +7,7 @@ sealed interface ShellDestination {
     data class All(val projectFilter: String? = null, val previousWorktreesRoot: String? = null) : ShellDestination
     data class ProjectSettings(val projectId: String) : ShellDestination
     data class AddProject(val folder: String? = null) : ShellDestination
+    data object MachineOverview : ShellDestination
     data class Machine(val resource: MachineResource) : ShellDestination
     data class MultirepoView(val folder: String, val group: String? = null) : ShellDestination
     data class MultirepoSettings(val folder: String) : ShellDestination
@@ -26,13 +27,14 @@ sealed interface ShellDestination {
             is All -> projectFilter
             is ProjectSettings -> projectId
             is AddProject -> null
-            is Machine -> null
+            MachineOverview, is Machine -> null
             is MultirepoView, is MultirepoSettings -> null
         }
 
     fun storageKey(): String? = when (this) {
         Active -> ACTIVE_KEY
         is All -> projectFilter?.let { PROJECT_PREFIX + it } ?: ALL_KEY
+        MachineOverview -> MACHINE_KEY
         is Machine -> MACHINE_PREFIX + resource.name
         is MultirepoView -> MULTIREPO_PREFIX + folder
         is ProjectSettings, is AddProject, is MultirepoSettings -> null
@@ -42,12 +44,14 @@ sealed interface ShellDestination {
         private const val ACTIVE_KEY = "active"
         private const val ALL_KEY = "all"
         private const val PROJECT_PREFIX = "project:"
+        private const val MACHINE_KEY = "machine"
         private const val MACHINE_PREFIX = "machine:"
         private const val MULTIREPO_PREFIX = "multirepo:"
 
         fun fromStorageKey(key: String?): ShellDestination? = when {
             key == ACTIVE_KEY -> Active
             key == ALL_KEY -> All()
+            key == MACHINE_KEY -> MachineOverview
             key?.startsWith(PROJECT_PREFIX) == true ->
                 key.removePrefix(PROJECT_PREFIX).takeIf { it.isNotEmpty() }?.let { All(projectFilter = it) }
             key?.startsWith(MULTIREPO_PREFIX) == true ->

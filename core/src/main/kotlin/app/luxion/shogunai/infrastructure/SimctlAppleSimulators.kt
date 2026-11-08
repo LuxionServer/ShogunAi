@@ -19,7 +19,7 @@ import kotlinx.serialization.json.booleanOrNull
 
 class SimctlAppleSimulators(
     private val executor: ShellCommandExecutor,
-    private val osName: String = System.getProperty("os.name").orEmpty(),
+    private val osName: String = System.getProperty("os.name", ""),
 ) : AppleSimulators {
 
     override fun isSupported(): Boolean = osName.startsWith("Mac", ignoreCase = true)
@@ -57,7 +57,7 @@ class SimctlAppleSimulators(
         timeout: Duration? = null,
     ): CommandResult {
         val command = listOf("xcrun", "simctl") + arguments
-        val result = timeout?.let { executor.executeWithin(command, it) } ?: executor.execute(command)
+        val result = if (timeout != null) executor.executeWithin(command, timeout) else executor.execute(command)
         val tolerated = toleratedState != null && result.stderr.contains("current state: $toleratedState")
         if (!result.isSuccess && !tolerated) {
             throw WorktreeError.AppleToolFailed(command, result.exitCode, result.stderr.trim())
@@ -115,4 +115,4 @@ internal fun parseDevices(json: String): List<SimulatorDevice> {
 
 private fun JsonElement.objectField(name: String) = (this as? JsonObject)?.get(name)
 
-private fun JsonObject.string(name: String): String? = (this[name] as? JsonPrimitive)?.takeIf { it.isString }?.content
+private fun JsonObject.string(name: String): String? = (this[name] as? JsonPrimitive)?.stringOrNull()

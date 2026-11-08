@@ -76,15 +76,27 @@ A worktree row's context menu SHALL offer, in this order, "Open in <default runn
 - **THEN** it offers "Open in Herdr", "Open with ▸" containing "Open in Orca" among the other tools, "Copy launch command", "Copy path" and "Delete worktree…" last
 
 ### Requirement: View header actions
-A worktree view's header SHALL keep a single primary action ("New worktree", or "New change" in a multirepo view) and SHALL move its other actions into a "More" (⋯) menu: in a multirepo view, "Open multirepo agent in <default runner>" and, when another runner is installed, an "Open multirepo agent with…" submenu with each other runner; and, last after a separator in danger text, "Clean up", disabled with its reason when nothing can be cleaned up.
+A worktree view's header SHALL keep one primary action ("New worktree", or "New change" in a multirepo view) and, before it, "Clean up N" as a ghost button, N being the view's cleanup candidates, shown only when there is something to clean up and disabled with its reason while it can't run. A "More" (⋯) menu, shown only when not empty, SHALL hold in a multirepo view "Open multirepo agent in <default runner>" and, when another runner is installed, "Open multirepo agent with…".
 
 #### Scenario: Clean up from the header
-- **WHEN** "All worktrees" has cleanup candidates and the user opens the header's ⋯ menu
-- **THEN** "Clean up" is the last item, in danger text, and opens the cleanup confirmation
+- **WHEN** "All worktrees" has three cleanup candidates
+- **THEN** the header shows the ghost button "Clean up 3" before "New worktree", and activating it opens the cleanup confirmation
+
+#### Scenario: Nothing to clean up
+- **WHEN** no worktree in the view is selected for cleanup
+- **THEN** the header shows no "Clean up" button
+
+#### Scenario: Cleanup running
+- **WHEN** a cleanup is running and the view still has candidates
+- **THEN** "Clean up N" is disabled and its tooltip says a cleanup is already running
+
+#### Scenario: No ⋯ outside a multirepo
+- **WHEN** the user opens "All worktrees" or a project's view
+- **THEN** the header has no "⋯" button
 
 #### Scenario: Multirepo agent in both runners
 - **WHEN** Herdr is the default runner, Orca is installed and the user opens the ⋯ menu of an approved multirepo's view
-- **THEN** it offers "Open multirepo agent in Herdr", then "Open multirepo agent with…" holding "Orca", then "Clean up" after a separator, and no second "Open multirepo agent in …" entry
+- **THEN** it offers "Open multirepo agent in Herdr", then "Open multirepo agent with…" holding "Orca", and no second "Open multirepo agent in …" entry
 
 #### Scenario: Orca is the default runner
 - **WHEN** Orca is the default runner and the user opens the ⋯ menu of an approved multirepo's view
@@ -92,7 +104,7 @@ A worktree view's header SHALL keep a single primary action ("New worktree", or 
 
 #### Scenario: Orca not installed
 - **WHEN** Orca isn't installed and the user opens the ⋯ menu of a multirepo's view
-- **THEN** it offers "Open multirepo agent in Herdr" and "Clean up", and no "Open multirepo agent with…" submenu
+- **THEN** it offers "Open multirepo agent in Herdr" and no "Open multirepo agent with…" submenu
 
 ### Requirement: Change group header actions come from the catalog
 A change group's header SHALL show, as a button, only "Open all in <default runner>", declared by the catalog for that group. Its ⋯ menu SHALL hold, from the same catalog, "Open all with…" with each other installed runner, "Add repository" with each repository not yet in the group, and, last after a separator in danger text, "Clean up group", disabled with its reason when the group can't be cleaned up. An opening in progress SHALL disable its entry with its reason.

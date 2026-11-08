@@ -21,7 +21,7 @@ class NioProvisioningRecordStore : ProvisioningRecordStore {
         val folders = (Json.parseToJsonElement(Files.readString(file)) as? JsonObject)?.get(LOCAL_FOLDERS_FIELD) as? JsonObject
             ?: return emptyMap()
         folders.mapNotNull { (folder, files) ->
-            (files as? JsonArray)?.mapNotNull { (it as? JsonPrimitive)?.takeIf { value -> value.isString }?.content }?.let { folder to it }
+            (files as? JsonArray)?.let { array -> folder to array.mapNotNull { (it as? JsonPrimitive)?.stringOrNull() } }
         }.toMap()
     }.getOrDefault(emptyMap())
 
@@ -45,8 +45,7 @@ class NioProvisioningRecordStore : ProvisioningRecordStore {
         val dotGit = worktree.resolve(".git")
         if (!Files.isRegularFile(dotGit)) return null
         val gitDir = Files.readAllLines(dotGit).firstOrNull { it.startsWith(GITDIR_PREFIX) }
-            ?.removePrefix(GITDIR_PREFIX)?.trim()
-            ?.takeIf { it.isNotEmpty() }
+            ?.let { it.removePrefix(GITDIR_PREFIX).trim().ifEmpty { null } }
             ?: return null
         val adminDirectory = worktree.resolve(gitDir).normalize()
         return adminDirectory.takeIf { Files.isDirectory(it) }?.resolve(RECORD_FILE_NAME)

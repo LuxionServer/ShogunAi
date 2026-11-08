@@ -2,7 +2,9 @@ package app.luxion.shogunai.domain.model
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class RepositoryConfigRulesTest {
 
@@ -82,5 +84,17 @@ class RepositoryConfigRulesTest {
         listOf("PATH", "BASH_ENV", "NODE_OPTIONS", "LD_PRELOAD", "DYLD_INSERT_LIBRARIES", "GIT_SSH_COMMAND", "XDG_CONFIG_HOME", "https_proxy").forEach {
             assertEquals(RepositoryConfigIssue.ReservedVariableName, RepositoryConfigRules.variableNameIssue(it), it)
         }
+    }
+    @Test
+    fun `minutes too large for a number are rejected`() {
+        assertNull(RepositoryConfigRules.positiveWholeNumber("99999999999"))
+    }
+
+    @Test
+    fun `paths that can't be parsed, start with a backslash or stay at the root aren't inside the worktree`() {
+        listOf("a\u0000b", "\\server\\share", ".", "a/..").forEach {
+            assertFalse(RepositoryConfigRules.isInsideWorktree(it), it)
+        }
+        assertTrue(RepositoryConfigRules.isInsideWorktree("a/../b"))
     }
 }

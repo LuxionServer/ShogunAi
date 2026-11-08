@@ -13,6 +13,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import app.luxion.shogunai.domain.model.DaemonState
 import app.luxion.shogunai.domain.model.MavenDaemonStopReport
+import app.luxion.shogunai.ui.components.DisabledReason
+import app.luxion.shogunai.ui.components.GhostButton
 import app.luxion.shogunai.ui.components.InlineProgress
 import app.luxion.shogunai.ui.components.Notice
 import app.luxion.shogunai.ui.components.NoticeKind
@@ -55,10 +57,10 @@ private fun LoadedMavenDaemons(daemons: List<MachineMavenDaemon>, machine: Machi
         MachineDataText(strings.mavenDaemonsSummary(daemons.size, formatSize(daemons.sumOf { it.process.residentMemoryBytes })))
         Row(verticalAlignment = Alignment.CenterVertically) {
             if (machine.isStoppingMavenDaemons) InlineProgress(modifier = Modifier.padding(end = Spacing.sm))
-            SecondaryButton(
-                onClick = machine::stopIdleMavenDaemons,
-                enabled = !machine.isStoppingMavenDaemons && daemons.any { it.process.state is DaemonState.Idle },
-            ) { Text(strings.stopIdleDaemons) }
+            val stopIdleBlock = mavenStopIdleBlock(daemons.map { it.process.state }, machine.isStoppingMavenDaemons, strings)
+            ListActionReason(stopIdleBlock, "maven-stop-idle-reason") { enabled ->
+                SecondaryButton(onClick = machine::stopIdleMavenDaemons, enabled = enabled) { Text(strings.stopIdleDaemons) }
+            }
         }
     }
     daemons.forEach { daemon ->
@@ -69,10 +71,13 @@ private fun LoadedMavenDaemons(daemons: List<MachineMavenDaemon>, machine: Machi
             machineCell(MachineDaemonStateColumn) { MachineStateText(mavenDaemonStateText(daemon.process.state, strings)) },
             machineCell(MachineOwnerColumn) { OwnerCell(daemon.owner, machine::projectName, onOpenWorktree) },
             machineActionCell {
-                SecondaryButton(
-                    onClick = { machine.stopMavenDaemon(daemon.process.pid) },
-                    enabled = !machine.isStoppingMavenDaemons && daemon.process.state is DaemonState.Idle,
-                ) { Text(strings.stopDaemon) }
+                val stopBlock = mavenStopBlock(daemon.process.state, machine.isStoppingMavenDaemons)
+                DisabledReason(stopBlock?.describe(strings)) {
+                    GhostButton(
+                        onClick = { machine.stopMavenDaemon(daemon.process.pid) },
+                        enabled = stopBlock == null,
+                    ) { Text(strings.stopDaemon) }
+                }
             },
         )
     }

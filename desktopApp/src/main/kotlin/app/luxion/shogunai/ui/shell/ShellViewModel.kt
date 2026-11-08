@@ -1,5 +1,7 @@
 package app.luxion.shogunai.ui.shell
 
+import kotlinx.coroutines.delay
+import kotlin.time.Duration
 import app.luxion.shogunai.ui.actions.ActionId
 import app.luxion.shogunai.ui.actions.ActionSpec
 import app.luxion.shogunai.ui.i18n.Strings
@@ -10,10 +12,12 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import app.luxion.shogunai.domain.io.ProjectRepository
 import app.luxion.shogunai.domain.io.ShellPreferenceRepository
+import app.luxion.shogunai.domain.model.KnownMultirepos
 import app.luxion.shogunai.domain.model.Multirepo
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.RecentWorktree
 import app.luxion.shogunai.domain.model.SidebarOrder
+import app.luxion.shogunai.domain.model.UnavailableMultirepo
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.ui.machine.MachineResource
 import app.luxion.shogunai.ui.multirepo.MultirepoCatalog
@@ -26,9 +30,10 @@ class ShellViewModel(
     private val shellPreferences: ShellPreferenceRepository,
     private val readSettingsProblem: () -> WorktreeError.LocalFileUnreadable? = { null },
     private val acknowledgeSettingsProblem: () -> Unit = {},
-    val multirepoCatalog: MultirepoCatalog = MultirepoCatalog { emptyList() },
+    val multirepoCatalog: MultirepoCatalog = MultirepoCatalog { KnownMultirepos() },
     private val registerWorkspaceProject: (Multirepo) -> Boolean = { false },
-    private val forgetMissingMultirepos: () -> Unit = {},
+    private val forgetMultirepo: (String) -> Unit = {},
+    private val catalogModifiedAt: () -> Long? = { null },
 ) : ViewModel() {
     var unreadableFiles by mutableStateOf<List<WorktreeError.LocalFileUnreadable>>(emptyList())
         private set
@@ -37,6 +42,9 @@ class ShellViewModel(
     var destination by mutableStateOf<ShellDestination?>(null)
         private set
     var memberships by mutableStateOf<List<MultirepoMembership>>(emptyList())
+        private set
+    val unavailableMultirepos: List<UnavailableMultirepo> get() = multirepoCatalog.unavailable
+    var multirepoPendingRemoval by mutableStateOf<UnavailableMultirepo?>(null)
         private set
     var collapsedMultirepos by mutableStateOf(shellPreferences.loadCollapsedMultirepos())
         private set
@@ -88,6 +96,16 @@ class ShellViewModel(
         pruneRecentProjects()
         if (destination?.let(::isAvailable) == false) select(fallbackDestination())
         if (destinationBeforeForm?.let(::isAvailable) == false) destinationBeforeForm = null
+    }
+
+    suspend fun watchCatalog(interval: Duration) {
+        var seen = catalogModifiedAt()
+        while (true) {
+            delay(interval)
+            val modifiedAt = catalogModifiedAt()
+            if (modifiedAt != seen) refresh()
+            seen = modifiedAt
+        }
     }
 
     fun reload() {
@@ -174,6 +192,8 @@ class ShellViewModel(
 
     fun selectAll() = requestLeave { select(ShellDestination.All()) }
 
+    fun selectMachineOverview() = requestLeave { select(ShellDestination.MachineOverview) }
+
     fun selectMachine(resource: MachineResource) = requestLeave { select(ShellDestination.Machine(resource)) }
 
     fun selectMultirepo(folder: String, group: String? = null) = requestLeave { select(ShellDestination.MultirepoView(folder, group)) }
@@ -213,7 +233,7 @@ class ShellViewModel(
 
     private fun sidebarFolders(): List<SidebarMultirepo> = memberships.map { membership ->
         SidebarMultirepo(membership.folder, membership.name, projects.filter { it.id in membership.aliases }, ProjectActivity.NONE, collapsed = false)
-    }
+    } + unavailableMultirepos.map(::unavailableSidebarFolder)
 
     fun addMultirepo(folder: String? = null) {
         addMultirepoRequest = AddMultirepoRequest(folder)
@@ -230,6 +250,22 @@ class ShellViewModel(
     }
 
     fun onMultirepoChanged() {
+        refresh()
+    }
+
+    fun requestMultirepoRemoval(folder: String) {
+        multirepoPendingRemoval = multirepoCatalog.findUnavailable(folder)
+    }
+
+    fun cancelMultirepoRemoval() {
+        multirepoPendingRemoval = null
+    }
+
+    fun confirmMultirepoRemoval() {
+        val folder = multirepoPendingRemoval?.folder ?: return
+        multirepoPendingRemoval = null
+        forgetMultirepo(folder)
+        if (folder in collapsedMultirepos) toggleMultirepoCollapsed(folder)
         refresh()
     }
 
@@ -327,6 +363,7 @@ class ShellViewModel(
     }
 
     private fun isAvailable(destination: ShellDestination): Boolean = when {
+        destination is ShellDestination.MultirepoView && multirepoCatalog.findUnavailable(destination.folder) != null -> true
         destination.referencedMultirepo != null -> multirepoCatalog.find(destination.referencedMultirepo!!) != null
         (destination is ShellDestination.All || destination == ShellDestination.Active || destination is ShellDestination.Machine) &&
             projects.isEmpty() -> false
@@ -347,7 +384,6 @@ class ShellViewModel(
     }
 
     private fun loadMultirepos() {
-        forgetMissingMultirepos()
         multirepoCatalog.refresh()
         if (multirepoCatalog.multirepos.filter { it.approved }.count { registerWorkspaceProject(it) } > 0) projects = loadProjects()
         memberships = multirepoMemberships(multirepoCatalog.multirepos, projects)

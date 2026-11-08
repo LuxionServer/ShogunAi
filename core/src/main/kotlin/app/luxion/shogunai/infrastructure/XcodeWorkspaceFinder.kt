@@ -28,7 +28,7 @@ class FileSystemXcodeWorkspaceFinder(private val maxDepth: Int = MAX_DEPTH) : Xc
             level = next
         }
         val best = (workspaces.ifEmpty { projects }).minWithOrNull(compareBy({ it.depth }, { it.folder.path }))
-        return best?.folder?.path ?: root.path
+        return if (best != null) best.folder.path else root.path
     }
 
     private class Candidate(val depth: Int, val folder: File)

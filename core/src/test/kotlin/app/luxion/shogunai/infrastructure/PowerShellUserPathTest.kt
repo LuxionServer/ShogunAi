@@ -55,4 +55,11 @@ class PowerShellUserPathTest {
             PowerShellUserPath(FakeShellCommandExecutor { FakeShellCommandExecutor.failure(it, stderr = "denied") }).remove("C:\\Tools")
         }
     }
+
+    @Test
+    fun `a failing add is reported`() = runTest {
+        assertFailsWith<IllegalStateException> {
+            PowerShellUserPath(FakeShellCommandExecutor { FakeShellCommandExecutor.failure(it, stderr = "denied") }).add("C:\\Tools")
+        }
+    }
 }

@@ -18,7 +18,7 @@ class MachineProviderContributions(
     private val gradleJvmArgsFor: (repositoryPath: String) -> String? = { null },
     private val fileManager: FileManager? = null,
     private val userHome: String,
-    private val isMac: Boolean = System.getProperty("os.name").orEmpty().startsWith("Mac", ignoreCase = true),
+    private val isMac: Boolean = System.getProperty("os.name", "").startsWith("Mac", ignoreCase = true),
 ) : ProviderContributions {
 
     override fun forRepository(repositoryPath: String, providers: RepositoryProviders): List<EnvironmentContribution> =

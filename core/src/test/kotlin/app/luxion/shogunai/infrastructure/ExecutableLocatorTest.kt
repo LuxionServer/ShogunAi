@@ -46,6 +46,16 @@ class ExecutableLocatorTest {
     }
 
     @Test
+    fun `searches only the PATH and the install folders it is given`() {
+        val existing = setOf("/opt/homebrew/bin/shogun", "/home/dev/tools/herdr")
+        val locator = ExecutableLocator(HostOs.MACOS, "/home/dev", { listOf("/home/dev/bin") }, userBinFolders = listOf("/home/dev/tools"), isFile = { it in existing })
+
+        assertNull(locator.find("shogun"))
+        assertEquals("/home/dev/tools/herdr", locator.find("herdr"))
+        assertEquals(listOf("/home/dev/tools"), locator.userBinFolders())
+    }
+
+    @Test
     fun `user bin folders are the usual ones outside Windows and none on Windows`() {
         assertEquals(listOf("/opt/homebrew/bin", "/usr/local/bin", "/home/dev/.local/bin", "/home/dev/.cargo/bin"), ExecutableLocator(HostOs.MACOS, "/home/dev", { emptyList() }).userBinFolders())
         assertEquals(emptyList(), ExecutableLocator(HostOs.WINDOWS, "C:\\Users\\dev", { emptyList() }).userBinFolders())

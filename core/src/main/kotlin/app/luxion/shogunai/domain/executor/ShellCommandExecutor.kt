@@ -47,8 +47,8 @@ object CommandTimeouts {
 
 open class CommandExecutionException(
     val command: List<String>,
-    cause: Throwable,
-    message: String = "Could not start the command: ${command.joinToString(" ")}",
+    override val cause: Throwable,
+    override val message: String = "Could not start the command: ${command.joinToString(" ")}",
 ) : Exception(message, cause) {
 
     class TimedOut(command: List<String>, val limit: Duration) : CommandExecutionException(

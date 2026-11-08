@@ -59,7 +59,7 @@ class ConfigureMultirepoUseCase(
             throw WorktreeError.InvalidMultirepo(normalized, "a multirepo is never declared inside a repository ($enclosing)")
         }
         val folderName = Multirepo(normalized, MultirepoDeclaration()).folderName
-        val root = worktreesRoot?.let { relativeMultirepoPath(normalized, it) } ?: "../$folderName-worktrees"
+        val root = if (worktreesRoot != null) relativeMultirepoPath(normalized, worktreesRoot) else "../$folderName-worktrees"
         val declaration = MultirepoDeclaration(worktreesRoot = root, name = displayName(normalized, name))
         source.write(normalized, declaration)
         source.remember(normalized)
@@ -171,13 +171,13 @@ class ConfigureMultirepoUseCase(
     fun setWorkspace(multirepo: Multirepo, alias: String?, default: Boolean): Result<Multirepo> = update(multirepo) { declaration ->
         fun reject(detail: String): Nothing = throw WorktreeError.InvalidMultirepo(multirepo.declarationPath, detail)
         if (!multirepo.folderIsRepository) reject("there is no workspace repository: ${multirepo.folder} isn't a Git repository")
-        val chosen = alias ?: multirepo.workspaceRepository?.alias ?: DEFAULT_WORKSPACE_ALIAS
+        val workspace = multirepo.workspaceRepository
+        val chosen = alias ?: if (workspace != null) workspace.alias else DEFAULT_WORKSPACE_ALIAS
         if (!isValidMultirepoAlias(chosen)) reject("alias '$chosen' must use only lowercase letters, digits and hyphens")
         if (chosen in declaration.repos && multirepo.declaredRepositories.none { it.alias == chosen && sameDirectory(it.path, multirepo.folder) }) {
             reject("alias '$chosen' is already taken")
         }
-        val previous = multirepo.workspaceRepository?.alias
-        val env = if (previous != null && previous != chosen) declaration.env?.renamingAlias(previous, chosen) else declaration.env
+        val env = if (workspace != null && workspace.alias != chosen) declaration.env?.renamingAlias(workspace.alias, chosen) else declaration.env
         declaration.copy(workspace = WorkspaceSetting(alias = chosen, default = default), env = env)
     }
 
@@ -284,7 +284,7 @@ class ConfigureMultirepoUseCase(
     }
 
     private fun displayName(folder: String, name: String?): String? {
-        val trimmed = name?.trim()?.ifEmpty { null } ?: return null
+        val trimmed = name?.let { it.trim().ifEmpty { null } } ?: return null
         if (!isValidMultirepoName(trimmed)) {
             throw WorktreeError.InvalidMultirepo(
                 joinPath(folder, MULTIREPO_FILE_NAME),
@@ -302,7 +302,7 @@ class ConfigureMultirepoUseCase(
         try {
             parseSharedEnvironment(env, multirepo.aliases.toSet())
         } catch (error: InvalidSharedEnvironment) {
-            throw WorktreeError.InvalidMultirepo(multirepo.declarationPath, error.message.orEmpty())
+            throw WorktreeError.InvalidMultirepo(multirepo.declarationPath, error.message)
         }
         declaration.copy(env = env)
     }
@@ -320,7 +320,7 @@ class ConfigureMultirepoUseCase(
     }
 
     private fun requireRewritableEnv(multirepo: Multirepo) {
-        multirepo.declaration.env?.problems?.firstOrNull()?.let {
+        multirepo.declaration.env?.let { it.problems.firstOrNull() }?.let {
             throw WorktreeError.InvalidMultirepo(multirepo.declarationPath, "$it; fix the file by hand")
         }
     }

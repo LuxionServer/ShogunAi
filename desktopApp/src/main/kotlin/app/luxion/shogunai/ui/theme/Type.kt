@@ -27,6 +27,7 @@ data class ShogunTextStyles(
     val viewTitle: TextStyle,
     val sectionTitle: TextStyle,
     val eyebrow: TextStyle,
+    val figures: TextStyle,
 )
 
 private const val TABULAR_FIGURES = "tnum"
@@ -71,4 +72,5 @@ val ShogunDataTextStyles = ShogunTextStyles(
     viewTitle = geist(FontWeight.SemiBold, 16.sp, 22.sp),
     sectionTitle = geist(FontWeight.SemiBold, 13.sp, 18.sp),
     eyebrow = geistMono(10.5.sp, 14.sp, FontWeight.Medium).copy(letterSpacing = EYEBROW_LETTER_SPACING_EM.em),
+    figures = geist(FontWeight.Normal, 12.sp, 16.sp).copy(fontFeatureSettings = TABULAR_FIGURES),
 )

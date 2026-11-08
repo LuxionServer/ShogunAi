@@ -599,7 +599,7 @@ Commands SHALL work in submodules and in repositories whose Git folder is separa
 - **THEN** the command prints the fetch error on standard error, creates nothing and exits with code 1
 
 ### Requirement: Remove a worktree from the command line
-`shogun remove <target>` SHALL remove the linked worktree identified by a task id, a path or a branch name. It SHALL refuse a worktree with uncommitted or untracked changes, or with a running agent, unless `--force` is given; it SHALL never remove the main worktree. With `--delete-branch` it SHALL delete the branch only when merged into its base or the main branch, and keep it otherwise, saying why; with `--force-delete-branch` it SHALL delete the branch even if unmerged. A kept branch SHALL NOT make the command fail. With `--json`, `branchDeleted` SHALL name the deleted branch or be `null`, and `branchKeptReason` SHALL say why a requested deletion didn't happen or be `null`. It SHALL stop the resources the repository's providers keep for that worktree, as cleanup does.
+`shogun remove <target>` SHALL remove the linked worktree identified by a task id, a path or a branch name. It SHALL refuse a worktree with uncommitted or untracked changes, a locked worktree, or one with a running agent, unless `--force` is given; it SHALL never remove the main worktree. With `--delete-branch` it SHALL delete the branch only when merged into its base or the main branch, and keep it otherwise, saying why; with `--force-delete-branch` it SHALL delete the branch even if unmerged. A kept branch SHALL NOT make the command fail. With `--json`, `branchDeleted` SHALL name the deleted branch or be `null`, and `branchKeptReason` SHALL say why a requested deletion didn't happen or be `null`. It SHALL stop the resources the repository's providers keep for that worktree, as cleanup does.
 
 #### Scenario: Remove by task id
 - **WHEN** the user runs `shogun remove TASK-123` and the worktree is clean
@@ -608,6 +608,14 @@ Commands SHALL work in submodules and in repositories whose Git folder is separa
 #### Scenario: Changes without force
 - **WHEN** the worktree has uncommitted changes and the user runs `shogun remove TASK-123`
 - **THEN** nothing is removed, the error says the worktree has changes and suggests `--force`, and the command exits with code 1
+
+#### Scenario: Locked without force
+- **WHEN** the worktree is locked and the user runs `shogun remove TASK-123`
+- **THEN** nothing is removed, the error says the worktree is locked, with the lock reason, and suggests `--force`, and the command exits with code 1
+
+#### Scenario: Locked with force
+- **WHEN** the worktree is locked and the user runs `shogun remove TASK-123 --force`
+- **THEN** the worktree is removed and the command exits with code 0
 
 #### Scenario: Delete a merged branch
 - **WHEN** the user runs `shogun remove TASK-123 --delete-branch` and the branch is merged into the main branch

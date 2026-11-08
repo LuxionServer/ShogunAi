@@ -172,4 +172,13 @@ class ListDerivedDataUseCaseTest {
         assertEquals(800L, listing.folders.single().folder.packagesBytes)
         assertEquals(caches, listing.packageCaches)
     }
+    @Test
+    fun `a folder that can't be measured counts as empty`() = runTest {
+        val folder = derivedData("MainRepo", mainProject, sizeBytes = null)
+        val source = FakeDerivedDataSource(existing = listOf(folder), existingProjects = setOf(mainProject)).apply { failSizeFor = setOf(folder.path) }
+
+        val listing = ListDerivedDataUseCase(source)(worktrees, includeCompilationCache = false, measure = DerivedDataMeasure.ALL).getOrThrow()
+
+        assertEquals(0L, listing.folders.single().folder.sizeBytes)
+    }
 }

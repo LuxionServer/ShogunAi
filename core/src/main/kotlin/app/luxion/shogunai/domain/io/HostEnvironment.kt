@@ -7,6 +7,7 @@ interface HostEnvironment {
     val home: String
     val shell: String?
     val path: HostPath
+    val userBinFolders: List<String>
 
     fun variable(name: String): String?
 }

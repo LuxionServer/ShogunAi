@@ -77,4 +77,21 @@ class NioProvisioningRecordStoreTest {
         worktree.resolve(".git").writeText("not a pointer\n")
         assertEquals(emptyMap(), store.read(worktree.toString()))
     }
+
+    @Test
+    fun `records of the wrong shape read as empty and clearing a folder without a Git admin folder does nothing`() {
+        val record = adminDirectory.resolve("shogunai-provisioning.json")
+        listOf("[1]", "{}", """{"localFolders":[]}""").forEach { text ->
+            record.writeText(text)
+            assertEquals(emptyMap(), store.read(worktree.toString()), text)
+        }
+        record.writeText("""{"localFolders":{"keys":"x","certs":["a.pem",1,{}]}}""")
+        assertEquals(mapOf("certs" to listOf("a.pem")), store.read(worktree.toString()))
+
+        store.write(root.toString(), emptyMap())
+        val emptyGitdir = root.resolve("EMPTY").createDirectories().also { it.resolve(".git").writeText("gitdir: \n") }
+        assertEquals(emptyMap(), store.read(emptyGitdir.toString()))
+        val noAdmin = root.resolve("NO-ADMIN").createDirectories().also { it.resolve(".git").writeText("gitdir: ../missing\n") }
+        assertEquals(emptyMap(), store.read(noAdmin.toString()))
+    }
 }

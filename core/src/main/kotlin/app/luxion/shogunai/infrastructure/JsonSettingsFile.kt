@@ -75,9 +75,7 @@ class JsonSettingsFile(
         return try {
             json.decodeFromString<Settings>(text)
         } catch (error: SerializationException) {
-            throw WorktreeError.LocalFileUnreadable(storagePath.toString(), error.message?.lineSequence()?.firstOrNull())
-        } catch (error: IllegalArgumentException) {
-            throw WorktreeError.LocalFileUnreadable(storagePath.toString(), error.message?.lineSequence()?.firstOrNull())
+            throw WorktreeError.LocalFileUnreadable(storagePath.toString(), firstLineOf(error))
         }
     }
 

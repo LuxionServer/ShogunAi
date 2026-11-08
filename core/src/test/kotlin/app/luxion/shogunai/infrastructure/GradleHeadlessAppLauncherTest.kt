@@ -97,4 +97,26 @@ class GradleHeadlessAppLauncherTest {
         assertFalse(process.isAlive)
         assertFalse(launcher.isAlive(process.pid()))
     }
+
+    @Test
+    fun `a process that ignores the stop request is killed after the grace period`() = runTest {
+        val launcher = GradleHeadlessAppLauncher(FakeShellCommandExecutor { success(it) }, scripts.toString(), stopGraceSeconds = 0)
+        val process = ProcessBuilder("sh", "-c", "trap '' TERM; while true; do sleep 1; done").start()
+
+        launcher.stop(process.pid())
+
+        assertTrue(process.waitFor(5, java.util.concurrent.TimeUnit.SECONDS))
+    }
+
+    @Test
+    fun `an outdated init script is rewritten`() = runTest {
+        val script = scripts.resolve(GradleHeadlessAppLauncher.INIT_SCRIPT_NAME)
+        Files.createDirectories(scripts)
+        Files.writeString(script, "old")
+
+        GradleHeadlessAppLauncher(FakeShellCommandExecutor { success(it) }, scripts.toString()).launch(launch())
+        GradleHeadlessAppLauncher(FakeShellCommandExecutor { success(it) }, scripts.toString()).launch(launch())
+
+        assertEquals(GradleHeadlessAppLauncher.INIT_SCRIPT, script.readText())
+    }
 }

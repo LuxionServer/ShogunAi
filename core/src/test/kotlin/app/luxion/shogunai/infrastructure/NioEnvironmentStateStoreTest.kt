@@ -207,4 +207,48 @@ class NioEnvironmentStateStoreTest {
         assertEquals(mapOf("emulator" to 7L), reservations.getValue(linked.toString()).lastUsed)
         assertEquals(mapOf("ios-simulator" to "UDID-1"), reservations.getValue(otherLinked.toString()).resources)
     }
+
+    @Test
+    fun `values of the wrong type are left out`() {
+        linked.resolve(NioEnvironmentStateStore.STATE_FILE_NAME).writeText(
+            """{
+              "ports": {"A": "x", "B": {}, "C": 1},
+              "resources": {"A": 1, "B": {}, "C": "udid"},
+              "lastUsed": {"A": "x", "B": {}, "C": 2},
+              "leases": {"A": "x", "B": {}, "C": 3},
+              "releases": {
+                "a": "x",
+                "b": {"releasedAt": "x", "forWorktree": "w"},
+                "c": {"releasedAt": {}, "forWorktree": "w"},
+                "d": {"releasedAt": 1, "forWorktree": 2},
+                "e": {"releasedAt": 1, "forWorktree": {}},
+                "f": {"releasedAt": 1, "forWorktree": "w", "previous": 3},
+                "g": {"releasedAt": 1, "forWorktree": "w", "previous": {}}
+              }
+            }""",
+        )
+
+        assertEquals(mapOf("C" to 1), store.readPorts(linked.toString()))
+        assertEquals(mapOf("C" to "udid"), store.readResources(linked.toString()))
+        assertEquals(mapOf("C" to 2L), store.readLastUsed(linked.toString()))
+        assertEquals(mapOf("C" to 3L), store.readLeases(linked.toString()))
+        assertEquals(mapOf("f" to ReleaseRecord(1, "w", null), "g" to ReleaseRecord(1, "w", null)), store.readReleases(linked.toString()))
+    }
+
+    @Test
+    fun `a state file that isn't an object or a repository without linked worktrees reads as empty`() {
+        linked.resolve(NioEnvironmentStateStore.STATE_FILE_NAME).writeText("[1]")
+        assertEquals(emptyMap(), store.readPorts(linked.toString()))
+
+        val bare = root.resolve("bare-repo/.git").createDirectories()
+        assertEquals(listOf(bare.toString()), store.reservationsOnMachine(bare.toString()).map { it.adminDirectory })
+    }
+
+    @Test
+    fun `index entries that aren't paths are ignored`() {
+        Files.createDirectories(machine)
+        machine.resolve(NioEnvironmentStateStore.INDEX_FILE_NAME).writeText("""{"worktrees": [1, {}, "${'$'}{otherLinked}"]}""")
+
+        assertEquals(listOf(common.toString()), store.reservationsOnMachine(common.toString()).map { it.adminDirectory }.take(1))
+    }
 }

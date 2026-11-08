@@ -2,9 +2,14 @@ package app.luxion.shogunai.ui.i18n
 
 import app.luxion.shogunai.domain.io.HostPathSource
 import app.luxion.shogunai.domain.model.CheckState
+import app.luxion.shogunai.domain.model.HostOs
 import app.luxion.shogunai.domain.model.InstallationCheck
 import app.luxion.shogunai.domain.model.InstallationFinding
 import app.luxion.shogunai.domain.model.InstallationReport
+import app.luxion.shogunai.domain.model.MULTIREPO_FILE_NAME
+import app.luxion.shogunai.domain.model.MultirepoProblem
+import app.luxion.shogunai.domain.model.ProviderToolId
+import app.luxion.shogunai.domain.model.ProviderToolProblem
 import app.luxion.shogunai.domain.model.UnavailableLocalFile
 import app.luxion.shogunai.domain.model.UnavailableReason
 import app.luxion.shogunai.domain.usecase.CommandLineToolState
@@ -60,7 +65,7 @@ internal fun englishInstallationSummary(check: InstallationCheck): String = when
         else -> "Claude Code's hooks run shogun, which isn't installed"
     }
     is InstallationFinding.AgentTool ->
-        finding.location?.let { "${finding.tool.displayName} is at $it" } ?: "${finding.tool.displayName} isn't installed"
+        if (finding.location == null) "${finding.tool.displayName} isn't installed" else "${finding.tool.displayName} is at ${finding.location}"
     is InstallationFinding.ProjectFiles -> when {
         finding.baseMissing -> "${finding.project}: its folder ${finding.basePath} doesn't exist"
         finding.detail != null -> "${finding.project}: couldn't check its local files: ${finding.detail}"
@@ -68,6 +73,13 @@ internal fun englishInstallationSummary(check: InstallationCheck): String = when
             "${finding.project}: ${englishFiles(finding.unavailable.size)} can't be copied or linked from ${finding.basePath}"
         finding.checked == 0 -> "${finding.project}: no local files to copy or link"
         else -> "${finding.project}: ${englishFiles(finding.checked)} available"
+    }
+    is InstallationFinding.ProviderTool -> englishProviderSummary(finding)
+    is InstallationFinding.MultirepoCheck -> when {
+        finding.problems.isEmpty() ->
+            "Multirepo ${finding.name}: ${finding.repositories.joinToString()}; ${englishCount(finding.groups, "group", "groups")}"
+        finding.problems.singleOrNull() == MultirepoProblem.DeclarationMissing -> "Multirepo ${finding.name}: ${finding.folder} no longer has $MULTIREPO_FILE_NAME"
+        else -> "Multirepo ${finding.name}: ${englishCount(finding.problems.size, "problem", "problems")} in ${finding.folder}"
     }
 }
 
@@ -93,6 +105,8 @@ internal fun englishInstallationFix(check: InstallationCheck): String? {
             finding.detail != null -> "Check that ${finding.basePath} is a Git repository you can read."
             else -> (finding.unavailable.map(::englishLocalFileProblem) + englishLocalFilesFix(finding.unavailable)).joinToString("\n")
         }
+        is InstallationFinding.ProviderTool -> finding.problem?.let { englishProviderFix(finding.tool, it) }
+        is InstallationFinding.MultirepoCheck -> finding.problems.takeIf { it.isNotEmpty() }?.joinToString("\n") { englishMultirepoFix(finding, it) }
     }
 }
 
@@ -111,3 +125,72 @@ private fun englishLocalFileProblem(file: UnavailableLocalFile): String = when (
 }
 
 private fun englishFiles(count: Int): String = if (count == 1) "1 local file" else "$count local files"
+
+private fun englishProviderSummary(finding: InstallationFinding.ProviderTool): String {
+    val subject = "${finding.project}: ${finding.tool.displayName}"
+    return when (val problem = finding.problem) {
+        null -> when (finding.tool) {
+            ProviderToolId.ANDROID_SDK -> "$subject is at ${finding.location} (${englishCount(finding.installed ?: 0, "virtual device", "virtual devices")})"
+            ProviderToolId.IOS_SIMULATOR -> "$subject has ${englishCount(finding.installed ?: 0, "iOS runtime", "iOS runtimes")}"
+            ProviderToolId.GRADLE_JAVA, ProviderToolId.MAVEN_JAVA -> "$subject is Java ${finding.version} at ${finding.location}"
+            ProviderToolId.DOCKER_DAEMON -> "${finding.project}: Docker's daemon${finding.version?.let { " $it" }.orEmpty()} is running"
+            else -> "$subject${finding.version?.let { " $it" }.orEmpty()} is at ${finding.location}"
+        }
+        is ProviderToolProblem.NotFound -> "$subject isn't installed; the ${finding.tool.provider} provider needs it (looked in ${(problem.searched + problem.commands.map { "$it on the PATH" }).joinToString()})"
+        is ProviderToolProblem.Unusable -> "$subject${finding.location?.let { " at $it" }.orEmpty()} doesn't work${problem.detail.asSuffix()}"
+        ProviderToolProblem.NeedsMacOs -> "${finding.project}: the ${finding.tool.provider} provider needs macOS with Xcode"
+        ProviderToolProblem.NoAndroidVirtualDevice -> "$subject at ${finding.location} has no Android Virtual Device"
+        ProviderToolProblem.NoIosRuntime -> "${finding.project}: no iOS simulator runtime is installed"
+        is ProviderToolProblem.ProvidersUnreadable -> "${finding.project}: couldn't read its providers${problem.detail.asSuffix()}"
+        is ProviderToolProblem.JavaHomeInvalid -> "$subject isn't installed: JAVA_HOME is ${problem.javaHome}, which has no bin/java"
+        is ProviderToolProblem.JavaTooOld ->
+            "$subject is Java ${problem.java} at ${finding.location}, but ${englishBuildTool(finding.tool)} ${problem.toolVersion} needs Java ${problem.required} or newer"
+        is ProviderToolProblem.GradleTooOld ->
+            "$subject is Java ${problem.java} at ${finding.location}, which needs Gradle ${problem.required} or newer, but the project uses Gradle ${problem.gradle}"
+        is ProviderToolProblem.TooOld ->
+            "$subject ${problem.version} at ${finding.location} is older than ${problem.minimum}, the first with the docker compose ls ShogunAi uses"
+        is ProviderToolProblem.DaemonNotRunning -> "${finding.project}: Docker's daemon isn't running${problem.detail.asSuffix()}"
+    }
+}
+
+private fun englishBuildTool(tool: ProviderToolId): String = if (tool == ProviderToolId.GRADLE_JAVA) "Gradle" else "Maven"
+
+private fun englishProviderFix(tool: ProviderToolId, problem: ProviderToolProblem): String = when (problem) {
+    ProviderToolProblem.NeedsMacOs -> "Use the ${tool.provider} provider on a Mac with Xcode, or ignore this on other systems."
+    ProviderToolProblem.NoAndroidVirtualDevice -> "Create a virtual device in Android Studio's Device Manager."
+    ProviderToolProblem.NoIosRuntime -> "Install an iOS runtime from Xcode's Settings › Components."
+    is ProviderToolProblem.ProvidersUnreadable -> "Correct the repository's .shogunai.json so it's valid."
+    is ProviderToolProblem.JavaHomeInvalid -> "Point JAVA_HOME at a JDK's folder (the one with bin/java), or unset it to use the java on your PATH."
+    is ProviderToolProblem.JavaTooOld -> "Install Java ${problem.required} or newer and point JAVA_HOME at it."
+    is ProviderToolProblem.GradleTooOld -> "Update the project's Gradle wrapper to ${problem.required} or newer, or point JAVA_HOME at an older Java."
+    is ProviderToolProblem.TooOld -> "Update Docker, or its Compose plugin, to Compose ${problem.minimum} or newer from https://docs.docker.com/compose/install/."
+    is ProviderToolProblem.DaemonNotRunning -> when (problem.os) {
+        HostOs.LINUX -> "Start the Docker service with sudo systemctl start docker, or start Docker Desktop, and check again."
+        HostOs.MACOS, HostOs.WINDOWS -> "Start Docker Desktop, or the Docker engine you use, and check again."
+    }
+    is ProviderToolProblem.NotFound, is ProviderToolProblem.Unusable -> when (tool) {
+        ProviderToolId.GRADLE -> "Add the Gradle wrapper (gradlew) to the repository, or install Gradle from https://gradle.org/install/."
+        ProviderToolId.MAVEN -> "Add the Maven wrapper (mvnw) to the repository, or install Maven from https://maven.apache.org/install.html."
+        ProviderToolId.GRADLE_JAVA, ProviderToolId.MAVEN_JAVA ->
+            "Install a JDK (for example from https://adoptium.net) and set JAVA_HOME to it or put its java on your PATH. On macOS, /usr/bin/java only works once a JDK is installed."
+        ProviderToolId.ANDROID_SDK -> "Install the Android SDK and its emulator with Android Studio (https://developer.android.com/studio), or set ANDROID_HOME to where it is."
+        ProviderToolId.IOS_SIMULATOR, ProviderToolId.XCODE -> "Install Xcode from the App Store and select it with sudo xcode-select -s /Applications/Xcode.app."
+        ProviderToolId.COCOAPODS -> "Install CocoaPods from https://cocoapods.org."
+        ProviderToolId.DOCKER_COMPOSE, ProviderToolId.DOCKER_DAEMON -> "Install Docker with its Compose plugin, for example Docker Desktop from https://docs.docker.com/get-docker/."
+        ProviderToolId.FLUTTER -> "Install Flutter (https://docs.flutter.dev/get-started/install), or FVM if the repository uses it, and make sure it's on your PATH."
+        ProviderToolId.PROVIDERS -> "Correct the repository's .shogunai.json so it's valid."
+    }
+}
+
+private fun englishMultirepoFix(finding: InstallationFinding.MultirepoCheck, problem: MultirepoProblem): String = when (problem) {
+    MultirepoProblem.DeclarationMissing -> "Restore ${finding.folder}; otherwise ShogunAi forgets the multirepo the next time it starts."
+    is MultirepoProblem.InvalidDeclaration -> "${problem.path}${problem.detail.asSuffix()}. Correct it."
+    is MultirepoProblem.RepositoryMissing ->
+        "${problem.alias}: ${problem.path} isn't a Git repository. Restore it, or change its path in ${finding.folder}/$MULTIREPO_FILE_NAME."
+    MultirepoProblem.NotTrusted -> "It isn't trusted on this machine. Review it and run shogun multirepo trust ${finding.folder}."
+    is MultirepoProblem.ListingFailed -> "Couldn't list the worktrees of ${problem.alias}${problem.detail.asSuffix()}. Check it's a Git repository you can read."
+    is MultirepoProblem.GroupWorktreeMissing ->
+        "Group ${problem.branch}: the folder ${problem.path} of its ${problem.alias} worktree doesn't exist. Restore it, or run git worktree prune in ${problem.alias}."
+}
+
+private fun englishCount(count: Int, one: String, many: String): String = if (count == 1) "1 $one" else "$count $many"

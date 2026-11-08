@@ -161,20 +161,6 @@ class JsonMultirepoSourceTest {
     }
 
     @Test
-    fun `forgetMissing drops entries whose folder is gone and keeps folders without a declaration`() {
-        val moved = home.resolve("moved")
-        val withoutDeclaration = home.resolve("empty").also { Files.createDirectories(it) }
-        listOf(folder, moved, withoutDeclaration).forEach { source.remember(it.toString()) }
-        source.approve(moved.toString(), "subject")
-
-        val forgotten = source.forgetMissing()
-
-        assertEquals(listOf(moved.toString()), forgotten)
-        assertEquals(listOf(folder.toString(), withoutDeclaration.toString()), source.knownFolders())
-        assertFalse(registry.readText().contains(moved.toString()))
-    }
-
-    @Test
     fun `approves a subject for one folder only`() {
         val other = home.resolve("other").also { Files.createDirectories(it) }
         source.remember(folder.toString())
@@ -264,5 +250,30 @@ class JsonMultirepoSourceTest {
         } finally {
             Files.setPosixFilePermissions(file, PosixFilePermissions.fromString("rw-------"))
         }
+    }
+
+    @Test
+    fun `blank or relative folders have no declaration`() {
+        assertNull(source.read(" "))
+        assertNull(source.read("product"))
+    }
+
+    @Test
+    fun `registered entries at the root are kept as they are`() {
+        Files.createDirectories(registry.parent)
+        registry.writeText("""{"multirepos":["root.json"]}""")
+
+        assertEquals(listOf("root.json"), source.knownFolders())
+    }
+
+    @Test
+    fun `a blank or unreadable registry reads as empty`() {
+        Files.createDirectories(registry.parent)
+        registry.writeText(" ")
+        assertEquals(emptyList(), source.knownFolders())
+
+        Files.delete(registry)
+        Files.createDirectories(registry)
+        assertEquals(emptyList(), source.knownFolders())
     }
 }

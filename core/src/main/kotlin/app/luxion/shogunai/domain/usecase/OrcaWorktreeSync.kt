@@ -24,7 +24,7 @@ data class OrcaSyncFailure(val path: String, val error: Throwable)
 
 fun orcaBoardStatus(activity: Activity): String? = when (activity) {
     Activity.New -> "todo"
-    Activity.AgentWorking, Activity.NeedsYou -> "in-progress"
+    Activity.WaitingForYou, Activity.AgentWorking, Activity.Unfinished -> "in-progress"
     Activity.Stopped, Activity.Inactive -> "in-review"
     Activity.Merged -> "completed"
     Activity.Missing, Activity.Idle, Activity.Unknown -> null
@@ -33,7 +33,8 @@ fun orcaBoardStatus(activity: Activity): String? = when (activity) {
 fun orcaComment(activity: Activity, status: WorktreeStatus?, agents: List<RunningAgent>): String? {
     val base = status?.baseName ?: "its base"
     val state = when (activity) {
-        Activity.NeedsYou -> "needs you"
+        Activity.WaitingForYou -> "waiting for you"
+        Activity.Unfinished -> "unfinished"
         Activity.AgentWorking -> "agent working"
         Activity.New -> "new, no commits yet"
         Activity.Stopped -> "pushed, waiting"
@@ -59,8 +60,9 @@ fun orcaComment(activity: Activity, status: WorktreeStatus?, agents: List<Runnin
 }
 
 fun issueNumberOf(branch: String?): Int? {
-    val name = branch?.substringAfterLast('/') ?: return null
-    return ISSUE_BRANCH.matchEntire(name)?.let { match -> (match.groups[1] ?: match.groups[2])?.value?.toIntOrNull() }
+    if (branch == null) return null
+    val match = ISSUE_BRANCH.matchEntire(branch.substringAfterLast('/')) ?: return null
+    return match.groupValues[1].ifEmpty { match.groupValues[2] }.toIntOrNull()
 }
 
 private val ISSUE_BRANCH = Regex("""(?:(\d+)|(?:issue|gh)-(\d+))(?:[-_].*)?""", RegexOption.IGNORE_CASE)
@@ -101,8 +103,8 @@ class OrcaWorktreeSync(
     }
 
     private suspend fun updateFor(item: OrcaSyncItem, row: OrcaWorktree, boardStatus: String, lastWritten: String?, key: String): OrcaWorktreeUpdate {
-        val comment = orcaComment(item.activity, item.status, item.agents)
-            ?.takeIf { row.comment.isNullOrBlank() || row.comment.startsWith(ORCA_COMMENT_PREFIX) }
+        val comment = orcaComment(item.activity, item.status, item.agents)!!
+            .takeIf { row.comment.isNullOrBlank() || row.comment.startsWith(ORCA_COMMENT_PREFIX) }
             ?.takeIf { it != row.comment }
         val (pullRequest, issue) = links(item, row, key)
         return OrcaWorktreeUpdate(

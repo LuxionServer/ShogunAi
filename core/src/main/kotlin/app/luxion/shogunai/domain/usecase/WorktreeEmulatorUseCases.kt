@@ -99,7 +99,7 @@ class ReadEmulatorStatesUseCase(
             if (provisioningSource.read(config.baseRepositoryPath).providers.emulator == null) return@runCatching emptyMap()
             val serials = worktrees.filterNot { it.isPrunable }.mapNotNull { worktree ->
                 resolveEnvironment(config.baseRepositoryPath, worktree.path, reserve = false).getOrNull()
-                    ?.ports?.get(EMULATOR_PORT_KEY)
+                    ?.let { it.ports[EMULATOR_PORT_KEY] }
                     ?.let { worktree.path to emulatorSerial(it) }
             }.toMap()
             if (serials.isEmpty()) return@runCatching emptyMap()

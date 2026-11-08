@@ -24,9 +24,12 @@ import androidx.compose.material.icons.automirrored.filled.ViewSidebar
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.FolderOff
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Icon
@@ -44,8 +47,10 @@ import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import app.luxion.shogunai.domain.model.MultirepoUnavailability
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.SidebarOrder
+import app.luxion.shogunai.domain.model.UnavailableMultirepo
 import app.luxion.shogunai.ui.components.AgentIndicator
 import app.luxion.shogunai.ui.components.AgentIndicatorModel
 import app.luxion.shogunai.ui.components.AgentIndicatorSize
@@ -56,6 +61,7 @@ import app.luxion.shogunai.ui.components.WithTooltip
 import app.luxion.shogunai.ui.components.interactive
 import app.luxion.shogunai.ui.i18n.LocalStrings
 import app.luxion.shogunai.ui.multirepo.MultirepoMembership
+import app.luxion.shogunai.ui.multirepo.unavailabilityOf
 import app.luxion.shogunai.ui.theme.ShogunTheme
 import app.luxion.shogunai.ui.theme.ShogunLayout
 
@@ -71,7 +77,7 @@ fun Sidebar(
     selectedProjectId: String?,
     isActiveSelected: Boolean,
     isAllSelected: Boolean,
-    activeCount: Int,
+    waitingCount: Int,
     totalWorktreeCount: Int,
     activityOf: (Project) -> ProjectActivity,
     rail: Boolean,
@@ -88,10 +94,13 @@ fun Sidebar(
     onSelectMultirepo: (String) -> Unit = {},
     onToggleMultirepo: (String) -> Unit = {},
     onEditMultirepo: (String) -> Unit = {},
+    onRemoveMultirepo: (String) -> Unit = {},
     onAddMultirepo: () -> Unit = {},
     order: SidebarOrder = SidebarOrder(),
     onMoveEntry: (SidebarLevel, String, Int) -> Unit = { _, _, _ -> },
     onSortLevel: (SidebarLevel) -> Unit = {},
+    onOpenPreferences: () -> Unit = {},
+    footer: @Composable () -> Unit = {},
 ) {
     val strings = LocalStrings.current
     Column(
@@ -123,7 +132,7 @@ fun Sidebar(
                 RailViewItem(strings.allWorktrees, Icons.AutoMirrored.Filled.ViewList, selected = isAllSelected, onClick = onSelectAll)
             } else {
                 SectionLabel(strings.viewsTitle)
-                ViewRow(strings.activeWorktrees, Icons.Default.Bolt, activeCount, selected = isActiveSelected, onClick = onSelectActive)
+                ViewRow(strings.activeWorktrees, Icons.Default.Bolt, waitingCount.takeIf { it > 0 }, selected = isActiveSelected, onClick = onSelectActive)
                 ViewRow(strings.allWorktrees, Icons.AutoMirrored.Filled.ViewList, totalWorktreeCount, selected = isAllSelected, onClick = onSelectAll)
                 SectionLabel(strings.projectsTitle)
             }
@@ -141,7 +150,8 @@ fun Sidebar(
                     ContextMenuItem(strings.sortAlphabetically) { onSortLevel(level) },
                 )
             }
-            val projectItem: @Composable (Project, String, SidebarLevel, String, Int, Int, SidebarDragState) -> Unit = { project, label, level, key, index, size, drag ->
+            val topLevelTiles = railInitials(entries.filterIsInstance<SidebarEntry.ProjectEntry>().map { it.project.name })
+            val projectItem: @Composable (Project, String, String, SidebarLevel, String, Int, Int, SidebarDragState) -> Unit = { project, label, tile, level, key, index, size, drag ->
                 Box(itemWidth.reorderable(drag, key) { moved, target -> onMoveEntry(level, moved, target) }) {
                     ProjectContextMenu(
                         onEdit = { onEditProject(project) },
@@ -149,7 +159,7 @@ fun Sidebar(
                         reorderItems = reorderItems(level, key, index, size),
                     ) {
                         if (rail) {
-                            RailProjectItem(label, selected = project.id == selectedProjectId) { onSelectProject(project) }
+                            RailProjectItem(label, tile, selected = project.id == selectedProjectId) { onSelectProject(project) }
                         } else {
                             ProjectRow(label, activityOf(project), selected = project.id == selectedProjectId, nested = level is SidebarLevel.Folder) { onSelectProject(project) }
                         }
@@ -158,7 +168,7 @@ fun Sidebar(
             }
             entries.forEachIndexed { index, entry ->
                 when (entry) {
-                    is SidebarEntry.ProjectEntry -> projectItem(entry.project, entry.project.name, SidebarLevel.TopLevel, entry.key, index, entries.size, topLevelDrag)
+                    is SidebarEntry.ProjectEntry -> projectItem(entry.project, entry.project.name, topLevelTiles.getValue(entry.project.name), SidebarLevel.TopLevel, entry.key, index, entries.size, topLevelDrag)
                     is SidebarEntry.FolderEntry -> {
                         val folder = entry.multirepo
                         val folderLevel = SidebarLevel.Folder(folder.folder)
@@ -172,12 +182,28 @@ fun Sidebar(
                         ) {
                             ContextMenuArea(
                                 items = {
-                                    listOf(ContextMenuItem(strings.multirepoSettingsTitle) { onEditMultirepo(folder.folder) }) +
-                                        reorderItems(SidebarLevel.TopLevel, entry.key, index, entries.size)
+                                    val folderItem = if (folder.unavailable != null) {
+                                        ContextMenuItem(strings.remove) { onRemoveMultirepo(folder.folder) }
+                                    } else {
+                                        ContextMenuItem(strings.multirepoSettingsTitle) { onEditMultirepo(folder.folder) }
+                                    }
+                                    listOf(folderItem) + reorderItems(SidebarLevel.TopLevel, entry.key, index, entries.size)
                                 },
                             ) {
+                                val unavailable = folder.unavailable
                                 if (rail) {
-                                    RailViewItem(folder.name, Icons.Default.Folder, selected = folder.folder == selectedMultirepo) { onSelectMultirepo(folder.folder) }
+                                    RailViewItem(
+                                        folder.name,
+                                        if (unavailable != null) Icons.Default.FolderOff else Icons.Default.Folder,
+                                        selected = folder.folder == selectedMultirepo,
+                                    ) { onSelectMultirepo(folder.folder) }
+                                } else if (unavailable != null) {
+                                    UnavailableMultirepoRow(
+                                        folder.name,
+                                        strings.unavailabilityOf(folder.folder, unavailable),
+                                        selected = folder.folder == selectedMultirepo,
+                                        onClick = { onSelectMultirepo(folder.folder) },
+                                    )
                                 } else {
                                     MultirepoRow(
                                         folder,
@@ -188,8 +214,10 @@ fun Sidebar(
                                 }
                             }
                             if (!folder.collapsed) {
+                                val folderTiles = railInitials(folder.projects.map(folder::labelOf))
                                 folder.projects.forEachIndexed { position, project ->
-                                    projectItem(project, folder.labelOf(project), folderLevel, project.id, position, folder.projects.size, folderDrag)
+                                    val label = folder.labelOf(project)
+                                    projectItem(project, label, folderTiles.getValue(label), folderLevel, project.id, position, folder.projects.size, folderDrag)
                                 }
                             }
                         }
@@ -208,6 +236,61 @@ fun Sidebar(
                 AddRow(strings.addMultirepo, Icons.Default.CreateNewFolder, onAddMultirepo)
             }
         }
+        footer()
+        SidebarFooter(rail, onOpenPreferences)
+    }
+}
+
+@Composable
+private fun SidebarFooter(rail: Boolean, onOpenPreferences: () -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.sm).padding(top = Spacing.xs).testTag("sidebar-footer"),
+        horizontalArrangement = if (rail) Arrangement.Center else Arrangement.Start,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        IconAction(
+            icon = Icons.Default.Settings,
+            label = LocalStrings.current.preferencesTitle,
+            onClick = onOpenPreferences,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
+fun SidebarFooterLine(
+    message: String,
+    details: String,
+    icon: ImageVector,
+    rail: Boolean,
+    onClick: () -> Unit,
+    onDismiss: () -> Unit,
+    dismissLabel: String,
+) {
+    val colors = MaterialTheme.colorScheme
+    if (rail) {
+        IconAction(icon = icon, label = details, onClick = onClick, tint = colors.primary)
+        return
+    }
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(start = Spacing.sm, end = Spacing.xs),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        WithTooltip(label = details, modifier = Modifier.weight(1f)) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(SidebarRowHeight)
+                    .interactive(onClick = onClick)
+                    .padding(horizontal = Spacing.sm),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+            ) {
+                Icon(icon, contentDescription = null, tint = colors.primary, modifier = Modifier.size(SidebarIconSize))
+                Text(message, style = MaterialTheme.typography.bodyMedium, color = colors.primary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        }
+        IconAction(icon = Icons.Default.Close, label = dismissLabel, onClick = onDismiss, tint = colors.onSurfaceVariant)
     }
 }
 
@@ -222,7 +305,7 @@ private fun SectionLabel(text: String) {
 }
 
 @Composable
-private fun ViewRow(label: String, icon: ImageVector, count: Int, selected: Boolean, onClick: () -> Unit) {
+private fun ViewRow(label: String, icon: ImageVector, count: Int?, selected: Boolean, onClick: () -> Unit) {
     val colors = MaterialTheme.colorScheme
     Row(
         modifier = Modifier
@@ -249,11 +332,13 @@ private fun ViewRow(label: String, icon: ImageVector, count: Int, selected: Bool
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f),
         )
-        Text(
-            count.toString(),
-            style = ShogunTheme.typography.dataSmall,
-            color = if (selected) colors.onSecondaryContainer else colors.onSurfaceVariant,
-        )
+        count?.let {
+            Text(
+                it.toString(),
+                style = ShogunTheme.typography.dataSmall,
+                color = if (selected) colors.onSecondaryContainer else colors.onSurfaceVariant,
+            )
+        }
     }
 }
 
@@ -336,9 +421,9 @@ private fun ActivityMarks(activity: ProjectActivity, selected: Boolean) {
             size = AgentIndicatorSize.SMALL,
         )
     }
-    if (activity.activeCount > 0) {
+    if (activity.waitingCount > 0) {
         Text(
-            activity.activeCount.toString(),
+            activity.waitingCount.toString(),
             style = ShogunTheme.typography.dataSmall,
             color = if (selected) colors.onSecondaryContainer else colors.onSurfaceVariant,
         )
@@ -382,6 +467,41 @@ private fun MultirepoRow(multirepo: SidebarMultirepo, selected: Boolean, onClick
 }
 
 @Composable
+private fun UnavailableMultirepoRow(name: String, reason: String, selected: Boolean, onClick: () -> Unit) {
+    val strings = LocalStrings.current
+    val colors = MaterialTheme.colorScheme
+    WithTooltip(label = "${strings.multirepoUnavailable}: $reason") {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = Spacing.sm)
+                .height(SidebarRowHeight)
+                .interactive(onClick = onClick)
+                .background(if (selected) colors.secondaryContainer else colors.surfaceContainerLow)
+                .padding(horizontal = Spacing.sm)
+                .testTag("multirepo-unavailable"),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+        ) {
+            Icon(
+                Icons.Default.FolderOff,
+                contentDescription = strings.multirepoUnavailable,
+                tint = colors.onSurfaceVariant,
+                modifier = Modifier.size(SidebarIconSize),
+            )
+            Text(
+                name,
+                style = MaterialTheme.typography.bodyMedium,
+                color = if (selected) colors.onSecondaryContainer else colors.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+        }
+    }
+}
+
+@Composable
 private fun DisclosureToggle(collapsed: Boolean, onToggle: () -> Unit) {
     val strings = LocalStrings.current
     val label = if (collapsed) strings.expand else strings.collapse
@@ -401,9 +521,9 @@ private fun DisclosureToggle(collapsed: Boolean, onToggle: () -> Unit) {
 
 private val SidebarMarkSize = 16.dp
 
-data class ProjectActivity(val activeCount: Int, val agentNames: List<String>) {
+data class ProjectActivity(val waitingCount: Int, val agentNames: List<String>) {
     operator fun plus(other: ProjectActivity) =
-        ProjectActivity(activeCount + other.activeCount, (agentNames + other.agentNames).distinct())
+        ProjectActivity(waitingCount + other.waitingCount, (agentNames + other.agentNames).distinct())
 
     companion object {
         val NONE = ProjectActivity(0, emptyList())
@@ -418,9 +538,13 @@ data class SidebarMultirepo(
     val collapsed: Boolean,
     val needsReview: Boolean = false,
     val labels: Map<String, String> = emptyMap(),
+    val unavailable: MultirepoUnavailability? = null,
 ) {
     fun labelOf(project: Project): String = labels[project.id] ?: project.name
 }
+
+fun unavailableSidebarFolder(multirepo: UnavailableMultirepo, collapsed: Boolean = false): SidebarMultirepo =
+    SidebarMultirepo(multirepo.folder, multirepo.name, emptyList(), ProjectActivity.NONE, collapsed, unavailable = multirepo.reason)
 
 fun multirepoChildLabels(membership: MultirepoMembership): Map<String, String> {
     val workspaceAlias = membership.multirepo.workspaceRepository?.alias ?: return emptyMap()
@@ -454,7 +578,7 @@ fun sidebarEntries(projects: List<Project>, multirepos: List<SidebarMultirepo>, 
 }
 
 @Composable
-private fun RailProjectItem(label: String, selected: Boolean, onClick: () -> Unit) {
+private fun RailProjectItem(label: String, tile: String, selected: Boolean, onClick: () -> Unit) {
     val colors = MaterialTheme.colorScheme
     WithTooltip(label = label) {
         Box(
@@ -466,7 +590,7 @@ private fun RailProjectItem(label: String, selected: Boolean, onClick: () -> Uni
             contentAlignment = Alignment.Center,
         ) {
             Text(
-                label.take(1).uppercase(),
+                tile,
                 style = MaterialTheme.typography.titleSmall,
                 color = if (selected) colors.onSecondaryContainer else colors.onSurface,
             )

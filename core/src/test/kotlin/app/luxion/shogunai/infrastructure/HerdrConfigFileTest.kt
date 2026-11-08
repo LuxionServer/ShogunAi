@@ -3,6 +3,7 @@ package app.luxion.shogunai.infrastructure
 import java.io.File
 import java.nio.file.Files
 import kotlin.test.AfterTest
+import org.junit.Assume.assumeTrue
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -96,5 +97,38 @@ class HerdrConfigFileTest {
     fun `escaped quotes in a basic string are unescaped`() {
         assertEquals("/a \"b\"", HerdrConfigFile.worktreesDirectory(listOf("[worktrees]", "directory = \"/a \\\"b\\\"\"")))
         assertNull(HerdrConfigFile.worktreesDirectory(listOf("directory = \"/top-level\"")))
+    }
+
+    @Test
+    fun `blank variables are ignored, APPDATA only counts on Windows and a home-relative folder with a backslash is expanded`() {
+        val blank = configFile(environment = mapOf("HERDR_CONFIG_PATH" to " ", "XDG_CONFIG_HOME" to " ", "APPDATA" to " "), osName = "Windows 11")
+        val notWindows = configFile(environment = mapOf("APPDATA" to "/appdata"))
+
+        assertEquals(File(File(File(home, ".config"), "herdr"), "config.toml").path, blank.configPath())
+        assertEquals(File(File(File(home, ".config"), "herdr"), "config.toml").path, notWindows.configPath())
+        writeConfig("[worktrees]\ndirectory = '~\\trees'\n")
+        assertEquals(File(home, "trees").path, configFile().worktreesRoot())
+        writeConfig("[worktrees]\ndirectory = \"~\"\n")
+        assertEquals(home.path, configFile().worktreesRoot())
+    }
+
+    @Test
+    fun `a blank directory falls back to the default`() {
+        writeConfig("[worktrees]\ndirectory = \" \"\n")
+
+        assertEquals(File(home, ".herdr/worktrees").path, configFile().worktreesRoot())
+    }
+
+    @Test
+    fun `a config file that can't be read falls back to the default`() {
+        assumeTrue(home.toPath().fileSystem.supportedFileAttributeViews().contains("posix"))
+        val file = File(home, ".config/herdr/config.toml")
+        writeConfig("[worktrees]\ndirectory = \"/trees\"\n", file)
+        file.setReadable(false)
+        try {
+            assertEquals(File(home, ".herdr/worktrees").path, configFile().worktreesRoot())
+        } finally {
+            file.setReadable(true)
+        }
     }
 }

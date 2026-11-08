@@ -203,4 +203,28 @@ class ProcessMavenDaemonSourceTest {
             directory.toFile().deleteRecursively()
         }
     }
+
+    @Test
+    fun `malformed process lines are skipped`() {
+        assertEquals(emptyList(), parseMavenDaemons("x\nabc 1 -Dmvnd.id=a\n1 abc -Dmvnd.id=a\n"))
+    }
+
+    @Test
+    fun `a log without a state line reads as busy`() {
+        assertEquals(DaemonState.Busy, parseMavenDaemonState("no state here\n", java.time.Instant.EPOCH, java.time.ZoneOffset.UTC))
+    }
+
+    @Test
+    fun `working directories are unknown when lsof can't start or names no numeric pid`() = runTest {
+        val missingLsof = FakeShellCommandExecutor { command ->
+            if (command.first() == "ps") FakeShellCommandExecutor.success(command, psOutput)
+            else throw app.luxion.shogunai.domain.executor.CommandExecutionException(command, java.io.IOException("missing"))
+        }
+        val oddLsof = FakeShellCommandExecutor { command ->
+            if (command.first() == "ps") FakeShellCommandExecutor.success(command, psOutput) else FakeShellCommandExecutor.success(command, "px\nn/work\n")
+        }
+
+        assertEquals(listOf(null, null), ProcessMavenDaemonSource(missingLsof).list().map { it.workingDirectory })
+        assertEquals(listOf(null, null), ProcessMavenDaemonSource(oddLsof).list().map { it.workingDirectory })
+    }
 }

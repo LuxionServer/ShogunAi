@@ -834,4 +834,113 @@ class RepositoryProvisioningFilesTest {
         configFile.writeText("""{ "env": { "PORT": "x" } }""")
         assertEquals(listOf("PORT"), files.read(repository.toString()).environment.variables.map { it.name })
     }
+
+    @Test
+    fun `explicit nulls read as absent fields`() {
+        configFile.writeText(
+            """{
+              "copy": null, "link": null, "hooks": {"postCreate": null}, "env": null, "envFile": null,
+              "providers": {
+                "gradle": {"daemonMaxHeap": null, "idleTimeoutMinutes": null, "kotlinDaemonMaxHeap": null},
+                "emulator": {"avd": null},
+                "ios-simulator": {"device": null, "runtime": null},
+                "xcode": {"compilationCache": null, "cocoaPods": null},
+                "maven": {"mavenMaxHeap": null},
+                "docker-compose": {"portVariables": null}
+              }
+            }""",
+        )
+
+        val provisioning = files.read(repository.toString())
+
+        assertEquals(emptyList(), provisioning.copyPatterns)
+        assertEquals(emptyList(), provisioning.postCreateCommands)
+        assertEquals(GradleProvider(), provisioning.providers.gradle)
+        assertEquals(EmulatorProvider(), provisioning.providers.emulator)
+        assertEquals(IosSimulatorProvider(), provisioning.providers.iosSimulator)
+        assertEquals(XcodeProvider(), provisioning.providers.xcode)
+        assertEquals(MavenProvider(), provisioning.providers.maven)
+        assertEquals(DockerComposeProvider(), provisioning.providers.dockerCompose)
+    }
+
+    @Test
+    fun `null hooks and providers read as none and empty commands as none`() {
+        configFile.writeText("""{"hooks": null, "providers": null}""")
+        assertEquals(RepositoryProvisioning(), files.read(repository.toString()))
+
+        configFile.writeText("""{"hooks": {"postCreate": []}}""")
+        assertEquals(emptyList(), files.read(repository.toString()).postCreateCommands)
+    }
+
+    @Test
+    fun `entries that aren't strings are rejected`() {
+        listOf(
+            """{"copy": [1]}""",
+            """{"copy": [{}]}""",
+            """{"env": {"A": 1}}""",
+            """{"env": {"A": {}}}""",
+            """{"env": {"A": "${'$'}{unknown}"}}""",
+            """{"envFile": 1}""",
+            """{"hooks": {"postCreate": [1]}}""",
+            """{"hooks": {"postCreate": [{}]}}""",
+            """{"providers": {"docker-compose": {"portVariables": [1]}}}""",
+            """{"providers": {"docker-compose": {"portVariables": [{}]}}}""",
+            """{"providers": {"desktop-app": {"module": 1}}}""",
+            """{"providers": {"emulator": {"avd": 1}}}""",
+            """{"providers": {"emulator": {"avd": {}}}}""",
+            """{"providers": {"gradle": {"daemonMaxHeap": 2}}}""",
+            """{"providers": {"gradle": {"idleTimeoutMinutes": "5"}}}""",
+            """{"providers": {"gradle": {"idleTimeoutMinutes": 0}}}""",
+            """{"providers": {"xcode": {"cocoaPods": "yes"}}}""",
+            """{"providers": {"xcode": {"cocoaPods": 1}}}""",
+            """{"providers": {"xcode": {"cocoaPods": {}}}}""",
+            """{"providers": {"gradle": {"daemonMaxHeap": {}}}}""",
+            """{"providers": {"gradle": {"daemonMaxHeap": "2x"}}}""",
+            """{"providers": {"gradle": {"idleTimeoutMinutes": {}}}}""",
+            """{"hooks": {"postCreate": ["npm", 1]}}""",
+            """{"hooks": {"postCreate": ["npm", {}]}}""",
+        ).forEach { text ->
+            configFile.writeText(text)
+            assertFailsWith<WorktreeError.InvalidRepositoryConfig>(text) { files.read(repository.toString()) }
+        }
+    }
+
+    @Test
+    fun `provider options are written only when set`() {
+        val providers = RepositoryProviders(
+            emulator = EmulatorProvider(preferredAvd = "Pixel"),
+            iosSimulator = IosSimulatorProvider(device = "iPhone 16", runtime = "iOS 18.0"),
+            xcode = XcodeProvider(compilationCache = true),
+        )
+
+        write(edit(providers = providers))
+
+        assertEquals(providers, files.read(repository.toString()).providers)
+        val previewed = files.preview(repository.toString(), edit(providers = RepositoryProviders(xcode = XcodeProvider())))
+        assertFalse("compilationCache" in previewed)
+    }
+
+    @Test
+    fun `adding only link patterns keeps the copy patterns`() {
+        files.addPatterns(repository.toString(), emptyList(), linkPatterns = listOf("keys/*"), expectedFingerprint = null)
+
+        assertEquals(listOf("keys/*"), files.read(repository.toString()).linkPatterns)
+        assertEquals(emptyList(), files.read(repository.toString()).copyPatterns)
+    }
+
+    @Test
+    fun `providers without options are written bare and a config with null providers is previewed`() {
+        write(edit(providers = RepositoryProviders(emulator = EmulatorProvider(), iosSimulator = IosSimulatorProvider())))
+        assertEquals(emptySet(), written().getValue("providers").jsonObject.getValue("emulator").jsonObject.keys)
+        assertEquals(emptySet(), written().getValue("providers").jsonObject.getValue("ios-simulator").jsonObject.keys)
+
+        configFile.writeText("""{"providers": null}""")
+        assertTrue("gradle" in files.preview(repository.toString(), edit(providers = RepositoryProviders(gradle = GradleProvider()))))
+    }
+
+    @Test
+    fun `a preview without a file starts from an empty configuration`() {
+        assertTrue("gradle" in files.preview(repository.toString(), edit(providers = RepositoryProviders(gradle = GradleProvider()))))
+        assertFalse(configFile.exists())
+    }
 }

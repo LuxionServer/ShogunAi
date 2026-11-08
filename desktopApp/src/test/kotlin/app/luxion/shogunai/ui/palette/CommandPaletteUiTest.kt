@@ -13,6 +13,10 @@ import androidx.compose.ui.test.pressKey
 import androidx.compose.ui.test.v2.runComposeUiTest
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.withKeyDown
+import app.luxion.shogunai.ui.isMacOs
 import app.luxion.shogunai.ui.shell.ShellDestination
 import app.luxion.shogunai.ui.worktree.WorktreeRef
 import kotlin.test.Test
@@ -136,11 +140,27 @@ class CommandPaletteUiTest {
     }
 
     @Test
-    fun `the hint is hidden while a project is highlighted`() = runComposeUiTest {
+    fun `select all and delete empties the search field`() = runComposeUiTest {
+        setContent {
+            MaterialTheme { CommandPalette(listOf(project, worktree), emptyList(), { _, _ -> }, {}) }
+        }
+
+        onNode(hasSetTextAction()).performTextInput("feature")
+        onNode(hasSetTextAction()).performKeyInput {
+            withKeyDown(if (isMacOs) Key.MetaLeft else Key.CtrlLeft) { pressKey(Key.A) }
+            pressKey(Key.Backspace)
+        }
+
+        onNode(hasSetTextAction()).assert(hasText(""))
+    }
+
+    @Test
+    fun `a highlighted project only says what enter does`() = runComposeUiTest {
         setContent {
             MaterialTheme { CommandPalette(listOf(project, worktree), listOf(project.id), { _, _ -> }, {}) }
         }
 
+        onNodeWithText("↵ Open").assertIsDisplayed()
         onNodeWithText("Copy launch command", substring = true).assertDoesNotExist()
     }
 }

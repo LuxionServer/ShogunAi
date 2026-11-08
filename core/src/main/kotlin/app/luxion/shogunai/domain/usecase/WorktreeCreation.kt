@@ -121,7 +121,8 @@ internal suspend fun resolveProvisionedFiles(
     val (linkedFolders, copiedFolders) = folders.entries.partition { config.isLinked(it.key) }
     val localCopied = pathEntries.filterNot(config::isLinked).flatMap { entry ->
         val folder = localFolderName(entry)
-        folders[folder]?.files?.map { "$folder/$it" } ?: listOf(entry)
+        val tree = folders[folder]
+        if (tree != null) tree.files.map { "$folder/$it" } else listOf(entry)
     } + listUntrackedFiles(config, executor, copiedPatterns)
     val localLinked = pathEntries.filter { config.isLinked(it) && localFolderName(it) !in folders } +
         listUntrackedFiles(config, executor, linkedPatterns)
@@ -175,7 +176,7 @@ internal suspend fun addWorktreeAndCopySecrets(
 ): Worktree {
     val add = executor.execute(command = addArgs, workingDirectory = config.baseRepositoryPath)
     if (!add.isSuccess) {
-        val alreadyCheckedOutPath = BRANCH_ALREADY_CHECKED_OUT.find(add.stderr)?.groupValues?.get(1)
+        val alreadyCheckedOutPath = BRANCH_ALREADY_CHECKED_OUT.find(add.stderr)?.let { it.groupValues[1] }
         if (alreadyCheckedOutPath != null || add.stderr.contains("is already checked out")) {
             throw WorktreeError.BranchAlreadyCheckedOut(branch, alreadyCheckedOutPath)
         }
@@ -246,7 +247,6 @@ private suspend fun copySecretsOrRollback(
     try {
         applyProvisionedFiles(config, fileManager, records, worktreePath, provisioned)
     } catch (copyError: WorktreeError) {
-        if (copyError !is WorktreeError.SecretCopyFailed && copyError !is WorktreeError.LinkedFolderOccupied) throw copyError
         rollBack(config, executor, worktreePath, createdBranch)
         throw copyError
     }
@@ -406,7 +406,7 @@ private suspend fun runPostCreateCommands(
         val result = try {
             executor.execute(command = command, workingDirectory = worktreePath)
         } catch (error: CommandExecutionException) {
-            throw WorktreeError.PostCreateCommandFailed(worktreePath, command, null, error.cause?.message ?: error.message.orEmpty())
+            throw WorktreeError.PostCreateCommandFailed(worktreePath, command, null, error.cause.message ?: error.message)
         }
         if (!result.isSuccess) {
             throw WorktreeError.PostCreateCommandFailed(worktreePath, command, result.exitCode, result.stderr)

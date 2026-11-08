@@ -60,7 +60,7 @@ fun trayWorktreeLabel(worktree: TrayWorktree): String =
 
 private fun activityMark(activity: Activity): String = when (activity) {
     Activity.AgentWorking -> "● "
-    Activity.NeedsYou -> "! "
+    Activity.WaitingForYou -> "! "
     else -> ""
 }
 

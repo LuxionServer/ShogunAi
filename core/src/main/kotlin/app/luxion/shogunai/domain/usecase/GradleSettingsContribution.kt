@@ -27,8 +27,7 @@ fun gradleOpts(settings: GradleProvider, effectiveJvmArgs: String?): String =
 fun effectiveGradleJvmArgs(fileManager: FileManager, gradleUserHome: String, repositoryPath: String): String? =
     (listOf(gradleUserHome, repositoryPath) + nestedGradleBuildPaths(fileManager, repositoryPath).take(1)).firstNotNullOfOrNull { directory ->
         fileManager.readProperties("${directory.trimEnd('/', '\\')}/$GRADLE_PROPERTIES")[JVM_ARGS_PROPERTY]
-            ?.trim()
-            ?.takeIf { it.isNotEmpty() }
+            ?.let { it.trim().ifEmpty { null } }
     }
 
 fun gradleSettingsContribution(settings: GradleProvider, effectiveJvmArgs: String?) = EnvironmentContribution(

@@ -84,4 +84,10 @@ class ResolveMainBranchUseCaseTest {
     fun `nothing is resolved when the configured branch does not exist`() = runTest {
         assertNull(resolve(config("develop"), executor(existingRefs = setOf("refs/heads/main"))))
     }
+
+    @Test
+    fun `a remote default branch that is empty or missing falls back to a local main`() = runTest {
+        assertEquals(MainBranch("main", "main"), resolve(config(), executor(setOf("refs/heads/main"), remoteHead = "origin/")))
+        assertEquals(MainBranch("main", "main"), resolve(config(), executor(setOf("refs/heads/main"), remoteHead = "origin/trunk")))
+    }
 }

@@ -9,6 +9,10 @@ import app.luxion.shogunai.domain.model.Worktree
 import kotlinx.coroutines.test.runTest
 import java.time.Duration
 import java.time.Instant
+import app.luxion.shogunai.domain.io.DerivedDataSource
+import app.luxion.shogunai.domain.model.AttributedDerivedData
+import app.luxion.shogunai.domain.model.DerivedDataDeletionFailure
+import app.luxion.shogunai.domain.model.DerivedDataListing
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -234,5 +238,76 @@ class TrimDerivedDataUseCaseTest {
         val result = useCase(source)(quotaBytes = null, worktrees, emptySet()).getOrThrow()
 
         assertFalse(result.dryRun)
+    }
+
+    @Test
+    fun `folders gone, reclaimed or no longer owned between planning and deleting are skipped`() = runTest {
+        val vanished = folder("Vanished", project1, 20, daysAgo(10))
+        val reclaimed = folder("Reclaimed", goneProject, 20, daysAgo(9))
+        val moved = folder("Moved", project2, 20, daysAgo(8))
+        val source = source(reclaimed, vanished, moved)
+        val original = source.existing
+        source.onFolders = { calls ->
+            if (calls == 2) {
+                source.existing = original.filterNot { it == vanished }
+                source.existingProjects = source.existingProjects + goneProject - project2
+            }
+        }
+
+        trim(source, quotaGb = 5)
+
+        assertEquals(emptyList(), names(source))
+    }
+
+    @Test
+    fun `a measured listing with unknown sizes counts them as empty`() = runTest {
+        val unknown = folder("Unknown", project1, 0, daysAgo(10)).copy(sizeBytes = null)
+        val source = source(unknown)
+        val listing = DerivedDataListing(listOf(AttributedDerivedData(unknown, DerivedDataOwner.Worktree(task1.path))), null)
+
+        val result = useCase(source)(1L, worktrees, emptySet(), measured = listing).getOrThrow()
+
+        assertEquals(0L, result.usageBefore)
+    }
+
+    @Test
+    fun `a deletion that fails without a reason says the delete failed`() = runTest {
+        val broken = folder("Broken", goneProject, 20, daysAgo(10))
+        val fake = source(broken)
+        val source = object : DerivedDataSource by fake {
+            override suspend fun delete(folder: DerivedDataFolder) = throw IllegalStateException()
+        }
+
+        val result = TrimDerivedDataUseCase(source, ListDerivedDataUseCase(source)) { now }(5 * gb, worktrees, emptySet()).getOrThrow()
+
+        assertEquals(listOf(DerivedDataDeletionFailure(broken.path, "delete failed")), result.failures)
+    }
+
+    @Test
+    fun `releasing a folder of unknown size frees nothing and the next one is released`() = runTest {
+        val unknown = folder("Unknown", goneProject, 0, daysAgo(10)).copy(sizeBytes = null)
+        val big = folder("Big", project1, 20, daysAgo(9))
+        val source = source(unknown, big)
+        val listing = DerivedDataListing(
+            listOf(AttributedDerivedData(unknown, DerivedDataOwner.Orphaned), AttributedDerivedData(big, DerivedDataOwner.Worktree(task1.path))),
+            null,
+        )
+
+        useCase(source)(1L, worktrees, emptySet(), measured = listing).getOrThrow()
+
+        assertEquals(listOf("Unknown", "Big"), names(source))
+    }
+
+    @Test
+    fun `a folder that now belongs to a project outside the worktrees is skipped`() = runTest {
+        val moved = folder("Moved", project2, 20, daysAgo(8))
+        val source = source(moved)
+        source.onFolders = { calls ->
+            if (calls == 2) source.existing = listOf(moved.copy(workspacePath = otherProject))
+        }
+
+        trim(source, quotaGb = 5)
+
+        assertEquals(emptyList(), names(source))
     }
 }

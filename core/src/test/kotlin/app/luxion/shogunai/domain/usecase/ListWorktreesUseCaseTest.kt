@@ -151,4 +151,32 @@ class ListWorktreesUseCaseTest {
         assertEquals(listOf(true, true, false, false), worktrees.map { it.isLocked })
         assertEquals(listOf(false, false, true, false), worktrees.map { it.isPrunable })
     }
+    @Test
+    fun `reads a bare main repository and a prunable worktree without a reason`() {
+        val worktrees = parseWorktreeList(
+            """
+            worktree /home/dev/projects/main-repo.git
+            bare
+
+            worktree /home/dev/projects/TASK-1
+            HEAD aaa111
+            branch refs/heads/feature/TASK-1
+            prunable
+            """.trimIndent(),
+        )
+
+        assertEquals(listOf(true, false), worktrees.map { it.isBare })
+        assertEquals(listOf(false, true), worktrees.map { it.isPrunable })
+    }
+    @Test
+    fun `only the first entry can be a submodule's main worktree`() = runTest {
+        val executor = FakeShellCommandExecutor {
+            success(it, stdout = "worktree /home/dev/projects/other\nHEAD abc123\nbranch refs/heads/main\n\nworktree /home/dev/projects/super/.git/modules/lib\nHEAD abc124\nbranch refs/heads/task\n")
+        }
+
+        val worktrees = ListWorktreesUseCase(config.copy(baseRepositoryPath = "/home/dev/projects/super/lib"), executor)().getOrThrow()
+
+        assertEquals(listOf("/home/dev/projects/other", "/home/dev/projects/super/.git/modules/lib"), worktrees.map { it.path })
+        assertTrue(worktrees.none { it.isMain })
+    }
 }

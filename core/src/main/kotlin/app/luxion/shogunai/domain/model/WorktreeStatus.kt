@@ -15,6 +15,8 @@ data class WorktreeStatus(
     val neverCommitted: Boolean = false,
     val base: Divergence? = mainBranch,
     val baseName: String? = null,
+    val mainBranchHoldsChanges: Boolean = false,
+    val baseHoldsChanges: Boolean = mainBranchHoldsChanges,
 ) {
     val isNotStarted: Boolean
         get() = neverCommitted
@@ -23,10 +25,10 @@ data class WorktreeStatus(
         get() = if (base != null) base.ahead > 0 else !isNotStarted
 
     val isMergedIntoBase: Boolean
-        get() = !neverCommitted && base.readsAsMerged()
+        get() = !neverCommitted && (base.readsAsMerged() || baseHoldsChanges)
 
     val isMergedIntoMainBranch: Boolean
-        get() = !neverCommitted && mainBranch.readsAsMerged()
+        get() = !neverCommitted && (mainBranch.readsAsMerged() || mainBranchHoldsChanges)
 
     val isMerged: Boolean
         get() = isMergedIntoBase || isMergedIntoMainBranch

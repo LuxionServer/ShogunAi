@@ -6,6 +6,7 @@ import app.luxion.shogunai.domain.FakeShellCommandExecutor.Companion.failure
 import app.luxion.shogunai.domain.FakeShellCommandExecutor.Companion.success
 import app.luxion.shogunai.domain.model.ProjectConfig
 import kotlinx.coroutines.test.runTest
+import app.luxion.shogunai.domain.executor.CommandExecutionException
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -104,6 +105,59 @@ class DeleteMergedBranchUseCaseTest {
         assertFalse(deleted)
         assertTrue(executor.executed("git", "merge-base", "--is-ancestor", "feature/TASK-123", "origin/epic/redesign"))
         assertTrue(executor.executed("git", "merge-base", "--is-ancestor", "feature/TASK-123", "main"))
+        assertTrue(executor.executedCommands.none { it.take(3) == listOf("git", "branch", "-D") })
+    }
+    @Test
+    fun `keeps the branch when git can't even start to resolve the main branch`() = runTest {
+        val executor = FakeShellCommandExecutor { command ->
+            if (command.getOrNull(1) == "symbolic-ref") throw CommandExecutionException(command, java.io.IOException("no git")) else failure(command)
+        }
+
+        assertFalse(DeleteMergedBranchUseCase(config, executor)("feature/TASK-123").getOrThrow())
+    }
+
+    @Test
+    fun `the main branch itself is never deleted as merged into itself`() = runTest {
+        val executor = executor()
+
+        assertFalse(DeleteMergedBranchUseCase(config.copy(mainBranch = "main"), executor)("main").getOrThrow())
+        assertTrue(executor.executedCommands.none { it.take(3) == listOf("git", "merge-base", "--is-ancestor") })
+    }
+
+    private fun notContainedExecutor(unmatchedByRange: Map<String, String>) = FakeShellCommandExecutor { command ->
+        when {
+            command.take(3) == listOf("git", "merge-base", "--is-ancestor") -> failure(command, exitCode = 1, stderr = "")
+            command.take(3) == listOf("git", "rev-list", "--cherry-pick") ->
+                success(command, stdout = unmatchedByRange[command.last()] ?: "1\n")
+            command.take(2) == listOf("git", "merge-base") -> success(command, stdout = "fork123\n")
+            command.take(2) == listOf("git", "commit-tree") -> success(command, stdout = "squash456\n")
+            command.getOrNull(1) == "symbolic-ref" -> failure(command)
+            else -> success(command)
+        }
+    }
+
+    @Test
+    fun `deletes a branch rebase-merged into the main branch`() = runTest {
+        val executor = notContainedExecutor(mapOf("main...feature/TASK-123" to "0\n"))
+
+        assertTrue(DeleteMergedBranchUseCase(config, executor)("feature/TASK-123").getOrThrow())
+        assertTrue(executor.executed("git", "branch", "-D", "--", "feature/TASK-123"))
+    }
+
+    @Test
+    fun `deletes a branch squash-merged into the main branch`() = runTest {
+        val executor = notContainedExecutor(mapOf("main...feature/TASK-123" to "2\n", "main...squash456" to "0\n"))
+
+        assertTrue(DeleteMergedBranchUseCase(config, executor)("feature/TASK-123").getOrThrow())
+        assertTrue(executor.executed("git", "merge-base", "main", "feature/TASK-123"))
+        assertTrue(executor.executed("git", "commit-tree", "feature/TASK-123^{tree}", "-p", "fork123", "-m", "squash"))
+    }
+
+    @Test
+    fun `keeps a branch whose changes the main branch doesn't hold`() = runTest {
+        val executor = notContainedExecutor(emptyMap())
+
+        assertFalse(DeleteMergedBranchUseCase(config, executor)("feature/TASK-123").getOrThrow())
         assertTrue(executor.executedCommands.none { it.take(3) == listOf("git", "branch", "-D") })
     }
 }

@@ -1,6 +1,7 @@
 package app.luxion.shogunai.ui.worktree
 
 import app.luxion.shogunai.domain.model.BranchType
+import app.luxion.shogunai.domain.usecase.Activity
 import app.luxion.shogunai.ui.multirepo.branchTypeOf
 import app.luxion.shogunai.ui.multirepo.proposedAlias
 import kotlin.test.Test
@@ -10,19 +11,29 @@ import kotlin.test.assertNull
 class ChangeGroupingTest {
 
     @Test
-    fun `one worktree needing the user makes the whole group need the user`() {
-        assertEquals(StateBadgeKind.NEEDS_YOU, combinedState(listOf(StateBadgeKind.AGENT_WORKING, StateBadgeKind.NEEDS_YOU)))
+    fun `one worktree waiting for the user makes the whole group wait for the user`() {
+        assertEquals(Activity.WaitingForYou, combinedActivity(listOf(Activity.AgentWorking, Activity.WaitingForYou)))
+    }
+
+    @Test
+    fun `an agent working outranks unfinished work in the group`() {
+        assertEquals(Activity.AgentWorking, combinedActivity(listOf(Activity.Unfinished, Activity.AgentWorking)))
     }
 
     @Test
     fun `a partly merged group shows the state of the unmerged worktree`() {
-        assertEquals(StateBadgeKind.STOPPED, combinedState(listOf(StateBadgeKind.MERGED, StateBadgeKind.STOPPED)))
-        assertEquals(StateBadgeKind.INACTIVE, combinedState(listOf(StateBadgeKind.MERGED, StateBadgeKind.INACTIVE)))
+        assertEquals(Activity.Stopped, combinedActivity(listOf(Activity.Merged, Activity.Stopped)))
+        assertEquals(Activity.Inactive, combinedActivity(listOf(Activity.Merged, Activity.Inactive)))
     }
 
     @Test
     fun `a group is merged only when every worktree is`() {
-        assertEquals(StateBadgeKind.MERGED, combinedState(listOf(StateBadgeKind.MERGED, StateBadgeKind.MERGED)))
+        assertEquals(Activity.Merged, combinedActivity(listOf(Activity.Merged, Activity.Merged)))
+    }
+
+    @Test
+    fun `a group without worktrees has an unknown state`() {
+        assertEquals(Activity.Unknown, combinedActivity(emptyList()))
     }
 
     @Test

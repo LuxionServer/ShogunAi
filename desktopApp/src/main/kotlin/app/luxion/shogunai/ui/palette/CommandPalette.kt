@@ -183,11 +183,11 @@ fun CommandPalette(
                         }
                     }
                 }
-                if (results.getOrNull(highlighted)?.secondary is PaletteAction.CopyLaunchCommand) {
+                results.getOrNull(highlighted)?.let { item ->
                     HorizontalDivider()
                     Text(
-                        "${SecondaryShortcutLabel}  ${strings.paletteCopyLaunchCommandHint}",
-                        style = ShogunTheme.typography.dataSmall,
+                        paletteFooter(item, strings, SecondaryShortcutLabel),
+                        style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.md, vertical = Spacing.sm),
                     )

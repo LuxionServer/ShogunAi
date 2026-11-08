@@ -11,11 +11,13 @@ data class ClaudeSession(
     val statusUpdatedAt: Long? = null,
 ) {
     val state: AgentState?
-        get() = when (status) {
-            ClaudeSessionStatus.BUSY -> AgentState.WORKING
-            ClaudeSessionStatus.WAITING -> AgentState.BLOCKED
-            ClaudeSessionStatus.IDLE -> if (ranATurn()) AgentState.DONE else AgentState.IDLE
-            null -> null
+        get() {
+            val status = status ?: return null
+            return when (status) {
+                ClaudeSessionStatus.BUSY -> AgentState.WORKING
+                ClaudeSessionStatus.WAITING -> AgentState.BLOCKED
+                ClaudeSessionStatus.IDLE -> if (ranATurn()) AgentState.DONE else AgentState.IDLE
+            }
         }
 
     private fun ranATurn(): Boolean {

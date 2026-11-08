@@ -17,11 +17,14 @@ import androidx.compose.ui.test.rightClick
 import androidx.compose.ui.test.v2.runComposeUiTest
 import app.luxion.shogunai.domain.FakeProjectRepository
 import app.luxion.shogunai.domain.FakeShellPreferenceRepository
+import app.luxion.shogunai.domain.model.KnownMultirepos
 import app.luxion.shogunai.domain.model.Multirepo
 import app.luxion.shogunai.domain.model.MultirepoDeclaration
+import app.luxion.shogunai.domain.model.MultirepoUnavailability
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.SidebarOrder
+import app.luxion.shogunai.domain.model.UnavailableMultirepo
 import app.luxion.shogunai.ui.multirepo.MultirepoCatalog
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -44,13 +47,14 @@ class SidebarOrderTest {
     private val repository = FakeProjectRepository(initialProjects = listOf(api, mainRepo, mobile, app, docs, web))
     private val preferences = FakeShellPreferenceRepository()
     private var known = listOf(product)
-    private var forgotten = 0
+    private var unavailable = emptyList<UnavailableMultirepo>()
+    private val forgotten = mutableListOf<String>()
 
     private fun viewModel() = ShellViewModel(
         repository,
         preferences,
-        multirepoCatalog = MultirepoCatalog { known },
-        forgetMissingMultirepos = { forgotten++ },
+        multirepoCatalog = MultirepoCatalog { KnownMultirepos(known, unavailable) },
+        forgetMultirepo = { forgotten += it },
     )
 
     private fun ShellViewModel.topLevelNames(): List<String> =
@@ -128,15 +132,31 @@ class SidebarOrderTest {
     }
 
     @Test
-    fun `reloading forgets the multirepos whose folder is gone and their projects return to the top level`() {
+    fun `reloading never forgets a multirepo that became unavailable and its projects return to the top level`() {
         val viewModel = viewModel()
         known = emptyList()
+        unavailable = listOf(UnavailableMultirepo(productFolder, MultirepoUnavailability.FolderUnreachable))
 
         viewModel.refresh()
 
-        assertEquals(2, forgotten)
+        assertTrue(forgotten.isEmpty())
         assertTrue(viewModel.memberships.isEmpty())
-        assertEquals(listOf("api", "app", "docs", "main-repo", "mobile", "web"), viewModel.topLevelNames())
+        assertEquals(unavailable, viewModel.unavailableMultirepos)
+        assertEquals(listOf("api", "app", "docs", "main-repo", "mobile", "product", "web"), viewModel.topLevelNames())
+    }
+
+    @Test
+    fun `an unavailable multirepo keeps its saved place when the level is reordered`() {
+        val viewModel = viewModel()
+        viewModel.moveSidebarEntry(SidebarLevel.TopLevel, multirepoSidebarKey(productFolder), 0)
+        known = emptyList()
+        unavailable = listOf(UnavailableMultirepo(productFolder, MultirepoUnavailability.FolderUnreachable))
+        viewModel.refresh()
+
+        viewModel.moveSidebarEntry(SidebarLevel.TopLevel, projectSidebarKey("api"), 1)
+
+        assertEquals(multirepoSidebarKey(productFolder), preferences.sidebarOrder.topLevel.first())
+        assertEquals(projectSidebarKey("api"), preferences.sidebarOrder.topLevel[1])
     }
 
     @Test
@@ -229,7 +249,7 @@ class SidebarOrderTest {
             selectedProjectId = null,
             isActiveSelected = false,
             isAllSelected = false,
-            activeCount = 0,
+            waitingCount = 0,
             totalWorktreeCount = 0,
             activityOf = { ProjectActivity.NONE },
             rail = false,

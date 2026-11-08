@@ -81,16 +81,16 @@ class JsonRepositoryTrust(
         val variables = JsonArray(
             subject.variables.sortedBy { it.first }.map { (name, template) -> JsonArray(listOf(JsonPrimitive(name), JsonPrimitive(template))) },
         )
-        val envFile: JsonElement = subject.envFile?.let(::JsonPrimitive) ?: JsonNull
+        val envFile: JsonElement = if (subject.envFile != null) JsonPrimitive(subject.envFile) else JsonNull
         val canonical = JsonObject(linkedMapOf("commands" to commands, "env" to variables, "envFile" to envFile))
         return Json.encodeToString(JsonElement.serializer(), canonical)
     }
 
     @Serializable
-    private data class Store(val approvals: Map<String, Approval> = emptyMap())
+    internal data class Store(val approvals: Map<String, Approval> = emptyMap())
 
     @Serializable
-    private data class Approval(
+    internal data class Approval(
         val sha256: String,
         val commands: List<List<String>>,
         val env: Map<String, String> = emptyMap(),

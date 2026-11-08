@@ -3,18 +3,15 @@ package app.luxion.shogunai.ui.worktree
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -25,19 +22,16 @@ import androidx.compose.ui.test.v2.runComposeUiTest
 import androidx.compose.ui.unit.dp
 import app.luxion.shogunai.domain.model.Divergence
 import app.luxion.shogunai.domain.model.AgentState
+import app.luxion.shogunai.domain.model.AgentStateSource
 import app.luxion.shogunai.domain.model.HeadlessAppProcess
 import app.luxion.shogunai.domain.model.HeadlessAppState
 import app.luxion.shogunai.domain.model.RunningAgent
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.WorktreeEmulator
 import app.luxion.shogunai.domain.model.EmulatorState
-import app.luxion.shogunai.domain.model.WorktreeSort
 import app.luxion.shogunai.domain.model.WorktreeStatus
 import app.luxion.shogunai.domain.model.toLocalClockTime
 import app.luxion.shogunai.ui.i18n.EnglishStrings
-import app.luxion.shogunai.ui.i18n.LocalStrings
-import app.luxion.shogunai.ui.i18n.SpanishStrings
-import app.luxion.shogunai.ui.theme.ShogunTheme
 import java.time.Duration
 import java.time.Instant
 import kotlin.test.Test
@@ -50,9 +44,9 @@ class WorktreeRowUiTest {
 
     private val now = Instant.parse("2026-10-16T12:00:00Z")
 
-    private fun status(changes: Int = 0, mainBranch: Divergence = Divergence(2, 0)) = WorktreeStatus(
+    private fun status(changes: Int = 0, mainBranch: Divergence = Divergence(2, 0), upstream: Divergence? = Divergence(0, 0)) = WorktreeStatus(
         uncommittedChanges = changes,
-        upstream = Divergence(0, 0),
+        upstream = upstream,
         mainBranch = mainBranch,
         lastCommitAt = now.minus(Duration.ofHours(3)),
     )
@@ -86,15 +80,91 @@ class WorktreeRowUiTest {
     )
 
     @androidx.compose.runtime.Composable
-    private fun Row(model: WorktreeRowModel, compact: Boolean = false) {
+    private fun Row(model: WorktreeRowModel, compact: Boolean = false, showExecution: Boolean = true, onFocusAgent: () -> Unit = {}) {
         WorktreeRow(
             model = model,
             selected = false,
             isCopied = false,
             compact = compact,
+            showExecution = showExecution,
             onSelect = {},
             onCopyLaunchCommand = {},
+            onFocusAgent = onFocusAgent,
         )
+    }
+
+    @Test
+    fun `a view whose rows use no execution cell leaves it out`() = runComposeUiTest {
+        setContent { MaterialTheme { Column(Modifier.width(900.dp)) { Row(model("feature/TASK-2"), showExecution = false) } } }
+
+        assertEquals(0, onAllNodesWithTag(ExecutionTag, useUnmergedTree = true).fetchSemanticsNodes().size)
+        onNodeWithText("TASK-2", useUnmergedTree = true).assertIsDisplayed()
+    }
+
+    @Test
+    fun `a narrow row cuts the type prefix and keeps the task id whole`() = runComposeUiTest {
+        setContent {
+            MaterialTheme {
+                Column {
+                    Column(Modifier.width(450.dp)) { Row(model("feature/TASK-123"), showExecution = false) }
+                    Column(Modifier.width(900.dp)) { Row(model("fix/TASK-123"), showExecution = false) }
+                }
+            }
+        }
+
+        val (narrow, wide) = onAllNodesWithText("TASK-123", useUnmergedTree = true).fetchSemanticsNodes().map { it.size.width }
+        val prefix = onNodeWithText("feature/", useUnmergedTree = true).fetchSemanticsNode().size.width
+        assertEquals(wide, narrow)
+        assertTrue(prefix < narrow)
+    }
+
+    @Test
+    fun `the main checkout shows the main chip and a locked worktree a lock icon`() = runComposeUiTest {
+        val main = worktreeRowModel(
+            worktree = Worktree(path = "/home/dev/projects/main-repo", branch = "develop", isMain = true, isLocked = true),
+            status = WorktreeStatusState.Loaded(status()),
+            mainBranchName = "develop",
+            agents = emptyList(),
+            emulator = null,
+            simulator = null,
+            origin = null,
+            projectName = "main-repo",
+            inactiveAfter = Duration.ofDays(3),
+            now = now,
+            strings = EnglishStrings,
+        )
+        setContent { MaterialTheme { Column(Modifier.width(900.dp)) { Row(main) } } }
+
+        onNodeWithText(EnglishStrings.mainWorktree, useUnmergedTree = true).assertIsDisplayed()
+        onNodeWithText("main-repo", useUnmergedTree = true).assertIsDisplayed()
+        onNodeWithTag(LockedTag, useUnmergedTree = true).assertIsDisplayed()
+        onNodeWithContentDescription(EnglishStrings.locked, useUnmergedTree = true).assertExists()
+    }
+
+    @Test
+    fun `clicking the agent indicator focuses an agent in a known runner`() {
+        listOf(false, true).forEach { compact ->
+            runComposeUiTest {
+                var focused = 0
+                val agents = listOf(RunningAgent("claude", AgentState.BLOCKED, "w1:p1", AgentStateSource.HERDR))
+                setContent {
+                    MaterialTheme {
+                        Column(Modifier.width(900.dp)) { Row(model("feature/TASK-1", agents = agents), compact, onFocusAgent = { focused++ }) }
+                    }
+                }
+
+                onNodeWithContentDescription("Claude · needs you").performClick()
+
+                assertEquals(1, focused, "compact = $compact")
+            }
+        }
+    }
+
+    @Test
+    fun `the agent indicator of an agent without a known runner can't be clicked`() = runComposeUiTest {
+        setContent { MaterialTheme { Row(model("feature/TASK-1", agents = listOf(RunningAgent("claude"))), onFocusAgent = {}) } }
+
+        onNodeWithContentDescription("Claude · running", useUnmergedTree = true).assert(SemanticsMatcher.keyNotDefined(SemanticsActions.OnClick))
     }
 
     @Test
@@ -200,10 +270,25 @@ class WorktreeRowUiTest {
     }
 
     @Test
+    fun `a branch never pushed shows the not pushed icon with its meaning`() = runComposeUiTest {
+        setContent { MaterialTheme { Row(model("feature/TASK-1", status = status(upstream = null))) } }
+
+        onNodeWithTag(NotPushedTag, useUnmergedTree = true).assertIsDisplayed()
+        onNodeWithContentDescription("The branch isn't pushed: it has no upstream", useUnmergedTree = true).assertIsDisplayed()
+    }
+
+    @Test
+    fun `a pushed branch shows no not pushed icon`() = runComposeUiTest {
+        setContent { MaterialTheme { Row(model("feature/TASK-1")) } }
+
+        onNodeWithTag(NotPushedTag, useUnmergedTree = true).assertDoesNotExist()
+    }
+
+    @Test
     fun `the badge exposes the name of the state`() = runComposeUiTest {
         setContent { MaterialTheme { Row(model("feature/TASK-1", status = status(changes = 2))) } }
 
-        onNodeWithContentDescription("Needs you", useUnmergedTree = true).assertIsDisplayed()
+        onNodeWithContentDescription("Unfinished", useUnmergedTree = true).assertIsDisplayed()
     }
 
     @Test
@@ -281,35 +366,5 @@ class WorktreeRowUiTest {
         setContent { MaterialTheme { Column(Modifier.width(900.dp)) { Row(blocked) } } }
 
         onNodeWithText("Claude · needs you", useUnmergedTree = true).assertIsDisplayed()
-    }
-
-    @Test
-    fun `the sort selector reports the picked order`() = runComposeUiTest {
-        val picks = mutableListOf<WorktreeSort>()
-        var selected by mutableStateOf(WorktreeSort.NAME)
-        setContent {
-            MaterialTheme {
-                SortSelector(selected) {
-                    picks += it
-                    selected = it
-                }
-            }
-        }
-
-        onNodeWithText("Last activity").performClick()
-
-        assertEquals(listOf(WorktreeSort.ACTIVITY), picks)
-    }
-
-    @Test
-    fun `the sort selector is translated`() = runComposeUiTest {
-        setContent {
-            CompositionLocalProvider(LocalStrings provides SpanishStrings) {
-                MaterialTheme { SortSelector(WorktreeSort.NAME) {} }
-            }
-        }
-
-        onNodeWithText("Nombre").assertIsDisplayed()
-        onNodeWithText("Última actividad").assertIsDisplayed()
     }
 }

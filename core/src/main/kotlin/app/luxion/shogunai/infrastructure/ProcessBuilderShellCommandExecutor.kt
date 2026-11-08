@@ -12,9 +12,11 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+import java.io.BufferedReader
 import java.io.File
 import java.io.IOException
 import java.io.InputStream
+import java.io.InputStreamReader
 import kotlin.time.Duration
 
 class ProcessBuilderShellCommandExecutor(
@@ -75,7 +77,7 @@ class ProcessBuilderShellCommandExecutor(
         val exitCode = try {
             if (timeout == null) waitFor(process) else withTimeoutOrNull(timeout) { waitFor(process) }
         } finally {
-            if (process.isAlive) killWithDescendants(process)
+            stopIfAlive(process)
         }
         if (exitCode == null) throw CommandExecutionException.TimedOut(command, timeout!!)
         CommandResult(
@@ -86,14 +88,17 @@ class ProcessBuilderShellCommandExecutor(
         )
     }
 
-    private fun readStream(stream: InputStream, channel: OutputChannel, onOutput: ((OutputLine) -> Unit)?): String {
-        if (onOutput == null) return stream.bufferedReader().use { it.readText() }
-        return stream.bufferedReader().useLines { lines ->
-            lines.onEach { onOutput(OutputLine(channel, it)) }.joinToString("\n")
+    private fun readStream(stream: InputStream, channel: OutputChannel, onOutput: ((OutputLine) -> Unit)?): String =
+        BufferedReader(InputStreamReader(stream, Charsets.UTF_8)).use { reader ->
+            if (onOutput == null) reader.readText()
+            else reader.lineSequence().onEach { onOutput(OutputLine(channel, it)) }.joinToString("\n")
         }
-    }
 
     private suspend fun waitFor(process: Process): Int = runInterruptible { process.waitFor() }
+
+    private fun stopIfAlive(process: Process) {
+        if (process.isAlive) killWithDescendants(process)
+    }
 
     private fun killWithDescendants(process: Process) {
         process.descendants().forEach { it.destroyForcibly() }
@@ -101,7 +106,7 @@ class ProcessBuilderShellCommandExecutor(
     }
 
     private companion object {
-        val NULL_DEVICE = if (System.getProperty("os.name").startsWith("Windows")) "NUL" else "/dev/null"
+        val NULL_DEVICE: String = nullDevice(File.separatorChar).path
     }
 }
 

@@ -2,9 +2,16 @@ package app.luxion.shogunai.domain.usecase
 
 import app.luxion.shogunai.domain.io.HostPathSource
 import app.luxion.shogunai.domain.model.CheckState
+import app.luxion.shogunai.domain.model.HostOs
 import app.luxion.shogunai.domain.model.InstallationCheck
 import app.luxion.shogunai.domain.model.InstallationFinding
 import app.luxion.shogunai.domain.model.InstallationReport
+import app.luxion.shogunai.domain.model.MULTIREPO_FILE_NAME
+import app.luxion.shogunai.domain.model.MultirepoProblem
+import app.luxion.shogunai.domain.model.ProviderToolId
+import app.luxion.shogunai.domain.model.ProviderToolProblem
+import app.luxion.shogunai.domain.model.RepositoryProvisioning
+import app.luxion.shogunai.domain.model.joinPath
 import app.luxion.shogunai.domain.model.problemText
 import app.luxion.shogunai.domain.model.removalText
 
@@ -39,8 +46,10 @@ object InstallationReportText {
         }
         is InstallationFinding.Hooks -> hooksSummary(check.state, finding)
         is InstallationFinding.AgentTool ->
-            finding.location?.let { "${finding.tool.displayName} at $it" } ?: "${finding.tool.displayName} not found"
+            if (finding.location != null) "${finding.tool.displayName} at ${finding.location}" else "${finding.tool.displayName} not found"
         is InstallationFinding.ProjectFiles -> projectSummary(finding)
+        is InstallationFinding.ProviderTool -> providerSummary(finding)
+        is InstallationFinding.MultirepoCheck -> multirepoSummary(finding)
     }
 
     fun fix(check: InstallationCheck): String? {
@@ -65,6 +74,8 @@ object InstallationReportText {
                 finding.detail != null -> "Check that ${finding.basePath} is a Git repository you can read"
                 else -> finding.unavailable.joinToString("\n") { "${it.path}: ${it.problemText()}, ${it.removalText()}" }
             }
+            is InstallationFinding.ProviderTool -> if (finding.problem != null) providerFix(finding.tool, finding.problem) else null
+            is InstallationFinding.MultirepoCheck -> finding.problems.joinToString("\n") { multirepoFix(finding, it) }
         }
     }
 
@@ -93,6 +104,88 @@ object InstallationReportText {
         finding.unavailable.isEmpty() -> "${finding.project}: ${count(finding.checked)} available in ${finding.basePath}"
         else -> "${finding.project}: ${count(finding.unavailable.size)} unavailable in ${finding.basePath}"
     }
+
+    private fun providerSummary(finding: InstallationFinding.ProviderTool): String {
+        val tool = finding.tool.displayName
+        val subject = "${finding.project}: $tool"
+        return when (val problem = finding.problem) {
+            null -> subject + finding.version?.let { " $it" }.orEmpty() + finding.location?.let { " at $it" }.orEmpty() + installedSuffix(finding)
+            is ProviderToolProblem.NotFound -> "$subject not found, needed by the ${finding.tool.provider} provider (looked in ${(problem.searched + problem.commands.map { "$it on the PATH" }).joinToString()})"
+            is ProviderToolProblem.Unusable -> "$subject${finding.location?.let { " at $it" }.orEmpty()} doesn't work" + problem.detail.suffix()
+            ProviderToolProblem.NeedsMacOs -> "${finding.project}: the ${finding.tool.provider} provider needs macOS with Xcode"
+            ProviderToolProblem.NoAndroidVirtualDevice -> "$subject at ${finding.location} has no Android Virtual Device"
+            ProviderToolProblem.NoIosRuntime -> "${finding.project}: no iOS simulator runtime is installed"
+            is ProviderToolProblem.ProvidersUnreadable -> "${finding.project}: couldn't read its providers" + problem.detail.suffix()
+            is ProviderToolProblem.JavaHomeInvalid -> "$subject not found: JAVA_HOME is ${problem.javaHome}, which has no bin/java"
+            is ProviderToolProblem.JavaTooOld ->
+                "$subject is Java ${problem.java} at ${finding.location}, but ${buildTool(finding.tool)} ${problem.toolVersion} needs Java ${problem.required} or newer"
+            is ProviderToolProblem.GradleTooOld ->
+                "$subject is Java ${problem.java} at ${finding.location}, which needs Gradle ${problem.required} or newer, but the project uses Gradle ${problem.gradle}"
+            is ProviderToolProblem.TooOld ->
+                "$subject ${problem.version} at ${finding.location} is older than ${problem.minimum}, the first with the 'docker compose ls' ShogunAi uses"
+            is ProviderToolProblem.DaemonNotRunning -> "${finding.project}: Docker's daemon isn't running" + problem.detail.suffix()
+        }
+    }
+
+    private fun buildTool(tool: ProviderToolId): String = if (tool == ProviderToolId.GRADLE_JAVA) "Gradle" else "Maven"
+
+    private fun installedSuffix(finding: InstallationFinding.ProviderTool): String = when (finding.tool) {
+        ProviderToolId.ANDROID_SDK -> " (${plural(finding.installed ?: 0, "virtual device", "virtual devices")})"
+        ProviderToolId.IOS_SIMULATOR -> " (${plural(finding.installed ?: 0, "iOS runtime", "iOS runtimes")})"
+        ProviderToolId.DOCKER_DAEMON -> " is running"
+        else -> ""
+    }
+
+    private fun providerFix(tool: ProviderToolId, problem: ProviderToolProblem): String = when (problem) {
+        ProviderToolProblem.NeedsMacOs -> "Use the ${tool.provider} provider on a Mac with Xcode, or ignore this on other systems"
+        ProviderToolProblem.NoAndroidVirtualDevice -> "Create a virtual device in Android Studio's Device Manager"
+        ProviderToolProblem.NoIosRuntime -> "Install an iOS runtime from Xcode's Settings › Components"
+        is ProviderToolProblem.ProvidersUnreadable -> "Correct the repository's ${RepositoryProvisioning.CONFIG_FILE_NAME} so it's valid"
+        is ProviderToolProblem.NotFound, is ProviderToolProblem.Unusable -> installFix(tool)
+        is ProviderToolProblem.JavaHomeInvalid -> "Point JAVA_HOME at a JDK's folder (the one with bin/java), or unset it to use the java on your PATH"
+        is ProviderToolProblem.JavaTooOld -> "Install Java ${problem.required} or newer and point JAVA_HOME at it"
+        is ProviderToolProblem.GradleTooOld -> "Update the project's Gradle wrapper to ${problem.required} or newer, or point JAVA_HOME at an older Java"
+        is ProviderToolProblem.TooOld -> "Update Docker, or its Compose plugin, to Compose ${problem.minimum} or newer: https://docs.docker.com/compose/install/"
+        is ProviderToolProblem.DaemonNotRunning -> when (problem.os) {
+            HostOs.LINUX -> "Start the Docker service with 'sudo systemctl start docker', or start Docker Desktop, and check again"
+            HostOs.MACOS, HostOs.WINDOWS -> "Start Docker Desktop, or the Docker engine you use, and check again"
+        }
+    }
+
+    private fun installFix(tool: ProviderToolId): String = when (tool) {
+        ProviderToolId.GRADLE -> "Add the Gradle wrapper (gradlew) to the repository, or install Gradle: https://gradle.org/install/"
+        ProviderToolId.MAVEN -> "Add the Maven wrapper (mvnw) to the repository, or install Maven: https://maven.apache.org/install.html"
+        ProviderToolId.GRADLE_JAVA, ProviderToolId.MAVEN_JAVA ->
+            "Install a JDK (for example from https://adoptium.net) and set JAVA_HOME to it or put its java on your PATH; on macOS, /usr/bin/java only works once a JDK is installed"
+        ProviderToolId.ANDROID_SDK -> "Install the Android SDK and its emulator with Android Studio (https://developer.android.com/studio), or set ANDROID_HOME to where it is"
+        ProviderToolId.IOS_SIMULATOR, ProviderToolId.XCODE -> "Install Xcode from the App Store and select it: sudo xcode-select -s /Applications/Xcode.app"
+        ProviderToolId.COCOAPODS -> "Install CocoaPods: https://cocoapods.org"
+        ProviderToolId.DOCKER_COMPOSE, ProviderToolId.DOCKER_DAEMON -> "Install Docker with its Compose plugin, for example Docker Desktop: https://docs.docker.com/get-docker/"
+        ProviderToolId.FLUTTER -> "Install Flutter (https://docs.flutter.dev/get-started/install), or FVM if the repository uses it, and make sure it's on your PATH"
+        ProviderToolId.PROVIDERS -> "Correct the repository's ${RepositoryProvisioning.CONFIG_FILE_NAME} so it's valid"
+    }
+
+    private fun multirepoSummary(finding: InstallationFinding.MultirepoCheck): String {
+        val subject = "Multirepo ${finding.name} (${finding.folder})"
+        return when {
+            finding.problems.isEmpty() -> "$subject: ${finding.repositories.joinToString()}; ${plural(finding.groups, "group", "groups")}"
+            finding.problems.singleOrNull() == MultirepoProblem.DeclarationMissing -> "$subject: ${MULTIREPO_FILE_NAME} is gone"
+            else -> "$subject: ${plural(finding.problems.size, "problem", "problems")}"
+        }
+    }
+
+    private fun multirepoFix(finding: InstallationFinding.MultirepoCheck, problem: MultirepoProblem): String = when (problem) {
+        MultirepoProblem.DeclarationMissing -> "Restore ${finding.folder}; otherwise ShogunAi forgets it the next time it starts"
+        is MultirepoProblem.InvalidDeclaration -> "${problem.path}${problem.detail.suffix()}; correct it"
+        is MultirepoProblem.RepositoryMissing ->
+            "'${problem.alias}': ${problem.path} isn't a Git repository; restore it, or change its path in ${joinPath(finding.folder, MULTIREPO_FILE_NAME)}"
+        MultirepoProblem.NotTrusted -> "It isn't trusted on this machine; review it and run 'shogun multirepo trust ${finding.folder}'"
+        is MultirepoProblem.ListingFailed -> "Couldn't list the worktrees of '${problem.alias}'${problem.detail.suffix()}; check it's a Git repository you can read"
+        is MultirepoProblem.GroupWorktreeMissing ->
+            "Group ${problem.branch}: the '${problem.alias}' worktree's folder ${problem.path} doesn't exist; restore it, or run 'git worktree prune' in '${problem.alias}'"
+    }
+
+    private fun plural(count: Int, one: String, many: String): String = if (count == 1) "1 $one" else "$count $many"
 
     private fun shogunFix(state: CommandLineToolState, folder: String?, restartNeeded: Boolean): String = when (state) {
         CommandLineToolState.INSTALLED_NOT_ON_PATH ->

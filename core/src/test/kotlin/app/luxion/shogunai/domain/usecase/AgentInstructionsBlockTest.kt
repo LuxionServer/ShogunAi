@@ -104,4 +104,13 @@ class AgentInstructionsBlockTest {
 
         assertTrue(block.status(path).hasBlock)
     }
+
+    @Test
+    fun `uninstalling a block at the very end after a single line break keeps the text before it`() {
+        files.writeText(path, "# Mine\n$current")
+
+        block.uninstall(path)
+
+        assertEquals("# Mine\n", text())
+    }
 }

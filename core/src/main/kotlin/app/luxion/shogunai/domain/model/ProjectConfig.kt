@@ -29,7 +29,7 @@ data class ProjectConfig(
 
     fun worktreePathForBranch(branch: String): String {
         val knownPrefix = BranchType.entries.map { "${it.prefix}/" }.firstOrNull { branch.startsWith(it) }
-        val sanitized = knownPrefix?.let { branch.removePrefix(it) } ?: branch
+        val sanitized = if (knownPrefix != null) branch.removePrefix(knownPrefix) else branch
         return worktreePathFor(sanitized)
     }
 

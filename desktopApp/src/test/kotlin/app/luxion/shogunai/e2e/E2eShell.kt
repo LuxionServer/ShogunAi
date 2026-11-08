@@ -12,10 +12,12 @@ import androidx.compose.ui.test.SemanticsNodeInteractionsProvider
 import androidx.compose.ui.test.isRoot
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onFirst
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import app.luxion.shogunai.AppContainer
+import app.luxion.shogunai.domain.usecase.TOUR_PROJECT_NAME
 import app.luxion.shogunai.shellViewModelOf
 import app.luxion.shogunai.ui.LocalPathPicker
 import app.luxion.shogunai.ui.PathPicker
@@ -106,3 +108,18 @@ private fun textsOf(node: SemanticsNode): List<String> =
 
 private fun SemanticsNodeInteractionsProvider.hasNodeWithText(text: String, substring: Boolean): Boolean =
     onAllNodesWithText(text, substring = substring, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
+
+@OptIn(ExperimentalTestApi::class)
+fun ComposeUiTest.takeTourWithoutCommandStep(appContainer: AppContainer, strings: Strings) {
+    awaitText(strings.tourTakeTour)
+    onNodeWithText(strings.tourTakeTour).performClick()
+    awaitText(strings.tourStart)
+    onNodeWithText(strings.tourStart).performClick()
+    awaitCondition("the tour's open-agent step") {
+        appContainer.tour.error?.let { throw AssertionError("The tour failed", it) }
+        if (hasNodeWithText(strings.tourSkip, substring = false)) fail("The tour showed its command step")
+        hasNodeWithText(strings.tourLater, substring = false)
+    }
+    onNodeWithText(strings.tourLater).performClick()
+    awaitText(TOUR_PROJECT_NAME)
+}

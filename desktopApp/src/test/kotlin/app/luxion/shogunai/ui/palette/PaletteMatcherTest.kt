@@ -53,6 +53,28 @@ class PaletteMatcherTest {
     }
 
     @Test
+    fun `a scattered match on a key that isn't shown is dropped`() {
+        val docs = PaletteItem(
+            id = "project:team-1-docs-01",
+            kind = PaletteKind.PROJECT,
+            title = "docs",
+            keys = listOf("docs", "team-1-docs-01"),
+            primary = PaletteAction.Open(ShellDestination.Active),
+        )
+
+        assertEquals(emptyList(), rankPaletteItems(listOf(docs), "101", emptyList()))
+        assertEquals(listOf(docs), rankPaletteItems(listOf(docs), "team", emptyList()))
+    }
+
+    @Test
+    fun `a match at a word start beats scattered word starts`() {
+        val wordStart = checkNotNull(matchScore("api", "fix/my-api-client"))
+        val scattered = checkNotNull(matchScore("api", "add/proxy-ignore"))
+
+        assertTrue(wordStart > scattered)
+    }
+
+    @Test
     fun `a case change counts as a word start`() {
         val camelCase = checkNotNull(matchScore("ab", "xAyBz"))
         val inWord = checkNotNull(matchScore("ab", "xaybz"))

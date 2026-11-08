@@ -3,7 +3,6 @@ package app.luxion.shogunai.infrastructure
 import app.luxion.shogunai.domain.io.ProjectRepository
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.WorktreeError
-import kotlinx.serialization.SerializationException
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.decodeFromJsonElement
@@ -40,10 +39,8 @@ class JsonProjectRepository(
         if (text.isBlank()) return emptyList()
         return try {
             json.decodeFromJsonElement(LegacyAgentJson.projects(json.parseToJsonElement(text)))
-        } catch (error: SerializationException) {
-            throw WorktreeError.LocalFileUnreadable(storagePath.toString(), error.message?.lineSequence()?.firstOrNull())
         } catch (error: IllegalArgumentException) {
-            throw WorktreeError.LocalFileUnreadable(storagePath.toString(), error.message?.lineSequence()?.firstOrNull())
+            throw WorktreeError.LocalFileUnreadable(storagePath.toString(), firstLineOf(error))
         }
     }
 

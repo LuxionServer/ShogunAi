@@ -52,7 +52,7 @@ The system SHALL let the user create a new worktree in the "New worktree" dialog
 - **THEN** the dialog shows a loading indicator and its inputs, the mode toggle and its "Create worktree" and "Cancel" actions are disabled, preventing a duplicate submission until the call completes
 
 ### Requirement: Remove a worktree
-The system SHALL let the user remove a non-main worktree, using `RemoveWorktreeUseCase`, with an option to also delete its local branch. The removal SHALL be started from the worktree's detail, its row's context menu or the delete shortcut. Starting it SHALL always show a confirmation dialog before any Git command runs, with a checkbox labeled to delete the local branch as well, unchecked by default; the branch is only deleted if the user checks it, as a separate step after the worktree is removed. When the removal fails because the worktree has uncommitted or untracked changes, the system SHALL update the same dialog to offer a force retry, reusing the user's branch-deletion choice, instead of leaving the user with no recourse. While `RemoveWorktreeUseCase` is running (initial attempt or force retry), the dialog SHALL show a loading indicator and disable both its confirm and cancel actions until the call completes.
+The system SHALL let the user remove a non-main worktree, using `RemoveWorktreeUseCase`, with an option to also delete its local branch. The removal SHALL be started from the worktree's detail, its row's context menu or the delete shortcut. Starting it SHALL always show a confirmation dialog before any Git command runs, with a checkbox labeled to delete the local branch as well, unchecked by default; the branch is only deleted if the user checks it, as a separate step after the worktree is removed. When the removal fails because the worktree has uncommitted or untracked changes, or because it is locked, the system SHALL update the same dialog to offer a force retry, reusing the user's branch-deletion choice, instead of leaving the user with no recourse. While `RemoveWorktreeUseCase` is running (initial attempt or force retry), the dialog SHALL show a loading indicator and disable both its confirm and cancel actions until the call completes.
 
 #### Scenario: Confirmation dialog shown before removing
 - **WHEN** the user activates "Delete worktree" for a non-main worktree from its detail, its context menu or the shortcut
@@ -77,6 +77,10 @@ The system SHALL let the user remove a non-main worktree, using `RemoveWorktreeU
 #### Scenario: Removal fails because the worktree has uncommitted or untracked changes
 - **WHEN** `RemoveWorktreeUseCase` returns a failed `Result` whose `WorktreeError.GitCommandFailed` indicates the worktree needs `--force` to be removed
 - **THEN** the same confirmation dialog updates to ask whether to force-delete the worktree, preserving the "delete local branch" checkbox state the user had chosen, instead of only showing the raw error message
+
+#### Scenario: Removal fails because the worktree is locked
+- **WHEN** `RemoveWorktreeUseCase` returns a failed `Result` with `WorktreeError.WorktreeLocked`
+- **THEN** the same confirmation dialog updates to ask whether to force-delete the worktree, saying it is locked and showing the lock reason Git gave, preserving the "delete local branch" checkbox state
 
 #### Scenario: User confirms force removal
 - **WHEN** the user confirms the force-delete state of the dialog shown after a failed removal
@@ -347,19 +351,23 @@ When loading the local branches for "From existing branch" fails, the create dia
 - **THEN** the dialog shows the error and a retry action, and doesn't show "No branches available"
 
 ### Requirement: Choose where a new branch starts
-The "New branch" mode of the "New worktree" dialog SHALL let the user choose the commit the new branch starts at: the project's main branch, selected by default, the base repository's current branch, any local branch or any `origin/` branch. When no main branch can be resolved, the base repository's current branch SHALL be the default. The worktree SHALL be created with its branch starting at the chosen branch's commit at creation time.
+The "New branch" mode of the "New worktree" dialog SHALL let the user choose the commit the new branch starts at: the base repository's current branch, selected by default as `shogun new` does and marked as the same as `shogun new`, the project's main branch, any local branch or any `origin/` branch. The worktree SHALL be created with its branch starting at the chosen branch's commit at creation time.
 
 #### Scenario: Default start point
-- **WHEN** the project's main branch is `develop`, `origin/develop` exists and the base repository has `feature/old` checked out
-- **THEN** the dialog preselects `origin/develop`, and confirming creates the new branch at the commit `origin/develop` points to
+- **WHEN** the project's main branch is `main`, `origin/main` exists and the base repository has `develop` checked out
+- **THEN** the dialog preselects the base repository's current branch, labelled with `develop` and "same as shogun new", and confirming creates the new branch at the base repository's `HEAD` with `develop` recorded as its base
 
 #### Scenario: Start from the repository's current branch
-- **WHEN** the user chooses the base repository's current branch as the start point
-- **THEN** the new branch starts at the base repository's `HEAD`, as before this change
+- **WHEN** the user keeps or chooses the base repository's current branch as the start point
+- **THEN** the new branch starts at the base repository's `HEAD`, as `shogun new` does from the main checkout
+
+#### Scenario: Main branch stays available
+- **WHEN** the project's main branch resolves to `origin/main`
+- **THEN** the second option of "Start from" is `origin/main`, marked as the main branch, and choosing it creates the new branch at the commit `origin/main` points to
 
 #### Scenario: No main branch
 - **WHEN** no main branch can be resolved for the project
-- **THEN** the dialog preselects the base repository's current branch
+- **THEN** the dialog preselects the base repository's current branch and lists the local and `origin/` branches after it
 
 #### Scenario: Start point disappeared
 - **WHEN** the chosen branch was deleted after the dialog listed it
@@ -457,3 +465,18 @@ A local files entry that is a pattern SHALL NOT produce `WorktreeError.LocalFile
 #### Scenario: Pattern and missing file
 - **WHEN** the local files include the pattern `*.p12`, which matches nothing, and the file `local.properties`, which doesn't exist in the base repository
 - **THEN** creation fails with `WorktreeError.LocalFilesUnavailable` listing only `local.properties`
+
+### Requirement: Locked worktrees are removed only when forced
+`RemoveWorktreeUseCase` SHALL report a removal refused because the worktree is locked as `WorktreeError.WorktreeLocked`, with the lock reason Git gives (none when the lock has no reason), instead of `WorktreeError.GitCommandFailed`. When the removal is forced and Git refuses it because the worktree is locked, it SHALL retry with `--force` given twice, which overrides the lock. A removal that isn't forced SHALL never override a lock.
+
+#### Scenario: Locked without force
+- **WHEN** `git worktree remove <path>` fails with "cannot remove a locked working tree, lock reason: orca-create-preparation:v1"
+- **THEN** `RemoveWorktreeUseCase` returns `WorktreeError.WorktreeLocked` with that path and the reason `orca-create-preparation:v1`, and runs no other removal command
+
+#### Scenario: Locked with force
+- **WHEN** a forced removal runs `git worktree remove --force <path>` and Git refuses it because the worktree is locked
+- **THEN** `RemoveWorktreeUseCase` runs `git worktree remove --force --force <path>` and the worktree is removed
+
+#### Scenario: Unlocked with force
+- **WHEN** a forced removal of a worktree that isn't locked succeeds with `git worktree remove --force <path>`
+- **THEN** no command with `--force` twice runs

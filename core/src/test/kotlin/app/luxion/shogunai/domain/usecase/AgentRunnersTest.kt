@@ -158,4 +158,14 @@ class AgentRunnersTest {
 
         assertIs<WorktreeError.HerdrNotInstalled>(result.exceptionOrNull())
     }
+    @Test
+    fun `a runner that can't open passes the failure of a worktree, a group member or the multirepo agent through`() = runTest {
+        val notInstalled = FakeOrcaClient(installed = false)
+        val failing = FakeOrcaClient(failure = IllegalStateException("socket closed"))
+
+        assertIs<WorktreeError.OrcaNotInstalled>(orca(notInstalled).openWorktree(world.appProject.config, Worktree(appTask, "feature/TASK-1")).exceptionOrNull())
+        assertIs<WorktreeError.OrcaNotInstalled>(orca(notInstalled).openMultirepoAgent(multirepo).exceptionOrNull())
+        assertIs<WorktreeError.HerdrNotInstalled>(herdr(FakeHerdrClient(failure = WorktreeError.HerdrNotInstalled)).openMultirepoAgent(multirepo).exceptionOrNull())
+        assertTrue(orca(failing).openGroup(group()).getOrThrow().all { it.result.isFailure })
+    }
 }

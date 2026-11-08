@@ -4,7 +4,6 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
-import org.junit.Assume.assumeFalse
 import java.nio.file.Path
 import kotlin.io.path.createDirectories
 import kotlin.io.path.exists
@@ -73,7 +72,6 @@ class MultirepoEndToEndTest {
 
     @Test
     fun `open in Herdr opens every worktree of the group`() {
-        assumeFalse("Herdr's client only runs herdr.exe on Windows, which a script can't stand in for", Sandbox.isWindows)
         FakeRunners.install(sandbox)
         sandbox.shogunSucceeds(multirepo, "new", "TASK-2")
 

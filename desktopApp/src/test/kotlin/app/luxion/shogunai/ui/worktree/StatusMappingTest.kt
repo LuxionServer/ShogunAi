@@ -1,5 +1,7 @@
 package app.luxion.shogunai.ui.worktree
 
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import app.luxion.shogunai.domain.model.EmulatorState
 import app.luxion.shogunai.domain.model.SimulatorState
 import app.luxion.shogunai.ui.i18n.EnglishStrings
@@ -14,8 +16,9 @@ class StatusMappingTest {
     fun `state badges follow the status table`() {
         assertEquals(
             mapOf(
-                StateBadgeKind.NEEDS_YOU to Status.WARNING,
+                StateBadgeKind.WAITING_FOR_YOU to Status.WARNING,
                 StateBadgeKind.AGENT_WORKING to Status.INFO,
+                StateBadgeKind.UNFINISHED to Status.NEUTRAL,
                 StateBadgeKind.NEW to Status.NEUTRAL,
                 StateBadgeKind.STOPPED to Status.NEUTRAL,
                 StateBadgeKind.MERGED to Status.SUCCESS,
@@ -30,6 +33,11 @@ class StatusMappingTest {
     @Test
     fun `only the new state is drawn outlined`() {
         assertEquals(listOf(StateBadgeKind.NEW), StateBadgeKind.entries.filter { it.outlined })
+    }
+
+    @Test
+    fun `the new badge is a plus inside its outlined circle`() {
+        assertEquals(Icons.Default.Add, StateBadgeKind.NEW.icon())
     }
 
     @Test

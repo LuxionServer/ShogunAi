@@ -11,6 +11,7 @@ class FakeAndroidSdk(
     var avds: List<String> = listOf("Medium_Phone_API_35"),
     var states: MutableMap<String, EmulatorState> = mutableMapOf(),
     var missing: Boolean = false,
+    var stopFailure: Throwable? = null,
     private val bootAfterPolls: Int = 1,
 ) : AndroidSdk {
 
@@ -59,6 +60,7 @@ class FakeAndroidSdk(
     }
 
     override suspend fun stopEmulator(sdk: SdkLocation, serial: String) {
+        stopFailure?.let { throw it }
         stopped += serial
         states.remove(serial)
     }

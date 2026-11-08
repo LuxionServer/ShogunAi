@@ -488,4 +488,65 @@ class ConfigureMultirepoUseCaseTest {
         configure.removeRepository(declared, "docs").getOrThrow()
         assertEquals(mapOf("app" to mapOf("API_URL" to apiUrl)), stored().env?.byAlias)
     }
+    @Test
+    fun `a multirepo whose declaration is gone can't be registered, trusted or changed`() = runTest {
+        val reviewed = reviewed()
+        world.source.declarations.clear()
+
+        assertIs<WorktreeError.MultirepoNotFound>(configure.register(reviewed, answering(false)).exceptionOrNull())
+        assertIs<WorktreeError.MultirepoNotFound>(configure.trust(reviewed).exceptionOrNull())
+        assertIs<WorktreeError.MultirepoNotFound>(configure.removeRepository(reviewed, "api").exceptionOrNull())
+    }
+
+    @Test
+    fun `a folder inside a repository or a repository already declared can't be added`() = runTest {
+        val inside = configure.addRepository(world.multirepo, "sub", "${world.appBase}/module", answering(false)).exceptionOrNull()
+        val declared = configure.addRepository(world.multirepo, "again", world.appBase, answering(false)).exceptionOrNull()
+
+        assertTrue(assertIs<WorktreeError.InvalidMultirepo>(inside).detail.contains("isn't the main worktree"))
+        assertTrue(assertIs<WorktreeError.InvalidMultirepo>(declared).detail.contains("already declared as 'app'"))
+    }
+
+    @Test
+    fun `removing or renaming an unknown repository is refused and renaming to the same alias changes nothing`() = runTest {
+        assertIs<UnknownMultirepoAlias>(configure.removeRepository(world.multirepo, "web").exceptionOrNull())
+        assertIs<UnknownMultirepoAlias>(configure.renameRepository(world.multirepo, "web", "site").exceptionOrNull())
+
+        assertEquals(world.declaration, configure.renameRepository(world.multirepo, "app", "app").getOrThrow().declaration)
+    }
+
+    @Test
+    fun `a blank agent command is refused`() = runTest {
+        assertIs<IllegalArgumentException>(configure.setAgent(world.multirepo, AgentLaunchConfig(agentCommand = " ")).exceptionOrNull())
+    }
+
+    @Test
+    fun `unsetting a variable of an unknown repository or of one without variables is refused`() = runTest {
+        assertIs<UnknownMultirepoAlias>(configure.unsetSharedVariable(world.multirepo, "web", "PORT").exceptionOrNull())
+        assertIs<WorktreeError.InvalidMultirepo>(configure.unsetSharedVariable(world.multirepo, "app", "PORT").exceptionOrNull())
+    }
+
+    @Test
+    fun `a project without a worktrees folder is asked about the proposal with no current folder`() = runTest {
+        world.projects.save(world.appProject.copy(config = world.appProject.config.copy(worktreesRoot = "")))
+
+        configure.addRepository(empty, "app", world.appBase, answering(false)).getOrThrow()
+
+        assertEquals(listOf(Triple<String, String?, String>("product-app", null, "${world.worktreesRoot}/app")), asked.toList())
+    }
+
+    @Test
+    fun `a declined repository at the root gets its worktrees folder at the root`() = runTest {
+        world.git.repository("/repo")
+
+        configure.addRepository(empty, "root", "/repo", answering(false)).getOrThrow()
+
+        assertEquals("/repo-worktrees", world.projects.list().first { it.config.baseRepositoryPath == "/repo" }.config.worktreesRoot)
+    }
+
+    @Test
+    fun `an unknown alias lists the repositories or says there are none`() {
+        assertTrue(UnknownMultirepoAlias("web", listOf("app", "api")).message.orEmpty().endsWith("its repositories are app, api"))
+        assertTrue(UnknownMultirepoAlias("web", emptyList()).message.orEmpty().endsWith("its repositories are none"))
+    }
 }

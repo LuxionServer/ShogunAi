@@ -39,6 +39,7 @@ import java.time.Duration
 import java.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -597,5 +598,26 @@ class DesktopCommandsTest {
         desktopTurnHook("orca computer click --app com.example.app")
 
         assertTrue("\"allow\"" !in out.toString(), out.toString())
+    }
+
+    @Test
+    fun `worktree status still lists the worktrees when the desktop turn can't be read`() {
+        val unreadable = object : DesktopTurnStore {
+            override fun read(): DesktopTurn? = error("unreadable")
+            override fun write(turn: DesktopTurn?) = error("unwritable")
+        }
+
+        assertEquals(0, cli(workingDirectory = base, store = unreadable).run(listOf("status")), err.toString())
+
+        assertTrue(out.lines().any { it.startsWith(task1) }, out.toString())
+    }
+
+    @Test
+    fun `acquire and release take the worktree's path and acquire with wait says nothing when it didn't wait`() {
+        assertEquals(0, cli(workingDirectory = base).run(listOf("desktop", "acquire", task1, "--wait")), err.toString())
+        assertFalse(err.contains("waited"), err.toString())
+        assertEquals(0, cli(workingDirectory = base).run(listOf("desktop", "release", task1)), err.toString())
+
+        assertEquals(null, turnStore.turn)
     }
 }

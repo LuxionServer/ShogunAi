@@ -26,7 +26,7 @@ class AddProjectE2eTest {
     fun `adding a repository with a local file lists the project and stores it`() = runComposeUiTest {
         val environment = E2eEnvironment.prepare()
         val repository = environment.repository("sample-app", ignored = mapOf(".env.local" to "API_URL=http://localhost\n"))
-        val appContainer = AppContainer()
+        val appContainer = AppContainer(environment.hostEnvironment())
         val strings = setShell(appContainer, AnsweringPathPicker(folder = repository))
 
         awaitText(strings.addProject)
@@ -54,7 +54,7 @@ class AddProjectE2eTest {
     fun `choosing a local file from the repository's ignored files stores it`() = runComposeUiTest {
         val environment = E2eEnvironment.prepare()
         val repository = environment.repository("sample-app", ignored = mapOf(".env.local" to "API_URL=http://localhost\n"))
-        val appContainer = AppContainer()
+        val appContainer = AppContainer(environment.hostEnvironment())
         val strings = setShell(appContainer, AnsweringPathPicker(folder = repository))
 
         awaitText(strings.addProject)

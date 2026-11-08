@@ -93,6 +93,46 @@ class PaletteIndexTest {
     }
 
     @Test
+    fun `settings and preferences are synonyms and the app's settings come first`() {
+        val items = index()
+
+        listOf("settings", "sett", "preferences", "pref").forEach { query ->
+            assertEquals("view:preferences", rankPaletteItems(items, query, emptyList()).first().id, query)
+        }
+        assertTrue(rankPaletteItems(items, "settings", emptyList()).any { it.id == "action:settings:api" })
+    }
+
+    @Test
+    fun `with nothing selected, open lists the worktrees`() {
+        val ranked = rankPaletteItems(index(), "open", emptyList())
+
+        assertEquals(listOf("worktree:api:${task9.path}"), ranked.map { it.id })
+    }
+
+    @Test
+    fun `with a worktree selected, open lists its open actions instead of the worktrees`() {
+        val entries = catalogFor().paletteEntries(EnglishStrings)
+        val items = buildPaletteIndex(listOf(api), listOf(PaletteWorktree(api, task9, null)), emptyList(), false, EnglishStrings, entries) { key, _ -> key }
+
+        val ranked = rankPaletteItems(items, "open", emptyList())
+
+        assertTrue(ranked.isNotEmpty())
+        assertTrue(ranked.all { it.primary is PaletteAction.RunSelected }, ranked.map { it.title }.toString())
+    }
+
+    @Test
+    fun `the footer says what enter and the secondary shortcut do`() {
+        val items = index()
+
+        assertEquals(
+            "↵ Show in All worktrees · ⌘↵ Copy launch command",
+            paletteFooter(items.first { it.kind == PaletteKind.WORKTREE }, EnglishStrings, secondaryShortcut = "⌘↵"),
+        )
+        assertEquals("↵ Open", paletteFooter(items.first { it.id == "project:api" }, EnglishStrings, secondaryShortcut = "⌘↵"))
+        assertEquals("↵ Run", paletteFooter(items.first { it.id == "action:reload" }, EnglishStrings, secondaryShortcut = "⌘↵"))
+    }
+
+    @Test
     fun `a worktree selects it and copies its launch command with the secondary action`() {
         val worktree = index().first { it.kind == PaletteKind.WORKTREE }
         val ref = WorktreeRef("api", task9.path)

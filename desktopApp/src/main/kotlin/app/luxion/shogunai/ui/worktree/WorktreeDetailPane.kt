@@ -18,6 +18,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import app.luxion.shogunai.domain.model.ProjectConfig
+import app.luxion.shogunai.domain.model.RunnerId
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.usecase.classifyOrigin
 import app.luxion.shogunai.domain.usecase.formatEnvironment
@@ -40,6 +41,7 @@ import app.luxion.shogunai.ui.worktree.inspector.EnvironmentSection
 import app.luxion.shogunai.ui.worktree.inspector.InspectorHeader
 import app.luxion.shogunai.ui.worktree.inspector.ProvisioningSection
 import app.luxion.shogunai.ui.worktree.inspector.ResourcesSection
+import app.luxion.shogunai.ui.worktree.inspector.runsWithLabel
 import app.luxion.shogunai.ui.worktree.inspector.StatusSection
 
 @Composable
@@ -65,7 +67,7 @@ fun WorktreeDetailPane(
             .padding(Spacing.lg),
         verticalArrangement = Arrangement.spacedBy(Spacing.md),
     ) {
-        InspectorHeader(worktree, origin, projectName)
+        InspectorHeader(worktree, origin, projectName, projectConfig.worktreesRoot, viewModel.home)
         WorktreeActionBar(viewModel, worktree, openWithRequests = openWithRequests)
         viewModel.actionErrors[worktree.path]?.let { failure ->
             ErrorNotice(
@@ -83,7 +85,12 @@ fun WorktreeDetailPane(
             )
         }
         StatusSection(status, viewModel.mainBranch?.name)
-        AgentSection(worktree, viewModel.agents, viewModel.agentsReadAt)
+        AgentSection(
+            worktree,
+            viewModel.agents,
+            viewModel.agentsReadAt,
+            runsWith = runsWithLabel(viewModel.agentFor(worktree).displayName, (viewModel.tools.defaultRunner ?: RunnerId.HERDR).displayName),
+        )
         EnvironmentSection(
             viewModel.environments[worktree.path],
             viewModel.ports[worktree.path].orEmpty(),

@@ -18,6 +18,8 @@ import app.luxion.shogunai.domain.model.RepositoryProvisioning
 import app.luxion.shogunai.domain.model.SimulatorSettings
 import app.luxion.shogunai.domain.model.parseEnvironmentVariable
 import kotlinx.coroutines.test.runTest
+import app.luxion.shogunai.domain.FakeFileManager
+import app.luxion.shogunai.domain.model.XcodeProvider
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -187,5 +189,14 @@ class MavenAndComposeContributionsTest {
         val environment = resolver(RepositoryProviders(dockerCompose = DockerComposeProvider()))(repository, task).getOrThrow()
 
         assertTrue(environment.variables.contains(COMPOSE_PROJECT_NAME to "main-repo-task-123"))
+    }
+    @Test
+    fun `the xcode compilation cache needs a file manager on macOS`() {
+        val providers = RepositoryProviders(xcode = XcodeProvider(compilationCache = true))
+        val withoutFiles = MachineProviderContributions(FakeAppleSimulators(), { SimulatorSettings() }, userHome = "/home/dev", isMac = true)
+        val withFiles = MachineProviderContributions(FakeAppleSimulators(), { SimulatorSettings() }, fileManager = FakeFileManager(), userHome = "/home/dev", isMac = true)
+
+        assertEquals(0, withoutFiles.forRepository(repository, providers).size)
+        assertEquals(1, withFiles.forRepository(repository, providers).size)
     }
 }

@@ -53,4 +53,9 @@ class NioLauncherFilesTest {
         assertNull(files.linkTarget(target))
         assertFalse(root.resolve("ShogunAi").exists())
     }
+
+    @Test
+    fun `a path the system can't represent has no link target`() {
+        assertNull(files.linkTarget("bad\u0000path"))
+    }
 }

@@ -1,5 +1,7 @@
 package app.luxion.shogunai.ui.worktree
 
+import app.luxion.shogunai.domain.usecase.Activity
+
 data class AliasedEntry(val alias: String, val entry: WorktreeEntry) {
     val ref: WorktreeRef get() = entry.ref
 }
@@ -7,13 +9,19 @@ data class AliasedEntry(val alias: String, val entry: WorktreeEntry) {
 data class ChangeGroup(
     val branch: String,
     val entries: List<AliasedEntry>,
-    val state: StateBadgeKind,
+    val activity: Activity,
     val collapsed: Boolean = false,
     val members: List<AliasedEntry> = entries,
+    val multirepoFolder: String = "",
 ) {
     val title: String get() = changeTitle(branch)
+    val state: StateBadgeKind get() = activity.badgeKind()
     val aliases: List<String> get() = members.map { it.alias }.distinct()
+    val key: ChangeKey get() = ChangeKey(multirepoFolder, branch)
+    val tag: GroupTag get() = GroupTag(multirepoFolder, branch, emptyList())
 }
+
+data class ChangeKey(val multirepoFolder: String, val branch: String)
 
 data class ChangeView(val groups: List<ChangeGroup>, val ungrouped: List<AliasedEntry>) {
     val isEmpty: Boolean get() = groups.isEmpty() && ungrouped.isEmpty()
@@ -26,10 +34,10 @@ data class GroupTag(val multirepoFolder: String, val branch: String, val others:
 
 fun changeTitle(branch: String): String = branch.substringAfterLast('/')
 
-fun combinedState(kinds: List<StateBadgeKind>): StateBadgeKind {
-    if (kinds.isEmpty()) return StateBadgeKind.OTHER
-    if (kinds.all { it == StateBadgeKind.MERGED }) return StateBadgeKind.MERGED
-    return kinds.filter { it != StateBadgeKind.MERGED }.minBy { it.ordinal }
+fun combinedActivity(activities: List<Activity>): Activity {
+    if (activities.isEmpty()) return Activity.Unknown
+    if (activities.all { it == Activity.Merged }) return Activity.Merged
+    return activities.filter { it != Activity.Merged }.min()
 }
 
 fun groupedBranches(entries: List<AliasedEntry>): Map<String, List<AliasedEntry>> =

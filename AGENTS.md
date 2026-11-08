@@ -13,12 +13,16 @@ Don't load all of `docs/` into context by default: search for the specific page 
 - Code compiles without warnings: every compiler warning is an error in every module. Tests may use `ExperimentalCoroutinesApi` APIs without `@OptIn`; production code may not.
 - **Never use company identifiers** (internal repo names, task prefixes, etc.) in code, tests, or examples. Use generic placeholders (`~/projects/main-repo`, `TASK-123`).
 
+## Tests
+
+- Every bug fix comes with a regression test, written first and seen failing so it reproduces the bug before the fix makes it pass.
+
 ## Coverage
 
 Kover measures line and branch coverage of every module, and `./gradlew koverVerify` (run by the macOS job of the Tests workflow) fails below a module's rules, set in its `build.gradle.kts`.
 
 - Before considering a change done, run `./gradlew test koverVerify`, not only `test`. When a rule fails, find the missed lines and branches with `./gradlew koverXmlReport` (or `koverHtmlReport`) and cover them with tests. Do the same after merging the base branch: code it brings in can break a rule.
-- `core` and `cli` must keep 100% of their lines: every production line you add needs a unit test. Their branches, and the lines and branches of the desktop app outside its composables, have floors.
+- `core` and `cli` must keep 100% of their lines: every production line you add needs a unit test. `core` must also cover every branch: its rule is a maximum of missed branches, the deserializer checks kotlinx.serialization generates for `@Serializable` classes whose fields all have defaults, which no input reaches. A new class like that raises the maximum by one, stated in your change's design. `cli` must keep 100% of its branches too. The lines and branches of the desktop app outside its composables have floors.
 - When your change raises a figure past a whole percentage, raise that floor in the same change. Never lower a floor.
 - Don't exclude code to meet a rule. The exclusions and their reasons are listed in the archived `coverage-kover` change's `design.md` (`openspec/changes/archive/*-coverage-kover/`); a new one needs its own reason in your change's design.
 - Code that depends on the operating system takes it as a parameter (`osName`), so tests cover every system's path on the macOS job.
@@ -39,7 +43,12 @@ Rules:
 - This file (`AGENTS.md`) is for agents only: style and process rules, not project content. If you're going to add an architecture explanation or a decision, it goes in `docs/` or OpenSpec, not here.
 - Non-trivial changes are planned with OpenSpec (`/opsx:propose` → `/opsx:apply` → `/opsx:archive`) before being implemented — see `docs/process/openspec.md`.
 - Archive a change (`/opsx:archive`) right after its implementation is tested and validated, in the same branch and **before** opening the pull request, so the archive, synced specs and roadmap update ship in that pull request. Don't leave archiving for a follow-up pull request after merge.
-- When archiving a change, check whether it affects the roadmap (`docs/roadmap.md` and `docs/roadmap.es.md`) and update both in the same branch: remove the items the change completes and renumber the remaining ones, update the status of the layers in "Direction" if it changes, and add the follow-ups the change left out.
+- When archiving a change, check whether it affects the roadmap (`docs/roadmap.md` and `docs/roadmap.es.md`) and update both in the same branch. Several pull requests update it at once and Git merges by line, so keep each edit to the lines it's about:
+  - One sentence per line. Never append a sentence or a clause to an existing line; add a new line instead.
+  - Planned sections aren't numbered, and their order is the priority. Never renumber or reorder the others.
+  - Remove only the bullet or the section the change completes.
+  - Add the follow-ups the change left out as new bullets in their section, or as a new section placed where its priority goes.
+  - Touch "Direction" only when a layer's or runner's status changes (its `Status:` line) or a genuinely new capability needs a bullet of its own. A new detail of an existing capability belongs in the specs and the release notes, not in Direction.
 
 ## Commands
 

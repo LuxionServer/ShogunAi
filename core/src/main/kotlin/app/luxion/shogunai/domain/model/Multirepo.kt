@@ -34,8 +34,8 @@ object WorkspaceSettingSerializer : KSerializer<WorkspaceSetting> {
     override fun deserialize(decoder: Decoder): WorkspaceSetting {
         val element = (decoder as JsonDecoder).decodeJsonElement()
         if (element is JsonObject) {
-            val alias = element["alias"]?.jsonPrimitive?.contentOrNull ?: DEFAULT_WORKSPACE_ALIAS
-            val default = element["default"]?.jsonPrimitive?.booleanOrNull ?: false
+            val alias = element["alias"]?.let { it.jsonPrimitive.contentOrNull } ?: DEFAULT_WORKSPACE_ALIAS
+            val default = element["default"]?.let { it.jsonPrimitive.booleanOrNull } ?: false
             return WorkspaceSetting(alias = alias, default = default)
         }
         val primitive = element as? JsonPrimitive
@@ -164,7 +164,7 @@ object SharedVariablesSerializer : KSerializer<SharedVariablesDeclaration> {
     }
 }
 
-class InvalidSharedEnvironment(message: String) : Exception(message)
+class InvalidSharedEnvironment(override val message: String) : Exception(message)
 
 fun parseSharedEnvironment(env: SharedVariablesDeclaration?, aliases: Set<String>): Map<String, List<EnvironmentVariable>> {
     val declared = env ?: return emptyMap()
@@ -194,7 +194,7 @@ data class Multirepo(
         get() = folder.trimEnd('/', '\\').substringAfterLast('/').substringAfterLast('\\')
 
     val declaredName: String?
-        get() = declaration.name?.trim()?.ifEmpty { null }
+        get() = declaration.name?.let { it.trim().ifEmpty { null } }
 
     val name: String
         get() = declaredName?.takeIf(::isValidMultirepoName) ?: folderName
@@ -265,7 +265,10 @@ data class Multirepo(
         }.joinToString("\n")
 
     val parentFolder: String
-        get() = Path.of(folder).normalize().parent?.toString()?.replace('\\', '/') ?: "/"
+        get() {
+            val parent = Path.of(folder).normalize().parent ?: return "/"
+            return parent.toString().replace('\\', '/')
+        }
 
     fun isOutsideParent(path: String): Boolean {
         val parent = Path.of(folder).normalize().parent ?: return false
@@ -300,7 +303,7 @@ fun isValidMultirepoName(name: String): Boolean = name.length <= MAX_MULTIREPO_N
 
 private fun parsedPath(path: String): Path? = runCatching { Path.of(path) }.getOrNull()
 
-fun isValidMultirepoPath(path: String): Boolean = !hasUnsafePathCharacters(path) && parsedPath(path) != null
+fun isValidMultirepoPath(path: String): Boolean = parsedPath(path) != null && !hasUnsafePathCharacters(path)
 
 fun resolveMultirepoPath(folder: String, path: String): String {
     val candidate = parsedPath(path) ?: return joinPath(folder, path)

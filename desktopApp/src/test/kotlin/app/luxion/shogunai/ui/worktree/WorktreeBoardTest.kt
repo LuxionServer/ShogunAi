@@ -8,6 +8,7 @@ import app.luxion.shogunai.domain.model.RunnerOpening
 import app.luxion.shogunai.domain.model.RunnerOutcome
 import app.luxion.shogunai.domain.usecase.toRunnerOpening
 import app.luxion.shogunai.ui.actions.ActionId
+import app.luxion.shogunai.ui.actions.OpenTarget
 import app.luxion.shogunai.ui.actions.menuBarEntries
 import app.luxion.shogunai.EmulatorUseCases
 import app.luxion.shogunai.GradleUseCases
@@ -322,15 +323,29 @@ class WorktreeBoardTest {
 
         board.show(null, GroupedView.ACTIVE)
 
-        val paths = board.stateGroups.flatMap { group -> group.items.map { it.worktree.path } }
+        val paths = board.stateGroups.flatMap { group -> group.items.flatMap { item -> item.entries.map { it.worktree.path } } }
         assertEquals(
             setOf("/home/dev/projects/api-TASK-12", "/home/dev/projects/TASK-123", "/home/dev/projects/task-456"),
             paths.toSet(),
         )
         assertEquals(listOf(StateGroupKind.NEW), board.stateGroups.map { it.kind })
-        assertEquals(3, board.activeCount)
-        assertEquals(1, board.activeCountOf("api"))
-        assertEquals(2, board.activeCountOf("main-repo"))
+        assertEquals(0, board.waitingCount)
+    }
+
+    @Test
+    fun `the sidebar counts only the worktrees waiting for the user`() = runTest(dispatcher) {
+        agentResult = Result.success(
+            mapOf("/home/dev/projects/api-TASK-12" to listOf(RunningAgent("codex", state = AgentState.BLOCKED))),
+        )
+        val board = board()
+        advanceUntilIdle()
+        board.startWatching()
+        tick()
+        board.stopWatching()
+
+        assertEquals(1, board.waitingCount)
+        assertEquals(1, board.waitingCountOf("api"))
+        assertEquals(0, board.waitingCountOf("main-repo"))
     }
 
     @Test
@@ -371,7 +386,7 @@ class WorktreeBoardTest {
 
         board.show(null, GroupedView.ACTIVE)
 
-        val branches = board.stateGroups.single().items.map { it.worktree.branch }
+        val branches = board.stateGroups.single().items.flatMap { it.entries }.map { it.worktree.branch }
         assertEquals(listOf("feature/TASK-9", "feature/TASK-10", "feature/task-11"), branches)
     }
 
@@ -392,6 +407,132 @@ class WorktreeBoardTest {
 
         assertEquals(listOf(StateGroupKind.STOPPED, StateGroupKind.OTHER), board.stateGroups.map { it.kind })
         assertEquals(listsBefore, api.lists)
+    }
+
+    private fun stoppedApiBoard(scope: TestScope): WorktreeBoard {
+        divergenceOutput = "0\t2\n"
+        upstreamOutput = "0\t0\n"
+        lastCommitOutput = "${now.minusSeconds(3600).epochSecond}\n"
+        repositories = listOf(api)
+        return board(clock = { now }).also { scope.advanceUntilIdle() }
+    }
+
+    private val stoppedRef = WorktreeRef("api", "/home/dev/projects/api-TASK-12")
+
+    @Test
+    fun `stopped starts collapsed in active and expanded in the other views`() = runTest(dispatcher) {
+        val board = stoppedApiBoard(this)
+        board.show(null, GroupedView.ACTIVE)
+
+        assertTrue(board.stateGroups.single { it.kind == StateGroupKind.STOPPED }.collapsed)
+        assertTrue(board.visibleRefs().isEmpty())
+        assertTrue(listItems(board).none { it is ListItem.StateRow })
+
+        board.show(null, GroupedView.ALL)
+        board.updateGrouping(Grouping.BY_STATE)
+
+        assertFalse(board.stateGroups.single { it.kind == StateGroupKind.STOPPED }.collapsed)
+        assertTrue(stoppedRef in board.visibleRefs())
+    }
+
+    @Test
+    fun `an expanded state group stays expanded when coming back to the view`() = runTest(dispatcher) {
+        val board = stoppedApiBoard(this)
+        board.show(null, GroupedView.ACTIVE)
+
+        board.toggleStateCollapsed(StateGroupKind.STOPPED)
+        board.show(null, GroupedView.ALL)
+        board.show(null, GroupedView.ACTIVE)
+
+        assertFalse(board.stateGroups.single { it.kind == StateGroupKind.STOPPED }.collapsed)
+        assertEquals(listOf(stoppedRef), board.visibleRefs())
+    }
+
+    @Test
+    fun `selecting a worktree of a collapsed state group expands it`() = runTest(dispatcher) {
+        val board = stoppedApiBoard(this)
+        board.show(null, GroupedView.ACTIVE)
+
+        board.select(stoppedRef)
+
+        assertEquals(stoppedRef, board.selected)
+        assertFalse(board.stateGroups.single { it.kind == StateGroupKind.STOPPED }.collapsed)
+    }
+
+    @Test
+    fun `collapsing the selected worktree's state group clears the selection`() = runTest(dispatcher) {
+        val board = stoppedApiBoard(this)
+        board.show(null, GroupedView.ACTIVE)
+        board.select(stoppedRef)
+
+        board.toggleStateCollapsed(StateGroupKind.STOPPED)
+
+        assertNull(board.selected)
+        assertTrue(board.stateGroups.single { it.kind == StateGroupKind.STOPPED }.collapsed)
+    }
+
+    @Test
+    fun `collapsing another state group keeps the selection`() = runTest(dispatcher) {
+        val board = stoppedApiBoard(this)
+        board.show(null, GroupedView.ACTIVE)
+        board.select(stoppedRef)
+
+        board.toggleStateCollapsed(StateGroupKind.NEW)
+
+        assertEquals(stoppedRef, board.selected)
+    }
+
+    @Test
+    fun `a text filter shows the rows of a collapsed state group`() = runTest(dispatcher) {
+        val board = stoppedApiBoard(this)
+        board.show(null, GroupedView.ACTIVE)
+
+        board.updateTextFilter("TASK-12")
+
+        assertFalse(board.stateGroups.single { it.kind == StateGroupKind.STOPPED }.collapsed)
+    }
+
+    @Test
+    fun `active counts the working agents while nothing waits for the user`() = runTest(dispatcher) {
+        agentResult = Result.success(
+            mapOf("/home/dev/projects/api-TASK-12" to listOf(RunningAgent("claude", AgentState.WORKING), RunningAgent("codex"))),
+        )
+        repositories = listOf(api)
+        val board = board()
+        advanceUntilIdle()
+        board.startWatching()
+        tick()
+        board.stopWatching()
+        board.show(null, GroupedView.ACTIVE)
+
+        assertTrue(board.isNothingWaiting)
+        assertFalse(board.isListEmpty)
+        assertEquals(2, board.workingAgentCount)
+    }
+
+    @Test
+    fun `an agent waiting for the user hides the nothing needs you notice`() = runTest(dispatcher) {
+        agentResult = Result.success(mapOf("/home/dev/projects/api-TASK-12" to listOf(RunningAgent("claude", AgentState.DONE))))
+        repositories = listOf(api)
+        val board = board()
+        advanceUntilIdle()
+        board.startWatching()
+        tick()
+        board.stopWatching()
+        board.show(null, GroupedView.ACTIVE)
+
+        assertFalse(board.isNothingWaiting)
+        assertEquals(0, board.workingAgentCount)
+    }
+
+    @Test
+    fun `the nothing needs you notice belongs to the active view only`() = runTest(dispatcher) {
+        repositories = listOf(api)
+        val board = board()
+        advanceUntilIdle()
+        board.show(null, GroupedView.ALL)
+
+        assertFalse(board.isNothingWaiting)
     }
 
     @Test
@@ -453,7 +594,7 @@ class WorktreeBoardTest {
         val listed = board.trayWorktrees(listOf(RecentWorktree("api", "/home/dev/projects/api-TASK-12")), EnglishStrings)
 
         board.stopWatching()
-        assertEquals(Activity.NeedsYou, listed.single().activity)
+        assertEquals(Activity.WaitingForYou, listed.single().activity)
         assertEquals("! feature/TASK-12 — api", trayWorktreeLabel(listed.single()))
     }
 
@@ -577,13 +718,15 @@ class WorktreeBoardTest {
     }
 
     @Test
-    fun `active shows the empty state once nothing is active`() = runTest(dispatcher) {
+    fun `active says nothing needs the user once nothing is listed`() = runTest(dispatcher) {
         val board = board(listOf(api.project))
         api.worktrees = emptyList()
         board.show(null, GroupedView.ACTIVE)
         advanceUntilIdle()
 
-        assertTrue(board.isNothingActive)
+        assertTrue(board.isNothingWaiting)
+        assertTrue(board.isListEmpty)
+        assertEquals(0, board.workingAgentCount)
     }
 
     @Test
@@ -626,7 +769,7 @@ class WorktreeBoardTest {
 
         board.updateViewProjectFilter("main-repo")
 
-        val paths = board.stateGroups.flatMap { group -> group.items.map { it.worktree.path } }
+        val paths = board.stateGroups.flatMap { group -> group.items.flatMap { item -> item.entries.map { it.worktree.path } } }
         assertEquals(setOf("/home/dev/projects/TASK-123", "/home/dev/projects/task-456"), paths.toSet())
 
         board.show(null, GroupedView.ALL)
@@ -824,6 +967,22 @@ class WorktreeBoardTest {
         tick()
         assertEquals(baseline + 2, emulatorProject.emulatorReads)
         board.stopWatching()
+    }
+
+    @Test
+    fun `the execution column is used only while some row of the view runs something`() = runTest(dispatcher) {
+        val board = board()
+        board.updateGrouping(Grouping.BY_PROJECT)
+        advanceUntilIdle()
+
+        assertFalse(usesExecution(listItems(board), board, Instant.now(), EnglishStrings))
+
+        agentResult = Result.success(mapOf("/home/dev/projects/api-TASK-12" to listOf(RunningAgent("codex"))))
+        board.startWatching()
+        tick()
+        board.stopWatching()
+
+        assertTrue(usesExecution(listItems(board), board, Instant.now(), EnglishStrings))
     }
 
     @Test
@@ -1211,6 +1370,23 @@ class WorktreeBoardTest {
     }
 
     @Test
+    fun `a cleanup whose only merged worktrees have a running agent says they are kept for it`() = runTest(dispatcher) {
+        mainRepo.worktrees = emptyList()
+        agentResult = Result.success(mapOf("/home/dev/projects/api-TASK-12" to listOf(RunningAgent("codex"))))
+        val board = board()
+        advanceUntilIdle()
+        board.startWatching()
+        tick()
+        board.stopWatching()
+
+        val expected = CleanupBlock.KeptForRunningAgent(worktrees = listOf("api-TASK-12"), agents = listOf("codex"))
+        assertEquals(expected, board.cleanUpBlock("api"))
+        assertEquals(expected, board.cleanUpBlock())
+        assertEquals(EnglishStrings.cleanUpBlockedAgentRunning(listOf("api-TASK-12"), listOf("codex")), expected.describe(EnglishStrings))
+        assertEquals(CleanupBlock.NothingToCleanUp, board.cleanUpBlock("main-repo"))
+    }
+
+    @Test
     fun `refreshing the view reloads branches only for an open existing-branch dialog`() = runTest(dispatcher) {
         val board = board()
         advanceUntilIdle()
@@ -1233,7 +1409,7 @@ class WorktreeBoardTest {
         val board = board()
         advanceUntilIdle()
         board.show(null, GroupedView.ACTIVE)
-        val activePaths = board.stateGroups.flatMap { group -> group.items.map { it.worktree.path } }
+        val activePaths = board.stateGroups.flatMap { group -> group.items.flatMap { item -> item.entries.map { it.worktree.path } } }
         assertEquals(3, activePaths.size)
 
         mainRepo.statusGate = CompletableDeferred()
@@ -1241,7 +1417,7 @@ class WorktreeBoardTest {
         advanceUntilIdle()
 
         assertFalse(board.isReadingActivity)
-        assertEquals(activePaths, board.stateGroups.flatMap { group -> group.items.map { it.worktree.path } })
+        assertEquals(activePaths, board.stateGroups.flatMap { group -> group.items.flatMap { item -> item.entries.map { it.worktree.path } } })
         mainRepo.statusGate?.complete(Unit)
         advanceUntilIdle()
     }
@@ -1317,7 +1493,7 @@ class WorktreeBoardTest {
 
         assertEquals(listOf("api"), items.filterIsInstance<ListItem.GroupState>().map { it.group.project.id })
         assertTrue(items.filterIsInstance<ListItem.GroupState>().single().showsProjectName)
-        assertFalse(board.isNothingActive)
+        assertFalse(board.isNothingWaiting)
     }
 
     @Test
@@ -1490,6 +1666,211 @@ class WorktreeBoardTest {
         approved = true,
     )
 
+    private fun TestScope.activeProductBoard(multirepoActions: MultirepoActions = MultirepoActions.NONE): WorktreeBoard {
+        val board = productBoard(multirepoActions)
+        board.show(null, GroupedView.ACTIVE)
+        return board
+    }
+
+    private fun WorktreeBoard.activeChanges(): List<StateItem.Change> =
+        stateGroups.flatMap { it.items }.filterIsInstance<StateItem.Change>()
+
+    private val appTask1 = WorktreeRef("app", "/home/dev/projects/app-TASK-1")
+    private val apiTask1 = WorktreeRef("api", "/home/dev/projects/api-TASK-1")
+
+    @Test
+    fun `active lists a multirepo change as one row in the state of its most urgent worktree`() = runTest(dispatcher) {
+        unmergedPaths += "/home/dev/projects/api-TASK-1"
+        val board = activeProductBoard()
+
+        val unfinished = board.stateGroups.single()
+        assertEquals(StateGroupKind.UNFINISHED, unfinished.kind)
+        val change = unfinished.items.single() as StateItem.Change
+        assertEquals("TASK-1", change.group.title)
+        assertEquals(product.folder, change.group.multirepoFolder)
+        assertEquals(listOf("api", "app"), change.group.entries.map { it.alias })
+        assertEquals(StateBadgeKind.UNFINISHED, change.group.state)
+        assertFalse(change.expanded)
+        assertTrue(change.visibleRefs.isEmpty())
+        assertTrue(board.visibleRefs().isEmpty())
+        assertEquals(listOf("active-change:${product.folder}:feature/TASK-1"), listItems(board).filterNot { it is ListItem.StateHeader }.map { it.key })
+    }
+
+    @Test
+    fun `a change whose worktrees are all merged isn't active`() = runTest(dispatcher) {
+        val board = activeProductBoard()
+
+        assertTrue(board.activeChanges().isEmpty())
+    }
+
+    @Test
+    fun `active grouped by project keeps one row per worktree with its group tag`() = runTest(dispatcher) {
+        unmergedPaths += "/home/dev/projects/api-TASK-1"
+        val board = activeProductBoard()
+        board.updateGrouping(Grouping.BY_PROJECT)
+
+        assertTrue(board.activeChanges().isEmpty())
+        assertEquals(listOf("api"), board.groups.map { it.project.id })
+        assertEquals("TASK-1 · +app", board.groupTagOf(apiTask1)?.label)
+    }
+
+    @Test
+    fun `expanding a change lists one child row per repository and collapsing it clears its selection`() = runTest(dispatcher) {
+        unmergedPaths += "/home/dev/projects/api-TASK-1"
+        val board = activeProductBoard()
+        val key = board.activeChanges().single().group.key
+
+        board.toggleChangeExpanded(key)
+
+        assertTrue(board.activeChanges().single().expanded)
+        assertEquals(listOf(apiTask1, appTask1), board.visibleRefs())
+        val children = listItems(board).filterIsInstance<ListItem.ChangeChild>()
+        assertEquals(listOf(apiTask1, appTask1), children.map { it.ref })
+        board.select(appTask1)
+        board.selectPrevious()
+        assertEquals(apiTask1, board.selected)
+
+        board.toggleChangeExpanded(key)
+
+        assertFalse(board.activeChanges().single().expanded)
+        assertNull(board.selected)
+    }
+
+    @Test
+    fun `collapsing a change keeps a selection outside it`() = runTest(dispatcher) {
+        unmergedPaths += "/home/dev/projects/api-TASK-1"
+        unmergedPaths += "/home/dev/projects/api-loose"
+        val board = activeProductBoard()
+        val key = board.activeChanges().single().group.key
+        val loose = WorktreeRef("api", "/home/dev/projects/api-loose")
+        board.toggleChangeExpanded(key)
+        board.select(loose)
+
+        board.toggleChangeExpanded(key)
+
+        assertEquals(loose, board.selected)
+    }
+
+    @Test
+    fun `selecting a worktree of a collapsed change expands it`() = runTest(dispatcher) {
+        unmergedPaths += "/home/dev/projects/api-TASK-1"
+        val board = activeProductBoard()
+
+        board.select(appTask1)
+
+        assertTrue(board.activeChanges().single().expanded)
+        assertEquals(appTask1, board.selected)
+    }
+
+    @Test
+    fun `a selected change stays listed after every worktree of it is merged`() = runTest(dispatcher) {
+        val board = activeProductBoard()
+
+        board.select(appTask1)
+
+        val change = board.activeChanges().single()
+        assertEquals(StateBadgeKind.MERGED, change.group.state)
+        assertTrue(change.expanded)
+        assertEquals(StateGroupKind.MERGED, board.stateGroups.single().kind)
+    }
+
+    @Test
+    fun `filtering by text shows matching changes expanded with only the matching worktrees`() = runTest(dispatcher) {
+        unmergedPaths += "/home/dev/projects/api-TASK-1"
+        val board = activeProductBoard()
+
+        board.updateTextFilter("api-TASK-1")
+
+        val change = board.activeChanges().single()
+        assertTrue(change.expanded)
+        assertEquals(listOf(apiTask1), change.visibleRefs)
+        assertEquals(listOf(apiTask1, appTask1), change.group.members.map { it.ref })
+
+        board.updateTextFilter("nothing-matches")
+        assertTrue(board.activeChanges().isEmpty())
+    }
+
+    @Test
+    fun `change rows sort with the other rows by branch and by their latest activity`() = runTest(dispatcher) {
+        unmergedPaths += setOf("/home/dev/projects/api-TASK-1", "/home/dev/projects/api-loose", "/home/dev/projects/tools-TASK-1")
+        val board = activeProductBoard()
+
+        val labels = board.stateGroups.single().items.map { item ->
+            when (item) {
+                is StateItem.Single -> item.entry.ref.path
+                is StateItem.Change -> item.group.title
+            }
+        }
+        assertEquals("/home/dev/projects/api-loose", labels.first())
+        assertEquals(setOf("TASK-1", "/home/dev/projects/tools-TASK-1"), labels.drop(1).toSet())
+
+        board.updateSort(WorktreeSort.ACTIVITY)
+        assertEquals(3, board.stateGroups.single().items.size)
+    }
+
+    @Test
+    fun `a collapsed change with an agent uses the execution column`() = runTest(dispatcher) {
+        unmergedPaths += "/home/dev/projects/api-TASK-1"
+        agentResult = Result.success(mapOf("/home/dev/projects/api-TASK-1" to listOf(RunningAgent("claude"))))
+        val board = activeProductBoard()
+        board.startWatching()
+        tick()
+        board.stopWatching()
+
+        assertEquals(StateGroupKind.AGENT_WORKING, board.stateGroups.single().kind)
+        assertTrue(usesExecution(listItems(board), board, Instant.now(), EnglishStrings))
+
+        board.toggleChangeExpanded(board.activeChanges().single().group.key)
+        assertTrue(usesExecution(listItems(board).filterIsInstance<ListItem.ChangeChild>(), board, Instant.now(), EnglishStrings))
+
+        board.showMultirepo(product.folder)
+        assertTrue(usesExecution(listItems(board).filterIsInstance<ListItem.ChangeRow>(), board, Instant.now(), EnglishStrings))
+    }
+
+    @Test
+    fun `group actions from active resolve the group's own multirepo`() = runTest(dispatcher) {
+        unmergedPaths += "/home/dev/projects/api-TASK-1"
+        val calls = mutableListOf<List<String>>()
+        val board = activeProductBoard(
+            MultirepoActions(
+                createGroup = { members, taskId, _, _, _ ->
+                    calls += members.map { it.alias }
+                    Result.success(GroupCreation("feature/$taskId", members.map { GroupRepositoryResult(it.alias, GroupRepositoryOutcome.CREATED) }))
+                },
+                openAgent = { _, _ -> Result.success(HerdrOpening(HerdrOutcome.OPENED, "w1:p1", "Claude").toRunnerOpening()) },
+            ),
+        )
+        val group = board.activeChanges().single().group
+
+        assertEquals(listOf("docs"), board.missingAliases(group))
+        assertTrue(board.canAddRepositories(group))
+        board.performGroupAction(group, ActionId.AddRepository("docs"))
+        advanceUntilIdle()
+        assertEquals(listOf(listOf("docs")), calls)
+
+        board.performGroupAction(group, ActionId.OpenAll(OpenTarget.HERDR))
+        advanceUntilIdle()
+        assertEquals(setOf("/home/dev/projects/api-TASK-1", "/home/dev/projects/app-TASK-1"), openedInHerdr.toSet())
+
+        board.performGroupAction(group, ActionId.CleanUp)
+        assertNull(board.cleanupOnly)
+    }
+
+    @Test
+    fun `a group's actions can open it in Orca and clean it up from any view`() = runTest(dispatcher) {
+        val board = productBoard()
+        val group = board.changeView.groups.single { it.title == "TASK-1" }
+        board.show(null, GroupedView.ACTIVE)
+
+        board.performGroupAction(group, ActionId.CleanUpGroup)
+        assertEquals(setOf("/home/dev/projects/app-TASK-1", "/home/dev/projects/api-TASK-1"), board.cleanupOnly)
+        board.dismissCleanup()
+
+        board.performGroupAction(group, ActionId.OpenAll(OpenTarget.ORCA))
+        advanceUntilIdle()
+        assertTrue(board.openingGroupsInOrca.isEmpty())
+    }
+
     private fun TestScope.productBoard(multirepoActions: MultirepoActions = MultirepoActions.NONE, runnerInUse: RunnerId = RunnerId.HERDR): WorktreeBoard {
         repositories = listOf(productApp, productApi, productDocs, tools)
         val board = board(multirepoActions = multirepoActions, runnerInUse = runnerInUse)
@@ -1521,7 +1902,7 @@ class WorktreeBoardTest {
 
         assertTrue(board.isGroupedByState)
         assertEquals(5, board.stateGroups.sumOf { it.items.size })
-        assertTrue(board.stateGroups.flatMap { it.items }.none { it.worktree.isMain })
+        assertTrue(board.stateGroups.flatMap { it.items }.flatMap { it.entries }.none { it.worktree.isMain })
         assertEquals(Grouping.BY_STATE, preferences.loadGrouping(GroupedView.MULTIREPO))
         board.show(null, GroupedView.ALL)
         assertEquals(Grouping.BY_PROJECT, board.grouping)
@@ -1981,6 +2362,40 @@ class WorktreeBoardTest {
     }
 
     @Test
+    fun `a new change stopped by unavailable local files opens nothing`() = runTest(dispatcher) {
+        var opened = 0
+        val board = productBoard(
+            orcaActions(
+                createGroup = { _, taskId ->
+                    Result.success(
+                        GroupCreation(
+                            "feature/$taskId",
+                            listOf(
+                                GroupRepositoryResult("api", GroupRepositoryOutcome.FAILED, error = WorktreeError.LocalFilesUnavailable("/home/dev/projects/api", emptyList())),
+                                GroupRepositoryResult("app", GroupRepositoryOutcome.SKIPPED, blockedBy = listOf("api")),
+                            ),
+                        ),
+                    )
+                },
+                openGroupInOrca = { group ->
+                    opened++
+                    orcaOpened(group) { Result.success(OrcaOpening(OrcaOutcome.STARTED_AGENT, "term_$it", "Claude")) }
+                },
+            ),
+        )
+
+        board.openNewChange()
+        board.newChange!!.updateTaskId("TASK-20")
+        board.newChange!!.runner = RunnerId.ORCA
+        board.confirmNewChange()
+        advanceUntilIdle()
+
+        assertEquals(0, opened)
+        assertEquals(listOf(GroupRepositoryOutcome.FAILED, GroupRepositoryOutcome.SKIPPED), board.newChange!!.results!!.map { it.outcome })
+        assertNull(board.newChange!!.openings)
+    }
+
+    @Test
     fun `a new change opens only the worktrees that exist when a repository fails`() = runTest(dispatcher) {
         val groups = mutableListOf<BranchGroup>()
         val board = productBoard(
@@ -2075,7 +2490,7 @@ class WorktreeBoardTest {
         assertEquals(listOf("claude"), search.agentCommands)
         assertEquals(listOf(product.folder), search.worktrees.map { it.path })
         assertEquals(listOf(RunningAgent("claude", AgentState.WORKING)), board.multirepoAgentsOf(product.folder))
-        assertEquals(1, board.multirepoActivityCountOf(product.folder))
+        assertEquals(0, board.multirepoWaitingCountOf(product.folder))
     }
 
     @Test
@@ -2094,7 +2509,7 @@ class WorktreeBoardTest {
     }
 
     @Test
-    fun `an idle multirepo agent shows but does not count as activity`() = runTest(dispatcher) {
+    fun `a done multirepo agent counts as waiting for the user`() = runTest(dispatcher) {
         val board = productBoard()
         agentResult = Result.success(mapOf(product.folder to listOf(RunningAgent("claude", AgentState.DONE))))
 
@@ -2102,6 +2517,6 @@ class WorktreeBoardTest {
         advanceUntilIdle()
 
         assertEquals(1, board.multirepoAgentsOf(product.folder).size)
-        assertEquals(0, board.multirepoActivityCountOf(product.folder))
+        assertEquals(1, board.multirepoWaitingCountOf(product.folder))
     }
 }

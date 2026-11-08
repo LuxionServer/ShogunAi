@@ -565,6 +565,114 @@ class CliOrcaClientTest {
     private companion object {
         const val COUNT_PROMPT = "Count slowly from 1 to 30, one number per line, then reply with the word done."
     }
+
+    private fun replying(result: String) = FakeShellCommandExecutor { FakeShellCommandExecutor.success(it, """{"ok":true,"result":$result}""") }
+
+    @Test
+    fun `a status without a runtime or reachability isn't running and a reachable one without version isn't checked`() = runTest {
+        assertEquals(OrcaStatus(running = false, version = null), client(replying("{}")).status())
+        assertEquals(OrcaStatus(running = false, version = null), client(replying("""{"runtime":{"reachable":"yes"}}""")).status())
+        assertEquals(OrcaStatus(running = true, version = null), client(replying("""{"runtime":{"reachable":true}}""")).status())
+        assertEquals(OrcaStatus(running = false, version = "1.0.0"), client(replying("""{"runtime":{"reachable":false,"appVersion":"1.0.0"}}""")).status())
+    }
+
+    @Test
+    fun `a response without a result or with the wrong shape is unexpected`() = runTest {
+        val empty = FakeShellCommandExecutor { FakeShellCommandExecutor.success(it, """{"ok":true}""") }
+
+        assertFailsWith<WorktreeError.OrcaCommandFailed> { client(empty).repos() }
+        assertFailsWith<WorktreeError.OrcaCommandFailed> { client(replying("""{"repo":"x"}""")).addRepo(repository) }
+        assertFailsWith<WorktreeError.OrcaCommandFailed> { client(replying("""{"repo":{"id":"r"}}""")).addRepo(repository) }
+        assertFailsWith<WorktreeError.OrcaCommandFailed> { client(replying("{}")).worktrees(repoId) }
+        assertFailsWith<WorktreeError.OrcaCommandFailed> { client(replying("{}")).agentsByWorktree() }
+        assertFailsWith<WorktreeError.OrcaCommandFailed> { client(replying("{}")).ports() }
+        assertFailsWith<WorktreeError.OrcaCommandFailed> { client(replying("{}")).terminals(folder) }
+        assertFailsWith<WorktreeError.OrcaCommandFailed> { client(replying("{}")).terminalAgent("term_1") }
+        assertFailsWith<WorktreeError.OrcaCommandFailed> { client(replying("{}")).createTerminal(folder, "t", "claude", focus = false) }
+        assertFailsWith<WorktreeError.OrcaCommandFailed> { client(replying("""{"terminal":{"title":"t"}}""")).createTerminal(folder, "t", "claude", focus = true) }
+    }
+
+    @Test
+    fun `rows without the fields they need are skipped`() = runTest {
+        assertEquals(emptyList(), client(replying("""{"repos":["x",{"path":"/r"},{"id":"r"}]}""")).repos())
+        assertEquals(emptyList(), client(replying("""{"worktrees":[{"comment":"c"}]}""")).worktrees(repoId))
+        assertEquals(
+            listOf(OrcaWorktree("/w", createdByOrca = false)),
+            client(replying("""{"worktrees":[{"path":"/w","agents":"x"},{"comment":"c"}]}""")).agentsByWorktree(),
+        )
+        assertEquals(
+            listOf(OrcaAgent("claude", null)),
+            client(replying("""{"worktrees":[{"path":"/w","agents":[{"state":"working"},{"agentType":"claude","state":"idle"}]}]}""")).agentsByWorktree().single().agents,
+        )
+        assertEquals(emptyList(), client(replying("""{"terminals":[{"title":"t"}]}""")).terminals(folder))
+    }
+
+    @Test
+    fun `linked numbers, folder ids and ports are read only when well formed`() = runTest {
+        val rows = """{"worktrees":[
+            {"path":"/a","linkedPR":7,"linkedIssue":{"number":"x"},"workspaceKind":"folder-workspace","worktreeId":"folder:"},
+            {"path":"/b","linkedPR":[1],"linkedIssue":{"title":"t"},"workspaceKind":"folder-workspace","worktreeId":"other"},
+            {"path":"/c","linkedPR":{"number":3},"workspaceKind":"folder-workspace"}
+        ]}"""
+        val worktrees = client(replying(rows)).worktrees(repoId)
+
+        assertEquals(listOf(7, null, 3), worktrees.map { it.linkedPullRequest })
+        assertEquals(listOf<Int?>(null, null, null), worktrees.map { it.linkedIssue })
+        assertEquals(listOf<String?>(null, null, null), worktrees.map { it.folderId })
+
+        val ports = """{"ports":[
+            {"kind":"system","port":1},
+            {"kind":"workspace","port":"x","owner":{"path":"/a"}},
+            {"kind":"workspace","port":2,"owner":"x"},
+            {"kind":"workspace","port":3,"owner":{"path":" "}},
+            {"kind":"workspace","port":4,"owner":{"path":"/a"}}
+        ]}"""
+        assertEquals(listOf(OrcaPort(4, "/a")), client(replying(ports)).ports())
+    }
+
+    @Test
+    fun `a failure is described by the response, by the error output or by the exit code`() = runTest {
+        fun failing(stdout: String, stderr: String) = FakeShellCommandExecutor { CommandResult(it, 1, stdout, stderr) }
+
+        assertEquals("from stderr", assertFailsWith<WorktreeError.OrcaCommandFailed> { client(failing("", """{"error":{"message":"from stderr"}}""")).repos() }.detail)
+        assertEquals("plain", assertFailsWith<WorktreeError.OrcaCommandFailed> { client(failing("not json", "plain")).repos() }.detail)
+        assertEquals("exit code 1", assertFailsWith<WorktreeError.OrcaCommandFailed> { client(failing("[]", " ")).repos() }.detail)
+        val okFalse = FakeShellCommandExecutor { FakeShellCommandExecutor.success(it, """{"ok":false,"error":"busy"}""") }
+        assertFailsWith<WorktreeError.OrcaCommandFailed> { client(okFalse).repos() }
+        val nullError = FakeShellCommandExecutor { FakeShellCommandExecutor.success(it, """{"ok":"maybe","error":null,"result":{"repos":[]}}""") }
+        assertEquals(emptyList(), client(nullError).repos())
+        val okWithError = FakeShellCommandExecutor { FakeShellCommandExecutor.success(it, """{"ok":true,"error":"busy","result":{"repos":[]}}""") }
+        assertFailsWith<WorktreeError.OrcaCommandFailed> { client(okWithError).repos() }
+    }
+
+    @Test
+    fun `the executable falls back to the bare name and short versions compare as zeros`() {
+        assertEquals("orca-ide", client(FakeShellCommandExecutor(), osName = "Linux", onPath = emptyMap()).executable())
+        assertFalse(CliOrcaClient(FakeShellCommandExecutor(), findExecutable = { null }, isFile = { false }).isInstalled())
+        assertTrue(CliOrcaClient.isOlder("1", "1.4.243"))
+        assertTrue(CliOrcaClient.isOlder("1.x.300", "1.4.243"))
+    }
+
+    @Test
+    fun `starting without Orca fails as not installed`() = runTest {
+        assertFailsWith<WorktreeError.OrcaNotInstalled> { client(FakeShellCommandExecutor(), onPath = emptyMap()).start() }
+    }
+
+    @Test
+    fun `a successful answer that isn't JSON or has no result object reads as empty`() = runTest {
+        val notJson = FakeShellCommandExecutor { FakeShellCommandExecutor.success(it, "done") }
+        val resultNotObject = FakeShellCommandExecutor { FakeShellCommandExecutor.success(it, """{"ok":true,"result":[]}""") }
+
+        assertEquals(OrcaStatus(running = false, version = null), client(notJson).status())
+        assertEquals(OrcaStatus(running = false, version = null), client(resultNotObject).status())
+        assertEquals(emptyList(), client(replying("""{"ports":[{"kind":"workspace","port":{},"owner":{"path":"/a"}}]}""")).ports())
+    }
+
+    @Test
+    fun `a CLI on the path is installed and a version shorter than the minimum is older`() {
+        assertTrue(client(FakeShellCommandExecutor()).isInstalled())
+        assertTrue(CliOrcaClient.isOlder("1.4", "1.4.243"))
+    }
 }
 
 private const val SIMULATOR_UDID = "8D2C51A4-3F0B-4C6E-9A1D-5B7E2F90C3A1"

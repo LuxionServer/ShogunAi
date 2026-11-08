@@ -8,7 +8,12 @@ import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.RecentWorktree
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.ProjectConfig
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
+import kotlin.time.Duration.Companion.seconds
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
@@ -29,6 +34,24 @@ class ShellViewModelTest {
     private val preferences = FakeShellPreferenceRepository()
 
     private fun viewModel() = ShellViewModel(repository, preferences)
+
+    @Test
+    fun `a project added outside the app appears on the next catalogue tick`() = runTest {
+        var modifiedAt = 1L
+        val viewModel = ShellViewModel(repository, preferences, catalogModifiedAt = { modifiedAt })
+        val web = Project(id = "web", name = "web", config = config)
+        val ticks = launch { viewModel.watchCatalog(5.seconds) }
+        runCurrent()
+
+        repository.save(web)
+        advanceTimeBy(6.seconds)
+        assertFalse(web in viewModel.projects)
+
+        modifiedAt = 2L
+        advanceTimeBy(5.seconds)
+        assertTrue(web in viewModel.projects)
+        ticks.cancel()
+    }
 
     @Test
     fun `lists projects alphabetically ignoring case`() {
@@ -54,6 +77,14 @@ class ShellViewModelTest {
         preferences.lastDestination = "active"
 
         assertEquals(ShellDestination.Active, viewModel().destination)
+    }
+
+    @Test
+    fun `selecting the machine overview saves it and it is restored`() {
+        viewModel().selectMachineOverview()
+
+        assertEquals("machine", preferences.lastDestination)
+        assertEquals(ShellDestination.MachineOverview, viewModel().destination)
     }
 
     @Test

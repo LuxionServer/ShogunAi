@@ -4,6 +4,7 @@ import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.OrcaWorktree
 import java.time.Instant
 import app.luxion.shogunai.domain.model.ResourceLimits
+import app.luxion.shogunai.domain.model.SimulatorState
 import app.luxion.shogunai.domain.model.EmulatorState
 import app.luxion.shogunai.domain.model.ReleaseRecord
 import app.luxion.shogunai.domain.model.DaemonState
@@ -929,5 +930,114 @@ class EnvironmentCommandsTest {
         val pools = jsonOut().getValue("pools") as kotlinx.serialization.json.JsonArray
         val waiting = pools.map { ((it as kotlinx.serialization.json.JsonObject).getValue("waiting") as kotlinx.serialization.json.JsonArray).size }
         assertEquals(listOf(1, 0, 0), waiting)
+    }
+
+    @Test
+    fun `simulator start in a repository without a project uses the default settings`() {
+        assertEquals(0, cli(withSimulator(), registered = false).run(listOf("simulator", "start")), err.toString())
+
+        assertEquals(1, appleSimulators.created.size)
+    }
+
+    @Test
+    fun `simulator status takes the worktree's path`() {
+        assertEquals(0, cli(withSimulator(), workingDirectory = base).run(listOf("simulator", "status", linked)), err.toString())
+
+        assertTrue(out.contains("not acquired"), out.toString())
+    }
+
+    @Test
+    fun `simulator start with wait starts it when there is room`() {
+        assertEquals(0, cli(withSimulator()).run(listOf("simulator", "start", "--wait")), err.toString())
+    }
+
+    @Test
+    fun `simulator status fails where simulators aren't supported`() {
+        appleSimulators.supported = false
+
+        assertEquals(1, cli(withSimulator()).run(listOf("simulator", "status")))
+    }
+
+    @Test
+    fun `simulator start reports the simulator it released to make room`() {
+        resourceLimits.settings = ResourceSettings(CapacityProfile.CUSTOM, ResourceLimits(emulators = null, simulators = 1, gradleDaemons = null))
+        store.writeResources("$common/worktrees/TASK-9", mapOf("ios-simulator" to "SIM-9"))
+        appleSimulators.addExisting("SIM-9", "ShogunAi · main-repo · TASK-9", SimulatorState.BOOTED)
+
+        assertEquals(0, cli(withSimulator()).run(listOf("simulator", "start")), err.toString())
+
+        assertTrue(err.contains("released the simulator of main-repo · TASK-9 to make room"), err.toString())
+    }
+
+    @Test
+    fun `simulator start again keeps the simulator without exporting it again`() {
+        cli(withSimulator()).run(listOf("simulator", "start"))
+        out.clear()
+
+        assertEquals(0, cli(withSimulator()).run(listOf("simulator", "start")), err.toString())
+
+        assertFalse(out.contains("export IOS_SIMULATOR_UDID"), out.toString())
+    }
+
+    @Test
+    fun `emulator start names a holder without a name as another worktree`() {
+        resourceLimits.settings = ResourceSettings(CapacityProfile.CUSTOM, ResourceLimits(emulators = 1, simulators = null, gradleDaemons = null))
+        store.writePorts("/", mapOf("emulator" to 5556))
+
+        assertEquals(0, cli(withEmulator()).run(listOf("emulator", "start")), err.toString())
+
+        assertTrue(err.contains("released the emulator of another worktree to make room"), err.toString())
+    }
+
+    @Test
+    fun `simulator status says the KMP tests use the simulator when the init script is installed`() {
+        kmpTestWiring.installed = true
+
+        assertEquals(0, cli(withSimulator()).run(listOf("simulator", "status")), err.toString())
+
+        assertTrue(out.contains("KMP simulator tests use this worktree's simulator."), out.toString())
+    }
+
+    @Test
+    fun `simulator gradle-init install accepts yes in full`() {
+        assertEquals(0, cli(declaring(), input = "yes\n").run(listOf("simulator", "gradle-init", "install")))
+
+        assertEquals(1, kmpTestWiring.installs)
+    }
+
+    @Test
+    fun `pool status leaves out simulators where they aren't supported and marks a pool over its limit`() {
+        appleSimulators.supported = false
+        resourceLimits.settings = ResourceSettings(CapacityProfile.CUSTOM, ResourceLimits(emulators = 1, simulators = null, gradleDaemons = null))
+        store.writePorts("$common/worktrees/TASK-123", mapOf("emulator" to 5554))
+        store.writePorts("$common/worktrees/TASK-9", mapOf("emulator" to 5556))
+        androidSdk.states["emulator-5554"] = EmulatorState.RUNNING
+        androidSdk.states["emulator-5556"] = EmulatorState.RUNNING
+        daemons.daemons = listOf(FakeGradleDaemonSource.gradleDaemon(11, DaemonState.Busy, lastBuildDirectory = linked))
+
+        assertEquals(0, cli(withEmulator()).run(listOf("pool", "status")), err.toString())
+
+        assertTrue(out.lines().contains("emulators 2/1  over the limit"), out.toString())
+        assertFalse(out.contains("simulators"), out.toString())
+        assertTrue(out.lines().any { it.startsWith("  pid 11 ") && !it.startsWith("  pid 11 - ") }, out.toString())
+        assertTrue(out.lines().any { it.startsWith("gradle daemons ") && it.endsWith("/no limit") }, out.toString())
+    }
+
+    @Test
+    fun `pool trim without a limit says so`() {
+        resourceLimits.settings = ResourceSettings(CapacityProfile.CUSTOM, ResourceLimits(emulators = null, simulators = null, gradleDaemons = null))
+
+        assertEquals(0, cli(withEmulator()).run(listOf("pool", "trim")), err.toString())
+
+        assertTrue(out.contains("gradle daemons 0/no limit"), out.toString())
+    }
+
+    @Test
+    fun `session-start without a usable CLAUDE_ENV_FILE still lists the environment`() {
+        assertEquals(0, cli(declaring("PORT" to "\${port}"), input = """{"cwd": "$linked"}""", environment = emptyMap()).run(listOf("hook", "session-start")), err.toString())
+        assertEquals(0, cli(declaring("PORT" to "\${port}"), input = """{"cwd": "$linked"}""", environment = mapOf("CLAUDE_ENV_FILE" to " ")).run(listOf("hook", "session-start")), err.toString())
+
+        assertEquals(2, out.lines().count { it == "ShogunAi environment of worktree TASK-123: PORT" }, out.toString())
+        assertEquals("", envFile.readText())
     }
 }

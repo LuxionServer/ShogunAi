@@ -44,7 +44,8 @@ class ProcessGradleDaemonSource(
     private suspend fun clientOf(daemonPid: Long, clientPort: Int, processTable: ProcessTableReader): GradleClient? = optional {
         val pid = connectedProcesses(clientPort).firstOrNull { it != daemonPid } ?: return@optional null
         val table = processTable.read() ?: return@optional null
-        val arguments = table[pid]?.command?.split(WHITESPACE) ?: return@optional null
+        val entry = table[pid] ?: return@optional null
+        val arguments = entry.command.split(WHITESPACE)
         val entryPoint = arguments.indexOfLast { it in GRADLE_CLIENT_MAIN_CLASSES || it.endsWith(GRADLE_WRAPPER_JAR) }
             .takeIf { it >= 0 } ?: return@optional null
         GradleClient(pid, arguments.drop(entryPoint + 1), ancestorsOf(pid, table))
@@ -166,7 +167,7 @@ internal fun parseDaemonLog(log: String): DaemonLogRecord {
     val buildLine = lines.firstOrNull { BUILD_MARKER in it }
     val latestBuildLine = lines.firstOrNull { EXECUTING_MARKER in it || BUILD_MARKER in it }
     return DaemonLogRecord(
-        state = stateLine?.let(::stateOf) ?: DaemonState.Unknown,
+        state = if (stateLine != null) stateOf(stateLine) else DaemonState.Unknown,
         lastBuildDirectory = buildLine?.let(::buildDirectoryOf),
         latestBuild = latestBuildLine?.let(::loggedBuildOf),
     )
@@ -182,7 +183,7 @@ private fun loggedBuildOf(line: String): LoggedBuild? {
 internal fun parseProcessTable(psOutput: String): Map<Long, ProcessEntry> =
     psOutput.lineSequence().mapNotNull { line ->
         val fields = line.trim().split(WHITESPACE, limit = 3)
-        val pid = fields.getOrNull(0)?.toLongOrNull() ?: return@mapNotNull null
+        val pid = fields[0].toLongOrNull() ?: return@mapNotNull null
         val parent = fields.getOrNull(1)?.toLongOrNull() ?: return@mapNotNull null
         pid to ProcessEntry(parent, fields.getOrNull(2).orEmpty())
     }.toMap()

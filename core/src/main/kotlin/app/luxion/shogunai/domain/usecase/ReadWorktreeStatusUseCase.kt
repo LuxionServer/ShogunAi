@@ -32,6 +32,12 @@ class ReadWorktreeStatusUseCase(
             else -> divergenceFrom(worktree, comparedBase.ref)
         }
         val wouldReadAsMerged = mainBranchDivergence.readsAsMerged() || baseDivergence.readsAsMerged()
+        val mainBranchHoldsChanges = holdsChanges(worktree, mainBranchDivergence, mainBranch)
+        val baseHoldsChanges = if (comparedBase?.ref == mainBranch?.ref) {
+            mainBranchHoldsChanges
+        } else {
+            holdsChanges(worktree, baseDivergence, comparedBase)
+        }
         WorktreeStatus(
             uncommittedChanges = uncommittedChanges,
             upstream = upstream,
@@ -42,8 +48,14 @@ class ReadWorktreeStatusUseCase(
                 branchNeverCommitted(worktree, worktree.branch),
             base = baseDivergence,
             baseName = comparedBase?.name.takeIf { baseDivergence != null },
+            mainBranchHoldsChanges = mainBranchHoldsChanges,
+            baseHoldsChanges = baseHoldsChanges,
         )
     }
+
+    private suspend fun holdsChanges(worktree: Worktree, divergence: Divergence?, target: MainBranch?): Boolean =
+        target != null && divergence != null && divergence.ahead > 0 && divergence.behind > 0 &&
+            holdsChangesOf(executor, worktree.path, "HEAD", target.ref)
 
     private suspend fun branchNeverCommitted(worktree: Worktree, branch: String): Boolean {
         val reflog = git(worktree, "reflog", "show", "--format=%H", "refs/heads/$branch")
@@ -77,12 +89,8 @@ class ReadWorktreeStatusUseCase(
     private fun createdAt(worktree: Worktree): Instant? {
         if (worktree.isMain) return null
         val pointer = fileManager.readText("${worktree.path.trimEnd('/')}/.git") ?: return null
-        val administrativeFolder = pointer.lineSequence()
-            .firstOrNull { it.startsWith(GITDIR_PREFIX) }
-            ?.removePrefix(GITDIR_PREFIX)
-            ?.trim()
-            ?.takeIf { it.isNotEmpty() }
-            ?: return null
+        val line = pointer.lineSequence().firstOrNull { it.startsWith(GITDIR_PREFIX) } ?: return null
+        val administrativeFolder = line.removePrefix(GITDIR_PREFIX).trim().ifEmpty { return null }
         return fileManager.lastModifiedMillis("${administrativeFolder.trimEnd('/')}/commondir")
             ?.let(Instant::ofEpochMilli)
     }

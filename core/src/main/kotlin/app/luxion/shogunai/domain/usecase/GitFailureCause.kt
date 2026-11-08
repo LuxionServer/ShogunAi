@@ -12,7 +12,7 @@ sealed interface GitFailureCause {
 fun classifyGitFailure(stderr: String): GitFailureCause {
     LOCK_FILE.find(stderr)?.let { return GitFailureCause.LockFileExists(it.groupValues[1]) }
     if (ANOTHER_PROCESS in stderr) return GitFailureCause.LockFileExists(null)
-    if (PERMISSION_DENIED in stderr) return GitFailureCause.PermissionDenied(QUOTED_PATH.find(stderr)?.groupValues?.get(1))
+    if (PERMISSION_DENIED in stderr) return GitFailureCause.PermissionDenied(QUOTED_PATH.find(stderr)?.let { it.groupValues[1] })
     if (NOT_A_REPOSITORY in stderr) return GitFailureCause.NotARepository
     BRANCH_EXISTS.find(stderr)?.let { return GitFailureCause.BranchExists(it.groupValues[1]) }
     if (LOCAL_CHANGES in stderr) return GitFailureCause.LocalChanges
@@ -38,6 +38,10 @@ fun isNotAWorkingTreeFailure(stderr: String): Boolean = NOT_A_WORKING_TREE in st
 
 fun isPathTooLongFailure(stderr: String): Boolean = FILENAME_TOO_LONG in stderr
 
+fun isLockedWorktreeFailure(stderr: String): Boolean = LOCKED_WORKTREE in stderr
+
+fun lockReason(stderr: String): String? = LOCK_REASON.find(stderr)?.let { it.groupValues[1].trim().ifEmpty { null } }
+
 private val LOCK_FILE = Regex("""Unable to create '([^']*\.lock)': File exists""")
 private const val ANOTHER_PROCESS = "Another git process seems to be running"
 private const val PERMISSION_DENIED = "Permission denied"
@@ -49,3 +53,5 @@ private const val FAILED_TO_DELETE = "failed to delete"
 private val FOLDER_LOCK_REASONS = listOf("Permission denied", "Device or resource busy", "being used by another process")
 private const val NOT_A_WORKING_TREE = "is not a working tree"
 private const val FILENAME_TOO_LONG = "Filename too long"
+private const val LOCKED_WORKTREE = "cannot remove a locked working tree"
+private val LOCK_REASON = Regex("""cannot remove a locked working tree, lock reason: (.*)""")

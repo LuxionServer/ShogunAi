@@ -17,8 +17,8 @@ internal fun waitProgressLine(progress: DeviceWaitProgress): String {
 private fun PoolHolder.waitDescription(): String {
     val protectionText = when (protection) {
         HolderProtection.AGENT_WORKING -> ", agent working"
-        HolderProtection.LEASED -> ", lease until ${leaseExpiresAt?.toLocalClockTime()}"
-        null -> ""
+        HolderProtection.LEASED -> ", lease until ${leaseExpiresAt!!.toLocalClockTime()}"
+        else -> ""
     }
     return "$displayName ${state.name.lowercase()}$protectionText"
 }

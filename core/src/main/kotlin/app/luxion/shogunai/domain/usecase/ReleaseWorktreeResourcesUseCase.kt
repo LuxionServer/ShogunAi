@@ -84,7 +84,7 @@ class ReleaseWorktreeResourcesUseCase(
         } else {
             stopDaemons(plan.idleDaemonPids)
                 .onFailure { failures += "couldn't stop Gradle daemons: ${it.message}" }
-                .getOrNull()?.stopped?.map { it.pid }
+                .getOrNull()?.let { result -> result.stopped.map { it.pid } }
                 .orEmpty()
         }
 

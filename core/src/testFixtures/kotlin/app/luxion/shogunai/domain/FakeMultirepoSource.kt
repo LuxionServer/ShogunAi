@@ -13,7 +13,6 @@ class FakeMultirepoSource(
     val declarations = declarations.toMutableMap()
     val known = known.toMutableList()
     val unreadable = mutableMapOf<String, Exception>()
-    val missingFolders = mutableSetOf<String>()
     val approvals = mutableMapOf<String, String>()
     val agents = mutableMapOf<String, AgentLaunchConfig>()
 
@@ -52,11 +51,5 @@ class FakeMultirepoSource(
 
     override fun setAgent(folder: String, agent: AgentLaunchConfig) {
         agents[folder] = agent
-    }
-
-    override fun forgetMissing(): List<String> {
-        val missing = known.filter { it in missingFolders }
-        missing.forEach(::forget)
-        return missing
     }
 }
