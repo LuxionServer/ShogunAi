@@ -29,17 +29,11 @@ Numerados en el orden en que se abordarán: el número es la prioridad.
 ShogunAi tiene que funcionar a la primera en una máquina que no es en la que se desarrolla, y cada regresión tiene que detectarse antes de que una versión llegue a nadie. Una demo en otro Mac mostró por qué: la app, abierta desde el Dock, recibe el `PATH` mínimo de macOS, así que dio por fuera del `PATH` un comando `shogun` instalado con Homebrew, el recorrido guiado se negó a empezar y los hooks de Claude Code aparecieron como inutilizables; y crear un worktree falló al copiar sus archivos locales. Ninguno de los dos fallos apareció en la máquina de desarrollo, cuya propia configuración los tapa. Por orden:
 
 - Tests que obligan al producto a cumplirlo:
-  - Subir hasta el 100% los suelos de cobertura que exige CI: las líneas (hoy 88%) y ramas (74%) de la app de escritorio fuera de sus composables, que cubren los tests end to end. Las líneas de `core` y `cli`, las ramas de `cli`, todas las ramas de `core` a las que llega alguna entrada y los textos de la app de escritorio ya están cubiertos. La app de escritorio sube un paquete por cambio, en este orden: los ajustes de proyecto, los worktrees y su inspector, el shell y el icono de la barra de menús, las vistas de la máquina y los multirepos, los componentes compartidos y, por último, el cableado de la app.
+  - Subir hasta el 100% los suelos de cobertura que exige CI: las líneas (hoy 89%) y ramas (75%) de la app de escritorio fuera de sus composables, que cubren los tests end to end. Las líneas de `core` y `cli`, las ramas de `cli`, todas las ramas de `core` a las que llega alguna entrada y los textos de la app de escritorio ya están cubiertos. La app de escritorio sube un paquete por cambio, en este orden: los ajustes de proyecto, los worktrees y su inspector, el shell y el icono de la barra de menús, las vistas de la máquina y los multirepos, los componentes compartidos y, por último, el cableado de la app.
 - Lo que la prueba de humo de la app empaquetada dejó fuera: instalar el `.deb` en un equipo sin carpeta de menús del sistema (servidores, contenedores mínimos), donde hoy falla su script de post-instalación; y probar el Cask de Homebrew y el manifiesto de Scoop generados para una versión antes de publicarla, que hoy instalan los mismos `.dmg` y `.msi` que comprueba la prueba de humo.
 - Lo que las herramientas de los providers necesitan además de estar instaladas, en `shogun doctor` y «Comprobar instalación»: el runtime de Java de Gradle y Maven, el daemon de Docker en marcha y versiones mínimas; hoy comprueban que cada herramienta se encuentra y se ejecuta.
 
-### 2. Correcciones de la revisión de UX de la interfaz v2
-
-Una revisión de UX de la interfaz v2 ya implementada, hecha sobre `develop` en `aaf42f94` con datos de ejemplo, concluyó que la app debería responder primero «¿qué me necesita?» y «¿dónde está cada agente?», y que hoy no responde ninguna de las dos de un vistazo. Sus correcciones se reparten en cambios, por orden:
-
-- Una fila por cambio de multirepo en Activos, con el peor estado de sus repositorios, que se despliega en una fila hija por repositorio; las filas hijas no repiten la rama.
-
-### 3. Orca, un segundo runner de primera clase
+### 2. Orca, un segundo runner de primera clase
 
 [Orca](https://www.onorca.dev), la app de escritorio para ejecutar agentes de programación en worktrees, recibe todo lo que ShogunAi hace con Herdr, más lo que Orca ofrece y Herdr no. Un spike comparó los dos: los hooks de repositorio de Orca (`orca.yaml`) pueden provisionar sus worktrees con `shogun`, su CLI puede abrir un worktree de ShogunAi con su entorno y su agente, y informa de estados de agente más ricos que sobreviven a reiniciar la app. Por orden:
 
@@ -53,7 +47,7 @@ Una revisión de UX de la interfaz v2 ya implementada, hecha sobre `develop` en 
   - Que los avisos de Orca y su app móvil siguen a los agentes que ShogunAi arranca en Orca.
 - Fuera a propósito: los worktrees remotos y por SSH de Orca, porque ShogunAi prepara worktrees en esta máquina; y las ejecuciones de orquestación de Orca, porque el agente del multirepo ya coordina un grupo.
 
-### 4. Provisionado y recursos de los stacks móviles
+### 3. Provisionado y recursos de los stacks móviles
 
 Provisionado y recursos acotados para los stacks en los que un worktree recién creado está más lejos de compilar:
 
@@ -63,7 +57,7 @@ Provisionado y recursos acotados para los stacks en los que un worktree recién 
 - Decidir si la regla del inicio de sesión de ejecutar `shogun emulator start` antes de cada uso del emulador sigue haciendo falta ahora que la concesión del dispositivo se renueva mientras la sesión trabaja (una sesión larga que nunca envía un prompt aún puede perder su emulador), o si los fallos de `adb` deberían remitir a `shogun emulator start`, tras observarlo en uso.
 - Esperar un dispositivo desde la app de escritorio y mostrar en sus vistas de máquina los worktrees que esperan cada pool; hoy solo esperan `shogun emulator start --wait` y `shogun simulator start --wait`, y la app hace fallar un arranque mientras otros esperan.
 
-### 5. Todos los agentes, no solo Claude Code
+### 4. Todos los agentes, no solo Claude Code
 
 La vista de ShogunAi solo es neutral si ve a todos los agentes:
 
@@ -74,7 +68,7 @@ La vista de ShogunAi solo es neutral si ve a todos los agentes:
 - Registrar la rama base de los worktrees que crea Herdr, si su evento `worktree.created` llega a incluir el punto de partida; hoy se registra a mano con `shogun base --set`, mientras que `shogun new`, el hook de Claude Code, la app de escritorio y los grupos de los multirepos la registran solos.
 - Mostrar la rama base de cada worktree en las filas de la app de escritorio; hoy la columna Git se compara con ella y la nombra en su tooltip y en el detalle, y la informan `shogun base` y `shogun status`.
 
-### 6. Multirepos para todo el equipo
+### 5. Multirepos para todo el equipo
 
 Los multirepos y los grupos por rama están hechos en el CLI y en la app de escritorio, y son también la forma en que quienes no escriben el código siguen un cambio a través de los repositorios. Quedaron fuera:
 
@@ -86,7 +80,7 @@ Los multirepos y los grupos por rama están hechos en el CLI y en la app de escr
 - Una única sesión para todo el grupo, con un entorno combinado, como opción junto a un agente por repositorio.
 - El estado del pull request de cada repositorio de un grupo, que depende de la integración con GitHub en estudio.
 
-### 7. Robustez y mantenimiento
+### 6. Robustez y mantenimiento
 
 - Detectar los merges por squash y por rebase, que dejan una rama como no mergeada en su base ni en la rama principal, así que la limpieza no la ofrece y `--delete-branch` la conserva.
 - Encontrar la causa raíz de los errores que cerraban la ventana de Preferencias, a partir de las entradas que el aislamiento deja ahora en el registro de diagnóstico, y del crash nativo visto en otra máquina que dejó un informe de diagnóstico vacío.

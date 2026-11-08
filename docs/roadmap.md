@@ -29,17 +29,11 @@ Numbered in the order they will be picked up: the number is the priority.
 ShogunAi has to work the first time on a machine that isn't the one it's developed on, and every regression has to be caught before a release reaches anyone. A demo on another Mac showed why: the app, opened from the Dock, gets macOS's minimal `PATH`, so it reported a `shogun` command installed by Homebrew as not on the `PATH`, the guided tour refused to start and Claude Code's hooks read as unusable; and creating a worktree failed while copying its local files. Neither showed up on the developer's machine, whose own setup hides them. In order:
 
 - Tests that hold the product to it:
-  - Raising the coverage floors that CI enforces up to 100%: the lines (88% today) and branches (74%) of the desktop app outside its composables, which the end-to-end tests cover. Lines of `core` and `cli`, branches of `cli`, every branch of `core` that some input can reach and the desktop app's texts are already covered. The desktop app goes up one package per change, in this order: project settings, worktrees and their inspector, the shell and the menu bar icon, the machine views and multirepos, shared components, and last the app's wiring.
+  - Raising the coverage floors that CI enforces up to 100%: the lines (89% today) and branches (75%) of the desktop app outside its composables, which the end-to-end tests cover. Lines of `core` and `cli`, branches of `cli`, every branch of `core` that some input can reach and the desktop app's texts are already covered. The desktop app goes up one package per change, in this order: project settings, worktrees and their inspector, the shell and the menu bar icon, the machine views and multirepos, shared components, and last the app's wiring.
 - What the packaged smoke test left out: installing the `.deb` on a machine without a system menus folder (servers, minimal containers), where its post-install script fails today; and smoke testing the Homebrew Cask and the Scoop manifest rendered for a release before it's published, which today install the same `.dmg` and `.msi` the smoke test checks.
 - What the providers' tools need beyond being installed, in `shogun doctor` and "Check Installation": the Java runtime behind Gradle and Maven, Docker's daemon running, and minimum versions; today they check that each tool is found and runs.
 
-### 2. Fixes from the UX review of the v2 interface
-
-A UX review of the implemented v2 interface, done on `develop` at `aaf42f94` with sample data, concluded that the app should first answer "what needs me?" and "where is each agent?", and that today it answers neither at a glance. Its fixes are split into changes, in order:
-
-- One row per multirepo change in Active, showing the worst state of its repositories, which expands into one child row per repository; the child rows don't repeat the branch.
-
-### 3. Orca, a second first-class runner
+### 2. Orca, a second first-class runner
 
 [Orca](https://www.onorca.dev), the desktop app for running coding agents in worktrees, gets everything ShogunAi does with Herdr, plus what Orca offers that Herdr doesn't. A spike compared the two: Orca's repository hooks (`orca.yaml`) can provision its worktrees with `shogun`, its CLI can open a ShogunAi worktree with its environment and agent, and it reports richer agent states that survive restarting the app. In order:
 
@@ -53,7 +47,7 @@ A UX review of the implemented v2 interface, done on `develop` at `aaf42f94` wit
   - That Orca's notifications and its mobile companion follow the agents ShogunAi starts in Orca.
 - Left out on purpose: Orca's remote and SSH worktrees, since ShogunAi prepares worktrees on this machine; and Orca's orchestration runs, since the multirepo agent already coordinates a group.
 
-### 4. Provisioning and resources of mobile stacks
+### 3. Provisioning and resources of mobile stacks
 
 Provisioning and bounded resources for the stacks where a fresh worktree is furthest from building:
 
@@ -63,7 +57,7 @@ Provisioning and bounded resources for the stacks where a fresh worktree is furt
 - Deciding whether the session-start rule to run `shogun emulator start` before every use of the emulator is still needed now that the device lease is renewed while the session works (a long session that never sends a prompt can still lose its emulator), or whether `adb` failures should point to `shogun emulator start` instead, after watching it in use.
 - Waiting for a device from the desktop app, and showing the worktrees waiting for each pool in its machine views; today only `shogun emulator start --wait` and `shogun simulator start --wait` wait, and the app fails a start while others wait.
 
-### 5. Every agent, not only Claude Code
+### 4. Every agent, not only Claude Code
 
 ShogunAi's view is only neutral if it sees every agent:
 
@@ -74,7 +68,7 @@ ShogunAi's view is only neutral if it sees every agent:
 - Recording the base branch of the worktrees Herdr creates, if its `worktree.created` event gains their start point; today `shogun base --set` records it by hand, while `shogun new`, Claude Code's hook, the desktop app and multirepo groups record it themselves.
 - Showing each worktree's base branch in the desktop app's rows; today the Git column compares with it and names it in its tooltip and in the detail, and `shogun base` and `shogun status` report it.
 
-### 6. Multirepos for the whole team
+### 5. Multirepos for the whole team
 
 Multirepos and groups by branch are done in the CLI and the desktop app, and they're also how people who don't write the code follow a change across repositories. Left out:
 
@@ -86,7 +80,7 @@ Multirepos and groups by branch are done in the CLI and the desktop app, and the
 - A single session for the whole group, with a combined environment, as an option next to one agent per repository.
 - The pull request state of each repository of a group, which depends on the GitHub integration under exploration.
 
-### 7. Robustness and maintenance
+### 6. Robustness and maintenance
 
 - Detecting squash and rebase merges, which leave a branch reading as not merged into its base or the main branch, so cleanup doesn't offer it and `--delete-branch` keeps it.
 - Finding the root cause of the errors that closed the Preferences window, from the entries the isolation now leaves in the diagnostics log, and of the native crash seen on another machine that left an empty diagnostic report.
