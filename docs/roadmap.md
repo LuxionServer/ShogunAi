@@ -82,7 +82,7 @@ Multirepos and groups by branch are done in the CLI and the desktop app, and the
 
 ### 6. Robustness and maintenance
 
-- Detecting squash and rebase merges, which leave a branch reading as not merged into its base or the main branch, so cleanup doesn't offer it and `--delete-branch` keeps it.
+- Recognizing a branch squash-merged after resolving conflicts, or together with other branches, whose changes no longer match any commit of its target, for example by asking GitHub whether its pull request was merged. Squash and rebase merges whose changes match are detected.
 - Finding the root cause of the errors that closed the Preferences window, from the entries the isolation now leaves in the diagnostics log, and of the native crash seen on another machine that left an empty diagnostic report.
 - Checking on a real Windows machine that removing and cleaning up worktrees with build outputs deeper than 260 characters now succeeds (Git's long path support and the leftover fallback are covered by tests with fakes only).
 - Moving the per-project ports of `ProjectWorktrees` that still run on the caller's dispatcher (emulator and simulator states, ports, releasing resources) off the interface thread, as the machine views now do.

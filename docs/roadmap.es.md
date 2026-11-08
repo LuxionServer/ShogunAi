@@ -82,7 +82,7 @@ Los multirepos y los grupos por rama están hechos en el CLI y en la app de escr
 
 ### 6. Robustez y mantenimiento
 
-- Detectar los merges por squash y por rebase, que dejan una rama como no mergeada en su base ni en la rama principal, así que la limpieza no la ofrece y `--delete-branch` la conserva.
+- Reconocer una rama mergeada por squash tras resolver conflictos, o junto con otras ramas, cuyos cambios ya no coinciden con ningún commit de su destino, por ejemplo preguntando a GitHub si su pull request se mergeó. Los merges por squash y rebase cuyos cambios coinciden ya se detectan.
 - Encontrar la causa raíz de los errores que cerraban la ventana de Preferencias, a partir de las entradas que el aislamiento deja ahora en el registro de diagnóstico, y del crash nativo visto en otra máquina que dejó un informe de diagnóstico vacío.
 - Comprobar en un Windows real que borrar y limpiar worktrees con salidas de build de más de 260 caracteres de profundidad funciona ahora (el soporte de rutas largas de Git y el borrado del resto solo están cubiertos con pruebas con dobles).
 - Sacar del hilo de la interfaz los puertos por proyecto de `ProjectWorktrees` que aún se ejecutan en el dispatcher de quien los llama (estados de emuladores y simuladores, puertos, liberar recursos), como ya hacen las vistas de la máquina.
