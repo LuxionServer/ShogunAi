@@ -84,11 +84,7 @@ fun LocalFilePickerDialog(
         )
         PatternFilter(state)
         Box(modifier = Modifier.fillMaxWidth().height(CandidateListHeight)) {
-            when (val load = state.load) {
-                LocalFileCandidatesLoad.Loading -> SkeletonRows(count = 4)
-                is LocalFileCandidatesLoad.Failed -> ErrorNotice(error = load.error, onDismiss = null, onRetry = onRetry)
-                is LocalFileCandidatesLoad.Loaded -> CandidateList(state, load.candidates.isEmpty())
-            }
+            CandidatesContent(state, onRetry)
         }
     }
 }
@@ -180,5 +176,14 @@ private fun CandidateRow(state: LocalFilePickerState, candidate: LocalFileCandid
             candidate.providedByRepository -> StatusChip(Status.NEUTRAL, strings.providedByRepository)
             secretKind != null -> StatusChip(Status.INFO, strings.suggestedLocalFile(strings.mobileSecretKind(secretKind)))
         }
+    }
+}
+
+@Composable
+private fun CandidatesContent(state: LocalFilePickerState, onRetry: () -> Unit) {
+    when (val load = state.load) {
+        LocalFileCandidatesLoad.Loading -> SkeletonRows(count = 4)
+        is LocalFileCandidatesLoad.Failed -> ErrorNotice(error = load.error, onDismiss = null, onRetry = onRetry)
+        is LocalFileCandidatesLoad.Loaded -> CandidateList(state, load.candidates.isEmpty())
     }
 }
