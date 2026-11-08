@@ -1026,6 +1026,15 @@ object EnglishStrings : Strings {
     }
     override val cleanUpBlockedRunning = "A cleanup is already running"
     override val cleanUpBlockedNothing = "Nothing to clean up: no worktree is merged or missing"
+    override fun cleanUpBlockedAgentRunning(worktrees: List<String>, agents: List<String>): String {
+        val running = "${agents.joinToString()} ${if (agents.size == 1) "is" else "are"} running"
+        val close = if (agents.size == 1) "close it" else "close them"
+        return when (worktrees.size) {
+            1 -> "Merged worktree ${worktrees.single()} is kept because $running in it; $close to clean it up"
+            in 2..MAX_NAMED_WORKTREES -> "${worktrees.size} merged worktrees are kept because $running in them (${worktrees.joinToString()}); $close to clean them up"
+            else -> "${worktrees.size} merged worktrees are kept because $running in them; $close to clean them up"
+        }
+    }
     override val cleanUpBlockedReview = "Trust the multirepo before cleaning it up"
     override val daemonStopBlockedBusy = "Only idle daemons can be stopped, and this one is busy"
     override val daemonStopBlockedUnknown = "Its state is unknown, so it isn't stopped"

@@ -847,6 +847,7 @@ interface Strings {
     fun releasedSummary(kind: ResourceKind, count: Int): String
     val cleanUpBlockedRunning: String
     val cleanUpBlockedNothing: String
+    fun cleanUpBlockedAgentRunning(worktrees: List<String>, agents: List<String>): String
     val cleanUpBlockedReview: String
     val daemonStopBlockedBusy: String
     val daemonStopBlockedUnknown: String
@@ -892,3 +893,5 @@ internal fun InstallChannel.installerName(): String = when (this) {
     InstallChannel.WINGET -> "winget"
     else -> name
 }
+
+internal const val MAX_NAMED_WORKTREES = 3

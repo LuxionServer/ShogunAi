@@ -730,6 +730,7 @@ internal fun CleanupBlock.describe(strings: Strings): String = when (this) {
     CleanupBlock.Running -> strings.cleanUpBlockedRunning
     CleanupBlock.NothingToCleanUp -> strings.cleanUpBlockedNothing
     CleanupBlock.NeedsReview -> strings.cleanUpBlockedReview
+    is CleanupBlock.KeptForRunningAgent -> strings.cleanUpBlockedAgentRunning(worktrees, agents)
     is CleanupBlock.Kept -> kept.describe(strings)
 }
 

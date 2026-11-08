@@ -1369,6 +1369,23 @@ class WorktreeBoardTest {
     }
 
     @Test
+    fun `a cleanup whose only merged worktrees have a running agent says they are kept for it`() = runTest(dispatcher) {
+        mainRepo.worktrees = emptyList()
+        agentResult = Result.success(mapOf("/home/dev/projects/api-TASK-12" to listOf(RunningAgent("codex"))))
+        val board = board()
+        advanceUntilIdle()
+        board.startWatching()
+        tick()
+        board.stopWatching()
+
+        val expected = CleanupBlock.KeptForRunningAgent(worktrees = listOf("api-TASK-12"), agents = listOf("codex"))
+        assertEquals(expected, board.cleanUpBlock("api"))
+        assertEquals(expected, board.cleanUpBlock())
+        assertEquals(EnglishStrings.cleanUpBlockedAgentRunning(listOf("api-TASK-12"), listOf("codex")), expected.describe(EnglishStrings))
+        assertEquals(CleanupBlock.NothingToCleanUp, board.cleanUpBlock("main-repo"))
+    }
+
+    @Test
     fun `refreshing the view reloads branches only for an open existing-branch dialog`() = runTest(dispatcher) {
         val board = board()
         advanceUntilIdle()
