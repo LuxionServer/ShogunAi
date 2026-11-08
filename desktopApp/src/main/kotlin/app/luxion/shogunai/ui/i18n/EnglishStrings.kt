@@ -981,6 +981,14 @@ object EnglishStrings : Strings {
     override val multirepoNeedsReview = "Needs review"
     override val multirepoNeedsReviewExplanation =
         "This multirepo isn't approved on this machine: its declaration is new here or changed outside ShogunAi, for example with a pull. ShogunAi creates branches and worktrees in the repositories it lists and runs their approved post-creation commands, so check them before trusting it."
+    override val multirepoUnavailable = "Unavailable"
+    override fun multirepoFolderUnreachable(folder: String) =
+        "The folder $folder can't be reached. If it's on an external or network drive, connect it and try again."
+    override fun multirepoDeclarationMissing(folder: String) = "The folder $folder no longer has a .shogunai-multirepo.json."
+    override fun multirepoDeclarationInvalid(detail: String) = "Its .shogunai-multirepo.json can't be read: $detail"
+    override val removeMultirepoTitle = "Remove multirepo?"
+    override fun removeMultirepoMessage(name: String) =
+        "ShogunAi will forget \"$name\", its approval and the agent set on this machine. No file in its folder is touched; adding it again asks you to review it."
     override val trustMultirepo = "Trust"
     override val declaredAgentIgnored = "The declaration's agent is ignored; the multirepo agent is set on this machine, in the multirepo's settings."
     override val existingDeclarationTitle = "This folder already declares a multirepo"
@@ -1045,6 +1053,13 @@ object EnglishStrings : Strings {
     override val machineOverviewTooltip = "Machine: the daemons, devices and caches every worktree shares"
     override val machineOverviewNoProviders =
         "No saved project declares a provider yet. Declare one in a project's settings (Gradle, Android emulators, iOS simulators, Xcode, Maven or Docker Compose) to see its daemons, devices and caches here."
+    override val derivedDataDeleteBlockedDeleting = "Orphaned folders are being deleted"
+    override val derivedDataDeleteBlockedNoOrphans = "No folder is orphaned"
+    override val simulatorOrphansDeleteBlockedDeleting = "Orphaned simulators are being deleted"
+    override val composeTakeDownBlockedRunning = "Projects are being taken down"
+    override val composeTakeDownBlockedNone = "No project belongs to a removed worktree"
+    override val composeLeftoversBlockedRemoving = "Leftovers are being removed"
+    override val composeLeftoversBlockedOnlyVolumes = "Only volumes are left"
 }
 
 internal fun String?.asSuffix(): String = if (isNullOrBlank()) "" else ": $this"

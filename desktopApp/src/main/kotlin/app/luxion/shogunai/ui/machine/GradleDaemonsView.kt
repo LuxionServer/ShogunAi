@@ -21,7 +21,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import app.luxion.shogunai.domain.model.DaemonKind
 import app.luxion.shogunai.domain.model.DaemonState
@@ -82,16 +81,8 @@ private fun LoadedDaemons(daemons: List<MachineDaemon>, machine: MachineResource
         MachineDataText(strings.gradleDaemonsSummary(gradle, processes.size - gradle, formatSize(processes.sumOf { it.residentMemoryBytes })))
         Row(verticalAlignment = Alignment.CenterVertically) {
             if (machine.isStoppingDaemons) InlineProgress(modifier = Modifier.padding(end = Spacing.sm))
-            val stopIdleBlock = stopIdleBlock(daemons, machine.isStoppingDaemons)
-            val stopIdleReason = stopIdleBlock?.let { stopIdleReason(daemons, it, strings) }
-            if (stopIdleBlock == DaemonStopBlock.NONE_IDLE && stopIdleReason != null) {
-                MachineStateText(stopIdleReason, Modifier.padding(end = Spacing.sm).testTag("stop-idle-reason"))
-            }
-            DisabledReason(stopIdleReason) {
-                SecondaryButton(
-                    onClick = machine::stopIdleGradleDaemons,
-                    enabled = stopIdleBlock == null,
-                ) { Text(strings.stopIdleDaemons) }
+            ListActionReason(stopIdleListBlock(daemons, machine.isStoppingDaemons, strings), "stop-idle-reason") { enabled ->
+                SecondaryButton(onClick = machine::stopIdleGradleDaemons, enabled = enabled) { Text(strings.stopIdleDaemons) }
             }
         }
     }
@@ -103,7 +94,7 @@ private fun LoadedDaemons(daemons: List<MachineDaemon>, machine: MachineResource
                 machineCell(MachineMainColumn) { MachineDataText(daemonTitle(daemon, strings)) },
                 machineCell(MachineSizeColumn) { MachineDataText(formatSize(daemon.process.residentMemoryBytes)) },
                 machineCell(MachineDaemonStateColumn) { MachineStateText(daemonStateText(daemon, strings)) }.takeIf { showsState },
-                machineCell(MachineOwnerColumn) { DaemonOwnerCell(daemon, machine, onOpenWorktree) },
+                machineCell(MachineOwnerColumn) { OwnerCell(daemon.owner, machine::projectName, onOpenWorktree) },
                 machineActionCell {
                     val stopBlock = daemon.stopBlock(daemons, machine.isStoppingDaemons)
                     DisabledReason(stopBlock?.describe(strings)) {
@@ -115,15 +106,6 @@ private fun LoadedDaemons(daemons: List<MachineDaemon>, machine: MachineResource
                 },
             ).toTypedArray(),
         )
-    }
-}
-
-@Composable
-private fun DaemonOwnerCell(daemon: MachineDaemon, machine: MachineResources, onOpenWorktree: (String, String) -> Unit) {
-    if (daemon.owner == null) {
-        MachineStateText(LocalStrings.current.ownerUnknown, Modifier.testTag("daemon-owner-unknown"))
-    } else {
-        OwnerCell(daemon.owner, machine::projectName, onOpenWorktree)
     }
 }
 
@@ -200,16 +182,11 @@ fun showsDaemonState(daemons: List<MachineDaemon>): Boolean =
 
 fun stopIdleReason(daemons: List<MachineDaemon>, block: DaemonStopBlock, strings: Strings): String {
     if (block != DaemonStopBlock.NONE_IDLE) return block.describe(strings)
-    val gradle = daemons.filter { it.process.kind == DaemonKind.GRADLE }
-    val busy = gradle.count { it.process.state == DaemonState.Busy }
-    val unknown = gradle.size - busy
-    return when {
-        gradle.isEmpty() -> block.describe(strings)
-        unknown == 0 -> strings.stopIdleAllBusy(busy)
-        busy == 0 -> strings.stopIdleAllUnknown(unknown)
-        else -> strings.stopIdleBusyAndUnknown(busy, unknown)
-    }
+    return noneIdleReason(daemons.filter { it.process.kind == DaemonKind.GRADLE }.map { it.process.state }, strings)
 }
+
+fun stopIdleListBlock(daemons: List<MachineDaemon>, stopping: Boolean, strings: Strings): ListActionBlock? =
+    stopIdleBlock(daemons, stopping)?.let { ListActionBlock(stopIdleReason(daemons, it, strings), running = it != DaemonStopBlock.NONE_IDLE) }
 
 data class BuildCacheNotice(val message: String, val projects: List<String>)
 

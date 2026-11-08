@@ -38,7 +38,6 @@ ShogunAi tiene que funcionar a la primera en una máquina que no es en la que se
 Una revisión de UX de la interfaz v2 ya implementada, hecha sobre `develop` en `aaf42f94` con datos de ejemplo, concluyó que la app debería responder primero «¿qué me necesita?» y «¿dónde está cada agente?», y que hoy no responde ninguna de las dos de un vistazo. Sus correcciones se reparten en cambios, por orden:
 
 - Una fila por cambio de multirepo en Activos, con el peor estado de sus repositorios, que se despliega en una fila hija por repositorio; las filas hijas no repiten la rama.
-- El resto de vistas de Máquina (daemons de Maven, emuladores, simuladores, DerivedData, proyectos de Compose) reciben lo que recibió la de daemons de Gradle: un propietario desconocido atenuado en lugar de vacío, botones fantasma en sus filas y el motivo de una acción desactivada escrito junto a ella.
 
 ### 3. Orca, un segundo runner de primera clase
 
@@ -79,7 +78,8 @@ La vista de ShogunAi solo es neutral si ve a todos los agentes:
 
 Los multirepos y los grupos por rama están hechos en el CLI y en la app de escritorio, y son también la forma en que quienes no escriben el código siguen un cambio a través de los repositorios. Quedaron fuera:
 
-- Llevarse el agente del multirepo fijado en este equipo cuando su carpeta se mueve: `shogun multirepo init` (o "Añadir multirepo") en la carpeta nueva la registra tras revisarla y olvida la entrada antigua, pero el agente local se queda con ella y hay que volver a fijarlo.
+- Llevarse el agente del multirepo fijado en este equipo cuando su carpeta se mueve: `shogun multirepo init` (o "Añadir multirepo") en la carpeta nueva la registra tras revisarla, pero el agente local se queda en la entrada antigua y hay que volver a fijarlo.
+- Olvidar desde la línea de comandos un multirepo conocido cuya declaración no se puede leer (`trust --revoke` y `delete` necesitan la declaración); hoy solo lo hace "Quitar" en la app de escritorio.
 - Asociar worktrees cuyas ramas no coinciden, por ejemplo `shogun group add <id> <worktree>`. Necesita un diseño propio: hoy los grupos no tienen estado, y la asociación llegaría a la detección de grupos, a los puertos contra los que se resuelven las variables compartidas, a la limpieza y a todas las vistas de grupo.
 - Mostrar en las vistas de la app de escritorio los nombres de las sesiones de Claude de los worktrees de un grupo y del agente del multirepo; hoy los informan `shogun open --herdr` y `shogun status`, y la app solo nombra las sesiones que abre.
 - Una única sesión para todo el grupo, con un entorno combinado, como opción junto a un agente por repositorio.
@@ -97,7 +97,8 @@ Los multirepos y los grupos por rama están hechos en el CLI y en la app de escr
 - Soporte de repositorios bare con worktrees (el esquema «bare clone»), que cambia lo que significan el repositorio base y copiar desde él. Hoy ShogunAi los rechaza con un error específico.
 - Dividir `ProjectWorktrees.kt` y `ProjectSettingsView.kt` en holders y secciones más pequeños.
 - Comprobar el recorrido guiado en Windows y Linux con una app instalada real: la creación del ejemplo con el Git del sistema, y el comando del agente del recorrido, cuyo prompt se entrecomilla para la shell que ejecuta cada terminal.
-- Una página de changelog en la web de documentación construida con las notas de `.github/release-notes/`, que la app ya muestra en su aviso de actualización.
+- Un workflow que construya la web de documentación con `mkdocs build --strict` y ejecute los tests del hook del historial de cambios (`python3 -m unittest discover -s scripts/mkdocs`) en cada pull request que toque `docs/`, `mkdocs.yml`, `scripts/mkdocs/` o `.github/release-notes/`; hoy la web solo se construye en local.
+- Recuperar la recarga en vivo de `mkdocs serve`: con las versiones recientes de Click, MkDocs 1.6.1 lo arranca sin recarga en vivo, así que solo recarga con `mkdocs serve --livereload`. Fijar Click en `requirements-docs.txt`, o documentar el flag, lo arregla.
 - Quitar Cmd/Ctrl+E, que se mantiene una versión como alias de Cmd/Ctrl+O desde que el atajo pasó al runner por defecto.
 - Mostrar en la vista de Gradle de la app de escritorio la build que ocupa un daemon; hoy `shogun gradle` la nombra, con su cliente, sus tareas y la sesión de agente que la lanzó.
 - Escribir en la fuente de la interfaz los textos de estado que quedan en las vistas de Máquina: la vista de Compose aún escribe el título de los restos y un worktree eliminado como dueño en la fuente de datos.
@@ -127,9 +128,9 @@ Los Ajustes deberían permitir personalizar ShogunAi sin obligar a configurarlo 
 
 Las apps de Compose Desktop ya se pueden comprobar en segundo plano en macOS (`shogun headless` y el provider `desktop-app`), pero quedan dos huecos. La entrada real de teclado no llega a una app cuya ventana no está activa: un puente que publique los eventos en la cola de la propia app, o una herramienta de teclas en el servidor MCP de Compose Hot Reload (una petición a JetBrains), podrían cerrarlo. Y ocultar y capturar una ventana solo funciona en macOS: Windows y Linux necesitan su propia forma de mantener la app fuera de la vista y capturar su ventana, o una pantalla virtual. Cada uno necesita un spike antes de convertirse en un cambio. El turno del escritorio que piden los agentes para computer use (`shogun desktop`) es cooperativo y solo para agentes: esperarlo desde la app de escritorio, y darse cuenta de que la persona está usando el escritorio para que los agentes también la esperen, quedan para cuando el turno esté en uso.
 
-### Una vista de seguimiento para quien no ejecuta agentes
+### Un contrato para herramientas de seguimiento externas
 
-Quienes no escriben el código, como un product owner o un manager, ya siguen los cambios a través de los grupos de los multirepos: qué ramas existen en cada repositorio, a qué distancia está cada una de su base y si está mergeada. Un modo de la torre de control para ellos mostraría esa vista, sin las acciones ni los estados de agente que solo tienen sentido en el equipo donde se ejecutan los agentes. Hay que decidir qué lee (clones locales, o solo las ramas remotas) y cómo se relaciona con el estado de los pull requests de la integración con GitHub de más abajo.
+Herramientas ajenas a ShogunAi, como una vista de seguimiento para un product owner, podrían leer cómo avanza un cambio en cada repositorio solo desde GitHub si las convenciones que sigue ShogunAi quedaran escritas como contrato: ramas con el id de la tarea (`feature/TASK-123`) en cada repositorio que toca el cambio, cómo deducir la base de cada rama sin estado local (`develop`, o `epic/<nombre>` para un cambio que sale de un epic) y de dónde se lee un progreso aproximado, ya sea de las tareas marcadas del `tasks.md` de OpenSpec del cambio, cada una con el repositorio que toca, o de un trailer en los commits (`Progress: 3/9`) que escriba una skill o la guía de flujo para los agentes que no planifican con OpenSpec. Hace falta que la primera de esas herramientas diga qué lee antes de convertirlo en un cambio.
 
 ### Integración con GitHub y gestores de tareas
 
@@ -140,6 +141,10 @@ Crear un worktree desde un issue de GitHub o una tarea de un gestor (derivando e
 Enviar errores y cuelgues anónimos a un servicio remoto, al estilo de los reporteros de fallos de las apps móviles. Solo existiría como opt-in explícito sobre el diagnóstico local, y hay que decidir adónde van los reportes y cómo garantizar que no se envían rutas, nombres de proyecto ni de rama, porque el repositorio es público y los usuarios son desarrolladores.
 
 ## Fuera de alcance por ahora
+
+### Una vista de seguimiento para quien no ejecuta agentes
+
+Un product owner o un manager que quiere saber qué repositorios de una tarea están terminados (el backend mergeado, Android en revisión, iOS aún en curso) no ejecuta agentes ni tiene clones, así que un modo de solo lectura de la torre de control serviría a otro público con casi nada del dominio de ShogunAi. Se estudia como un proyecto aparte apoyado en la API de GitHub, y ShogunAi no crece en esa dirección: su parte es el contrato para herramientas de seguimiento externas que está en estudio.
 
 ### Ejecutar agentes dentro de la app
 

@@ -102,7 +102,7 @@ class GradleDaemonsViewUiTest {
         val job = showView((1L..4L).map { daemon(it, DaemonState.Unknown) })
 
         assertTrue(onAllNodesWithText("state unknown").fetchSemanticsNodes().isEmpty())
-        assertEquals(4, onAllNodesWithTag("daemon-owner-unknown", useUnmergedTree = true).fetchSemanticsNodes().size)
+        assertEquals(4, onAllNodesWithTag("owner-unknown", useUnmergedTree = true).fetchSemanticsNodes().size)
         onNodeWithText("The state of all 4 is unknown, none can be stopped safely").assertIsDisplayed()
         job.cancel()
     }

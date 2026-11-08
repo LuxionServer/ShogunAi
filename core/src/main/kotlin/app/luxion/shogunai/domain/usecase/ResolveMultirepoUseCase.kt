@@ -3,7 +3,10 @@ package app.luxion.shogunai.domain.usecase
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.io.FileManager
 import app.luxion.shogunai.domain.io.MultirepoSource
+import app.luxion.shogunai.domain.model.KnownMultirepos
 import app.luxion.shogunai.domain.model.Multirepo
+import app.luxion.shogunai.domain.model.MultirepoUnavailability
+import app.luxion.shogunai.domain.model.UnavailableMultirepo
 import app.luxion.shogunai.domain.model.InvalidSharedEnvironment
 import app.luxion.shogunai.domain.model.MultirepoDeclaration
 import app.luxion.shogunai.domain.model.MultirepoRepository
@@ -60,8 +63,31 @@ class ResolveMultirepoUseCase(
         return null
     }
 
-    fun known(): List<Multirepo> = source.knownFolders().mapNotNull { folder ->
-        runCatching { source.read(folder) }.getOrNull()?.let { build(normalizePath(folder), it) }
+    fun listing(): KnownMultirepos {
+        val available = mutableListOf<Multirepo>()
+        val unavailable = mutableListOf<UnavailableMultirepo>()
+        source.knownFolders().forEach { folder ->
+            val normalized = normalizePath(folder)
+            val declaration = try {
+                source.read(folder)
+            } catch (error: Exception) {
+                unavailable += UnavailableMultirepo(normalized, MultirepoUnavailability.InvalidDeclaration(invalidDetailOf(error)))
+                return@forEach
+            }
+            when {
+                declaration != null -> available += build(normalized, declaration)
+                fileManager.exists(folder) -> unavailable += UnavailableMultirepo(normalized, MultirepoUnavailability.DeclarationMissing)
+                else -> unavailable += UnavailableMultirepo(normalized, MultirepoUnavailability.FolderUnreachable)
+            }
+        }
+        return KnownMultirepos(available, unavailable)
+    }
+
+    fun known(): List<Multirepo> = listing().available
+
+    private fun invalidDetailOf(error: Exception): String = when (error) {
+        is WorktreeError.InvalidMultirepo -> error.detail
+        else -> error.message.orEmpty()
     }
 
     fun approved(): List<Multirepo> = known().filter { it.approved }
