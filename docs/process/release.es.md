@@ -60,6 +60,8 @@ Escríbelo al crear la rama de release, en el mismo commit que sube la versión.
 
 Cada release tiene unas notas escritas a mano para quien la usa, en inglés y en español, en dos ficheros con el nombre de la versión: `.github/release-notes/X.X.X.md` y `.github/release-notes/X.X.X.es.md`. Escríbelas en la rama de release, en el mismo commit que `.github/release-title`, y revísalas en la pull request de la release. Que lleven el nombre de la versión evita que un olvido republique las notas de la release anterior, y la carpeta guarda el historial de todas las releases.
 
+Los mismos ficheros construyen el [Historial de cambios](../changelog.md) del sitio de documentación, de la release más nueva a la más antigua, en el idioma de quien lo lee (en inglés cuando una release no tiene fichero en español). Se regenera en cada `mkdocs build` y `mkdocs serve` con el hook de `scripts/mkdocs/changelog_hook.py`, así que no hay página que actualizar a mano: `docs/changelog.md` y `docs/changelog.es.md` son generados y Git los ignora. Sus tests se ejecutan con `python3 -m unittest discover -s scripts/mkdocs`.
+
 Cómo escribirlas:
 
 - Describe qué cambia para quien usa ShogunAi, en lenguaje llano: qué puede hacer ahora, qué funciona mejor, qué se ha corregido.

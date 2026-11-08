@@ -866,6 +866,13 @@ interface Strings {
     val ownerUnknown: String
     val machineOverviewTooltip: String
     val machineOverviewNoProviders: String
+    val derivedDataDeleteBlockedDeleting: String
+    val derivedDataDeleteBlockedNoOrphans: String
+    val simulatorOrphansDeleteBlockedDeleting: String
+    val composeTakeDownBlockedRunning: String
+    val composeTakeDownBlockedNone: String
+    val composeLeftoversBlockedRemoving: String
+    val composeLeftoversBlockedOnlyVolumes: String
 }
 
 val LocalStrings = staticCompositionLocalOf<Strings> { EnglishStrings }

@@ -38,7 +38,6 @@ ShogunAi has to work the first time on a machine that isn't the one it's develop
 A UX review of the implemented v2 interface, done on `develop` at `aaf42f94` with sample data, concluded that the app should first answer "what needs me?" and "where is each agent?", and that today it answers neither at a glance. Its fixes are split into changes, in order:
 
 - One row per multirepo change in Active, showing the worst state of its repositories, which expands into one child row per repository; the child rows don't repeat the branch.
-- The rest of the Machine views (Maven daemons, emulators, simulators, DerivedData, Compose projects) get what the Gradle daemons view got: an unknown owner dimmed instead of blank, ghost buttons in their rows, and the reason a disabled action is disabled written next to it.
 
 ### 3. Orca, a second first-class runner
 
@@ -99,7 +98,8 @@ Multirepos and groups by branch are done in the CLI and the desktop app, and the
 - Support for bare repositories with worktrees (the "bare clone" layout), which changes what the base repository and copying from it mean. Today ShogunAi rejects them with a specific error.
 - Splitting `ProjectWorktrees.kt` and `ProjectSettingsView.kt` into smaller holders and sections.
 - Checking the guided tour on Windows and Linux with a real installed app: creating the sample with the system's Git, and the tour's agent command, whose prompt is quoted for the shell each terminal runs.
-- A changelog page in the documentation site built from the release notes in `.github/release-notes/`, which the app already shows in its update notice.
+- A workflow that builds the documentation site with `mkdocs build --strict` and runs the changelog hook's tests (`python3 -m unittest discover -s scripts/mkdocs`) on every pull request that touches `docs/`, `mkdocs.yml`, `scripts/mkdocs/` or `.github/release-notes/`; today the site is only built locally.
+- Getting live reload back in `mkdocs serve`: with recent Click releases MkDocs 1.6.1 starts it with live reload off, so it only reloads with `mkdocs serve --livereload`. Pinning Click in `requirements-docs.txt`, or documenting the flag, fixes it.
 - Removing Cmd/Ctrl+E, kept for one release as an alias of Cmd/Ctrl+O when the shortcut moved to the default runner.
 - Showing the build that holds a busy Gradle daemon in the desktop app's Gradle view; today `shogun gradle` names it, with its client, tasks and the agent session that started it.
 - Writing the remaining state texts of the Machine views in the interface font: the Compose view still writes its leftovers title and a removed worktree as its owner in the data font.

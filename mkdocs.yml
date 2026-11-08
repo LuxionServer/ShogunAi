@@ -38,6 +38,9 @@ markdown_extensions:
   - toc:
       permalink: true
 
+hooks:
+  - scripts/mkdocs/changelog_hook.py
+
 plugins:
   - search
   - git-revision-date
@@ -79,6 +82,7 @@ plugins:
             Desktop app in the background: App de escritorio en segundo plano
             Release: Proceso de release
             Idle cost benchmark: Benchmark del coste en reposo
+            Changelog: Historial de cambios
 
 nav:
   - Home: index.md
@@ -106,3 +110,4 @@ nav:
       - Clean account rehearsal: process/clean-account-rehearsal.md
   - Design decisions: decisions/index.md
   - Roadmap: roadmap.md
+  - Changelog: changelog.md

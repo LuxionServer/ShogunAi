@@ -38,7 +38,6 @@ ShogunAi tiene que funcionar a la primera en una máquina que no es en la que se
 Una revisión de UX de la interfaz v2 ya implementada, hecha sobre `develop` en `aaf42f94` con datos de ejemplo, concluyó que la app debería responder primero «¿qué me necesita?» y «¿dónde está cada agente?», y que hoy no responde ninguna de las dos de un vistazo. Sus correcciones se reparten en cambios, por orden:
 
 - Una fila por cambio de multirepo en Activos, con el peor estado de sus repositorios, que se despliega en una fila hija por repositorio; las filas hijas no repiten la rama.
-- El resto de vistas de Máquina (daemons de Maven, emuladores, simuladores, DerivedData, proyectos de Compose) reciben lo que recibió la de daemons de Gradle: un propietario desconocido atenuado en lugar de vacío, botones fantasma en sus filas y el motivo de una acción desactivada escrito junto a ella.
 
 ### 3. Orca, un segundo runner de primera clase
 
@@ -99,7 +98,8 @@ Los multirepos y los grupos por rama están hechos en el CLI y en la app de escr
 - Soporte de repositorios bare con worktrees (el esquema «bare clone»), que cambia lo que significan el repositorio base y copiar desde él. Hoy ShogunAi los rechaza con un error específico.
 - Dividir `ProjectWorktrees.kt` y `ProjectSettingsView.kt` en holders y secciones más pequeños.
 - Comprobar el recorrido guiado en Windows y Linux con una app instalada real: la creación del ejemplo con el Git del sistema, y el comando del agente del recorrido, cuyo prompt se entrecomilla para la shell que ejecuta cada terminal.
-- Una página de changelog en la web de documentación construida con las notas de `.github/release-notes/`, que la app ya muestra en su aviso de actualización.
+- Un workflow que construya la web de documentación con `mkdocs build --strict` y ejecute los tests del hook del historial de cambios (`python3 -m unittest discover -s scripts/mkdocs`) en cada pull request que toque `docs/`, `mkdocs.yml`, `scripts/mkdocs/` o `.github/release-notes/`; hoy la web solo se construye en local.
+- Recuperar la recarga en vivo de `mkdocs serve`: con las versiones recientes de Click, MkDocs 1.6.1 lo arranca sin recarga en vivo, así que solo recarga con `mkdocs serve --livereload`. Fijar Click en `requirements-docs.txt`, o documentar el flag, lo arregla.
 - Quitar Cmd/Ctrl+E, que se mantiene una versión como alias de Cmd/Ctrl+O desde que el atajo pasó al runner por defecto.
 - Mostrar en la vista de Gradle de la app de escritorio la build que ocupa un daemon; hoy `shogun gradle` la nombra, con su cliente, sus tareas y la sesión de agente que la lanzó.
 - Escribir en la fuente de la interfaz los textos de estado que quedan en las vistas de Máquina: la vista de Compose aún escribe el título de los restos y un worktree eliminado como dueño en la fuente de datos.

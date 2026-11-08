@@ -60,6 +60,8 @@ Write it when creating the release branch, in the same commit that bumps the ver
 
 Every release has notes written by hand for its users, in English and Spanish, in two files named after the version: `.github/release-notes/X.X.X.md` and `.github/release-notes/X.X.X.es.md`. Write them on the release branch, in the same commit as `.github/release-title`, and review them in the release pull request. Naming them after the version means a forgotten update can't republish the previous release's notes, and the folder keeps the history of every release.
 
+The same files build the documentation site's [Changelog](../changelog.md), newest release first, in each reader's language (English when a release has no Spanish file). It is regenerated on every `mkdocs build` and `mkdocs serve` by the hook in `scripts/mkdocs/changelog_hook.py`, so there is no page to update by hand: `docs/changelog.md` and `docs/changelog.es.md` are generated and ignored by Git. Its tests run with `python3 -m unittest discover -s scripts/mkdocs`.
+
 How to write them:
 
 - Describe what changes for the person using ShogunAi, in plain language: what they can do now, what works better, what was fixed.
