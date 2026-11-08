@@ -6,6 +6,10 @@ Run several AI coding agents in parallel on the same machine without them steppi
 
 A Git worktree isolates an agent's code, but an agent needs more than code to work: the local files the build expects, its own ports, its own emulator or simulator, and build daemons and caches that don't collide with its neighbour's. ShogunAi gives every worktree that whole environment, ready the moment the agent starts.
 
+![ShogunAi's Active view: two worktrees whose agent is waiting for you, two with an agent working and two with unfinished work, across two projects](docs/assets/control-tower.png)
+
+Watch the 2-minute video and read the write-up in [Parallel agents without collisions](https://cirofeliu.es/blog/parallel-agents-without-collisions/), or reproduce it yourself with the [demo repository](https://github.com/LuxionServer/shogunai-demo).
+
 It's built in two parts:
 
 - **The `shogun` command and hooks**, where the work happens. Claude Code, Codex, Cursor, Herdr or a plain script create, provision and clean their worktrees through it.
