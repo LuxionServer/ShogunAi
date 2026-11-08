@@ -979,6 +979,14 @@ object SpanishStrings : Strings {
     override val multirepoNeedsReview = "Necesita revisión"
     override val multirepoNeedsReviewExplanation =
         "Este multirepo no está aprobado en este equipo: su declaración es nueva aquí o ha cambiado fuera de ShogunAi, por ejemplo con un pull. ShogunAi crea ramas y worktrees en los repositorios que lista y ejecuta sus comandos post-creación aprobados, así que revísalos antes de confiar en él."
+    override val multirepoUnavailable = "No disponible"
+    override fun multirepoFolderUnreachable(folder: String) =
+        "No se puede acceder a la carpeta $folder. Si está en una unidad externa o de red, conéctala y vuelve a intentarlo."
+    override fun multirepoDeclarationMissing(folder: String) = "La carpeta $folder ya no tiene un .shogunai-multirepo.json."
+    override fun multirepoDeclarationInvalid(detail: String) = "Su .shogunai-multirepo.json no se puede leer: $detail"
+    override val removeMultirepoTitle = "¿Quitar multirepo?"
+    override fun removeMultirepoMessage(name: String) =
+        "ShogunAi olvidará \"$name\", su aprobación y el agente fijado en este equipo. No se toca ningún archivo de su carpeta; si lo vuelves a añadir, tendrás que revisarlo."
     override val trustMultirepo = "Confiar"
     override val declaredAgentIgnored = "El agente de la declaración se ignora; el agente del multirepo se fija en este equipo, en los ajustes del multirepo."
     override val existingDeclarationTitle = "Esta carpeta ya declara un multirepo"

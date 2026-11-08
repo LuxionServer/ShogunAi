@@ -798,6 +798,12 @@ interface Strings {
     val sortAlphabetically: String
     val multirepoNeedsReview: String
     val multirepoNeedsReviewExplanation: String
+    val multirepoUnavailable: String
+    fun multirepoFolderUnreachable(folder: String): String
+    fun multirepoDeclarationMissing(folder: String): String
+    fun multirepoDeclarationInvalid(detail: String): String
+    val removeMultirepoTitle: String
+    fun removeMultirepoMessage(name: String): String
     val trustMultirepo: String
     val declaredAgentIgnored: String
     val existingDeclarationTitle: String
