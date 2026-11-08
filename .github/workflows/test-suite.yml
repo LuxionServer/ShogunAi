@@ -45,6 +45,23 @@ jobs:
         run: ./gradlew test
 
       - name: Verify coverage
+        id: coverage
         if: runner.os == 'macOS'
         shell: bash
         run: ./gradlew koverVerify
+
+      - name: Generate coverage reports
+        if: failure() && steps.coverage.outcome == 'failure'
+        shell: bash
+        run: ./gradlew koverXmlReport koverHtmlReport
+
+      - name: Upload coverage reports
+        if: failure() && steps.coverage.outcome == 'failure'
+        uses: actions/upload-artifact@v7
+        with:
+          name: kover-reports-${{ matrix.os }}
+          path: |
+            */build/reports/kover/report.xml
+            */build/reports/kover/html/
+          retention-days: 14
+          if-no-files-found: warn
