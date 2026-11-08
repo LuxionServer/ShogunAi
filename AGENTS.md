@@ -43,7 +43,12 @@ Rules:
 - This file (`AGENTS.md`) is for agents only: style and process rules, not project content. If you're going to add an architecture explanation or a decision, it goes in `docs/` or OpenSpec, not here.
 - Non-trivial changes are planned with OpenSpec (`/opsx:propose` → `/opsx:apply` → `/opsx:archive`) before being implemented — see `docs/process/openspec.md`.
 - Archive a change (`/opsx:archive`) right after its implementation is tested and validated, in the same branch and **before** opening the pull request, so the archive, synced specs and roadmap update ship in that pull request. Don't leave archiving for a follow-up pull request after merge.
-- When archiving a change, check whether it affects the roadmap (`docs/roadmap.md` and `docs/roadmap.es.md`) and update both in the same branch: remove the items the change completes and renumber the remaining ones, update the status of the layers in "Direction" if it changes, and add the follow-ups the change left out.
+- When archiving a change, check whether it affects the roadmap (`docs/roadmap.md` and `docs/roadmap.es.md`) and update both in the same branch. Several pull requests update it at once and Git merges by line, so keep each edit to the lines it's about:
+  - One sentence per line. Never append a sentence or a clause to an existing line; add a new line instead.
+  - Planned sections aren't numbered, and their order is the priority. Never renumber or reorder the others.
+  - Remove only the bullet or the section the change completes.
+  - Add the follow-ups the change left out as new bullets in their section, or as a new section placed where its priority goes.
+  - Touch "Direction" only when a layer's or runner's status changes (its `Status:` line) or a genuinely new capability needs a bullet of its own. A new detail of an existing capability belongs in the specs and the release notes, not in Direction.
 
 ## Commands
 
