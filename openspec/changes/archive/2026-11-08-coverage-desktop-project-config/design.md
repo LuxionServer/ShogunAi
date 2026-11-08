@@ -52,11 +52,30 @@ The section index only shows when the form is at least 1,000 dp wide and the cur
 
 ### Branches no input reaches
 
-As in `coverage-desktop-texts`, a branch the compiler generates but no input reaches is not excluded: the code is rewritten in an equivalent form whose branches all run (for example `x?.let { … } ?: y` whose lambda never returns `null` becomes an `if`, and a `!!` after a null check becomes a local value). Each rewrite is listed here with its reason when it is made.
+As in `coverage-desktop-texts`, a branch the compiler generates but no input reaches is not excluded: the code is rewritten in an equivalent form whose branches all run (for example `x?.let { … } ?: y` whose lambda never returns `null` becomes an `if`, and a `!!` after a null check becomes a local value). The rewrites made:
+
+- `existingProject?.config?.x ?: default`: a project's `config` is never `null`, so the second safe call and the fallback after it only saw one value. The view model now takes the saved configuration once (`savedConfig`, an empty `ProjectConfig` for a new project, whose single default agent equals `AgentDraft()`) and reads its fields directly.
+- `provisioning?.approvalSubject ?: RepositoryApprovalSubject()`, `provisioning?.providers ?: RepositoryProviders()` and `provisioning?.environment?.…`: same pattern; they became an `if` on `provisioning`, or read from `provisioning ?: RepositoryProvisioning()`, whose defaults are the same values.
+- `(state as? Declared)?.provisioning?.providers?.emulator`, `maven?.mavenMaxHeap?.trim()?.…`, `emulatorAvd?.trim()?.ifEmpty { null }` and `detectedMainBranch?.let(…) ?: …`: chained safe calls on values that are never `null`, rewritten with one safe call and a `let`, or an `if`.
+- `editorOverride?.let { … } == true` and the view's `editorOverrideMissing && override != null`: the second check could never fail. The view model now exposes `missingEditorOverride: EditorId?` and the view shows the warning when it is set.
+- `approveRepository` and the approval refresh checked that the loaded path wasn't blank after checking the approval subject wasn't empty, but a subject only comes from a non-blank path; the path check was removed there and kept in `revokeRepositoryApproval`, where it is reachable.
+- The local file picker read `listLocalFileCandidates ?: return` every time it loaded, although it can only open when the lister exists. The open picker now keeps the lister it was opened with, and `applyLocalFilePicker` no longer chains a safe call on `selection()`, which never returns `null`.
+- `if (error && errorMessage != null)` for the base path: whenever the error is visible there is a message, so it became `errorMessage.takeIf { error }`.
+- `duplicateProject != null -> …duplicateProject!!.name`: the `!!` became a local value.
+- The emulator and simulator sections returned early on `Hidden` and then listed `Hidden -> Unit` again. Their states gain a sealed `Shown` subtype, and the sections render only a `Shown` state, so the `when` has no case that can't happen.
+- A `when` over a sealed type or an enum inside a composable's lambda keeps the default branch the compiler adds, which Kover counts there although it filters it in ordinary functions. The `when` over the save outcome's invalid field moved to an ordinary function (`ProjectConfigField.focusIn`), the AVD label to `avdLabel`, and the `when` over the picker's and the sections' load states, which call composables, to small composables of their own (`CandidatesContent`, `EmulatorStateContent`, `SimulatorStateContent`). They are rendered by the same UI tests.
+- `isValid` of the view model and of `RepositoryConfigDraft` had no caller and were removed.
 
 ### Floors
 
-The floors in `desktopApp/build.gradle.kts` go up to the whole percentages measured after this change. If the package reaches 100% with nothing else changing, the whole desktop app goes to about 91.2% of lines and 78.6% of branches, so the floors would go from 88 to 91 and from 74 to 78. The final figures are recorded here after measuring, and measured again after bringing in `develop`.
+The floors in `desktopApp/build.gradle.kts` go up to the whole percentages measured after this change. If the package reaches 100% with nothing else changing, the whole desktop app goes to about 91.2% of lines and 78.6% of branches, so the floors would go from 88 to 91 and from 74 to 78. Measured on macOS after this change, with the end-to-end tests:
+
+| Package | Lines | Branches |
+|---|---|---|
+| `ui/projectconfig` | 100% (1,130 of 1,130) | 100% (745 of 745) |
+| whole desktop app outside composables | 91.21% (1,063 uncovered of 12,087) | 78.29% (1,637 uncovered of 7,539) |
+
+The floors go from 88 to 91 (lines) and from 74 to 78 (branches).
 
 ## Risks / Trade-offs
 
