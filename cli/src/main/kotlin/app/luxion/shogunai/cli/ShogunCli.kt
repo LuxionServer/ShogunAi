@@ -760,7 +760,6 @@ class ShogunCli(
     }
 
     private suspend fun initMultirepo(configure: ConfigureMultirepoUseCase, action: MultirepoAction.Init, json: Boolean): Int {
-        multirepoSource.forgetMissing()
         val declaration = multirepoSource.read(workingDirectory)
         if (declaration == null) {
             val multirepo = configure.init(workingDirectory, action.worktreesRoot?.let(::absolute), action.name).getOrThrow()

@@ -6,6 +6,10 @@ Ejecuta varios agentes de IA en paralelo en la misma máquina sin que se pisen e
 
 Un worktree de Git aísla el código de un agente, pero un agente necesita más que código para trabajar: los ficheros locales que espera la build, sus propios puertos, su propio emulador o simulador, y daemons y cachés de compilación que no choquen con los de su vecino. ShogunAi da a cada worktree todo ese entorno, listo en cuanto arranca el agente.
 
+![La vista Activos (Active) de ShogunAi: dos worktrees cuyo agente te espera, dos con un agente trabajando y dos con trabajo sin terminar, en dos proyectos](docs/assets/control-tower.png)
+
+Mira el vídeo de 2 minutos y lee el artículo en [Agentes en paralelo sin chocar](https://cirofeliu.es/blog/agentes-en-paralelo-sin-chocar/), o reprodúcelo tú mismo con el [repositorio de demostración](https://github.com/LuxionServer/shogunai-demo).
+
 Tiene dos partes:
 
 - **El comando `shogun` y los hooks**, donde ocurre el trabajo. Claude Code, Codex, Cursor, Herdr o un simple script crean, provisionan y limpian sus worktrees a través de él.

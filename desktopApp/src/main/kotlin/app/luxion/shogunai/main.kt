@@ -114,7 +114,7 @@ internal fun shellViewModelOf(appContainer: AppContainer) = ShellViewModel(
     appContainer::acknowledgeSettingsProblem,
     MultirepoCatalog(appContainer::knownMultirepos),
     appContainer::registerWorkspaceProject,
-    appContainer::forgetMissingMultirepos,
+    appContainer::forgetMultirepo,
     appContainer::projectCatalogModifiedAt,
 )
 
