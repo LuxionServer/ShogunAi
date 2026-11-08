@@ -19,11 +19,11 @@ import androidx.compose.ui.Modifier
 import app.luxion.shogunai.domain.model.SimulatorState
 import app.luxion.shogunai.domain.usecase.ProjectOwner
 import app.luxion.shogunai.ui.components.DangerTextButton
+import app.luxion.shogunai.ui.components.GhostButton
 import app.luxion.shogunai.ui.components.InlineProgress
 import app.luxion.shogunai.ui.components.Notice
 import app.luxion.shogunai.ui.components.NoticeKind
 import app.luxion.shogunai.ui.components.ProgressSize
-import app.luxion.shogunai.ui.components.SecondaryButton
 import app.luxion.shogunai.ui.components.Spacing
 import app.luxion.shogunai.ui.components.StatusChip
 import app.luxion.shogunai.ui.i18n.LocalStrings
@@ -59,8 +59,8 @@ fun IosSimulatorsView(machine: MachineResources, onOpenWorktree: (String, String
                 GroupTitle(strings.simulatorOrphansTitle(orphans.size))
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                     if (machine.isDeletingSimulators) InlineProgress(size = ProgressSize.Small)
-                    DangerTextButton(onClick = { confirmingDelete = true }, enabled = !machine.isDeletingSimulators) {
-                        Text(strings.deleteOrphans)
+                    ListActionReason(simulatorOrphansDeleteBlock(machine.isDeletingSimulators, strings), "simulator-orphans-reason") { enabled ->
+                        DangerTextButton(onClick = { confirmingDelete = true }, enabled = enabled) { Text(strings.deleteOrphans) }
                     }
                 }
             }
@@ -110,9 +110,9 @@ private fun WorktreeSimulatorRow(entry: MachineSimulator, machine: MachineResour
             when {
                 isBusy -> InlineProgress(size = ProgressSize.Small)
                 state == SimulatorState.SHUTDOWN ->
-                    SecondaryButton(onClick = { machine.startSimulator(entry.projectId, entry.worktreePath) }) { Text(strings.startSimulator) }
+                    GhostButton(onClick = { machine.startSimulator(entry.projectId, entry.worktreePath) }) { Text(strings.startSimulator) }
                 else ->
-                    SecondaryButton(onClick = { machine.stopSimulator(entry.projectId, entry.worktreePath) }) { Text(strings.stopSimulator) }
+                    GhostButton(onClick = { machine.stopSimulator(entry.projectId, entry.worktreePath) }) { Text(strings.stopSimulator) }
             }
         },
     )

@@ -1043,6 +1043,13 @@ object EnglishStrings : Strings {
     override val machineOverviewTooltip = "Machine: the daemons, devices and caches every worktree shares"
     override val machineOverviewNoProviders =
         "No saved project declares a provider yet. Declare one in a project's settings (Gradle, Android emulators, iOS simulators, Xcode, Maven or Docker Compose) to see its daemons, devices and caches here."
+    override val derivedDataDeleteBlockedDeleting = "Orphaned folders are being deleted"
+    override val derivedDataDeleteBlockedNoOrphans = "No folder is orphaned"
+    override val simulatorOrphansDeleteBlockedDeleting = "Orphaned simulators are being deleted"
+    override val composeTakeDownBlockedRunning = "Projects are being taken down"
+    override val composeTakeDownBlockedNone = "No project belongs to a removed worktree"
+    override val composeLeftoversBlockedRemoving = "Leftovers are being removed"
+    override val composeLeftoversBlockedOnlyVolumes = "Only volumes are left"
 }
 
 internal fun String?.asSuffix(): String = if (isNullOrBlank()) "" else ": $this"

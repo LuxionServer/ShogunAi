@@ -120,8 +120,8 @@ private fun LoadedDerivedData(
         MachineDataText(strings.derivedDataOrphans(orphans.size, sizeText(totalSize(orphans.map { it.folder.sizeBytes }))))
         Row(verticalAlignment = Alignment.CenterVertically) {
             if (machine.isDeletingDerivedData) InlineProgress(modifier = Modifier.padding(end = Spacing.sm))
-            DangerTextButton(onClick = onDeleteOrphans, enabled = !machine.isDeletingDerivedData && orphans.isNotEmpty()) {
-                Text(strings.deleteOrphans)
+            ListActionReason(derivedDataDeleteBlock(orphans.size, machine.isDeletingDerivedData, strings), "derived-data-orphans-reason") { enabled ->
+                DangerTextButton(onClick = onDeleteOrphans, enabled = enabled) { Text(strings.deleteOrphans) }
             }
         }
     }
