@@ -351,4 +351,84 @@ class ReadWorktreeStatusUseCaseTest {
 
         assertEquals(Divergence(ahead = 3, behind = 0), status.base)
     }
+
+    private fun cherryCommand(range: String) = listOf("git", "rev-list", "--cherry-pick", "--right-only", "--count", range)
+    private val squashCommand = listOf("git", "commit-tree", "HEAD^{tree}", "-p", "fork123", "-m", "squash")
+
+    private fun squashMerged(target: String): Map<List<String>, (List<String>) -> CommandResult> = mapOf(
+        cherryCommand("$target...HEAD") to { command -> success(command, stdout = "2\n") },
+        listOf("git", "merge-base", target, "HEAD") to { command -> success(command, stdout = "fork123\n") },
+        squashCommand to { command -> success(command, stdout = "squash456\n") },
+        cherryCommand("$target...squash456") to { command -> success(command, stdout = "0\n") },
+    )
+
+    @Test
+    fun `a branch squash-merged into the main branch is merged`() = runTest {
+        val executor = executor(squashMerged("origin/develop") + mapOf(mainBranchCommand to { command -> success(command, stdout = "3\t2\n") }))
+
+        val status = ReadWorktreeStatusUseCase(executor, FakeFileManager())(worktree, mainBranch).getOrThrow()
+
+        assertTrue(status.isMergedIntoMainBranch)
+        assertTrue(status.isMergedIntoBase)
+        assertTrue(status.hasOwnCommits)
+        assertEquals(1, executor.executedCommands.count { it == cherryCommand("origin/develop...HEAD") })
+        assertEquals(SQUASH_COMMIT_ENVIRONMENT, executor.environments[squashCommand])
+        assertEquals(CommandTimeouts.GIT_READ, executor.timeouts[cherryCommand("origin/develop...HEAD")])
+    }
+
+    @Test
+    fun `a branch rebase-merged into its base is merged although the main branch lacks its changes`() = runTest {
+        val executor = executor(
+            mapOf(
+                epicCommand to { command -> success(command, stdout = "5\t3\n") },
+                cherryCommand("origin/epic/redesign...HEAD") to { command -> success(command, stdout = "0\n") },
+            ),
+        )
+
+        val status = ReadWorktreeStatusUseCase(executor, FakeFileManager())(worktree, mainBranch, epic).getOrThrow()
+
+        assertTrue(status.isMergedIntoBase)
+        assertFalse(status.isMergedIntoMainBranch)
+        assertTrue(executor.executed(*cherryCommand("origin/develop...HEAD").toTypedArray()))
+    }
+
+    @Test
+    fun `a branch squash-merged into the main branch is merged whatever its base holds`() = runTest {
+        val executor = executor(
+            squashMerged("origin/develop") + mapOf(
+                mainBranchCommand to { command -> success(command, stdout = "3\t2\n") },
+                epicCommand to { command -> success(command, stdout = "1\t2\n") },
+            ),
+        )
+
+        val status = ReadWorktreeStatusUseCase(executor, FakeFileManager())(worktree, mainBranch, epic).getOrThrow()
+
+        assertTrue(status.isMergedIntoMainBranch)
+        assertFalse(status.isMergedIntoBase)
+        assertTrue(status.isMerged)
+    }
+
+    @Test
+    fun `a branch whose changes no target holds isn't merged`() = runTest {
+        val executor = executor()
+
+        val status = ReadWorktreeStatusUseCase(executor, FakeFileManager())(worktree, mainBranch).getOrThrow()
+
+        assertFalse(status.isMerged)
+        assertTrue(executor.executed(*cherryCommand("origin/develop...HEAD").toTypedArray()))
+    }
+
+    @Test
+    fun `a branch that is not both ahead and behind never compares changes`() = runTest {
+        val executor = executor(
+            mapOf(
+                mainBranchCommand to { command -> success(command, stdout = "0\t2\n") },
+                epicCommand to { command -> success(command, stdout = "3\t0\n") },
+            ),
+        )
+
+        ReadWorktreeStatusUseCase(executor, FakeFileManager())(worktree, mainBranch, epic).getOrThrow()
+
+        assertTrue(executor.executedCommands.none { it.take(3) == listOf("git", "rev-list", "--cherry-pick") })
+    }
 }

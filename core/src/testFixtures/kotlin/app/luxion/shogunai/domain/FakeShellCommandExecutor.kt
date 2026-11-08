@@ -41,6 +41,15 @@ class FakeShellCommandExecutor(
         return super.executeStreaming(command, workingDirectory, environment, onOutput)
     }
 
+    override suspend fun executeWithEnvironment(
+        command: List<String>,
+        environment: Map<String, String>,
+        workingDirectory: String?,
+    ): CommandResult {
+        environments[command] = environment
+        return execute(command, workingDirectory)
+    }
+
     fun executed(vararg args: String): Boolean = executedCommands.any { it == args.toList() }
 
     companion object {
