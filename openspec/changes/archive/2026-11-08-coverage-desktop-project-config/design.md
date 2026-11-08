@@ -75,7 +75,7 @@ The floors in `desktopApp/build.gradle.kts` go up to the whole percentages measu
 | `ui/projectconfig` | 100% (1,130 of 1,130) | 100% (745 of 745) |
 | whole desktop app outside composables | 91.21% (1,063 uncovered of 12,087) | 78.29% (1,637 uncovered of 7,539) |
 
-The floors go from 88 to 91 (lines) and from 74 to 78 (branches).
+The floors go from 88 to 91 (lines) and from 74 to 78 (branches). Measured again after bringing in `develop` at 94137b29, which had raised the lines floor to 89: 91.26% of lines (1,070 uncovered of 12,246) and 78.60% of branches (1,629 uncovered of 7,613), so the floors stay at 91 and 78.
 
 ## Risks / Trade-offs
 

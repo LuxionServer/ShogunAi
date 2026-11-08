@@ -38,7 +38,6 @@ ShogunAi has to work the first time on a machine that isn't the one it's develop
 A UX review of the implemented v2 interface, done on `develop` at `aaf42f94` with sample data, concluded that the app should first answer "what needs me?" and "where is each agent?", and that today it answers neither at a glance. Its fixes are split into changes, in order:
 
 - One row per multirepo change in Active, showing the worst state of its repositories, which expands into one child row per repository; the child rows don't repeat the branch.
-- The rest of the Machine views (Maven daemons, emulators, simulators, DerivedData, Compose projects) get what the Gradle daemons view got: an unknown owner dimmed instead of blank, ghost buttons in their rows, and the reason a disabled action is disabled written next to it.
 
 ### 3. Orca, a second first-class runner
 
@@ -80,7 +79,8 @@ ShogunAi's view is only neutral if it sees every agent:
 Multirepos and groups by branch are done in the CLI and the desktop app, and they're also how people who don't write the code follow a change across repositories. Left out:
 
 - Checking every repository of a group before creating any of its worktrees: each repository's local files are checked before its own worktree is created, so a group whose second repository has an unavailable file keeps the worktree already created in the first.
-- Carrying the multirepo agent set on this machine over when its folder moves: `shogun multirepo init` (or "Add multirepo") in the new folder registers it after reviewing it and forgets the old entry, but the local agent goes with that entry and has to be set again.
+- Carrying the multirepo agent set on this machine over when its folder moves: `shogun multirepo init` (or "Add multirepo") in the new folder registers it after reviewing it, but the local agent stays with the old entry and has to be set again.
+- Forgetting from the command line a known multirepo whose declaration can't be read (`trust --revoke` and `delete` need the declaration); today only the desktop app's "Remove" does it.
 - Associating worktrees whose branches don't match, e.g. `shogun group add <id> <worktree>`. It needs a design of its own: groups have no state today, and the association would reach group detection, the ports shared variables resolve against, cleanup and every group view.
 - Showing the Claude session names of a group's worktrees and of the multirepo agent in the desktop app's views; today `shogun open --herdr` and `shogun status` report them, and the app only names the sessions it opens.
 - A single session for the whole group, with a combined environment, as an option next to one agent per repository.
@@ -98,7 +98,8 @@ Multirepos and groups by branch are done in the CLI and the desktop app, and the
 - Support for bare repositories with worktrees (the "bare clone" layout), which changes what the base repository and copying from it mean. Today ShogunAi rejects them with a specific error.
 - Splitting `ProjectWorktrees.kt` and `ProjectSettingsView.kt` into smaller holders and sections.
 - Checking the guided tour on Windows and Linux with a real installed app: creating the sample with the system's Git, and the tour's agent command, whose prompt is quoted for the shell each terminal runs.
-- A changelog page in the documentation site built from the release notes in `.github/release-notes/`, which the app already shows in its update notice.
+- A workflow that builds the documentation site with `mkdocs build --strict` and runs the changelog hook's tests (`python3 -m unittest discover -s scripts/mkdocs`) on every pull request that touches `docs/`, `mkdocs.yml`, `scripts/mkdocs/` or `.github/release-notes/`; today the site is only built locally.
+- Getting live reload back in `mkdocs serve`: with recent Click releases MkDocs 1.6.1 starts it with live reload off, so it only reloads with `mkdocs serve --livereload`. Pinning Click in `requirements-docs.txt`, or documenting the flag, fixes it.
 - Removing Cmd/Ctrl+E, kept for one release as an alias of Cmd/Ctrl+O when the shortcut moved to the default runner.
 - Showing the build that holds a busy Gradle daemon in the desktop app's Gradle view; today `shogun gradle` names it, with its client, tasks and the agent session that started it.
 - Writing the remaining state texts of the Machine views in the interface font: the Compose view still writes its leftovers title and a removed worktree as its owner in the data font.
@@ -128,9 +129,9 @@ Settings should let people customize ShogunAi without making them configure ever
 
 Compose Desktop apps can be checked in the background on macOS (`shogun headless` and the `desktop-app` provider), but two gaps remain. Real keyboard input doesn't reach an app whose window isn't active: a bridge that posts events to the app's own queue, or a key tool in Compose Hot Reload's MCP server (a feature request to JetBrains), could close it. And hiding and capturing a window are macOS-only: Windows and Linux need their own way to keep the app out of sight and capture its window, or a virtual display. Each needs a spike before becoming a change. The desktop turn that agents take for computer use (`shogun desktop`) is cooperative and only for agents: waiting for it from the desktop app, and noticing that the person is using the desktop so agents wait for them too, are left for when the turn is in use.
 
-### A follow-up view for people who don't run agents
+### A contract for external tracking tools
 
-People who don't write the code, such as a product owner or a manager, already follow changes through multirepo groups: which branches exist in each repository, how far each one is from its base and whether it's merged. A mode of the control tower for them would show that view, without the actions and agent states that only make sense on the machine where the agents run. It needs deciding what it reads (local clones, or only the remote branches) and how it relates to the pull request state of the GitHub integration below.
+Tools outside ShogunAi, such as a follow-up view for a product owner, could read how a change progresses in each repository from GitHub alone if the conventions ShogunAi follows were written down as a contract: branches named after the task id (`feature/TASK-123`) in every repository the change touches, how to infer each branch's base without local state (`develop`, or `epic/<name>` for a change branched from an epic), and where an approximate progress is read from, either the checked tasks of the change's OpenSpec `tasks.md`, each naming the repository it touches, or a trailer in the commits (`Progress: 3/9`) written by a skill or the workflow guide for agents that don't plan with OpenSpec. It needs the first such tool to say what it reads before it becomes a change.
 
 ### Integration with GitHub and task trackers
 
@@ -141,6 +142,10 @@ Creating a worktree from a GitHub issue or a tracker task (deriving the task id 
 Sending anonymous errors and crashes to a remote service, in the style of the crash reporters used in mobile apps. It would only exist as an explicit opt-in on top of the local diagnostics, and needs a decision on where reports go and how to guarantee that no paths, project names or branch names are sent, since the repository is public and the users are developers.
 
 ## Out of scope for now
+
+### A follow-up view for people who don't run agents
+
+A product owner or a manager who wants to know which repositories of a task are done (the backend merged, Android in review, iOS still in progress) doesn't run agents or keep clones, so a read-only mode of the control tower would serve a different audience with almost none of ShogunAi's domain. It's being explored as a separate project built on GitHub's API, and ShogunAi doesn't grow in that direction: its part is the contract for external tracking tools under exploration.
 
 ### Running agents inside the app
 

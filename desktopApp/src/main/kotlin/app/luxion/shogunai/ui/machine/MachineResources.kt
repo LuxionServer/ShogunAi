@@ -394,6 +394,11 @@ class MachineResources(
         scope.launch { load(resource, remeasure = true) }
     }
 
+    suspend fun applyResourceSettings() {
+        refreshSummaries()
+        if (MachineResource.XCODE_DERIVED_DATA in declared) applyDerivedDataQuota()
+    }
+
     fun setWindowActivity(activity: WindowActivity) {
         windowActivity.value = activity
     }

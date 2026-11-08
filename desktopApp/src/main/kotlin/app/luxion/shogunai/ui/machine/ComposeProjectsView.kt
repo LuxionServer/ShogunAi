@@ -49,10 +49,12 @@ fun ComposeProjectsView(machine: MachineResources, onOpenWorktree: (String, Stri
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         MachineDataText(strings.composeProjectsSummary(projects.size), Modifier.weight(1f))
                         if (machine.isTakingDownCompose) InlineProgress(modifier = Modifier.padding(end = Spacing.sm))
-                        SecondaryButton(
-                            onClick = machine::takeDownRemovedComposeProjects,
-                            enabled = !machine.isTakingDownCompose && machine.removedComposeProjectNames.isNotEmpty(),
-                        ) { Text(strings.takeDownRemovedComposeProjects) }
+                        val takeDownBlock = composeTakeDownBlock(machine.removedComposeProjectNames.size, machine.isTakingDownCompose, strings)
+                        ListActionReason(takeDownBlock, "compose-take-down-reason") { enabled ->
+                            SecondaryButton(onClick = machine::takeDownRemovedComposeProjects, enabled = enabled) {
+                                Text(strings.takeDownRemovedComposeProjects)
+                            }
+                        }
                     }
                     projects.forEach { project ->
                         HorizontalDivider()
@@ -82,16 +84,20 @@ private fun ComposeLeftovers(machine: MachineResources) {
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = Spacing.md)) {
         MachineDataText(strings.composeLeftoversTitle, Modifier.weight(1f))
         if (machine.isRemovingComposeLeftovers) InlineProgress(modifier = Modifier.padding(end = Spacing.sm))
-        SecondaryButton(
-            onClick = { machine.removeComposeLeftovers(removeVolumes = false) },
-            enabled = !machine.isRemovingComposeLeftovers && leftovers.any { it.resource.kind != ComposeResourceKind.VOLUME },
-        ) { Text(strings.removeComposeLeftovers) }
+        val leftoversBlock = composeLeftoversBlock(leftovers.map { it.resource.kind }, machine.isRemovingComposeLeftovers, strings)
+        ListActionReason(leftoversBlock, "compose-leftovers-reason") { enabled ->
+            SecondaryButton(onClick = { machine.removeComposeLeftovers(removeVolumes = false) }, enabled = enabled) {
+                Text(strings.removeComposeLeftovers)
+            }
+        }
         if (volumes > 0) {
-            SecondaryButton(
-                onClick = { confirmingVolumes = true },
-                enabled = !machine.isRemovingComposeLeftovers,
-                modifier = Modifier.padding(start = Spacing.sm),
-            ) { Text(strings.removeComposeLeftoversWithVolumes) }
+            ListActionReason(composeVolumesBlock(machine.isRemovingComposeLeftovers, strings), "compose-volumes-reason") { enabled ->
+                SecondaryButton(
+                    onClick = { confirmingVolumes = true },
+                    enabled = enabled,
+                    modifier = Modifier.padding(start = Spacing.sm),
+                ) { Text(strings.removeComposeLeftoversWithVolumes) }
+            }
         }
     }
     leftovers.forEach { leftover ->
