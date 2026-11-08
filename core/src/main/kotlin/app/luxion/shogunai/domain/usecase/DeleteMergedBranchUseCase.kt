@@ -37,10 +37,12 @@ internal suspend fun deleteBranchIfContained(
 }
 
 private suspend fun isContained(executor: ShellCommandExecutor, config: ProjectConfig, branch: String, target: MainBranch): Boolean =
-    target.name != branch && executor.execute(
-        command = listOf("git", "merge-base", "--is-ancestor", branch, target.ref),
-        workingDirectory = config.baseRepositoryPath,
-    ).isSuccess
+    target.name != branch && (
+        executor.execute(
+            command = listOf("git", "merge-base", "--is-ancestor", branch, target.ref),
+            workingDirectory = config.baseRepositoryPath,
+        ).isSuccess || holdsChangesOf(executor, config.baseRepositoryPath, branch, target.ref)
+    )
 
 internal suspend fun forceDeleteBranch(
     executor: ShellCommandExecutor,

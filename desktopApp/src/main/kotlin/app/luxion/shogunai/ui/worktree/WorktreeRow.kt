@@ -109,7 +109,7 @@ fun WorktreeRow(
 private val BadgeSize = 20.dp
 private val BadgeIconSize = 12.dp
 private val BadgeOutlineWidth = 1.dp
-private val RowActionSlotSize = 28.dp
+internal val RowActionSlotSize = 28.dp
 private val RowActionIconSize = 16.dp
 private val LineHeight = 18.dp
 private val CellIconSize = 14.dp
@@ -134,11 +134,11 @@ fun aliasColumnWidth(aliases: List<String>): Dp {
 }
 
 private val AliasColumnSlack = 2.dp
-private val BadgeColumn = ColumnSpec(width = BadgeSize)
-private val ExecutionColumn = ColumnSpec(width = 176.dp, compact = CompactBehavior.Shrink(44.dp))
-private val NameColumn = ColumnSpec()
-private val GitColumn = ColumnSpec(width = 76.dp, compact = CompactBehavior.Shrink(68.dp))
-private val TimeColumn = ColumnSpec(width = 172.dp, compact = CompactBehavior.Shrink(96.dp))
+internal val BadgeColumn = ColumnSpec(width = BadgeSize)
+internal val ExecutionColumn = ColumnSpec(width = 176.dp, compact = CompactBehavior.Shrink(44.dp))
+internal val NameColumn = ColumnSpec()
+internal val GitColumn = ColumnSpec(width = 76.dp, compact = CompactBehavior.Shrink(68.dp))
+internal val TimeColumn = ColumnSpec(width = 172.dp, compact = CompactBehavior.Shrink(96.dp))
 
 internal const val BranchTag = "row-branch"
 internal const val GitTag = "row-git"
@@ -183,7 +183,7 @@ internal fun StateBadgeKind.icon(): ImageVector = when (this) {
 }
 
 @Composable
-private fun StateBadgeCell(badge: StateBadge) {
+internal fun StateBadgeCell(badge: StateBadge) {
     WithTooltip(label = badge.label) {
         Box(
             modifier = Modifier.size(BadgeSize).then(
@@ -206,7 +206,7 @@ private fun StateBadgeCell(badge: StateBadge) {
 }
 
 @Composable
-private fun CellLine(modifier: Modifier = Modifier, content: @Composable RowScope.() -> Unit) {
+internal fun CellLine(modifier: Modifier = Modifier, content: @Composable RowScope.() -> Unit) {
     Row(
         modifier = modifier.height(LineHeight),
         verticalAlignment = Alignment.CenterVertically,

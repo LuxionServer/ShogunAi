@@ -15,7 +15,7 @@ graph LR
 
 1. **Crear la rama** `release/X.X.X` (donde `X.X.X` es la versión a publicar) desde `develop`, escribir la feature principal de la release en `.github/release-title` (ver [Título de la release](#título-de-la-release)) y sus notas en `.github/release-notes/X.X.X.md` y `X.X.X.es.md` (ver [Notas de la release](#notas-de-la-release)).
 2. **Validar** — cada push a `release/**` dispara dos workflows, que sirven para iterar y corregir antes de abrir la PR:
-      - `Tests` (`.github/workflows/tests.yml`), que corre `./gradlew test`. El mismo workflow corre también en cada pull request hacia `develop` o una rama `epic/**` y en cada push a `develop`, así que las regresiones se detectan antes de llegar a una rama de release.
+      - `Tests` (`.github/workflows/tests.yml`), que corre `./gradlew test` y, en macOS, `./gradlew koverVerify`. Cuando falla `koverVerify`, el run sube los informes XML y HTML de Kover de todos los módulos como el artefacto `kover-reports-macos-latest` (se guarda 14 días), para encontrar las líneas sin cubrir. El mismo workflow corre también en cada pull request hacia `develop` o una rama `epic/**` y en cada push a `develop`, así que las regresiones se detectan antes de llegar a una rama de release.
       - `Release candidate` (`.github/workflows/release-candidate.yml`), que compila los instaladores de la versión del nombre de la rama y les pasa el [smoke test de la app empaquetada](#smoke-test-de-la-app-empaquetada). Nunca crea un tag, una release ni un manifiesto de paquete. También se puede lanzar a mano desde la pestaña Actions en cualquier rama, indicando la versión a empaquetar.
 3. **Abrir la PR** de `release/X.X.X` a `main` y revisarla como cualquier otra. Mientras está abierta, hacer el [ensayo en una cuenta limpia](clean-account-rehearsal.md) con el `.dmg` compilado desde la rama: el artefacto `installer-macos-latest` (Apple Silicon) o `installer-macos-26-intel` de su último run de `Release candidate`, firmado y notarizado como el publicado.
 4. **Mergear** — al mergearse una PR cuya rama de origen matchea `release/*`, el workflow `Release` (`.github/workflows/release.yml`):
@@ -59,6 +59,8 @@ Escríbelo al crear la rama de release, en el mismo commit que sube la versión.
 ## Notas de la release
 
 Cada release tiene unas notas escritas a mano para quien la usa, en inglés y en español, en dos ficheros con el nombre de la versión: `.github/release-notes/X.X.X.md` y `.github/release-notes/X.X.X.es.md`. Escríbelas en la rama de release, en el mismo commit que `.github/release-title`, y revísalas en la pull request de la release. Que lleven el nombre de la versión evita que un olvido republique las notas de la release anterior, y la carpeta guarda el historial de todas las releases.
+
+Los mismos ficheros construyen el [Historial de cambios](../changelog.md) del sitio de documentación, de la release más nueva a la más antigua, en el idioma de quien lo lee (en inglés cuando una release no tiene fichero en español). Se regenera en cada `mkdocs build` y `mkdocs serve` con el hook de `scripts/mkdocs/changelog_hook.py`, así que no hay página que actualizar a mano: `docs/changelog.md` y `docs/changelog.es.md` son generados y Git los ignora. Sus tests se ejecutan con `python3 -m unittest discover -s scripts/mkdocs`.
 
 Cómo escribirlas:
 

@@ -32,6 +32,12 @@ class ReadWorktreeStatusUseCase(
             else -> divergenceFrom(worktree, comparedBase.ref)
         }
         val wouldReadAsMerged = mainBranchDivergence.readsAsMerged() || baseDivergence.readsAsMerged()
+        val mainBranchHoldsChanges = holdsChanges(worktree, mainBranchDivergence, mainBranch)
+        val baseHoldsChanges = if (comparedBase?.ref == mainBranch?.ref) {
+            mainBranchHoldsChanges
+        } else {
+            holdsChanges(worktree, baseDivergence, comparedBase)
+        }
         WorktreeStatus(
             uncommittedChanges = uncommittedChanges,
             upstream = upstream,
@@ -42,8 +48,14 @@ class ReadWorktreeStatusUseCase(
                 branchNeverCommitted(worktree, worktree.branch),
             base = baseDivergence,
             baseName = comparedBase?.name.takeIf { baseDivergence != null },
+            mainBranchHoldsChanges = mainBranchHoldsChanges,
+            baseHoldsChanges = baseHoldsChanges,
         )
     }
+
+    private suspend fun holdsChanges(worktree: Worktree, divergence: Divergence?, target: MainBranch?): Boolean =
+        target != null && divergence != null && divergence.ahead > 0 && divergence.behind > 0 &&
+            holdsChangesOf(executor, worktree.path, "HEAD", target.ref)
 
     private suspend fun branchNeverCommitted(worktree: Worktree, branch: String): Boolean {
         val reflog = git(worktree, "reflog", "show", "--format=%H", "refs/heads/$branch")
