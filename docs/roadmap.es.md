@@ -38,7 +38,6 @@ ShogunAi tiene que funcionar a la primera en una máquina que no es en la que se
 Una revisión de UX de la interfaz v2 ya implementada, hecha sobre `develop` en `aaf42f94` con datos de ejemplo, concluyó que la app debería responder primero «¿qué me necesita?» y «¿dónde está cada agente?», y que hoy no responde ninguna de las dos de un vistazo. Sus correcciones se reparten en cambios, por orden:
 
 - Una fila por cambio de multirepo en Activos, con el peor estado de sus repositorios, que se despliega en una fila hija por repositorio; las filas hijas no repiten la rama.
-- El resto de vistas de Máquina (daemons de Maven, emuladores, simuladores, DerivedData, proyectos de Compose) reciben lo que recibió la de daemons de Gradle: un propietario desconocido atenuado en lugar de vacío, botones fantasma en sus filas y el motivo de una acción desactivada escrito junto a ella.
 
 ### 3. Orca, un segundo runner de primera clase
 
