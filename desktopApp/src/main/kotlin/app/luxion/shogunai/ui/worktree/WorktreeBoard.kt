@@ -1123,14 +1123,25 @@ class WorktreeBoard(
 
     fun cleanUpBlock(projectId: String? = null): CleanupBlock? = when {
         isCleaningUp -> CleanupBlock.Running
-        cleanupTargets(projectId).isEmpty() -> CleanupBlock.NothingToCleanUp
+        cleanupTargets(projectId).isEmpty() -> keptForRunningAgentBlock(projectId) ?: CleanupBlock.NothingToCleanUp
         else -> null
     }
 
     fun canCleanUp(projectId: String? = null): Boolean = cleanUpBlock(projectId) == null
 
+    private fun cleanupScopeIds(projectId: String?): List<String> = projectId?.let(::listOf) ?: shownProjects.map { it.id }
+
     private fun cleanupTargets(projectId: String?): List<String> =
-        (projectId?.let(::listOf) ?: shownProjects.map { it.id }).filter { holder(it)?.canCleanUp == true }
+        cleanupScopeIds(projectId).filter { holder(it)?.canCleanUp == true }
+
+    private fun keptForRunningAgentBlock(projectId: String?): CleanupBlock.KeptForRunningAgent? {
+        val kept = cleanupScopeIds(projectId).flatMap { holder(it)?.cleanupKeptForRunningAgent.orEmpty().entries }
+        if (kept.isEmpty()) return null
+        return CleanupBlock.KeptForRunningAgent(
+            worktrees = kept.map { it.key.path.substringAfterLast('/') },
+            agents = kept.flatMap { entry -> entry.value.map { it.name } }.distinct(),
+        )
+    }
 
     fun openCleanup(projectId: String? = null) {
         if (!canCleanUp(projectId)) return
@@ -1261,5 +1272,6 @@ sealed interface CleanupBlock {
     data object Running : CleanupBlock
     data object NothingToCleanUp : CleanupBlock
     data object NeedsReview : CleanupBlock
+    data class KeptForRunningAgent(val worktrees: List<String>, val agents: List<String>) : CleanupBlock
     data class Kept(val kept: GroupKept) : CleanupBlock
 }

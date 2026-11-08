@@ -284,12 +284,19 @@ class DesktopTurnUseCasesTest {
     }
 
     @Test
-    fun `by default the wait sleeps on the real clock until it times out`() = runTest {
-        val realTime = DesktopTurnLedger(store, FakeEnvironmentStateStore(), queue, liveness, adminDirectoryOf = { path -> admin(path.substringAfterLast('/')) })
+    fun `by default the wait pauses with a coroutine delay until it times out`() = runTest {
         val start = Instant.now()
+        val delayed = DesktopTurnLedger(
+            store,
+            FakeEnvironmentStateStore(),
+            queue,
+            liveness,
+            adminDirectoryOf = { path -> admin(path.substringAfterLast('/')) },
+            clock = { start.plusMillis(testScheduler.currentTime) },
+        )
         store.turn = DesktopTurn(admin("TASK-1"), worktree("TASK-1"), start.toEpochMilli(), (start + Duration.ofHours(1)).toEpochMilli())
 
-        val error = AcquireDesktopTurnUseCase(realTime) { Duration.ofMinutes(minutes) }(worktree("TASK-2"), DesktopWait(timeout = Duration.ofMillis(50))).exceptionOrNull()
+        val error = AcquireDesktopTurnUseCase(delayed) { Duration.ofMinutes(minutes) }(worktree("TASK-2"), DesktopWait(timeout = Duration.ofMinutes(1))).exceptionOrNull()
 
         assertIs<WorktreeError.DesktopTurnWaitTimedOut>(error)
     }
