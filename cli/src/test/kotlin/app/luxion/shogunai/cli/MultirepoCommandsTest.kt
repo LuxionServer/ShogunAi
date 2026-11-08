@@ -216,6 +216,33 @@ class MultirepoCommandsTest {
     }
 
     @Test
+    fun `unavailable local files in one repository create nothing and say which repositories were skipped`() {
+        projects.save(Project("api", "product-api", ProjectConfig(apiBase, "$worktreesRoot/api", listOf("local.properties"))))
+
+        val exitCode = cli().run(listOf("new", "TASK-12"))
+
+        assertEquals(1, exitCode)
+        assertEquals("", out.toString())
+        assertTrue(err.contains("shogun: api: couldn't create its worktree: These local files can't be copied or linked from $apiBase"), err.toString())
+        assertTrue(err.contains("local.properties: not found at $apiBase/local.properties"), err.toString())
+        assertTrue(err.contains("shogun: app: not created because the local files of api are unavailable"), err.toString())
+        assertTrue(git.calls.none { it.first.take(3) == listOf("git", "worktree", "add") })
+    }
+
+    @Test
+    fun `new json lists the repositories skipped by unavailable local files`() {
+        projects.save(Project("api", "product-api", ProjectConfig(apiBase, "$worktreesRoot/api", listOf("local.properties"))))
+
+        val exitCode = cli().run(listOf("new", "TASK-12", "--json"))
+
+        assertEquals(1, exitCode)
+        val repos = json()["repos"]!!.jsonArray.map { it.jsonObject }
+        assertEquals(listOf("skipped", "failed"), repos.map { it["result"]!!.jsonPrimitive.content })
+        assertEquals("not created because the local files of api are unavailable", repos[0]["error"]!!.jsonPrimitive.content)
+        assertEquals(JsonNull, repos[0]["path"])
+    }
+
+    @Test
     fun `new rejects unknown aliases, options that don't apply and a multirepo without defaults`() {
         assertEquals(2, cli().run(listOf("new", "TASK-1", "--repos", "app,web")))
         assertTrue(err.contains("'web' isn't a repository of the multirepo; its repositories are app, api, docs"))

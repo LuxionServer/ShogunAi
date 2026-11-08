@@ -2345,6 +2345,40 @@ class WorktreeBoardTest {
     }
 
     @Test
+    fun `a new change stopped by unavailable local files opens nothing`() = runTest(dispatcher) {
+        var opened = 0
+        val board = productBoard(
+            orcaActions(
+                createGroup = { _, taskId ->
+                    Result.success(
+                        GroupCreation(
+                            "feature/$taskId",
+                            listOf(
+                                GroupRepositoryResult("api", GroupRepositoryOutcome.FAILED, error = WorktreeError.LocalFilesUnavailable("/home/dev/projects/api", emptyList())),
+                                GroupRepositoryResult("app", GroupRepositoryOutcome.SKIPPED, blockedBy = listOf("api")),
+                            ),
+                        ),
+                    )
+                },
+                openGroupInOrca = { group ->
+                    opened++
+                    orcaOpened(group) { Result.success(OrcaOpening(OrcaOutcome.STARTED_AGENT, "term_$it", "Claude")) }
+                },
+            ),
+        )
+
+        board.openNewChange()
+        board.newChange!!.updateTaskId("TASK-20")
+        board.newChange!!.runner = RunnerId.ORCA
+        board.confirmNewChange()
+        advanceUntilIdle()
+
+        assertEquals(0, opened)
+        assertEquals(listOf(GroupRepositoryOutcome.FAILED, GroupRepositoryOutcome.SKIPPED), board.newChange!!.results!!.map { it.outcome })
+        assertNull(board.newChange!!.openings)
+    }
+
+    @Test
     fun `a new change opens only the worktrees that exist when a repository fails`() = runTest(dispatcher) {
         val groups = mutableListOf<BranchGroup>()
         val board = productBoard(

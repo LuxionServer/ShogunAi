@@ -969,6 +969,8 @@ object SpanishStrings : Strings {
     override fun groupKeptStatusUnavailable(alias: String) = "el estado de $alias no está disponible"
     override fun groupKeptAgentRunning(alias: String, agents: List<String>) = "${agents.joinToString()} en ejecución en $alias"
     override fun groupRepositoryFailed(reason: String) = "falló: $reason"
+    override fun groupRepositorySkipped(blockedBy: List<String>) =
+        "no creado: ${blockedBy.joinToString()} " + (if (blockedBy.size == 1) "tiene" else "tienen") + " ficheros locales no disponibles"
     override fun repositoryAddedToGroup(alias: String, title: String) = "$alias añadido a $title"
     override fun changeCreated(title: String, aliases: List<String>) = "$title creado en ${aliases.joinToString()}"
     override fun groupOpenedInOrca(title: String, started: List<String>, focused: List<String>) =

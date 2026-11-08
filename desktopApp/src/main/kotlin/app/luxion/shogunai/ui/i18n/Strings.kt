@@ -813,6 +813,7 @@ interface Strings {
     fun groupKeptStatusUnavailable(alias: String): String
     fun groupKeptAgentRunning(alias: String, agents: List<String>): String
     fun groupRepositoryFailed(reason: String): String
+    fun groupRepositorySkipped(blockedBy: List<String>): String
     fun repositoryAddedToGroup(alias: String, title: String): String
     fun changeCreated(title: String, aliases: List<String>): String
     fun groupOpenedInOrca(title: String, started: List<String>, focused: List<String>): String

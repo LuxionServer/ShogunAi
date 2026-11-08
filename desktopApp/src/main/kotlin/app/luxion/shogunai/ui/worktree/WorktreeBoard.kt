@@ -835,7 +835,7 @@ class WorktreeBoard(
                     change.results = creation.repositories
                     members.forEach { member -> change.membership.projectIdOf(member.alias)?.let(::holder)?.refresh() }
                     val runner = change.runner
-                    if (runner != null) {
+                    if (runner != null && creation.repositories.any { it.path != null }) {
                         change.openings = withContext(ioDispatcher) { openCreated(runner, members, creation) }
                     } else if (!creation.failed) {
                         multirepoNotice = MultirepoNotice.ChangeCreated(changeTitle(creation.branch), members.map { it.alias })
