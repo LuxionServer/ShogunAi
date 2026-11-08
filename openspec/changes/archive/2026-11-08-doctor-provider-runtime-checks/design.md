@@ -49,22 +49,22 @@ Version comparison reuses `CheckInstallationUseCase.isAtLeast` after taking the 
 - otherwise `findExecutable("java")`, which already resolves `.exe` on Windows; none → `NotFound(emptyList(), listOf("java"))`, reusing the existing problem with `JAVA_HOME` named in its texts for the Java tools.
 - `java -version` (prints to stderr) with `CommandTimeouts.LISTING`; a non-zero exit is `Unusable(output)`, which covers macOS's `/usr/bin/java` stub. The version is read from `version "(\d+)(?:\.(\d+))?`: a leading `1` means the second number (`1.8.0_412` → 8). Output without a version is `Unusable(output)` too.
 
-The use case receives `environmentVariable: (String) -> String?` (the host environment's `variable`, so Windows names are case-insensitive) and `osName: String`, which picks the separator and `java.exe`. Both are constructor parameters with no default, so tests choose Windows, Linux and macOS on the macOS job.
+The use case receives `environmentVariable: (String) -> String?` (the host environment's `variable`, so Windows names are case-insensitive) and the host's operating system as a `HostOs`, the host environment's `os` already resolved from `os.name` once per process, which picks the separator, `java.exe` and the daemon's fix. Both are constructor parameters with no default, so tests choose Windows, Linux and macOS on the macOS job.
 
 The desktop app reads `JAVA_HOME` from its own process environment, like the commands it starts: the host environment only takes `PATH` from the login shell. That is what a Gradle build started by the app or by a hook sees; a Java only set in the login shell's profile still reaches terminals, which read their own profile. The summary names where `java` was found, so the difference is visible.
 
 ### Compatibility tables
 
-Kept in one object in core, `JavaCompatibility`, with two functions:
+Kept in one object in core, `JavaCompatibility`, next to the version parsers in `ToolVersions`:
 
-- `minimumJava(tool, version)`: Gradle ≥ 9 → 17, else 8; Maven ≥ 4 → 17, ≥ 3.9 → 8, else 7.
-- `minimumGradle(java)`: the Gradle compatibility matrix from Java 9 (4.3) to Java 25 (9.1); `null` for Java 8 or older and for Java newer than 25, which isn't judged because a newer Java may be supported by a Gradle the table doesn't know.
+- `minimumJavaForGradle` and `minimumJavaForMaven`: Gradle ≥ 9 → 17, else 8; Maven ≥ 4 → 17, ≥ 3.9 → 8, else 7.
+- `firstGradleFor(java)`: the Gradle compatibility matrix from Java 9 (4.3) to Java 25 (9.1); `null` for Java 8 or older and for Java newer than 25, which isn't judged because a newer Java may be supported by a Gradle the table doesn't know.
 
 Problems: `JavaTooOld(java: Int, required: Int, toolVersion: String)` and `GradleTooOld(java: Int, gradle: String, required: String)`. When Java is both too old and Gradle too old for it, which can't happen with these tables, too old wins.
 
 ### Docker's daemon
 
-`docker info --format {{.ServerVersion}}` with `CommandTimeouts.LISTING`: success with a version passes and names it; a failure is `DaemonNotRunning(os, detail)`, where `os` is the `HostOs` from `osName` so the texts choose the fix without reading the system themselves. `docker info` only asks the daemon and never starts it, as the read-only requirement now says.
+`docker info --format {{.ServerVersion}}` with `CommandTimeouts.LISTING`: success with a version passes and names it; a failure is `DaemonNotRunning(os, detail)`, where `os` is that `HostOs`, so the texts choose the fix without reading the system themselves. `docker info` only asks the daemon and never starts it, as the read-only requirement now says.
 
 ### Passing summaries
 
@@ -79,4 +79,4 @@ Problems: `JavaTooOld(java: Int, required: Int, toolVersion: String)` and `Gradl
 
 ## Coverage
 
-No new `@Serializable` class and no exclusion, so `core`'s maximum of missed branches doesn't change; `core` and `cli` stay at 100% of lines and branches. The desktop texts gain cases for the new tools and problems, covered by `InstallationCheckUiTest`.
+No new `@Serializable` class and no exclusion, so `core`'s maximum of missed branches doesn't change; `core` and `cli` stay at 100% of lines and branches. The desktop texts gain cases for the new tools and problems, covered by `InstallationCheckUiTest`. The new problems and `version` take the sampled `InstallationCheck`s of `EveryTextTest` to about 28,000 combinations, so `TextSamples`' limit goes from 10,000 to 50,000 instead of sampling provider findings by hand. The desktop app's branches reach 75%, so its floor goes from 74% to 75%.

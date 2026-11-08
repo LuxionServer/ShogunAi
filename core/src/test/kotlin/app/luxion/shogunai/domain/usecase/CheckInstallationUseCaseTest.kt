@@ -15,6 +15,7 @@ import app.luxion.shogunai.domain.io.ProjectRepository
 import app.luxion.shogunai.domain.io.MultirepoSource
 import app.luxion.shogunai.domain.model.AgentToolId
 import app.luxion.shogunai.domain.model.CheckState
+import app.luxion.shogunai.domain.model.HostOs
 import app.luxion.shogunai.domain.model.ClaudeComputerUse
 import app.luxion.shogunai.domain.model.InstallationCheck
 import app.luxion.shogunai.domain.model.InstallationFinding
@@ -97,7 +98,7 @@ class CheckInstallationUseCaseTest {
                 projects = projectRepository,
                 fileManager = fileManager,
                 provisioningSource = provisioning,
-                providerTools = CheckProviderToolsUseCase(executor, { executables[it] }, fileManager, FakeAndroidSdk(), FakeAppleSimulators()),
+                providerTools = CheckProviderToolsUseCase(executor, { executables[it] }, fileManager, FakeAndroidSdk(), FakeAppleSimulators(), { null }, HostOs.MACOS),
                 multirepos = CheckMultireposUseCase(
                     multirepoSource,
                     ResolveMultirepoUseCase(multirepoSource, executor, fileManager),
@@ -390,7 +391,7 @@ class CheckInstallationUseCaseTest {
                 projects = FakeProjectRepository(listOf(project)),
                 fileManager = NioFileManager(),
                 provisioningSource = RepositoryProvisioningFiles(),
-                providerTools = CheckProviderToolsUseCase(git, { null }, NioFileManager(), FakeAndroidSdk(), FakeAppleSimulators()),
+                providerTools = CheckProviderToolsUseCase(git, { null }, NioFileManager(), FakeAndroidSdk(), FakeAppleSimulators(), { null }, HostOs.MACOS),
                 multirepos = CheckMultireposUseCase(
                     FakeMultirepoSource(),
                     ResolveMultirepoUseCase(FakeMultirepoSource(), git, NioFileManager()),
