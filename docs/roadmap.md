@@ -33,13 +33,7 @@ ShogunAi has to work the first time on a machine that isn't the one it's develop
 - What the packaged smoke test left out: installing the `.deb` on a machine without a system menus folder (servers, minimal containers), where its post-install script fails today; and smoke testing the Homebrew Cask and the Scoop manifest rendered for a release before it's published, which today install the same `.dmg` and `.msi` the smoke test checks.
 - What the providers' tools need beyond being installed, in `shogun doctor` and "Check Installation": the Java runtime behind Gradle and Maven, Docker's daemon running, and minimum versions; today they check that each tool is found and runs.
 
-### 2. Fixes from the UX review of the v2 interface
-
-A UX review of the implemented v2 interface, done on `develop` at `aaf42f94` with sample data, concluded that the app should first answer "what needs me?" and "where is each agent?", and that today it answers neither at a glance. Its fixes are split into changes, in order:
-
-- The rest of the Machine views (Maven daemons, emulators, simulators, DerivedData, Compose projects) get what the Gradle daemons view got: an unknown owner dimmed instead of blank, ghost buttons in their rows, and the reason a disabled action is disabled written next to it.
-
-### 3. Orca, a second first-class runner
+### 2. Orca, a second first-class runner
 
 [Orca](https://www.onorca.dev), the desktop app for running coding agents in worktrees, gets everything ShogunAi does with Herdr, plus what Orca offers that Herdr doesn't. A spike compared the two: Orca's repository hooks (`orca.yaml`) can provision its worktrees with `shogun`, its CLI can open a ShogunAi worktree with its environment and agent, and it reports richer agent states that survive restarting the app. In order:
 
@@ -53,7 +47,7 @@ A UX review of the implemented v2 interface, done on `develop` at `aaf42f94` wit
   - That Orca's notifications and its mobile companion follow the agents ShogunAi starts in Orca.
 - Left out on purpose: Orca's remote and SSH worktrees, since ShogunAi prepares worktrees on this machine; and Orca's orchestration runs, since the multirepo agent already coordinates a group.
 
-### 4. Provisioning and resources of mobile stacks
+### 3. Provisioning and resources of mobile stacks
 
 Provisioning and bounded resources for the stacks where a fresh worktree is furthest from building:
 
@@ -63,7 +57,7 @@ Provisioning and bounded resources for the stacks where a fresh worktree is furt
 - Deciding whether the session-start rule to run `shogun emulator start` before every use of the emulator is still needed now that the device lease is renewed while the session works (a long session that never sends a prompt can still lose its emulator), or whether `adb` failures should point to `shogun emulator start` instead, after watching it in use.
 - Waiting for a device from the desktop app, and showing the worktrees waiting for each pool in its machine views; today only `shogun emulator start --wait` and `shogun simulator start --wait` wait, and the app fails a start while others wait.
 
-### 5. Every agent, not only Claude Code
+### 4. Every agent, not only Claude Code
 
 ShogunAi's view is only neutral if it sees every agent:
 
@@ -74,7 +68,7 @@ ShogunAi's view is only neutral if it sees every agent:
 - Recording the base branch of the worktrees Herdr creates, if its `worktree.created` event gains their start point; today `shogun base --set` records it by hand, while `shogun new`, Claude Code's hook, the desktop app and multirepo groups record it themselves.
 - Showing each worktree's base branch in the desktop app's rows; today the Git column compares with it and names it in its tooltip and in the detail, and `shogun base` and `shogun status` report it.
 
-### 6. Multirepos for the whole team
+### 5. Multirepos for the whole team
 
 Multirepos and groups by branch are done in the CLI and the desktop app, and they're also how people who don't write the code follow a change across repositories. Left out:
 
@@ -86,7 +80,7 @@ Multirepos and groups by branch are done in the CLI and the desktop app, and the
 - A single session for the whole group, with a combined environment, as an option next to one agent per repository.
 - The pull request state of each repository of a group, which depends on the GitHub integration under exploration.
 
-### 7. Robustness and maintenance
+### 6. Robustness and maintenance
 
 - Detecting squash and rebase merges, which leave a branch reading as not merged into its base or the main branch, so cleanup doesn't offer it and `--delete-branch` keeps it.
 - Finding the root cause of the errors that closed the Preferences window, from the entries the isolation now leaves in the diagnostics log, and of the native crash seen on another machine that left an empty diagnostic report.
@@ -98,7 +92,8 @@ Multirepos and groups by branch are done in the CLI and the desktop app, and the
 - Support for bare repositories with worktrees (the "bare clone" layout), which changes what the base repository and copying from it mean. Today ShogunAi rejects them with a specific error.
 - Splitting `ProjectWorktrees.kt` and `ProjectSettingsView.kt` into smaller holders and sections.
 - Checking the guided tour on Windows and Linux with a real installed app: creating the sample with the system's Git, and the tour's agent command, whose prompt is quoted for the shell each terminal runs.
-- A changelog page in the documentation site built from the release notes in `.github/release-notes/`, which the app already shows in its update notice.
+- A workflow that builds the documentation site with `mkdocs build --strict` and runs the changelog hook's tests (`python3 -m unittest discover -s scripts/mkdocs`) on every pull request that touches `docs/`, `mkdocs.yml`, `scripts/mkdocs/` or `.github/release-notes/`; today the site is only built locally.
+- Getting live reload back in `mkdocs serve`: with recent Click releases MkDocs 1.6.1 starts it with live reload off, so it only reloads with `mkdocs serve --livereload`. Pinning Click in `requirements-docs.txt`, or documenting the flag, fixes it.
 - Removing Cmd/Ctrl+E, kept for one release as an alias of Cmd/Ctrl+O when the shortcut moved to the default runner.
 - Showing the build that holds a busy Gradle daemon in the desktop app's Gradle view; today `shogun gradle` names it, with its client, tasks and the agent session that started it.
 - Writing the remaining state texts of the Machine views in the interface font: the Compose view still writes its leftovers title and a removed worktree as its owner in the data font.

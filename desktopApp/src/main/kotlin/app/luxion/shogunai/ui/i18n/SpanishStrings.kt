@@ -1052,4 +1052,11 @@ object SpanishStrings : Strings {
     override val machineOverviewTooltip = "Máquina: los daemons, dispositivos y cachés que comparten todos los worktrees"
     override val machineOverviewNoProviders =
         "Ningún proyecto guardado declara aún un proveedor. Declara uno en la configuración de un proyecto (Gradle, emuladores de Android, simuladores de iOS, Xcode, Maven o Docker Compose) para ver aquí sus daemons, dispositivos y cachés."
+    override val derivedDataDeleteBlockedDeleting = "Se están eliminando las carpetas huérfanas"
+    override val derivedDataDeleteBlockedNoOrphans = "Ninguna carpeta es huérfana"
+    override val simulatorOrphansDeleteBlockedDeleting = "Se están eliminando los simuladores huérfanos"
+    override val composeTakeDownBlockedRunning = "Se están bajando los proyectos"
+    override val composeTakeDownBlockedNone = "Ningún proyecto es de un worktree eliminado"
+    override val composeLeftoversBlockedRemoving = "Se están eliminando los restos"
+    override val composeLeftoversBlockedOnlyVolumes = "Solo quedan volúmenes"
 }

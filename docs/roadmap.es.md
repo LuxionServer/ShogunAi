@@ -33,13 +33,7 @@ ShogunAi tiene que funcionar a la primera en una máquina que no es en la que se
 - Lo que la prueba de humo de la app empaquetada dejó fuera: instalar el `.deb` en un equipo sin carpeta de menús del sistema (servidores, contenedores mínimos), donde hoy falla su script de post-instalación; y probar el Cask de Homebrew y el manifiesto de Scoop generados para una versión antes de publicarla, que hoy instalan los mismos `.dmg` y `.msi` que comprueba la prueba de humo.
 - Lo que las herramientas de los providers necesitan además de estar instaladas, en `shogun doctor` y «Comprobar instalación»: el runtime de Java de Gradle y Maven, el daemon de Docker en marcha y versiones mínimas; hoy comprueban que cada herramienta se encuentra y se ejecuta.
 
-### 2. Correcciones de la revisión de UX de la interfaz v2
-
-Una revisión de UX de la interfaz v2 ya implementada, hecha sobre `develop` en `aaf42f94` con datos de ejemplo, concluyó que la app debería responder primero «¿qué me necesita?» y «¿dónde está cada agente?», y que hoy no responde ninguna de las dos de un vistazo. Sus correcciones se reparten en cambios, por orden:
-
-- El resto de vistas de Máquina (daemons de Maven, emuladores, simuladores, DerivedData, proyectos de Compose) reciben lo que recibió la de daemons de Gradle: un propietario desconocido atenuado en lugar de vacío, botones fantasma en sus filas y el motivo de una acción desactivada escrito junto a ella.
-
-### 3. Orca, un segundo runner de primera clase
+### 2. Orca, un segundo runner de primera clase
 
 [Orca](https://www.onorca.dev), la app de escritorio para ejecutar agentes de programación en worktrees, recibe todo lo que ShogunAi hace con Herdr, más lo que Orca ofrece y Herdr no. Un spike comparó los dos: los hooks de repositorio de Orca (`orca.yaml`) pueden provisionar sus worktrees con `shogun`, su CLI puede abrir un worktree de ShogunAi con su entorno y su agente, y informa de estados de agente más ricos que sobreviven a reiniciar la app. Por orden:
 
@@ -53,7 +47,7 @@ Una revisión de UX de la interfaz v2 ya implementada, hecha sobre `develop` en 
   - Que los avisos de Orca y su app móvil siguen a los agentes que ShogunAi arranca en Orca.
 - Fuera a propósito: los worktrees remotos y por SSH de Orca, porque ShogunAi prepara worktrees en esta máquina; y las ejecuciones de orquestación de Orca, porque el agente del multirepo ya coordina un grupo.
 
-### 4. Provisionado y recursos de los stacks móviles
+### 3. Provisionado y recursos de los stacks móviles
 
 Provisionado y recursos acotados para los stacks en los que un worktree recién creado está más lejos de compilar:
 
@@ -63,7 +57,7 @@ Provisionado y recursos acotados para los stacks en los que un worktree recién 
 - Decidir si la regla del inicio de sesión de ejecutar `shogun emulator start` antes de cada uso del emulador sigue haciendo falta ahora que la concesión del dispositivo se renueva mientras la sesión trabaja (una sesión larga que nunca envía un prompt aún puede perder su emulador), o si los fallos de `adb` deberían remitir a `shogun emulator start`, tras observarlo en uso.
 - Esperar un dispositivo desde la app de escritorio y mostrar en sus vistas de máquina los worktrees que esperan cada pool; hoy solo esperan `shogun emulator start --wait` y `shogun simulator start --wait`, y la app hace fallar un arranque mientras otros esperan.
 
-### 5. Todos los agentes, no solo Claude Code
+### 4. Todos los agentes, no solo Claude Code
 
 La vista de ShogunAi solo es neutral si ve a todos los agentes:
 
@@ -74,7 +68,7 @@ La vista de ShogunAi solo es neutral si ve a todos los agentes:
 - Registrar la rama base de los worktrees que crea Herdr, si su evento `worktree.created` llega a incluir el punto de partida; hoy se registra a mano con `shogun base --set`, mientras que `shogun new`, el hook de Claude Code, la app de escritorio y los grupos de los multirepos la registran solos.
 - Mostrar la rama base de cada worktree en las filas de la app de escritorio; hoy la columna Git se compara con ella y la nombra en su tooltip y en el detalle, y la informan `shogun base` y `shogun status`.
 
-### 6. Multirepos para todo el equipo
+### 5. Multirepos para todo el equipo
 
 Los multirepos y los grupos por rama están hechos en el CLI y en la app de escritorio, y son también la forma en que quienes no escriben el código siguen un cambio a través de los repositorios. Quedaron fuera:
 
@@ -86,7 +80,7 @@ Los multirepos y los grupos por rama están hechos en el CLI y en la app de escr
 - Una única sesión para todo el grupo, con un entorno combinado, como opción junto a un agente por repositorio.
 - El estado del pull request de cada repositorio de un grupo, que depende de la integración con GitHub en estudio.
 
-### 7. Robustez y mantenimiento
+### 6. Robustez y mantenimiento
 
 - Detectar los merges por squash y por rebase, que dejan una rama como no mergeada en su base ni en la rama principal, así que la limpieza no la ofrece y `--delete-branch` la conserva.
 - Encontrar la causa raíz de los errores que cerraban la ventana de Preferencias, a partir de las entradas que el aislamiento deja ahora en el registro de diagnóstico, y del crash nativo visto en otra máquina que dejó un informe de diagnóstico vacío.
@@ -98,7 +92,8 @@ Los multirepos y los grupos por rama están hechos en el CLI y en la app de escr
 - Soporte de repositorios bare con worktrees (el esquema «bare clone»), que cambia lo que significan el repositorio base y copiar desde él. Hoy ShogunAi los rechaza con un error específico.
 - Dividir `ProjectWorktrees.kt` y `ProjectSettingsView.kt` en holders y secciones más pequeños.
 - Comprobar el recorrido guiado en Windows y Linux con una app instalada real: la creación del ejemplo con el Git del sistema, y el comando del agente del recorrido, cuyo prompt se entrecomilla para la shell que ejecuta cada terminal.
-- Una página de changelog en la web de documentación construida con las notas de `.github/release-notes/`, que la app ya muestra en su aviso de actualización.
+- Un workflow que construya la web de documentación con `mkdocs build --strict` y ejecute los tests del hook del historial de cambios (`python3 -m unittest discover -s scripts/mkdocs`) en cada pull request que toque `docs/`, `mkdocs.yml`, `scripts/mkdocs/` o `.github/release-notes/`; hoy la web solo se construye en local.
+- Recuperar la recarga en vivo de `mkdocs serve`: con las versiones recientes de Click, MkDocs 1.6.1 lo arranca sin recarga en vivo, así que solo recarga con `mkdocs serve --livereload`. Fijar Click en `requirements-docs.txt`, o documentar el flag, lo arregla.
 - Quitar Cmd/Ctrl+E, que se mantiene una versión como alias de Cmd/Ctrl+O desde que el atajo pasó al runner por defecto.
 - Mostrar en la vista de Gradle de la app de escritorio la build que ocupa un daemon; hoy `shogun gradle` la nombra, con su cliente, sus tareas y la sesión de agente que la lanzó.
 - Escribir en la fuente de la interfaz los textos de estado que quedan en las vistas de Máquina: la vista de Compose aún escribe el título de los restos y un worktree eliminado como dueño en la fuente de datos.
