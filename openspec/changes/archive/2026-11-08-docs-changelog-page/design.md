@@ -7,7 +7,7 @@ The documentation site is built with MkDocs 1.6, Material and `mkdocs-static-i18
 ## Goals / Non-Goals
 
 **Goals:**
-- The changelog pages exist only in the build output, generated from the notes on every build and every live reload.
+- The changelog pages are never committed: they are regenerated from the notes on every build and every live reload.
 - No new Python dependency and nothing in `requirements-docs.txt` changes.
 
 **Non-Goals:**
@@ -17,12 +17,13 @@ The documentation site is built with MkDocs 1.6, Material and `mkdocs-static-i18
 
 ## Decisions
 
-### A MkDocs hook that adds generated files
+### A MkDocs hook that writes the pages before each build
 
-A Python hook script declared under `hooks:` in `mkdocs.yml` (`scripts/mkdocs/changelog_hook.py`) implements `on_files` and adds `changelog.md` and `changelog.es.md` to the build with `File.generated(config, path, content=...)`, so they never exist in `docs/` nor in Git.
+A Python hook script declared under `hooks:` in `mkdocs.yml` (`scripts/mkdocs/changelog_hook.py`) implements `on_pre_build`, which renders `docs/changelog.md` and `docs/changelog.es.md` from the notes before MkDocs collects the files. Both paths are in `.gitignore`, so they never reach Git and nobody edits them: every build overwrites them.
 
-- Alternatives considered: a pre-build script writing the pages into `docs/` (must be run by hand or by every caller, and leaves an ignored generated file in the sources that `mkdocs serve` would also watch, looping); a published plugin such as a changelog or include plugin (a new dependency, and none knows the per-language naming of these files); committing the page and checking it in CI (still maintained by hand, only verified).
-- Hooks are loaded as plugins after the configured ones. `mkdocs-static-i18n` registers its `on_files` with priority `-100` precisely to run last, so the hook's default priority `0` runs before it and the i18n plugin sees both generated files like any other `page.md`/`page.es.md` pair, assigning `changelog.es.md` to the Spanish site.
+- First choice, discarded during implementation: adding the pages in memory in `on_files` with `File.generated(...)`. `mkdocs-static-i18n` 1.3.1 rebuilds every documentation file from `docs_dir` and its `src_path` (and fails on a file whose `abs_src_path` is `None`), so it only handles pages that exist on disk inside `docs/`.
+- Other alternatives considered: a separate script writing the pages that has to be run by hand before building (easy to forget, and `mkdocs serve` wouldn't regenerate them); a published plugin such as a changelog or include plugin (a new dependency, and none knows the per-language naming of these files); committing the page and checking it in CI (still maintained by hand, only verified).
+- A file is only rewritten when its content changes. `mkdocs serve` watches `docs/`, so rewriting identical content on every build would make each rebuild trigger the next one; with the check, a change to the notes costs one extra rebuild and then stops.
 
 ### Pure rendering separated from MkDocs
 
@@ -54,6 +55,8 @@ The notes folder is found relative to the directory holding `mkdocs.yml` (`confi
 
 The hook's `on_serve` adds `.github/release-notes/` to the live-reload server's watched paths, so editing a notes file triggers a rebuild that regenerates both pages.
 
+With recent Click releases, MkDocs 1.6.1's `mkdocs serve` starts with live reload off (its `--livereload` flag loses its default), so no path is watched at all, `docs/` included; `mkdocs serve --livereload` turns it back on. That affects the whole site, not this page, and is left out of this change.
+
 ### Navigation
 
 A top-level `Changelog: changelog.md` entry after "Roadmap", with `Changelog: Historial de cambios` in the Spanish `nav_translations`.
@@ -61,6 +64,6 @@ A top-level `Changelog: changelog.md` entry after "Roadmap", with `Changelog: Hi
 ## Risks / Trade-offs
 
 - [A notes file merged to `develop` before its release is published shows a version that isn't out yet] → Notes are only written on the release branch, which reaches `develop` after the release is merged; acceptable, and the link simply 404s for a moment if it ever happens.
-- [`mkdocs-static-i18n` changes how it orders its `on_files`] → `mkdocs build --strict` would then fail or omit the Spanish page; the version is pinned in `requirements-docs.txt` and the task list verifies both pages exist in `site/`.
+- [Someone edits `docs/changelog.md` by hand] → the next build overwrites it; the file is ignored by Git, so the edit can't be committed by accident either.
 - [`git-revision-date` has no Git history for a generated page] → it falls back to today's date with a printed notice that is not a MkDocs warning, so `--strict` still passes; verified during implementation.
 - [The hook's tests aren't run in CI] → They run with plain `python3` in under a second; the CI job for the docs is a roadmap follow-up.
