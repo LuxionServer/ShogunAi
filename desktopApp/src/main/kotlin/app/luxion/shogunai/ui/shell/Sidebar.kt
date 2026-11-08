@@ -28,6 +28,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.FolderOff
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.foundation.shape.CircleShape
@@ -46,8 +47,10 @@ import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import app.luxion.shogunai.domain.model.MultirepoUnavailability
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.SidebarOrder
+import app.luxion.shogunai.domain.model.UnavailableMultirepo
 import app.luxion.shogunai.ui.components.AgentIndicator
 import app.luxion.shogunai.ui.components.AgentIndicatorModel
 import app.luxion.shogunai.ui.components.AgentIndicatorSize
@@ -58,6 +61,7 @@ import app.luxion.shogunai.ui.components.WithTooltip
 import app.luxion.shogunai.ui.components.interactive
 import app.luxion.shogunai.ui.i18n.LocalStrings
 import app.luxion.shogunai.ui.multirepo.MultirepoMembership
+import app.luxion.shogunai.ui.multirepo.unavailabilityOf
 import app.luxion.shogunai.ui.theme.ShogunTheme
 import app.luxion.shogunai.ui.theme.ShogunLayout
 
@@ -90,6 +94,7 @@ fun Sidebar(
     onSelectMultirepo: (String) -> Unit = {},
     onToggleMultirepo: (String) -> Unit = {},
     onEditMultirepo: (String) -> Unit = {},
+    onRemoveMultirepo: (String) -> Unit = {},
     onAddMultirepo: () -> Unit = {},
     order: SidebarOrder = SidebarOrder(),
     onMoveEntry: (SidebarLevel, String, Int) -> Unit = { _, _, _ -> },
@@ -177,12 +182,28 @@ fun Sidebar(
                         ) {
                             ContextMenuArea(
                                 items = {
-                                    listOf(ContextMenuItem(strings.multirepoSettingsTitle) { onEditMultirepo(folder.folder) }) +
-                                        reorderItems(SidebarLevel.TopLevel, entry.key, index, entries.size)
+                                    val folderItem = if (folder.unavailable != null) {
+                                        ContextMenuItem(strings.remove) { onRemoveMultirepo(folder.folder) }
+                                    } else {
+                                        ContextMenuItem(strings.multirepoSettingsTitle) { onEditMultirepo(folder.folder) }
+                                    }
+                                    listOf(folderItem) + reorderItems(SidebarLevel.TopLevel, entry.key, index, entries.size)
                                 },
                             ) {
+                                val unavailable = folder.unavailable
                                 if (rail) {
-                                    RailViewItem(folder.name, Icons.Default.Folder, selected = folder.folder == selectedMultirepo) { onSelectMultirepo(folder.folder) }
+                                    RailViewItem(
+                                        folder.name,
+                                        if (unavailable != null) Icons.Default.FolderOff else Icons.Default.Folder,
+                                        selected = folder.folder == selectedMultirepo,
+                                    ) { onSelectMultirepo(folder.folder) }
+                                } else if (unavailable != null) {
+                                    UnavailableMultirepoRow(
+                                        folder.name,
+                                        strings.unavailabilityOf(folder.folder, unavailable),
+                                        selected = folder.folder == selectedMultirepo,
+                                        onClick = { onSelectMultirepo(folder.folder) },
+                                    )
                                 } else {
                                     MultirepoRow(
                                         folder,
@@ -446,6 +467,41 @@ private fun MultirepoRow(multirepo: SidebarMultirepo, selected: Boolean, onClick
 }
 
 @Composable
+private fun UnavailableMultirepoRow(name: String, reason: String, selected: Boolean, onClick: () -> Unit) {
+    val strings = LocalStrings.current
+    val colors = MaterialTheme.colorScheme
+    WithTooltip(label = "${strings.multirepoUnavailable}: $reason") {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = Spacing.sm)
+                .height(SidebarRowHeight)
+                .interactive(onClick = onClick)
+                .background(if (selected) colors.secondaryContainer else colors.surfaceContainerLow)
+                .padding(horizontal = Spacing.sm)
+                .testTag("multirepo-unavailable"),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+        ) {
+            Icon(
+                Icons.Default.FolderOff,
+                contentDescription = strings.multirepoUnavailable,
+                tint = colors.onSurfaceVariant,
+                modifier = Modifier.size(SidebarIconSize),
+            )
+            Text(
+                name,
+                style = MaterialTheme.typography.bodyMedium,
+                color = if (selected) colors.onSecondaryContainer else colors.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+        }
+    }
+}
+
+@Composable
 private fun DisclosureToggle(collapsed: Boolean, onToggle: () -> Unit) {
     val strings = LocalStrings.current
     val label = if (collapsed) strings.expand else strings.collapse
@@ -482,9 +538,13 @@ data class SidebarMultirepo(
     val collapsed: Boolean,
     val needsReview: Boolean = false,
     val labels: Map<String, String> = emptyMap(),
+    val unavailable: MultirepoUnavailability? = null,
 ) {
     fun labelOf(project: Project): String = labels[project.id] ?: project.name
 }
+
+fun unavailableSidebarFolder(multirepo: UnavailableMultirepo, collapsed: Boolean = false): SidebarMultirepo =
+    SidebarMultirepo(multirepo.folder, multirepo.name, emptyList(), ProjectActivity.NONE, collapsed, unavailable = multirepo.reason)
 
 fun multirepoChildLabels(membership: MultirepoMembership): Map<String, String> {
     val workspaceAlias = membership.multirepo.workspaceRepository?.alias ?: return emptyMap()

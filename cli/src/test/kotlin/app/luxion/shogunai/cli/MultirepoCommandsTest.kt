@@ -216,6 +216,33 @@ class MultirepoCommandsTest {
     }
 
     @Test
+    fun `unavailable local files in one repository create nothing and say which repositories were skipped`() {
+        projects.save(Project("api", "product-api", ProjectConfig(apiBase, "$worktreesRoot/api", listOf("local.properties"))))
+
+        val exitCode = cli().run(listOf("new", "TASK-12"))
+
+        assertEquals(1, exitCode)
+        assertEquals("", out.toString())
+        assertTrue(err.contains("shogun: api: couldn't create its worktree: These local files can't be copied or linked from $apiBase"), err.toString())
+        assertTrue(err.contains("local.properties: not found at $apiBase/local.properties"), err.toString())
+        assertTrue(err.contains("shogun: app: not created because the local files of api are unavailable"), err.toString())
+        assertTrue(git.calls.none { it.first.take(3) == listOf("git", "worktree", "add") })
+    }
+
+    @Test
+    fun `new json lists the repositories skipped by unavailable local files`() {
+        projects.save(Project("api", "product-api", ProjectConfig(apiBase, "$worktreesRoot/api", listOf("local.properties"))))
+
+        val exitCode = cli().run(listOf("new", "TASK-12", "--json"))
+
+        assertEquals(1, exitCode)
+        val repos = json()["repos"]!!.jsonArray.map { it.jsonObject }
+        assertEquals(listOf("skipped", "failed"), repos.map { it["result"]!!.jsonPrimitive.content })
+        assertEquals("not created because the local files of api are unavailable", repos[0]["error"]!!.jsonPrimitive.content)
+        assertEquals(JsonNull, repos[0]["path"])
+    }
+
+    @Test
     fun `new rejects unknown aliases, options that don't apply and a multirepo without defaults`() {
         assertEquals(2, cli().run(listOf("new", "TASK-1", "--repos", "app,web")))
         assertTrue(err.contains("'web' isn't a repository of the multirepo; its repositories are app, api, docs"))
@@ -755,7 +782,7 @@ class MultirepoCommandsTest {
     }
 
     @Test
-    fun `init in a moved multirepo registers it, its missing projects and forgets the old folder`() {
+    fun `init in a moved multirepo registers it and its missing projects and keeps the old unreachable entry`() {
         val moved = "/home/dev/work/product"
         val movedApp = "$moved/product-app"
         val movedApi = "$moved/product-api"
@@ -768,13 +795,14 @@ class MultirepoCommandsTest {
             known = listOf(folder),
             approveAll = false,
         )
-        registry.missingFolders += folder
+        registry.approvals[folder] = "subject"
+        registry.agents[folder] = AgentLaunchConfig(agentCommand = "claude")
 
         assertEquals(1, cli(workingDirectory = moved, multirepos = registry).run(listOf("multirepo", "init", "--json")))
         assertTrue(err.contains("pass --yes"))
-        assertTrue(registry.known.isEmpty())
+        assertEquals(listOf(folder), registry.known)
         assertEquals(0, cli(workingDirectory = moved, multirepos = registry, answer = "n").run(listOf("multirepo", "init")))
-        assertTrue(registry.known.isEmpty())
+        assertEquals(listOf(folder), registry.known)
         assertTrue(projects.list().none { it.config.baseRepositoryPath == movedApp })
         out.clear()
 
@@ -783,7 +811,9 @@ class MultirepoCommandsTest {
         assertEquals(0, exitCode, err.toString())
         assertTrue(out.contains("  app  $movedApp"))
         assertTrue(err.contains("Approve this multirepo?"))
-        assertEquals(listOf(moved), registry.known)
+        assertEquals(listOf(folder, moved), registry.known)
+        assertEquals("subject", registry.approvals[folder])
+        assertEquals(AgentLaunchConfig(agentCommand = "claude"), registry.agents[folder])
         assertTrue(out.contains("approved and registered the existing multirepo product"))
         assertEquals("/home/dev/work/product-worktrees/app", projects.list().first { it.config.baseRepositoryPath == movedApp }.config.worktreesRoot)
         assertTrue(projects.list().any { it.config.baseRepositoryPath == appBase })

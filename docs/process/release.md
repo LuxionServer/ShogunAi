@@ -15,7 +15,7 @@ graph LR
 
 1. **Create the branch** `release/X.X.X` (where `X.X.X` is the version to publish) from `develop`, write the headline feature of the release in `.github/release-title` (see [Release title](#release-title)) and its notes in `.github/release-notes/X.X.X.md` and `X.X.X.es.md` (see [Release notes](#release-notes)).
 2. **Validate** — every push to `release/**` triggers two workflows, used to iterate and fix issues before opening the PR:
-      - `Tests` (`.github/workflows/tests.yml`), which runs `./gradlew test`. The same workflow also runs on every pull request targeting `develop` or an `epic/**` branch and on every push to `develop`, so regressions are caught before they reach a release branch.
+      - `Tests` (`.github/workflows/tests.yml`), which runs `./gradlew test` and, on macOS, `./gradlew koverVerify`. When `koverVerify` fails, the run uploads every module's Kover XML and HTML reports as the `kover-reports-macos-latest` artifact (kept 14 days), to find the uncovered lines. The same workflow also runs on every pull request targeting `develop` or an `epic/**` branch and on every push to `develop`, so regressions are caught before they reach a release branch.
       - `Release candidate` (`.github/workflows/release-candidate.yml`), which builds the installers for the version in the branch name and runs the [packaged smoke test](#packaged-smoke-test) on them. It never creates a tag, a release or a package manifest. It can also be started by hand from the Actions tab on any branch, giving the version to package.
 3. **Open the PR** from `release/X.X.X` to `main` and review it like any other. While it is open, go through the [clean account rehearsal](clean-account-rehearsal.md) with the `.dmg` built from the branch: the `installer-macos-latest` (Apple Silicon) or `installer-macos-26-intel` artifact of its latest `Release candidate` run, signed and notarized like the published one.
 4. **Merge** — when a PR whose source branch matches `release/*` is merged, the `Release` workflow (`.github/workflows/release.yml`):
@@ -59,6 +59,8 @@ Write it when creating the release branch, in the same commit that bumps the ver
 ## Release notes
 
 Every release has notes written by hand for its users, in English and Spanish, in two files named after the version: `.github/release-notes/X.X.X.md` and `.github/release-notes/X.X.X.es.md`. Write them on the release branch, in the same commit as `.github/release-title`, and review them in the release pull request. Naming them after the version means a forgotten update can't republish the previous release's notes, and the folder keeps the history of every release.
+
+The same files build the documentation site's [Changelog](../changelog.md), newest release first, in each reader's language (English when a release has no Spanish file). It is regenerated on every `mkdocs build` and `mkdocs serve` by the hook in `scripts/mkdocs/changelog_hook.py`, so there is no page to update by hand: `docs/changelog.md` and `docs/changelog.es.md` are generated and ignored by Git. Its tests run with `python3 -m unittest discover -s scripts/mkdocs`.
 
 How to write them:
 

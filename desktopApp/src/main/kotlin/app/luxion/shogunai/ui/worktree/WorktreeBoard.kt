@@ -21,6 +21,7 @@ import app.luxion.shogunai.domain.model.RefreshCadence
 import app.luxion.shogunai.domain.model.RunnerId
 import app.luxion.shogunai.ui.WindowActivity
 import app.luxion.shogunai.ui.actions.ActionId
+import app.luxion.shogunai.ui.actions.OpenTarget
 import app.luxion.shogunai.ui.checkInterval
 import app.luxion.shogunai.ui.actions.ActionTools
 import app.luxion.shogunai.ui.actions.WorktreeActionContext
@@ -126,6 +127,7 @@ class WorktreeBoard(
     var multirepoAgentsReadAt by mutableStateOf<Instant?>(null)
         private set
     private var collapsedChanges by mutableStateOf<Set<String>>(emptySet())
+    private var expandedChanges by mutableStateOf<Set<ChangeKey>>(emptySet())
     private var collapsedStates by mutableStateOf(mapOf(GroupedView.ACTIVE to setOf(StateGroupKind.STOPPED)))
     var multirepoNotice by mutableStateOf<MultirepoNotice?>(null)
         private set
@@ -230,33 +232,77 @@ class WorktreeBoard(
             WorktreeGroup(project, holder, rows, collapsed = project.id in collapsedProjects && !isFiltered)
         }
 
-    val stateGroups: List<StateGroup<WorktreeEntry>>
-        get() = groupByState(
-            items = sortWorktreeItems(
-                items = shownProjects.flatMap { project ->
-                    val holder = holder(project.id) ?: return@flatMap emptyList()
-                    filterWorktrees(holder.worktrees, textFilter).filterNot { isMultirepoView && it.isMain }.map { worktree ->
-                        ActivityItem(WorktreeEntry(project, holder, worktree), activityOf(holder, worktree))
-                    }
-                },
-                sort = sort,
-                worktreeOf = { it.item.worktree },
-                activityDateOf = { activityDateOf(it.item.holder, it.item.worktree) },
-            ),
-            includeInactive = !isActiveView,
-            isPinned = { it.ref == selected },
-        ).map { group -> group.copy(collapsed = group.kind in collapsedStates[mode].orEmpty() && !isTextFiltering) }
+    val stateGroups: List<StateGroup<StateItem>>
+        get() {
+            val changes = if (foldsChanges) activeChanges() else emptyList()
+            val folded = changes.flatMapTo(mutableSetOf()) { change -> change.members.map { it.ref } }
+            val singles = shownProjects.flatMap { project ->
+                val holder = holder(project.id) ?: return@flatMap emptyList()
+                filterWorktrees(holder.worktrees, textFilter).filterNot { isMultirepoView && it.isMain }.map { worktree ->
+                    WorktreeEntry(project, holder, worktree)
+                }.filterNot { it.ref in folded }.map { entry ->
+                    ActivityItem<StateItem>(StateItem.Single(entry), activityOf(holder, entry.worktree))
+                }
+            }
+            val changeItems = changes.map { change ->
+                ActivityItem<StateItem>(StateItem.Change(change, change.key in expandedChanges || isTextFiltering), change.activity)
+            }
+            return groupByState(
+                items = sortWorktreeItems(
+                    items = singles + changeItems,
+                    sort = sort,
+                    worktreeOf = { it.item.sortWorktree },
+                    activityDateOf = { item -> item.item.entries.mapNotNull { activityDateOf(it.holder, it.worktree) }.maxOrNull() },
+                ),
+                includeInactive = !isActiveView,
+                isPinned = { it.holds(selected) },
+            ).map { group -> group.copy(collapsed = group.kind in collapsedStates[mode].orEmpty() && !isTextFiltering) }
+        }
+
+    private val foldsChanges: Boolean
+        get() = isActiveView && isGroupedByState
+
+    private fun activeChanges(): List<ChangeGroup> =
+        memberships.flatMap { membership ->
+            groupedBranches(aliasedEntries(membership)).map { (branch, members) -> changeGroupOf(membership.folder, branch, members) }
+        }.filter { it.entries.isNotEmpty() }
+
+    private fun changeGroupOf(folder: String, branch: String, members: List<AliasedEntry>, collapsed: Boolean = false): ChangeGroup {
+        val sorted = members.sortedBy { it.alias }
+        val matching = filterWorktrees(sorted.map { it.entry.worktree }, textFilter).mapTo(mutableSetOf()) { it.path }
+        return ChangeGroup(
+            branch = branch,
+            entries = sorted.filter { it.entry.worktree.path in matching },
+            activity = combinedActivity(members.map { activityOf(it.entry.holder, it.entry.worktree) }),
+            collapsed = collapsed,
+            members = sorted,
+            multirepoFolder = folder,
+        )
+    }
+
+    fun toggleChangeExpanded(key: ChangeKey) {
+        val collapsing = key in expandedChanges
+        expandedChanges = if (collapsing) expandedChanges - key else expandedChanges + key
+        if (collapsing && stateGroups.any { group -> group.items.any { it is StateItem.Change && it.group.key == key && it.holds(selected) } }) {
+            selected = null
+        }
+    }
+
+    private fun expandChangeOf(ref: WorktreeRef) {
+        if (!foldsChanges) return
+        activeChanges().firstOrNull { change -> change.members.any { it.ref == ref } }?.let { expandedChanges = expandedChanges + it.key }
+    }
 
     fun toggleStateCollapsed(kind: StateGroupKind) {
         val current = collapsedStates[mode].orEmpty()
         val collapsing = kind !in current
         collapsedStates = collapsedStates + (mode to if (collapsing) current + kind else current - kind)
-        if (collapsing && stateGroups.any { group -> group.kind == kind && group.items.any { it.ref == selected } }) selected = null
+        if (collapsing && stateGroups.any { group -> group.kind == kind && group.items.any { it.holds(selected) } }) selected = null
     }
 
     private fun expandStateGroupOf(ref: WorktreeRef) {
         if (!isGroupedByState) return
-        stateGroups.firstOrNull { group -> group.collapsed && group.items.any { it.ref == ref } }?.let { toggleStateCollapsed(it.kind) }
+        stateGroups.firstOrNull { group -> group.collapsed && group.items.any { it.holds(ref) } }?.let { toggleStateCollapsed(it.kind) }
     }
 
     val isGroupedByState: Boolean
@@ -279,13 +325,7 @@ class WorktreeBoard(
             val matching = filterWorktrees(all.map { it.entry.worktree }, textFilter).mapTo(mutableSetOf()) { it.path }
             val grouped = groupedBranches(all)
             val groups = grouped.map { (branch, members) ->
-                ChangeGroup(
-                    branch = branch,
-                    entries = members.filter { it.entry.worktree.path in matching }.sortedBy { it.alias },
-                    state = combinedState(members.map { activityOf(it.entry.holder, it.entry.worktree).badgeKind() }),
-                    collapsed = branch in collapsedChanges && !isTextFiltering,
-                    members = members.sortedBy { it.alias },
-                )
+                changeGroupOf(membership.folder, branch, members, collapsed = branch in collapsedChanges && !isTextFiltering)
             }.filter { it.entries.isNotEmpty() }.sortedBy { it.branch.lowercase() }
             val groupedPaths = grouped.values.flatten().mapTo(mutableSetOf()) { it.entry.worktree.path }
             val ungrouped = sortWorktreeItems(
@@ -606,6 +646,16 @@ class WorktreeBoard(
         }
     }
 
+    fun performGroupAction(group: ChangeGroup, id: ActionId) {
+        when (id) {
+            ActionId.OpenAll(OpenTarget.HERDR) -> openAllInHerdr(group)
+            ActionId.OpenAll(OpenTarget.ORCA) -> openAllInOrca(group)
+            is ActionId.AddRepository -> addRepositoryToGroup(group, id.alias)
+            ActionId.CleanUpGroup -> openGroupCleanup(group)
+            else -> Unit
+        }
+    }
+
     fun openAllInHerdr(group: ChangeGroup) {
         group.members.forEach { it.entry.holder.openInHerdr(it.entry.worktree) }
     }
@@ -643,13 +693,15 @@ class WorktreeBoard(
     private fun branchGroupOf(group: ChangeGroup): BranchGroup =
         BranchGroup(group.branch, group.members.map { GroupWorktree(it.alias, it.entry.project.config, it.entry.worktree) })
 
+    private fun membershipOf(group: ChangeGroup): MultirepoMembership? = memberships.firstOrNull { it.folder == group.multirepoFolder }
+
     fun missingAliases(group: ChangeGroup): List<String> =
-        shownMultirepo?.aliases?.values?.filter { it !in group.aliases }?.sorted().orEmpty()
+        membershipOf(group)?.aliases?.values?.filter { it !in group.aliases }?.sorted().orEmpty()
 
     fun canAddRepositories(group: ChangeGroup): Boolean = branchTypeOf(group.branch) != null && missingAliases(group).isNotEmpty()
 
     fun addRepositoryToGroup(group: ChangeGroup, alias: String) {
-        val membership = shownMultirepo ?: return
+        val membership = membershipOf(group) ?: return
         val (type, id) = branchTypeOf(group.branch) ?: return
         val projectId = membership.projectIdOf(alias) ?: return
         val project = projects.firstOrNull { it.id == projectId } ?: return
@@ -783,7 +835,7 @@ class WorktreeBoard(
                     change.results = creation.repositories
                     members.forEach { member -> change.membership.projectIdOf(member.alias)?.let(::holder)?.refresh() }
                     val runner = change.runner
-                    if (runner != null) {
+                    if (runner != null && creation.repositories.any { it.path != null }) {
                         change.openings = withContext(ioDispatcher) { openCreated(runner, members, creation) }
                     } else if (!creation.failed) {
                         multirepoNotice = MultirepoNotice.ChangeCreated(changeTitle(creation.branch), members.map { it.alias })
@@ -927,6 +979,7 @@ class WorktreeBoard(
 
     fun select(ref: WorktreeRef) {
         expandStateGroupOf(ref)
+        expandChangeOf(ref)
         selected = ref
         onWorktreeUsed(ref)
     }
@@ -971,7 +1024,7 @@ class WorktreeBoard(
         if (isGroupedByChange) {
             changeView.let { view -> view.groups.filterNot { it.collapsed }.flatMap { group -> group.entries.map { it.ref } } + view.ungrouped.map { it.ref } }
         } else if (isGroupedByState) {
-            stateGroups.filterNot { it.collapsed }.flatMap { group -> group.items.map { it.ref } }
+            stateGroups.filterNot { it.collapsed }.flatMap { group -> group.items.flatMap { it.visibleRefs } }
         } else {
             groups.filterNot { it.collapsed }.flatMap { group -> group.worktrees.map { WorktreeRef(group.project.id, it.path) } }
         }

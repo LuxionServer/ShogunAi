@@ -732,6 +732,7 @@ interface Strings {
     val openAllInOrca: String
     val addRepositoryToGroup: String
     val openAllWith: String
+    val showInMultirepo: String
     val openMultirepoAgentWith: String
     val cleanUpGroup: String
     val cleanUpGroupTitle: String
@@ -798,6 +799,12 @@ interface Strings {
     val sortAlphabetically: String
     val multirepoNeedsReview: String
     val multirepoNeedsReviewExplanation: String
+    val multirepoUnavailable: String
+    fun multirepoFolderUnreachable(folder: String): String
+    fun multirepoDeclarationMissing(folder: String): String
+    fun multirepoDeclarationInvalid(detail: String): String
+    val removeMultirepoTitle: String
+    fun removeMultirepoMessage(name: String): String
     val trustMultirepo: String
     val declaredAgentIgnored: String
     val existingDeclarationTitle: String
@@ -806,6 +813,7 @@ interface Strings {
     fun groupKeptStatusUnavailable(alias: String): String
     fun groupKeptAgentRunning(alias: String, agents: List<String>): String
     fun groupRepositoryFailed(reason: String): String
+    fun groupRepositorySkipped(blockedBy: List<String>): String
     fun repositoryAddedToGroup(alias: String, title: String): String
     fun changeCreated(title: String, aliases: List<String>): String
     fun groupOpenedInOrca(title: String, started: List<String>, focused: List<String>): String
@@ -860,6 +868,13 @@ interface Strings {
     val ownerUnknown: String
     val machineOverviewTooltip: String
     val machineOverviewNoProviders: String
+    val derivedDataDeleteBlockedDeleting: String
+    val derivedDataDeleteBlockedNoOrphans: String
+    val simulatorOrphansDeleteBlockedDeleting: String
+    val composeTakeDownBlockedRunning: String
+    val composeTakeDownBlockedNone: String
+    val composeLeftoversBlockedRemoving: String
+    val composeLeftoversBlockedOnlyVolumes: String
 }
 
 val LocalStrings = staticCompositionLocalOf<Strings> { EnglishStrings }

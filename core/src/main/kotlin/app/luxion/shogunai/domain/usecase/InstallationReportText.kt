@@ -2,6 +2,7 @@ package app.luxion.shogunai.domain.usecase
 
 import app.luxion.shogunai.domain.io.HostPathSource
 import app.luxion.shogunai.domain.model.CheckState
+import app.luxion.shogunai.domain.model.HostOs
 import app.luxion.shogunai.domain.model.InstallationCheck
 import app.luxion.shogunai.domain.model.InstallationFinding
 import app.luxion.shogunai.domain.model.InstallationReport
@@ -108,19 +109,30 @@ object InstallationReportText {
         val tool = finding.tool.displayName
         val subject = "${finding.project}: $tool"
         return when (val problem = finding.problem) {
-            null -> subject + finding.location?.let { " at $it" }.orEmpty() + installedSuffix(finding)
+            null -> subject + finding.version?.let { " $it" }.orEmpty() + finding.location?.let { " at $it" }.orEmpty() + installedSuffix(finding)
             is ProviderToolProblem.NotFound -> "$subject not found, needed by the ${finding.tool.provider} provider (looked in ${(problem.searched + problem.commands.map { "$it on the PATH" }).joinToString()})"
             is ProviderToolProblem.Unusable -> "$subject${finding.location?.let { " at $it" }.orEmpty()} doesn't work" + problem.detail.suffix()
             ProviderToolProblem.NeedsMacOs -> "${finding.project}: the ${finding.tool.provider} provider needs macOS with Xcode"
             ProviderToolProblem.NoAndroidVirtualDevice -> "$subject at ${finding.location} has no Android Virtual Device"
             ProviderToolProblem.NoIosRuntime -> "${finding.project}: no iOS simulator runtime is installed"
             is ProviderToolProblem.ProvidersUnreadable -> "${finding.project}: couldn't read its providers" + problem.detail.suffix()
+            is ProviderToolProblem.JavaHomeInvalid -> "$subject not found: JAVA_HOME is ${problem.javaHome}, which has no bin/java"
+            is ProviderToolProblem.JavaTooOld ->
+                "$subject is Java ${problem.java} at ${finding.location}, but ${buildTool(finding.tool)} ${problem.toolVersion} needs Java ${problem.required} or newer"
+            is ProviderToolProblem.GradleTooOld ->
+                "$subject is Java ${problem.java} at ${finding.location}, which needs Gradle ${problem.required} or newer, but the project uses Gradle ${problem.gradle}"
+            is ProviderToolProblem.TooOld ->
+                "$subject ${problem.version} at ${finding.location} is older than ${problem.minimum}, the first with the 'docker compose ls' ShogunAi uses"
+            is ProviderToolProblem.DaemonNotRunning -> "${finding.project}: Docker's daemon isn't running" + problem.detail.suffix()
         }
     }
+
+    private fun buildTool(tool: ProviderToolId): String = if (tool == ProviderToolId.GRADLE_JAVA) "Gradle" else "Maven"
 
     private fun installedSuffix(finding: InstallationFinding.ProviderTool): String = when (finding.tool) {
         ProviderToolId.ANDROID_SDK -> " (${plural(finding.installed ?: 0, "virtual device", "virtual devices")})"
         ProviderToolId.IOS_SIMULATOR -> " (${plural(finding.installed ?: 0, "iOS runtime", "iOS runtimes")})"
+        ProviderToolId.DOCKER_DAEMON -> " is running"
         else -> ""
     }
 
@@ -130,15 +142,25 @@ object InstallationReportText {
         ProviderToolProblem.NoIosRuntime -> "Install an iOS runtime from Xcode's Settings › Components"
         is ProviderToolProblem.ProvidersUnreadable -> "Correct the repository's ${RepositoryProvisioning.CONFIG_FILE_NAME} so it's valid"
         is ProviderToolProblem.NotFound, is ProviderToolProblem.Unusable -> installFix(tool)
+        is ProviderToolProblem.JavaHomeInvalid -> "Point JAVA_HOME at a JDK's folder (the one with bin/java), or unset it to use the java on your PATH"
+        is ProviderToolProblem.JavaTooOld -> "Install Java ${problem.required} or newer and point JAVA_HOME at it"
+        is ProviderToolProblem.GradleTooOld -> "Update the project's Gradle wrapper to ${problem.required} or newer, or point JAVA_HOME at an older Java"
+        is ProviderToolProblem.TooOld -> "Update Docker, or its Compose plugin, to Compose ${problem.minimum} or newer: https://docs.docker.com/compose/install/"
+        is ProviderToolProblem.DaemonNotRunning -> when (problem.os) {
+            HostOs.LINUX -> "Start the Docker service with 'sudo systemctl start docker', or start Docker Desktop, and check again"
+            HostOs.MACOS, HostOs.WINDOWS -> "Start Docker Desktop, or the Docker engine you use, and check again"
+        }
     }
 
     private fun installFix(tool: ProviderToolId): String = when (tool) {
         ProviderToolId.GRADLE -> "Add the Gradle wrapper (gradlew) to the repository, or install Gradle: https://gradle.org/install/"
         ProviderToolId.MAVEN -> "Add the Maven wrapper (mvnw) to the repository, or install Maven: https://maven.apache.org/install.html"
+        ProviderToolId.GRADLE_JAVA, ProviderToolId.MAVEN_JAVA ->
+            "Install a JDK (for example from https://adoptium.net) and set JAVA_HOME to it or put its java on your PATH; on macOS, /usr/bin/java only works once a JDK is installed"
         ProviderToolId.ANDROID_SDK -> "Install the Android SDK and its emulator with Android Studio (https://developer.android.com/studio), or set ANDROID_HOME to where it is"
         ProviderToolId.IOS_SIMULATOR, ProviderToolId.XCODE -> "Install Xcode from the App Store and select it: sudo xcode-select -s /Applications/Xcode.app"
         ProviderToolId.COCOAPODS -> "Install CocoaPods: https://cocoapods.org"
-        ProviderToolId.DOCKER_COMPOSE -> "Install Docker with its Compose plugin, for example Docker Desktop: https://docs.docker.com/get-docker/"
+        ProviderToolId.DOCKER_COMPOSE, ProviderToolId.DOCKER_DAEMON -> "Install Docker with its Compose plugin, for example Docker Desktop: https://docs.docker.com/get-docker/"
         ProviderToolId.FLUTTER -> "Install Flutter (https://docs.flutter.dev/get-started/install), or FVM if the repository uses it, and make sure it's on your PATH"
         ProviderToolId.PROVIDERS -> "Correct the repository's ${RepositoryProvisioning.CONFIG_FILE_NAME} so it's valid"
     }

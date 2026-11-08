@@ -2,6 +2,7 @@ package app.luxion.shogunai.ui.i18n
 
 import app.luxion.shogunai.domain.io.HostPathSource
 import app.luxion.shogunai.domain.model.CheckState
+import app.luxion.shogunai.domain.model.HostOs
 import app.luxion.shogunai.domain.model.InstallationCheck
 import app.luxion.shogunai.domain.model.InstallationFinding
 import app.luxion.shogunai.domain.model.InstallationReport
@@ -126,12 +127,14 @@ private fun spanishLocalFileProblem(file: UnavailableLocalFile): String = when (
 private fun spanishFiles(count: Int): String = if (count == 1) "1 archivo local" else "$count archivos locales"
 
 private fun spanishProviderSummary(finding: InstallationFinding.ProviderTool): String {
-    val subject = "${finding.project}: ${finding.tool.displayName}"
+    val subject = "${finding.project}: ${spanishToolName(finding.tool)}"
     return when (val problem = finding.problem) {
         null -> when (finding.tool) {
             ProviderToolId.ANDROID_SDK -> "$subject está en ${finding.location} (${spanishCount(finding.installed ?: 0, "dispositivo virtual", "dispositivos virtuales")})"
             ProviderToolId.IOS_SIMULATOR -> "$subject tiene ${spanishCount(finding.installed ?: 0, "runtime de iOS", "runtimes de iOS")}"
-            else -> "$subject está en ${finding.location}"
+            ProviderToolId.GRADLE_JAVA, ProviderToolId.MAVEN_JAVA -> "$subject es Java ${finding.version} en ${finding.location}"
+            ProviderToolId.DOCKER_DAEMON -> "${finding.project}: el daemon de Docker${finding.version?.let { " $it" }.orEmpty()} está en marcha"
+            else -> "$subject${finding.version?.let { " $it" }.orEmpty()} está en ${finding.location}"
         }
         is ProviderToolProblem.NotFound -> "$subject no está instalado; lo necesita el proveedor ${finding.tool.provider} (se ha buscado en ${(problem.searched + problem.commands.map { "$it en el PATH" }).joinToString()})"
         is ProviderToolProblem.Unusable -> "$subject${finding.location?.let { " en $it" }.orEmpty()} no funciona${problem.detail.asSuffix()}"
@@ -139,21 +142,48 @@ private fun spanishProviderSummary(finding: InstallationFinding.ProviderTool): S
         ProviderToolProblem.NoAndroidVirtualDevice -> "$subject en ${finding.location} no tiene ningún dispositivo virtual de Android"
         ProviderToolProblem.NoIosRuntime -> "${finding.project}: no hay ningún runtime de simulador de iOS instalado"
         is ProviderToolProblem.ProvidersUnreadable -> "${finding.project}: no se han podido leer sus proveedores${problem.detail.asSuffix()}"
+        is ProviderToolProblem.JavaHomeInvalid -> "$subject no está instalado: JAVA_HOME es ${problem.javaHome}, que no tiene bin/java"
+        is ProviderToolProblem.JavaTooOld ->
+            "$subject es Java ${problem.java} en ${finding.location}, pero ${spanishBuildTool(finding.tool)} ${problem.toolVersion} necesita Java ${problem.required} o posterior"
+        is ProviderToolProblem.GradleTooOld ->
+            "$subject es Java ${problem.java} en ${finding.location}, que necesita Gradle ${problem.required} o posterior, pero el proyecto usa Gradle ${problem.gradle}"
+        is ProviderToolProblem.TooOld ->
+            "$subject ${problem.version} en ${finding.location} es anterior a ${problem.minimum}, la primera con el docker compose ls que usa ShogunAi"
+        is ProviderToolProblem.DaemonNotRunning -> "${finding.project}: el daemon de Docker no está en marcha${problem.detail.asSuffix()}"
     }
 }
+
+private fun spanishToolName(tool: ProviderToolId): String = when (tool) {
+    ProviderToolId.GRADLE_JAVA -> "Java de Gradle"
+    ProviderToolId.MAVEN_JAVA -> "Java de Maven"
+    ProviderToolId.DOCKER_DAEMON -> "Daemon de Docker"
+    else -> tool.displayName
+}
+
+private fun spanishBuildTool(tool: ProviderToolId): String = if (tool == ProviderToolId.GRADLE_JAVA) "Gradle" else "Maven"
 
 private fun spanishProviderFix(tool: ProviderToolId, problem: ProviderToolProblem): String = when (problem) {
     ProviderToolProblem.NeedsMacOs -> "Usa el proveedor ${tool.provider} en un Mac con Xcode, o ignora este aviso en otros sistemas."
     ProviderToolProblem.NoAndroidVirtualDevice -> "Crea un dispositivo virtual en el Device Manager de Android Studio."
     ProviderToolProblem.NoIosRuntime -> "Instala un runtime de iOS desde Ajustes › Componentes de Xcode."
     is ProviderToolProblem.ProvidersUnreadable -> "Corrige el .shogunai.json del repositorio para que sea válido."
+    is ProviderToolProblem.JavaHomeInvalid -> "Apunta JAVA_HOME a la carpeta de un JDK (la que tiene bin/java), o quítala para usar el java de tu PATH."
+    is ProviderToolProblem.JavaTooOld -> "Instala Java ${problem.required} o posterior y apunta JAVA_HOME a él."
+    is ProviderToolProblem.GradleTooOld -> "Actualiza el wrapper de Gradle del proyecto a ${problem.required} o posterior, o apunta JAVA_HOME a un Java anterior."
+    is ProviderToolProblem.TooOld -> "Actualiza Docker, o su plugin Compose, a Compose ${problem.minimum} o posterior desde https://docs.docker.com/compose/install/."
+    is ProviderToolProblem.DaemonNotRunning -> when (problem.os) {
+        HostOs.LINUX -> "Arranca el servicio de Docker con sudo systemctl start docker, o abre Docker Desktop, y vuelve a comprobarlo."
+        HostOs.MACOS, HostOs.WINDOWS -> "Abre Docker Desktop, o el motor de Docker que uses, y vuelve a comprobarlo."
+    }
     is ProviderToolProblem.NotFound, is ProviderToolProblem.Unusable -> when (tool) {
         ProviderToolId.GRADLE -> "Añade el wrapper de Gradle (gradlew) al repositorio, o instala Gradle desde https://gradle.org/install/."
         ProviderToolId.MAVEN -> "Añade el wrapper de Maven (mvnw) al repositorio, o instala Maven desde https://maven.apache.org/install.html."
+        ProviderToolId.GRADLE_JAVA, ProviderToolId.MAVEN_JAVA ->
+            "Instala un JDK (por ejemplo desde https://adoptium.net) y define JAVA_HOME con su carpeta o pon su java en tu PATH. En macOS, /usr/bin/java solo funciona con un JDK instalado."
         ProviderToolId.ANDROID_SDK -> "Instala el SDK de Android y su emulador con Android Studio (https://developer.android.com/studio), o define ANDROID_HOME con su ubicación."
         ProviderToolId.IOS_SIMULATOR, ProviderToolId.XCODE -> "Instala Xcode desde la App Store y selecciónalo con sudo xcode-select -s /Applications/Xcode.app."
         ProviderToolId.COCOAPODS -> "Instala CocoaPods desde https://cocoapods.org."
-        ProviderToolId.DOCKER_COMPOSE -> "Instala Docker con su plugin Compose, por ejemplo Docker Desktop desde https://docs.docker.com/get-docker/."
+        ProviderToolId.DOCKER_COMPOSE, ProviderToolId.DOCKER_DAEMON -> "Instala Docker con su plugin Compose, por ejemplo Docker Desktop desde https://docs.docker.com/get-docker/."
         ProviderToolId.FLUTTER -> "Instala Flutter (https://docs.flutter.dev/get-started/install), o FVM si el repositorio lo usa, y comprueba que está en tu PATH."
         ProviderToolId.PROVIDERS -> "Corrige el .shogunai.json del repositorio para que sea válido."
     }

@@ -18,6 +18,7 @@ import app.luxion.shogunai.domain.model.DerivedDataQuotaMode
 import app.luxion.shogunai.domain.model.MeasuredSize
 import app.luxion.shogunai.domain.model.PackageCacheSizes
 import app.luxion.shogunai.domain.model.Project
+import app.luxion.shogunai.domain.model.KnownMultirepos
 import app.luxion.shogunai.domain.model.Multirepo
 import app.luxion.shogunai.domain.usecase.AddedRepository
 import app.luxion.shogunai.domain.usecase.ConfigureMultirepoUseCase
@@ -500,7 +501,7 @@ class AppContainer(private val hostEnvironment: HostEnvironment = SystemHostEnvi
             projects = projectRepository,
             fileManager = fileManager,
             provisioningSource = repositoryProvisioningSource,
-            providerTools = CheckProviderToolsUseCase(shellCommandExecutor, locator::find, fileManager, androidSdk, appleSimulators),
+            providerTools = CheckProviderToolsUseCase(shellCommandExecutor, locator::find, fileManager, androidSdk, appleSimulators, hostEnvironment::variable, hostEnvironment.os),
             multirepos = CheckMultireposUseCase(multirepoSource, resolveMultirepo, DetectGroupsUseCase(shellCommandExecutor), projectRepository),
         )
     }
@@ -697,7 +698,7 @@ class AppContainer(private val hostEnvironment: HostEnvironment = SystemHostEnvi
     private val resolveMultirepo = ResolveMultirepoUseCase(multirepoSource, shellCommandExecutor, fileManager)
     private val configureMultirepo = ConfigureMultirepoUseCase(multirepoSource, resolveMultirepo, projectRepository, shellCommandExecutor)
 
-    fun knownMultirepos(): List<Multirepo> = resolveMultirepo.known()
+    fun knownMultirepos(): KnownMultirepos = resolveMultirepo.listing()
 
     fun registerWorkspaceProject(multirepo: Multirepo): Boolean {
         val workspace = multirepo.workspaceRepository ?: return false
@@ -744,8 +745,8 @@ class AppContainer(private val hostEnvironment: HostEnvironment = SystemHostEnvi
         installedRunners = agentRunners.values.filter { it.isInstalled() }.map { it.id }.toSet(),
     )
 
-    fun forgetMissingMultirepos() {
-        runCatching { multirepoSource.forgetMissing() }
+    fun forgetMultirepo(folder: String) {
+        runCatching { multirepoSource.forget(folder) }
     }
 
     val multirepoSetup: MultirepoSetup = object : MultirepoSetup {
