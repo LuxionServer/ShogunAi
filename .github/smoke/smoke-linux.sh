@@ -16,7 +16,8 @@ SCRIPTS="/opt/shogun-smoke-scripts"
 APP="/opt/shogunai/bin/ShogunAi"
 PACKAGE="shogunai"
 MENUS="/etc/xdg/menus"
-MENU_ENTRY="/usr/share/applications/shogunai-ShogunAi.desktop"
+MENU_ENTRY_NAME="shogunai-ShogunAi.desktop"
+MENU_ENTRY_FOLDERS=(/usr/local/share/applications /usr/share/applications)
 
 mkdir -p "$WORK/out"
 source "$SOURCE_SCRIPTS/report.sh"
@@ -168,14 +169,23 @@ remove_deb apt-remove.log
 echo "Installing the package again with the menus folders a desktop has."
 sudo mkdir -p "$MENUS" /usr/share/applications /usr/share/desktop-directories
 install_deb apt-install-desktop.log
-if [ ! -f "$MENU_ENTRY" ]; then
-  echo "::error::Installing on a desktop didn't add $MENU_ENTRY." >&2
+MENU_ENTRY=""
+for FOLDER in "${MENU_ENTRY_FOLDERS[@]}"; do
+  if [ -f "$FOLDER/$MENU_ENTRY_NAME" ]; then
+    MENU_ENTRY="$FOLDER/$MENU_ENTRY_NAME"
+    break
+  fi
+done
+if [ -z "$MENU_ENTRY" ]; then
+  echo "::error::Installing on a desktop didn't add $MENU_ENTRY_NAME to ${MENU_ENTRY_FOLDERS[*]}." >&2
   exit 1
 fi
 echo "ok: $MENU_ENTRY added"
 remove_deb apt-remove-desktop.log
-if [ -e "$MENU_ENTRY" ]; then
-  echo "::error::Removing the package left $MENU_ENTRY." >&2
-  exit 1
-fi
+for FOLDER in "${MENU_ENTRY_FOLDERS[@]}"; do
+  if [ -e "$FOLDER/$MENU_ENTRY_NAME" ]; then
+    echo "::error::Removing the package left $FOLDER/$MENU_ENTRY_NAME." >&2
+    exit 1
+  fi
+done
 echo "ok: $MENU_ENTRY removed"

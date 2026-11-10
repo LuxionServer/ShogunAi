@@ -25,4 +25,4 @@ On a machine with a system menus folder, installing the `.deb` SHALL add ShogunA
 
 #### Scenario: Desktop install and removal
 - **WHEN** the `.deb` is installed on a machine with `/etc/xdg/menus`, and later removed
-- **THEN** after installing, the ShogunAi desktop entry is in `/usr/share/applications`; after removing, it isn't
+- **THEN** after installing, the ShogunAi desktop entry is in the system applications folder `xdg-desktop-menu` chose (`/usr/local/share/applications` or `/usr/share/applications`); after removing, it is in neither

@@ -37,6 +37,7 @@ mkdir -p "$WORK/out"
 SHA256_ARM="$(shasum -a 256 "$ARM_DMG" | cut -d' ' -f1)"
 SHA256_INTEL="$(shasum -a 256 "$INTEL_DMG" | cut -d' ' -f1)"
 brew tap-new --no-git "$TAP" > /dev/null
+if brew commands --quiet | grep -qx trust; then brew trust --tap "$TAP"; fi
 TAP_FOLDER="$(brew --repository "$TAP")"
 mkdir -p "$TAP_FOLDER/Casks"
 "$RENDER" "$VERSION" "$SHA256_ARM" "$SHA256_INTEL" > "$TAP_FOLDER/Casks/shogunai.rb"
