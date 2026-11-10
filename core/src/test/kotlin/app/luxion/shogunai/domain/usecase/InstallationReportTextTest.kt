@@ -4,6 +4,7 @@ import app.luxion.shogunai.domain.io.HostPathSource
 import app.luxion.shogunai.domain.model.AgentToolId
 import app.luxion.shogunai.domain.model.CheckState
 import app.luxion.shogunai.domain.model.InstallationCheck
+import app.luxion.shogunai.domain.model.HostOs
 import app.luxion.shogunai.domain.model.InstallationFinding
 import app.luxion.shogunai.domain.model.InstallationReport
 import app.luxion.shogunai.domain.model.LocalFileOrigin
@@ -209,8 +210,47 @@ class InstallationReportTextTest {
         )
     }
 
-    private fun tool(tool: ProviderToolId, location: String? = null, problem: ProviderToolProblem? = null, installed: Int? = null) =
-        InstallationFinding.ProviderTool("main-repo", tool, location, problem, installed)
+    private fun tool(tool: ProviderToolId, location: String? = null, problem: ProviderToolProblem? = null, installed: Int? = null, version: String? = null) =
+        InstallationFinding.ProviderTool("main-repo", tool, location, problem, installed, version)
+
+    @Test
+    fun `provider runtime texts`() {
+        assertEquals("main-repo: Gradle 8.10.2 at /repo/gradlew", summary(CheckState.PASSED, tool(ProviderToolId.GRADLE, "/repo/gradlew", version = "8.10.2")))
+        assertEquals("main-repo: Java for Gradle 21 at /usr/bin/java", summary(CheckState.PASSED, tool(ProviderToolId.GRADLE_JAVA, "/usr/bin/java", version = "21")))
+        assertEquals("main-repo: Docker daemon 27.3.1 is running", summary(CheckState.PASSED, tool(ProviderToolId.DOCKER_DAEMON, version = "27.3.1")))
+
+        val javaHome = tool(ProviderToolId.MAVEN_JAVA, problem = ProviderToolProblem.JavaHomeInvalid("/opt/jdk-gone"))
+        assertEquals("main-repo: Java for Maven not found: JAVA_HOME is /opt/jdk-gone, which has no bin/java", summary(CheckState.WARNING, javaHome))
+        assertTrue(fix(CheckState.WARNING, javaHome)!!.contains("unset it"))
+
+        val tooOld = tool(ProviderToolId.GRADLE_JAVA, "/usr/bin/java", ProviderToolProblem.JavaTooOld(11, 17, "9.1.0"))
+        assertEquals("main-repo: Java for Gradle is Java 11 at /usr/bin/java, but Gradle 9.1.0 needs Java 17 or newer", summary(CheckState.WARNING, tooOld))
+        assertEquals("Install Java 17 or newer and point JAVA_HOME at it", fix(CheckState.WARNING, tooOld))
+        val mavenTooOld = tool(ProviderToolId.MAVEN_JAVA, "/usr/bin/java", ProviderToolProblem.JavaTooOld(11, 17, "4.0.0"))
+        assertEquals("main-repo: Java for Maven is Java 11 at /usr/bin/java, but Maven 4.0.0 needs Java 17 or newer", summary(CheckState.WARNING, mavenTooOld))
+
+        val gradleTooOld = tool(ProviderToolId.GRADLE_JAVA, "/usr/bin/java", ProviderToolProblem.GradleTooOld(21, "8.4", "8.5"))
+        assertEquals(
+            "main-repo: Java for Gradle is Java 21 at /usr/bin/java, which needs Gradle 8.5 or newer, but the project uses Gradle 8.4",
+            summary(CheckState.WARNING, gradleTooOld),
+        )
+        assertEquals("Update the project's Gradle wrapper to 8.5 or newer, or point JAVA_HOME at an older Java", fix(CheckState.WARNING, gradleTooOld))
+
+        val compose = tool(ProviderToolId.DOCKER_COMPOSE, "/usr/bin/docker", ProviderToolProblem.TooOld("1.29.2", "2.0"))
+        assertEquals(
+            "main-repo: Docker Compose 1.29.2 at /usr/bin/docker is older than 2.0, the first with the 'docker compose ls' ShogunAi uses",
+            summary(CheckState.WARNING, compose),
+        )
+        assertTrue(fix(CheckState.WARNING, compose)!!.contains("Compose 2.0 or newer"))
+
+        val mac = tool(ProviderToolId.DOCKER_DAEMON, problem = ProviderToolProblem.DaemonNotRunning(HostOs.MACOS, "Cannot connect"))
+        assertEquals("main-repo: Docker's daemon isn't running: Cannot connect", summary(CheckState.WARNING, mac))
+        assertEquals("Start Docker Desktop, or the Docker engine you use, and check again", fix(CheckState.WARNING, mac))
+        val windows = tool(ProviderToolId.DOCKER_DAEMON, problem = ProviderToolProblem.DaemonNotRunning(HostOs.WINDOWS, null))
+        assertEquals(fix(CheckState.WARNING, mac), fix(CheckState.WARNING, windows))
+        val linux = tool(ProviderToolId.DOCKER_DAEMON, problem = ProviderToolProblem.DaemonNotRunning(HostOs.LINUX, null))
+        assertTrue(fix(CheckState.WARNING, linux)!!.contains("sudo systemctl start docker"))
+    }
 
     @Test
     fun `passed provider tool texts`() {
@@ -260,6 +300,8 @@ class InstallationReportTextTest {
         assertTrue(fixes.getValue(ProviderToolId.IOS_SIMULATOR)!!.contains("xcode-select"))
         assertTrue(fixes.getValue(ProviderToolId.COCOAPODS)!!.contains("cocoapods.org"))
         assertTrue(fixes.getValue(ProviderToolId.FLUTTER)!!.contains("FVM"))
+        assertTrue(fixes.getValue(ProviderToolId.GRADLE_JAVA)!!.contains("JAVA_HOME"))
+        assertEquals(fixes.getValue(ProviderToolId.DOCKER_COMPOSE), fixes.getValue(ProviderToolId.DOCKER_DAEMON))
         assertTrue(fixes.getValue(ProviderToolId.PROVIDERS)!!.contains(".shogunai.json"))
     }
 

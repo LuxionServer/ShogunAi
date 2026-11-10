@@ -17,6 +17,7 @@ import kotlinx.coroutines.test.setMain
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
+import kotlin.test.assertNotNull
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
@@ -71,14 +72,14 @@ class EditorOverrideTest {
         val viewModel = viewModel(project(EditorId.XCODE), listOf(EditorId.VS_CODE, EditorId.XCODE))
 
         assertEquals(EditorId.XCODE, viewModel.editorOverride)
-        assertFalse(viewModel.editorOverrideMissing)
+        assertNull(viewModel.missingEditorOverride)
     }
 
     @Test
     fun `an Xcode override is missing on a machine without it`() = runTest(dispatcher) {
         val viewModel = viewModel(project(EditorId.XCODE), listOf(EditorId.VS_CODE))
 
-        assertTrue(viewModel.editorOverrideMissing)
+        assertNotNull(viewModel.missingEditorOverride)
     }
 
     @Test
@@ -105,10 +106,10 @@ class EditorOverrideTest {
     fun `an override that isn't installed is reported and kept until changed`() = runTest(dispatcher) {
         val viewModel = viewModel(project(EditorId.ANDROID_STUDIO), listOf(EditorId.VS_CODE))
 
-        assertTrue(viewModel.editorOverrideMissing)
+        assertNotNull(viewModel.missingEditorOverride)
         assertEquals(EditorId.ANDROID_STUDIO, viewModel.save().getOrThrow().config.editorOverride)
 
         viewModel.editorOverride = EditorId.VS_CODE
-        assertFalse(viewModel.editorOverrideMissing)
+        assertNull(viewModel.missingEditorOverride)
     }
 }

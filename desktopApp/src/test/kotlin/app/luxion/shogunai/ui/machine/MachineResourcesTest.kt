@@ -162,6 +162,7 @@ class MachineResourcesTest {
         trim: GradleTrim = GradleTrim(limit = null),
         nextTrim: () -> GradleTrim = { trim },
         settings: ResourceSettings = ResourceSettings(),
+        settingsOf: () -> ResourceSettings = { settings },
         derivedDataTrim: (Long) -> DerivedDataTrim = { DerivedDataTrim(it, 0L, 0L) },
         stopDaemons: suspend (List<Long>?) -> Result<DaemonStopReport> = { pids ->
             calls.stoppedDaemons += pids
@@ -201,7 +202,7 @@ class MachineResourcesTest {
             }
         },
         trimGradleDaemons = { calls.recordDispatcher(); calls.trims++; Result.success(nextTrim()) },
-        resourceSettings = { settings },
+        resourceSettings = settingsOf,
         trimDerivedData = { quota, _, _ -> calls.derivedDataTrims += quota; Result.success(derivedDataTrim(quota)) },
         stopEmulator = { _, _ -> Result.success(null) },
         stopEmulatorSerials = { _, serials -> calls.stoppedSerials += serials; Result.success(emptyList()) },
@@ -728,6 +729,25 @@ class MachineResourcesTest {
     }
 
     @Test
+    fun `changing the resource settings applies the new emulator limit to the shown view and the status bar at once`() = machineTest {
+        val pools = mutableMapOf(ResourceKind.EMULATOR to usage(ResourceKind.EMULATOR, 2, 9))
+        val machine = machine(
+            useCases(Calls(), pools = pools),
+            listOf(machineProject("api", listOf(apiWorktree), MachineResource.ANDROID_EMULATORS)),
+        )
+        machine.refreshSummaries()
+        machine.show(MachineResource.ANDROID_EMULATORS)
+        runCurrent()
+
+        pools[ResourceKind.EMULATOR] = usage(ResourceKind.EMULATOR, 4, 9)
+        machine.applyResourceSettings()
+        runCurrent()
+
+        assertEquals(4, machine.poolOf(MachineResource.ANDROID_EMULATORS)?.effectiveLimit)
+        assertEquals(4, machine.summaries.getValue(MachineResource.ANDROID_EMULATORS).poolLimit)
+    }
+
+    @Test
     fun `a Gradle pool above its limit is over the limit`() = machineTest {
         val calls = Calls().apply { daemons = (1L..3L).map { gradleDaemon(it, DaemonState.Busy) } }
         val machine = machine(
@@ -907,6 +927,26 @@ class MachineResourcesTest {
     )
 
     private fun MachineResources.loadedFolders() = (derivedData as MachineLoad.Loaded).value
+
+    @Test
+    fun `changing the resource settings applies a new DerivedData quota without measuring again`() = machineTest {
+        val calls = Calls()
+        var settings = ResourceSettings(derivedDataQuotaMode = DerivedDataQuotaMode.NONE)
+        val machine = machine(
+            useCases(calls, derivedData = DerivedDataListing(derivedFolders, null), sizes = mapOf("/dd/A" to 300L, "/dd/B" to 200L), settingsOf = { settings }),
+            listOf(machineProject("main-repo", listOf(mainWorktree), MachineResource.XCODE_DERIVED_DATA)),
+        )
+        machine.show(MachineResource.XCODE_DERIVED_DATA)
+        runCurrent()
+        val measured = calls.measured.toList()
+
+        settings = ResourceSettings(derivedDataQuotaGigabytes = 1, derivedDataQuotaMode = DerivedDataQuotaMode.FIXED)
+        machine.applyResourceSettings()
+        runCurrent()
+
+        assertEquals(listOf(settings.fixedDerivedDataQuotaBytes), calls.derivedDataTrims)
+        assertEquals(measured, calls.measured)
+    }
 
     @Test
     fun `derived data folders are listed before their sizes are known`() = machineTest {

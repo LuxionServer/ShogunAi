@@ -12,9 +12,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import app.luxion.shogunai.domain.model.EmulatorState
 import app.luxion.shogunai.domain.usecase.ProjectOwner
+import app.luxion.shogunai.ui.components.GhostButton
 import app.luxion.shogunai.ui.components.InlineProgress
 import app.luxion.shogunai.ui.components.ProgressSize
-import app.luxion.shogunai.ui.components.SecondaryButton
 import app.luxion.shogunai.ui.components.StatusChip
 import app.luxion.shogunai.ui.i18n.LocalStrings
 import app.luxion.shogunai.ui.worktree.emulatorStateLabel
@@ -50,7 +50,7 @@ fun AndroidEmulatorsView(machine: MachineResources, onOpenWorktree: (String, Str
                         if (emulator.serial in machine.startingDevices) {
                             InlineProgress(size = ProgressSize.Small)
                         } else {
-                            SecondaryButton(onClick = { machine.stopUnownedEmulator(emulator.serial) }) { Text(strings.stopEmulator) }
+                            GhostButton(onClick = { machine.stopUnownedEmulator(emulator.serial) }) { Text(strings.stopEmulator) }
                         }
                     },
                 )
@@ -81,9 +81,9 @@ private fun WorktreeEmulatorRow(entry: MachineEmulator, machine: MachineResource
             when {
                 isBusy -> InlineProgress(size = ProgressSize.Small)
                 state == EmulatorState.STOPPED ->
-                    SecondaryButton(onClick = { machine.startEmulator(entry.projectId, entry.worktreePath) }) { Text(strings.startEmulator) }
+                    GhostButton(onClick = { machine.startEmulator(entry.projectId, entry.worktreePath) }) { Text(strings.startEmulator) }
                 else ->
-                    SecondaryButton(onClick = { machine.stopEmulator(entry.projectId, entry.worktreePath) }) { Text(strings.stopEmulator) }
+                    GhostButton(onClick = { machine.stopEmulator(entry.projectId, entry.worktreePath) }) { Text(strings.stopEmulator) }
             }
         },
     )

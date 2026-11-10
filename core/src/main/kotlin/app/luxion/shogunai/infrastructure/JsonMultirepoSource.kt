@@ -64,13 +64,6 @@ class JsonMultirepoSource(
         registry.copy(multirepos = registry.multirepos - path, local = registry.local - path)
     }
 
-    override fun forgetMissing(): List<String> = LocalFileLock.withLock(registryPath) {
-        val registry = readRegistry()
-        val missing = registry.multirepos.filter { path -> Path.of(path).parent?.exists() != true }
-        if (missing.isNotEmpty()) writeRegistry(Registry(registry.multirepos - missing.toSet(), registry.local - missing.toSet()))
-        missing.map(::folderOf)
-    }
-
     private fun folderOf(declaration: String): String {
         val parent = Path.of(declaration).parent
         return if (parent != null) parent.toString() else declaration

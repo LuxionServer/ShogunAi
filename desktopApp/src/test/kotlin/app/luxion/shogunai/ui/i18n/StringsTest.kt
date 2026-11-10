@@ -47,6 +47,36 @@ class StringsTest {
     )
 
     @Test
+    fun `a cleanup kept for running agents names the worktrees and agents when they fit`() {
+        val many = listOf("TASK-1", "TASK-2", "TASK-3", "TASK-4")
+
+        assertEquals(
+            "Merged worktree TASK-1 is kept because claude is running in it; close it to clean it up",
+            EnglishStrings.cleanUpBlockedAgentRunning(listOf("TASK-1"), listOf("claude")),
+        )
+        assertEquals(
+            "2 merged worktrees are kept because claude, codex are running in them (TASK-1, TASK-2); close them to clean them up",
+            EnglishStrings.cleanUpBlockedAgentRunning(many.take(2), listOf("claude", "codex")),
+        )
+        assertEquals(
+            "4 merged worktrees are kept because claude is running in them; close it to clean them up",
+            EnglishStrings.cleanUpBlockedAgentRunning(many, listOf("claude")),
+        )
+        assertEquals(
+            "El worktree mergeado TASK-1 se conserva porque claude está en ejecución en él; ciérralo para limpiarlo",
+            SpanishStrings.cleanUpBlockedAgentRunning(listOf("TASK-1"), listOf("claude")),
+        )
+        assertEquals(
+            "2 worktrees mergeados se conservan porque claude, codex están en ejecución en ellos (TASK-1, TASK-2); ciérralos para limpiarlos",
+            SpanishStrings.cleanUpBlockedAgentRunning(many.take(2), listOf("claude", "codex")),
+        )
+        assertEquals(
+            "4 worktrees mergeados se conservan porque claude está en ejecución en ellos; ciérralo para limpiarlos",
+            SpanishStrings.cleanUpBlockedAgentRunning(many, listOf("claude")),
+        )
+    }
+
+    @Test
     fun `a full pool names the limit, each holder as project and worktree and the way out`() {
         val error = WorktreeError.ResourcePoolFull(ResourceKind.EMULATOR, 2, poolHolders)
 

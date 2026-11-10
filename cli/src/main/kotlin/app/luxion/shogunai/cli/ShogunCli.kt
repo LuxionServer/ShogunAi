@@ -803,7 +803,6 @@ class ShogunCli(
     }
 
     private suspend fun initMultirepo(configure: ConfigureMultirepoUseCase, action: MultirepoAction.Init, json: Boolean): Int {
-        multirepoSource.forgetMissing()
         val declaration = multirepoSource.read(workingDirectory)
         if (declaration == null) {
             val multirepo = configure.init(workingDirectory, action.worktreesRoot?.let(::absolute), action.name).getOrThrow()
@@ -972,8 +971,9 @@ class ShogunCli(
                     GroupRepositoryOutcome.EXISTING -> err.line("${result.alias}: already in the group at ${result.path}")
                     GroupRepositoryOutcome.FAILED -> err.line(
                         "shogun: ${result.alias}: couldn't create its worktree" + (if (result.path == null) "" else " (${result.path} kept)") + ": " +
-                            failureReason(result.error ?: IllegalStateException("unknown failure")),
+                            groupFailureReason(result.error ?: IllegalStateException("unknown failure")),
                     )
+                    GroupRepositoryOutcome.SKIPPED -> err.line("shogun: ${result.alias}: ${skippedByLocalFiles(result.blockedBy)}")
                 }
             }
         }
@@ -1749,6 +1749,9 @@ class ShogunCli(
         return "Run 'shogun clean ${flags.joinToString(" ")}' to remove $listed."
     }
 
+    private fun groupFailureReason(error: Throwable): String =
+        if (error is WorktreeError.LocalFilesUnavailable) error.message else failureReason(error)
+
     private fun failureReason(error: Throwable): String {
         val gitOutput = (error as? WorktreeError.GitCommandFailed)?.errorOutput.orEmpty()
         val line = gitOutput.ifBlank { error.message.orEmpty() }.lineSequence().firstOrNull { it.isNotBlank() }
@@ -2364,7 +2367,7 @@ class ShogunCli(
             projects = projectRepository,
             fileManager = fileManager,
             provisioningSource = provisioningSource,
-            providerTools = CheckProviderToolsUseCase(executor, findExecutable, fileManager, androidSdk, appleSimulators),
+            providerTools = CheckProviderToolsUseCase(executor, findExecutable, fileManager, androidSdk, appleSimulators, environment::variable, environment.os),
             multirepos = CheckMultireposUseCase(multirepoSource, resolveMultirepo, DetectGroupsUseCase(executor), projectRepository),
         )()
         if (command.json) printJson(doctorJson(report)) else InstallationReportText.lines(report).forEach { out.line(it) }

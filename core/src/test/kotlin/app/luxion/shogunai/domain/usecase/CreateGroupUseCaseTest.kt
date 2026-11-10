@@ -6,6 +6,7 @@ import app.luxion.shogunai.domain.executor.CommandResult
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.model.RepositoryProvisioning
 import app.luxion.shogunai.domain.model.BranchType
+import app.luxion.shogunai.domain.model.UnavailableReason
 import app.luxion.shogunai.domain.model.WorktreeError
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -13,6 +14,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
+import kotlin.time.Duration
 
 class CreateGroupUseCaseTest {
 
@@ -103,6 +105,7 @@ class CreateGroupUseCaseTest {
         assertEquals("${world.worktreesRoot}/app/TASK-12", result.path)
         assertIs<WorktreeError.PostCreateCommandFailed>(result.error)
     }
+
     @Test
     fun `a repository whose project has no worktrees folder fails alone`() = runTest {
         val app = world.member("app")
@@ -113,4 +116,92 @@ class CreateGroupUseCaseTest {
         assertIs<WorktreeError.InvalidRepositoryConfig>(creation.repositories[0].error)
         assertEquals(GroupRepositoryOutcome.CREATED, creation.repositories[1].outcome)
     }
+
+    @Test
+    fun `unavailable local files in a later repository create nothing in any repository`() = runTest {
+        val creation = create(listOf(world.member("app"), needing("api", "local.properties")), "TASK-12", BranchType.FEATURE).getOrThrow()
+
+        assertEquals(listOf(GroupRepositoryOutcome.SKIPPED, GroupRepositoryOutcome.FAILED), creation.repositories.map { it.outcome })
+        assertEquals(listOf("api"), creation.repositories[0].blockedBy)
+        assertEquals(null, creation.repositories[0].path)
+        val error = assertIs<WorktreeError.LocalFilesUnavailable>(creation.repositories[1].error)
+        assertEquals(world.apiBase, error.basePath)
+        assertEquals(listOf("local.properties" to UnavailableReason.Missing), error.files.map { it.path to it.reason })
+        assertTrue(creation.failed)
+        assertFalse(world.git.calls.any { it.first.take(3) == listOf("git", "worktree", "add") })
+        assertFalse(world.git.calls.any { it.first.take(2) == listOf("git", "config") })
+    }
+
+    @Test
+    fun `every repository with unavailable local files is reported`() = runTest {
+        val creation = create(listOf(needing("app", "keys.properties"), needing("api", "local.properties"), world.member("docs")), "TASK-12", BranchType.FEATURE).getOrThrow()
+
+        assertEquals(listOf(GroupRepositoryOutcome.FAILED, GroupRepositoryOutcome.FAILED, GroupRepositoryOutcome.SKIPPED), creation.repositories.map { it.outcome })
+        assertEquals(listOf("app", "api"), creation.repositories[2].blockedBy)
+        assertIs<WorktreeError.LocalFilesUnavailable>(creation.repositories[0].error)
+    }
+
+    @Test
+    fun `a repository already on the branch stays in the group when another one stops it`() = runTest {
+        with(world.git) { world.app.worktree("/home/dev/old/app-task-12", "feature/TASK-12") }
+        val reported = mutableListOf<String>()
+
+        val creation = create(listOf(world.member("app"), needing("api", "local.properties"), world.member("docs")), "TASK-12", BranchType.FEATURE) { reported += it.alias }.getOrThrow()
+
+        assertEquals(GroupRepositoryResult("app", GroupRepositoryOutcome.EXISTING, "/home/dev/old/app-task-12"), creation.repositories[0])
+        assertEquals(GroupRepositoryOutcome.FAILED, creation.repositories[1].outcome)
+        assertEquals(GroupRepositoryResult("docs", GroupRepositoryOutcome.SKIPPED, blockedBy = listOf("api")), creation.repositories[2])
+        assertEquals(listOf("app", "api", "docs"), reported)
+    }
+
+    @Test
+    fun `a repository already on the branch isn't checked`() = runTest {
+        with(world.git) { world.app.worktree("/home/dev/old/app-task-12", "feature/TASK-12") }
+
+        val creation = create(listOf(needing("app", "keys.properties"), world.member("api")), "TASK-12", BranchType.FEATURE).getOrThrow()
+
+        assertEquals(listOf(GroupRepositoryOutcome.EXISTING, GroupRepositoryOutcome.CREATED), creation.repositories.map { it.outcome })
+    }
+
+    @Test
+    fun `no repository is fetched when the check stops the group`() = runTest {
+        create(listOf(world.member("app"), needing("api", "local.properties")), "TASK-12", BranchType.FEATURE, fetch = true).getOrThrow()
+
+        assertFalse(world.git.calls.any { it.first.take(2) == listOf("git", "fetch") })
+    }
+
+    @Test
+    fun `a repository whose check can't run is left to its own creation`() = runTest {
+        val failingListing = object : ShellCommandExecutor by world.git {
+            override suspend fun execute(command: List<String>, workingDirectory: String?): CommandResult =
+                if (command.take(2) == listOf("git", "ls-files")) CommandResult(command, 128, "", "fatal: bad index") else world.git.execute(command, workingDirectory)
+        }
+        val source = FakeRepositoryProvisioningSource(byRepository = mapOf(world.apiBase to RepositoryProvisioning(copyPatterns = listOf("*.env"))))
+        val create = CreateGroupUseCase(failingListing, world.fileManager, source)
+
+        val creation = create(listOf(world.member("api"), world.member("app")), "TASK-12", BranchType.FEATURE).getOrThrow()
+
+        assertIs<WorktreeError.GitCommandFailed>(creation.repositories[0].error)
+        assertEquals(GroupRepositoryOutcome.CREATED, creation.repositories[1].outcome)
+    }
+
+    @Test
+    fun `a repository whose worktrees can't be listed fails alone`() = runTest {
+        val failingWorktreeList = object : ShellCommandExecutor by world.git {
+            override suspend fun executeWithin(command: List<String>, timeout: Duration, workingDirectory: String?): CommandResult =
+                if (workingDirectory == world.apiBase) CommandResult(command, 128, "", "fatal: not a git repository")
+                else world.git.executeWithin(command, timeout, workingDirectory)
+        }
+
+        val creation = CreateGroupUseCase(failingWorktreeList, world.fileManager, FakeRepositoryProvisioningSource())(
+            listOf(world.member("api"), world.member("app")),
+            "TASK-12",
+            BranchType.FEATURE,
+        ).getOrThrow()
+
+        assertEquals(listOf(GroupRepositoryOutcome.FAILED, GroupRepositoryOutcome.CREATED), creation.repositories.map { it.outcome })
+    }
+
+    private fun needing(alias: String, file: String): MultirepoMember =
+        world.member(alias).let { it.copy(config = it.config.copy(secretFiles = listOf(file))) }
 }

@@ -79,6 +79,8 @@ import app.luxion.shogunai.ui.multirepo.AddMultirepoDialog
 import app.luxion.shogunai.ui.multirepo.AddMultirepoState
 import app.luxion.shogunai.ui.multirepo.MultirepoSettingsState
 import app.luxion.shogunai.ui.multirepo.MultirepoSettingsView
+import app.luxion.shogunai.ui.multirepo.RemoveMultirepoDialog
+import app.luxion.shogunai.ui.multirepo.UnavailableMultirepoView
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.filter
 import app.luxion.shogunai.ui.theme.ShogunTheme
@@ -146,6 +148,9 @@ fun AppShell(
     }
     val declaredMachine = machine.declared
     LaunchedEffect(declaredMachine) { machine.runSummaryTicks() }
+    LaunchedEffect(machine) {
+        snapshotFlow { appContainer.resources.settings }.drop(1).collectLatest { machine.applyResourceSettings() }
+    }
     LaunchedEffect(viewModel) { viewModel.watchCatalog(CatalogCheckInterval) }
     LaunchedEffect(viewModel.destination, board.isCatalogLoaded) {
         val destination = viewModel.destination as? ShellDestination.Machine
@@ -222,11 +227,12 @@ fun AppShell(
                             labels = multirepoChildLabels(membership),
                             needsReview = !membership.multirepo.approved,
                         )
-                    },
+                    } + viewModel.unavailableMultirepos.map { unavailableSidebarFolder(it, it.folder in viewModel.collapsedMultirepos) },
                     selectedMultirepo = viewModel.destination?.referencedMultirepo,
                     onSelectMultirepo = { viewModel.selectMultirepo(it) },
                     onToggleMultirepo = viewModel::toggleMultirepoCollapsed,
                     onEditMultirepo = viewModel::editMultirepo,
+                    onRemoveMultirepo = viewModel::requestMultirepoRemoval,
                     onAddMultirepo = { viewModel.addMultirepo() },
                     order = viewModel.sidebarOrder,
                     onMoveEntry = viewModel::moveSidebarEntry,
@@ -312,6 +318,10 @@ fun AppShell(
             AddMultirepoState(appContainer.multirepoSetup, scope).also { state -> request.folder?.let(state::choose) }
         }
         AddMultirepoDialog(state, onDismiss = viewModel::dismissAddMultirepo, onAdded = viewModel::onMultirepoAdded)
+    }
+
+    viewModel.multirepoPendingRemoval?.let { multirepo ->
+        RemoveMultirepoDialog(multirepo, onConfirm = viewModel::confirmMultirepoRemoval, onDismiss = viewModel::cancelMultirepoRemoval)
     }
 
     projectPendingRemoval?.let { project ->
@@ -417,7 +427,9 @@ private fun ShellContent(appContainer: AppContainer, viewModel: ShellViewModel, 
             onOpen = viewModel::selectMachine,
         )
         is ShellDestination.Machine -> MachineDestination(destination.resource, viewModel, board, machine)
-        is ShellDestination.MultirepoView -> WorktreeView(destination, viewModel, board)
+        is ShellDestination.MultirepoView -> viewModel.multirepoCatalog.findUnavailable(destination.folder)?.let { multirepo ->
+            UnavailableMultirepoView(multirepo, onTryAgain = viewModel::refresh, onRemove = { viewModel.requestMultirepoRemoval(multirepo.folder) })
+        } ?: WorktreeView(destination, viewModel, board)
         is ShellDestination.MultirepoSettings -> key(destination) { MultirepoSettingsDestination(appContainer, viewModel, destination.folder) }
     }
 }

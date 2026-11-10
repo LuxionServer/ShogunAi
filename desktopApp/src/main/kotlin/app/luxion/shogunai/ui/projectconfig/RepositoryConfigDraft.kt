@@ -72,8 +72,10 @@ data class RepositoryConfigDraft(
                     RepositoryConfigRules.memorySizeIssue(it)?.let { issue -> add(RepositoryConfigProblem(RepositoryConfigField.GradleKotlinDaemonMaxHeap, issue)) }
                 }
             }
-            maven?.mavenMaxHeap?.trim()?.takeIf { it.isNotEmpty() }?.let {
-                RepositoryConfigRules.memorySizeIssue(it)?.let { issue -> add(RepositoryConfigProblem(RepositoryConfigField.MavenMaxHeap, issue)) }
+            maven?.let { settings ->
+                settings.mavenMaxHeap.trim().takeIf { it.isNotEmpty() }?.let {
+                    RepositoryConfigRules.memorySizeIssue(it)?.let { issue -> add(RepositoryConfigProblem(RepositoryConfigField.MavenMaxHeap, issue)) }
+                }
             }
             dockerCompose?.let { compose ->
                 val names = compose.names
@@ -97,8 +99,6 @@ data class RepositoryConfigDraft(
             }
         }
 
-    val isValid: Boolean get() = problems.isEmpty()
-
     fun issueFor(field: RepositoryConfigField): RepositoryConfigIssue? = problems.firstOrNull { it.field == field }?.issue
 
     fun toEdit(addCopyPatterns: List<String> = emptyList(), addLinkPatterns: List<String> = emptyList()) =
@@ -120,7 +120,8 @@ data class RepositoryConfigDraft(
 
     companion object {
         fun of(provisioning: RepositoryProvisioning?): RepositoryConfigDraft {
-            val providers = provisioning?.providers ?: RepositoryProviders()
+            val declared = provisioning ?: RepositoryProvisioning()
+            val providers = declared.providers
             return RepositoryConfigDraft(
                 gradle = providers.gradle?.let {
                     GradleDraft(
@@ -135,10 +136,10 @@ data class RepositoryConfigDraft(
                 maven = providers.maven?.let { MavenDraft(it.mavenMaxHeap.orEmpty()) },
                 dockerCompose = providers.dockerCompose?.let { ComposeDraft(it.portVariables.joinToString(", ")) },
                 flutter = providers.flutter != null,
-                environment = provisioning?.environment?.variables.orEmpty().mapIndexed { index, variable ->
+                environment = declared.environment.variables.mapIndexed { index, variable ->
                     EnvironmentRow(index, variable.name, variable.template.joinToString("") { it.asTemplateText() })
                 },
-                envFile = provisioning?.environment?.envFile.orEmpty(),
+                envFile = declared.environment.envFile.orEmpty(),
             )
         }
     }

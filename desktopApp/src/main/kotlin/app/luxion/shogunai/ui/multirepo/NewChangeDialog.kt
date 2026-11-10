@@ -150,6 +150,7 @@ private fun GroupRepositoryResult.label(strings: Strings): String = when (outcom
     GroupRepositoryOutcome.CREATED -> strings.groupRepositoryCreated
     GroupRepositoryOutcome.EXISTING -> strings.groupRepositoryExisting
     GroupRepositoryOutcome.FAILED -> strings.groupRepositoryFailed(error?.let { strings.describe(it).summary }.orEmpty())
+    GroupRepositoryOutcome.SKIPPED -> strings.groupRepositorySkipped(blockedBy)
 }
 
 fun Strings.multirepoNoticeMessage(notice: MultirepoNotice): String = when (notice) {

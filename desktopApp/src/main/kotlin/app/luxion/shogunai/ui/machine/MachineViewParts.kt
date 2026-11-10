@@ -14,6 +14,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -173,7 +174,7 @@ fun OwnerCell(
 ) {
     val strings = LocalStrings.current
     if (owner == null) {
-        MachineDataText("", modifier)
+        MachineStateText(strings.ownerUnknown, modifier.testTag("owner-unknown"))
         return
     }
     val label = owner.label(strings, projectName)

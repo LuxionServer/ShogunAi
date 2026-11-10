@@ -14,6 +14,7 @@ import app.luxion.shogunai.ui.components.InlineProgress
 import app.luxion.shogunai.ui.components.Spacing
 import app.luxion.shogunai.ui.components.handPointer
 import app.luxion.shogunai.ui.i18n.LocalStrings
+import app.luxion.shogunai.ui.i18n.Strings
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.ui.components.ErrorNotice
 
@@ -22,7 +23,7 @@ private data class AvdOption(val name: String?)
 @Composable
 fun EmulatorSettingsSection(viewModel: ProjectConfigViewModel, modifier: Modifier = Modifier) {
     val state = viewModel.emulatorSection
-    if (state == EmulatorSectionState.Hidden) return
+    if (state !is EmulatorSectionState.Shown) return
     val strings = LocalStrings.current
     SettingsSection(title = strings.emulatorSection, modifier = modifier) {
         Text(strings.machineOnlyLabel, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -31,34 +32,39 @@ fun EmulatorSettingsSection(viewModel: ProjectConfigViewModel, modifier: Modifie
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        when (state) {
-            EmulatorSectionState.Loading -> InlineProgress()
-            is EmulatorSectionState.SdkNotFound -> ErrorNotice(WorktreeError.AndroidSdkNotFound(state.checked), onDismiss = null)
-            is EmulatorSectionState.Failed -> ErrorNotice(state.error, onDismiss = null)
-            is EmulatorSectionState.Available -> {
-                val options = listOf(AvdOption(null)) + (state.avds + listOfNotNull(viewModel.emulatorAvd))
-                    .distinct()
-                    .map { AvdOption(it) }
-                DropdownSelector(
-                    options = options,
-                    selected = AvdOption(viewModel.emulatorAvd),
-                    onSelect = { viewModel.emulatorAvd = it.name },
-                    label = { option ->
-                        when {
-                            option.name == null -> strings.emulatorAutomaticAvd
-                            option.name !in state.avds -> strings.emulatorMissingAvd(option.name)
-                            else -> option.name
-                        }
-                    },
-                    placeholder = strings.emulatorAvdLabel,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
-            EmulatorSectionState.Hidden -> Unit
-        }
+        EmulatorStateContent(viewModel, state)
         Row(verticalAlignment = Alignment.CenterVertically) {
             Switch(checked = viewModel.emulatorNoWindow, onCheckedChange = { viewModel.emulatorNoWindow = it }, modifier = Modifier.handPointer())
             Text(strings.emulatorNoWindowLabel, modifier = Modifier.padding(start = Spacing.sm))
         }
     }
+}
+
+@Composable
+private fun EmulatorStateContent(viewModel: ProjectConfigViewModel, state: EmulatorSectionState.Shown) {
+    val strings = LocalStrings.current
+    when (state) {
+        EmulatorSectionState.Loading -> InlineProgress()
+        is EmulatorSectionState.SdkNotFound -> ErrorNotice(WorktreeError.AndroidSdkNotFound(state.checked), onDismiss = null)
+        is EmulatorSectionState.Failed -> ErrorNotice(state.error, onDismiss = null)
+        is EmulatorSectionState.Available -> {
+            val options = listOf(AvdOption(null)) + (state.avds + listOfNotNull(viewModel.emulatorAvd))
+                .distinct()
+                .map { AvdOption(it) }
+            DropdownSelector(
+                options = options,
+                selected = AvdOption(viewModel.emulatorAvd),
+                onSelect = { viewModel.emulatorAvd = it.name },
+                label = { option -> avdLabel(option, state.avds, strings) },
+                placeholder = strings.emulatorAvdLabel,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+    }
+}
+
+private fun avdLabel(option: AvdOption, available: List<String>, strings: Strings): String = when {
+    option.name == null -> strings.emulatorAutomaticAvd
+    option.name !in available -> strings.emulatorMissingAvd(option.name)
+    else -> option.name
 }

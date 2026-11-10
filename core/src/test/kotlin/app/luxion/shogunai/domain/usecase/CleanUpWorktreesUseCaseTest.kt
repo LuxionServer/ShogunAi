@@ -154,6 +154,19 @@ class CleanUpWorktreesUseCaseTest {
     }
 
     @Test
+    fun `selects a clean worktree squash-merged into the main branch`() {
+        val squashMerged = WorktreeStatus(
+            uncommittedChanges = 0,
+            upstream = Divergence(ahead = 0, behind = 0),
+            mainBranch = Divergence(ahead = 3, behind = 4),
+            lastCommitAt = null,
+            mainBranchHoldsChanges = true,
+        )
+
+        assertEquals(listOf(first), selectCleanupCandidates(listOf(first), mapOf(first.path to squashMerged)))
+    }
+
+    @Test
     fun `deletes a branch contained in its recorded base but not in the main branch`() = runTest {
         val executor = executor(
             mapOf(
@@ -261,6 +274,24 @@ class CleanUpWorktreesUseCaseTest {
         val report = CleanUpWorktreesUseCase(config, executor)(listOf(first), mainBranch, deleteBranches = true).getOrThrow()
 
         assertTrue(executor.executed("git", "merge-base", "--is-ancestor", "feature/TASK-1", "origin/develop"))
+        assertTrue(executor.executed("git", "branch", "-D", "--", "feature/TASK-1"))
+        assertTrue(report.keptBranches.isEmpty())
+    }
+
+    @Test
+    fun `deletes a branch squash-merged into the main branch`() = runTest {
+        val executor = executor(
+            mapOf(
+                listOf("git", "merge-base", "--is-ancestor", "feature/TASK-1", "origin/develop") to { c -> failure(c, stderr = "") },
+                listOf("git", "rev-list", "--cherry-pick", "--right-only", "--count", "origin/develop...feature/TASK-1") to { c -> success(c, "2\n") },
+                listOf("git", "merge-base", "origin/develop", "feature/TASK-1") to { c -> success(c, "fork123\n") },
+                listOf("git", "commit-tree", "feature/TASK-1^{tree}", "-p", "fork123", "-m", "squash") to { c -> success(c, "squash456\n") },
+                listOf("git", "rev-list", "--cherry-pick", "--right-only", "--count", "origin/develop...squash456") to { c -> success(c, "0\n") },
+            ),
+        )
+
+        val report = CleanUpWorktreesUseCase(config, executor)(listOf(first), mainBranch, deleteBranches = true).getOrThrow()
+
         assertTrue(executor.executed("git", "branch", "-D", "--", "feature/TASK-1"))
         assertTrue(report.keptBranches.isEmpty())
     }

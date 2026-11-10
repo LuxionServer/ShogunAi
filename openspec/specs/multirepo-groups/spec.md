@@ -321,11 +321,15 @@ When creating the worktree of one repository fails, ShogunAi SHALL handle that r
 - **THEN** that repository fails saying its base branch couldn't be resolved, and the others are still created
 
 ### Requirement: JSON result of group creation
-`shogun new <id> --json` creating or extending a group SHALL print one JSON object with the `branch` and a `repos` list with each repository's `alias`, `path`, `result` (`created`, `existing` or `failed`), the post-creation commands it skipped and, for a failure, its error.
+`shogun new <id> --json` creating or extending a group SHALL print one JSON object with the `branch` and a `repos` list with each repository's `alias`, `path`, `result` (`created`, `existing`, `failed` or `skipped`), the post-creation commands it skipped and, for a failure or a skipped repository, its error.
 
 #### Scenario: Mixed result
 - **WHEN** `shogun new TASK-123 --json` creates `app`, finds `api` already on the branch and fails on `docs`
 - **THEN** the object has `branch` `feature/TASK-123` and lists `app` as `created`, `api` as `existing` with its path and `docs` as `failed` with its error, and the command exits with code 1
+
+#### Scenario: Group stopped by unavailable local files
+- **WHEN** `shogun new TASK-123 --repos app,api --json` finds a missing local file in `api`
+- **THEN** the object lists `api` as `failed` with its local files error and `app` as `skipped` with an error naming `api`, neither with a path, and the command exits with code 1
 
 ### Requirement: Open a group's worktrees in Herdr
 `shogun open <id-or-branch> --herdr` in the multirepo folder SHALL open every worktree of the group whose branch is `<branch>`, or `feature/<id>` or `fix/<id>` when only one of them is a group, as `shogun open --herdr` opens a single worktree: under its repository's space, with its own environment and its project's default agent, focusing the ones with a live agent and starting the agent in the open ones without one, in their idle pane or in a new pane as for a single worktree. Each worktree SHALL be reported as `opened`, `started-agent`, `focused` or failed, with its agent's pane. A worktree that fails SHALL NOT stop the others.
@@ -659,23 +663,12 @@ A multirepo SHALL be named by the optional `name` of its declaration when it's s
 - **WHEN** the user runs `shogun multirepo name "  "`
 - **THEN** the command says the name can't be blank, changes nothing and exits with code 2
 
-### Requirement: Forget multirepos whose folder is gone
-`shogun multirepo init` SHALL remove from `~/.shogunai/multirepos.json` every entry whose folder no longer exists, keeping the entries whose folder exists even when its declaration is missing or invalid.
-
-#### Scenario: Folder moved away
-- **WHEN** `~/.shogunai/multirepos.json` lists `~/projects/product/.shogunai-multirepo.json`, `~/projects/product` no longer exists, and the user runs `shogun multirepo init` anywhere
-- **THEN** that entry is removed from `~/.shogunai/multirepos.json`
-
-#### Scenario: Declaration deleted but folder present
-- **WHEN** an entry's folder exists but has no declaration
-- **THEN** the entry is kept, and it's still ignored as before
-
 ### Requirement: Register an existing multirepo
 `shogun multirepo init [--yes]` in a folder that already has a declaration SHALL validate it, review and approve it as `shogun multirepo trust` does, and then add it to the known multirepos and register a project for each declared repository that has none, as `add-repo` does; it SHALL leave the declaration unchanged. `--worktrees-root` and `--name` SHALL be rejected there. A repository another known multirepo declares SHALL make it fail without changes.
 
 #### Scenario: Folder moved
 - **WHEN** `~/projects/product` moved to `~/work/product` with its repositories side by side, and the user runs `shogun multirepo init` in `~/work/product`
-- **THEN** the command shows the review and, when the user answers yes, the multirepo `~/work/product` is known and approved, the entry for `~/projects/product` is dropped because that folder is gone, each declared repository without a project at its new path gets one, and the command says it approved and registered an existing multirepo
+- **THEN** the command shows the review and, when the user answers yes, the multirepo `~/work/product` is known and approved, the entry for `~/projects/product` stays known, unchanged and ignored, each declared repository without a project at its new path gets one, and the command says it approved and registered an existing multirepo
 
 #### Scenario: No terminal
 - **WHEN** the declaration isn't approved and the command runs without a terminal, or with `--json`, and without `--yes`
@@ -698,7 +691,7 @@ A multirepo SHALL be named by the optional `name` of its declaration when it's s
 - **THEN** the command says to use `shogun multirepo name` or `worktrees-root` instead, changes nothing and exits with code 2
 
 #### Scenario: Repository claimed by another multirepo
-- **WHEN** a declared repository is also declared by another known multirepo whose folder still exists
+- **WHEN** a declared repository is also declared by another known multirepo whose declaration can be read
 - **THEN** the command names the other multirepo, registers nothing and exits with code 1
 
 ### Requirement: Open a group's worktrees in Orca
@@ -781,3 +774,48 @@ ShogunAi SHALL NOT create an Orca workspace for a multirepo folder that isn't a 
 #### Scenario: Orca not running
 - **WHEN** Orca is installed but closed
 - **THEN** Orca is started as for a worktree before looking for the folder's workspace
+
+### Requirement: Check every repository before creating a group
+Before creating any worktree of a group, ShogunAi SHALL check the local files of every repository that will get a new worktree, as a single `shogun new` checks them. When any of them has unavailable local files, ShogunAi SHALL create, fetch or provision nothing in any repository and exit with code 1. Repositories already on the branch SHALL NOT be checked, and a repository whose check can't run SHALL be left to its own creation.
+
+#### Scenario: Second repository has an unavailable file
+- **WHEN** the user runs `shogun new TASK-123 --repos app,api` and `api`'s `local.properties` is missing from its base folder
+- **THEN** no worktree or branch is created in `app` or `api`, standard error names `api` with the missing file and how to fix it and says `app` wasn't created because of `api`, nothing is printed on standard output, and the command exits with code 1
+
+#### Scenario: Several repositories have unavailable files
+- **WHEN** `app`'s `keys.properties` is a broken link and `api`'s `local.properties` is missing
+- **THEN** both repositories are reported as failed, each with its own files, and nothing is created
+
+#### Scenario: Repository already in the group
+- **WHEN** `app` already has a worktree on `feature/TASK-123`, `api` has an unavailable file and the user runs `shogun new TASK-123 --repos app,api,docs`
+- **THEN** `app` is reported as already in the group, `api` as failed, `docs` as skipped, and nothing is created
+
+#### Scenario: Unavailable file in a repository already in the group
+- **WHEN** `app` already has a worktree on `feature/TASK-123` and an unavailable local file, and the user runs `shogun new TASK-123 --repos app,api`
+- **THEN** `app` is reported as already in the group and `api`'s worktree is created
+
+#### Scenario: Fetch requested
+- **WHEN** the user runs `shogun new TASK-123 --fetch` and a repository has an unavailable local file
+- **THEN** no repository is fetched
+
+#### Scenario: Every file is available
+- **WHEN** every repository's local files are available
+- **THEN** the group is created as before
+
+### Requirement: Report a group stopped by unavailable local files
+When the check stops a group, ShogunAi SHALL report each repository with unavailable local files as failed with the error a single `shogun new` gives for them, every other repository that would have been created as skipped because of those repositories, and the repositories already on the branch as already in the group.
+
+#### Scenario: Command-line output
+- **WHEN** `shogun new TASK-123 --repos app,api` is stopped by `api`'s missing `local.properties`
+- **THEN** standard error has `api`'s local files error and a line saying `app` wasn't created because the local files of `api` are unavailable
+
+### Requirement: Commands never forget a multirepo on their own
+No `shogun` command SHALL remove an entry, its approval or its local agent from `~/.shogunai/multirepos.json` because its folder or declaration can't be found; only `shogun multirepo delete`, `shogun multirepo trust --revoke` and the app's explicit removal forget a multirepo.
+
+#### Scenario: Volume unmounted
+- **WHEN** `~/.shogunai/multirepos.json` lists `/Volumes/External/main-multirepo`, `/Volumes/External` isn't mounted, and the user runs `shogun multirepo init` anywhere
+- **THEN** `~/.shogunai/multirepos.json` still lists it with its approval and local agent
+
+#### Scenario: Volume mounted again
+- **WHEN** the volume is mounted again and the user runs a command inside one of its repositories
+- **THEN** the command finds the multirepo, still approved, without registering it again
