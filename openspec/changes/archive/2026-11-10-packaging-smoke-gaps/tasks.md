@@ -16,7 +16,7 @@
 - [x] 3.1 Add `.github/smoke/smoke-homebrew.sh` (local tap, URL check, cache seeding, install, `shogun --version` from a login shell, uninstall); verify with `bash -n` and `shellcheck` locally and in CI (installing a Cask on the developer's Mac would replace their `/Applications/ShogunAi.app`)
 - [x] 3.2 Add `.github/smoke/smoke-scoop.ps1` (Scoop install, URL check, cache seeding through `cache_path`, install, shortcut, `shogun --version` from a new session, uninstall); verify in CI
 - [x] 3.3 Add the `version` input and the `homebrew-cask` and `scoop` jobs to `smoke-test.yml`, and pass the version from `release.yml` and `release-candidate.yml`; verify with `actionlint`
-- [ ] 3.4 Run `Release candidate` by hand on this branch (version `0.0.0`) and check every smoke job passes, including Linux, Homebrew and Scoop
+- [x] 3.4 Run `Release candidate` by hand on this branch (version `0.0.0`) and check every smoke job passes, including Linux, Homebrew and Scoop
 
 ## 4. Docs and checks
 

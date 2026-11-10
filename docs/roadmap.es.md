@@ -100,7 +100,6 @@ Por orden:
   - Subir hasta el 100% los suelos de cobertura que exige CI: las líneas (hoy 91%) y ramas (78%) de la app de escritorio fuera de sus composables, que cubren los tests end to end.
     Las líneas de `core` y `cli`, las ramas de `cli`, todas las ramas de `core` a las que llega alguna entrada, y los textos y los ajustes de proyecto de la app de escritorio ya están cubiertos.
     La app de escritorio sube un paquete por cambio, en este orden: los worktrees y su inspector, el shell y el icono de la barra de menús, las vistas de la máquina y los multirepos, los componentes compartidos y, por último, el cableado de la app.
-- Lo que la prueba de humo de la app empaquetada dejó fuera: instalar el `.deb` en un equipo sin carpeta de menús del sistema (servidores, contenedores mínimos), donde hoy falla su script de post-instalación; y probar el Cask de Homebrew y el manifiesto de Scoop generados para una versión antes de publicarla, que hoy instalan los mismos `.dmg` y `.msi` que comprueba la prueba de humo.
 - El Java que `shogun doctor` y «Comprobar instalación» aún no comprueban: el que ejecuta el daemon de Gradle cuando lo elige el build (`org.gradle.java.home`, toolchains o los criterios de JVM del daemon de Gradle), y el que necesita el Android Gradle Plugin (Java 17 para AGP 8); hoy comprueban el Java que ejecutan los wrappers frente a las versiones de Gradle y Maven.
 
 ### Orca, un segundo runner de primera clase
