@@ -81,9 +81,9 @@ class DeviceCapacityWaitTest {
             .also { harness.waitQueue.write(ResourceKind.EMULATOR, listOf(it)) }
 
     @Test
-    fun `by default the wait sleeps on the real clock until it times out`() = runTest {
+    fun `by default the wait pauses with a coroutine delay until it times out`() = runTest {
         runningEmulatorOfTask1(leaseSeconds = 25)
-        val realTime = AcquireWorktreeResourceUseCase(
+        val delayed = AcquireWorktreeResourceUseCase(
             source,
             harness.resolve,
             WriteEnvironmentFileUseCase(git, files, source),
@@ -95,9 +95,10 @@ class DeviceCapacityWaitTest {
             { requested -> harness.contributions.requesting(requested) },
             harness.waitQueue,
             harness.liveness,
+            clock = { harness.now.plusMillis(testScheduler.currentTime) },
         )
 
-        val error = realTime.emulator(repository, task2, DeviceWait(timeout = Duration.ofMillis(50))).exceptionOrNull()
+        val error = delayed.emulator(repository, task2, DeviceWait(timeout = Duration.ofSeconds(10))).exceptionOrNull()
 
         assertIs<WorktreeError.DeviceWaitTimedOut>(error)
     }

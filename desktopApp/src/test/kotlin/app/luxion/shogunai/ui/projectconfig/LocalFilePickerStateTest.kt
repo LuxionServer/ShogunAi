@@ -154,4 +154,26 @@ class LocalFilePickerStateTest {
         assertTrue(matchesLocalPattern("keys/", "keys"))
         assertTrue(matchesLocalPattern(".env.*", ".env.local"))
     }
+
+    @Test
+    fun `without a pattern in the filter nothing is added and an added pattern can be removed`() {
+        val state = picker()
+        state.filter = "env"
+        state.addOfferedPattern()
+        assertTrue(state.patterns.isEmpty())
+
+        state.filter = "*.pem"
+        state.addOfferedPattern()
+        state.removePattern("*.pem")
+
+        assertTrue(state.patterns.isEmpty())
+    }
+
+    @Test
+    fun `a trailing double star matches everything below and an unclosed bracket is literal`() {
+        assertTrue(matchesLocalPattern("build/**", "build/outputs/app.apk"))
+        assertFalse(matchesLocalPattern("build/**", "src/build.gradle"))
+        assertTrue(matchesLocalPattern("[abc", "[abc"))
+        assertFalse(matchesLocalPattern("[abc", "a"))
+    }
 }

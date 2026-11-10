@@ -32,4 +32,26 @@ class WorktreeStatusTest {
     fun `without a main branch comparison nothing is merged`() {
         assertFalse(statusWith(null).isMerged)
     }
+
+    @Test
+    fun `a branch whose changes the main branch holds is merged into it and into the base that defaults to it`() {
+        val status = statusWith(Divergence(ahead = 2, behind = 5)).copy(mainBranchHoldsChanges = true, baseHoldsChanges = true)
+
+        assertTrue(status.isMergedIntoMainBranch)
+        assertTrue(status.isMergedIntoBase)
+        assertTrue(WorktreeStatus(0, null, Divergence(2, 5), null, mainBranchHoldsChanges = true).isMergedIntoBase)
+    }
+
+    @Test
+    fun `a branch whose changes only its base holds is merged into the base alone`() {
+        val status = statusWith(Divergence(ahead = 2, behind = 5)).copy(base = Divergence(ahead = 1, behind = 1), baseHoldsChanges = true)
+
+        assertTrue(status.isMergedIntoBase)
+        assertFalse(status.isMergedIntoMainBranch)
+    }
+
+    @Test
+    fun `a branch never committed to is not merged even if the target holds its changes`() {
+        assertFalse(statusWith(Divergence(ahead = 2, behind = 5)).copy(neverCommitted = true, mainBranchHoldsChanges = true, baseHoldsChanges = true).isMerged)
+    }
 }

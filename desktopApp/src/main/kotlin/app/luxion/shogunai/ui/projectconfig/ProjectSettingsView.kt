@@ -159,12 +159,9 @@ private fun SettingsForm(
             is SaveOutcome.InvalidRepositoryConfig -> scope.launch {
                 scrollState.animateScrollTo(sectionTops[SettingsSectionId.REPOSITORY_CONFIG] ?: 0)
             }
-            is SaveOutcome.Invalid -> when (outcome.firstInvalidField) {
-                ProjectConfigField.NAME -> nameFocus.requestFocus()
-                ProjectConfigField.BASE_REPOSITORY_PATH -> baseRepositoryFocus.requestFocus()
-                ProjectConfigField.WORKTREES_ROOT -> worktreesRootFocus.requestFocus()
-                ProjectConfigField.AGENT_COMMAND, ProjectConfigField.AGENT_NAME -> agentCommandFocus.requestFocus()
-            }
+            is SaveOutcome.Invalid -> outcome.firstInvalidField
+                .focusIn(nameFocus, baseRepositoryFocus, worktreesRootFocus, agentCommandFocus)
+                .requestFocus()
             is SaveOutcome.Failed -> saveError = outcome.error
         }
     }
@@ -258,6 +255,18 @@ private fun SettingsForm(
             SaveBar(strings, viewModel.isNewProject, onSave = save, onDiscard = onCancel)
         }
     }
+}
+
+private fun ProjectConfigField.focusIn(
+    name: FocusRequester,
+    baseRepository: FocusRequester,
+    worktreesRoot: FocusRequester,
+    agentCommand: FocusRequester,
+): FocusRequester = when (this) {
+    ProjectConfigField.NAME -> name
+    ProjectConfigField.BASE_REPOSITORY_PATH -> baseRepository
+    ProjectConfigField.WORKTREES_ROOT -> worktreesRoot
+    ProjectConfigField.AGENT_COMMAND, ProjectConfigField.AGENT_NAME -> agentCommand
 }
 
 private fun Modifier.trackTop(
@@ -385,7 +394,7 @@ private fun GeneralSection(
                     }
                 },
                 help = strings.baseRepositoryPathHelp,
-                error = if (error && errorMessage != null) errorMessage else null,
+                error = errorMessage.takeIf { error },
                 textStyle = ShogunTheme.typography.data,
                 modifier = Modifier.fillMaxWidth(),
                 inputModifier = Modifier.focusRequester(baseRepositoryFocus).onFocusChanged { if (!it.isFocused) onSettleBasePath() },
@@ -411,10 +420,11 @@ private fun GeneralSection(
             )
         }
         SettingsField(strings.mainBranchLabel) {
+            val detected = viewModel.detectedMainBranch
             Field(
                 value = viewModel.mainBranch,
                 onValueChange = { viewModel.mainBranch = it },
-                help = viewModel.detectedMainBranch?.let(strings::detectedMainBranch) ?: strings.mainBranchHelp,
+                help = if (detected == null) strings.mainBranchHelp else strings.detectedMainBranch(detected),
                 placeholder = viewModel.detectedMainBranch ?: strings.mainBranchPlaceholder,
                 textStyle = ShogunTheme.typography.data,
                 modifier = Modifier.fillMaxWidth(),
@@ -423,12 +433,15 @@ private fun GeneralSection(
     }
 }
 
-private fun baseRepositoryErrorMessage(viewModel: ProjectConfigViewModel, strings: Strings): String? = when {
-    viewModel.baseRepositoryPath.isBlank() -> strings.baseRepositoryPathEmptyError
-    viewModel.duplicateProject != null -> strings.baseRepositoryAlreadyAdded(viewModel.duplicateProject!!.name)
-    viewModel.basePathProblem == BasePathProblem.NOT_A_REPOSITORY -> strings.notAGitRepository(viewModel.baseRepositoryPath)
-    viewModel.basePathProblem == BasePathProblem.NOT_TOP_LEVEL -> strings.baseRepositoryNotTopLevelError
-    else -> null
+private fun baseRepositoryErrorMessage(viewModel: ProjectConfigViewModel, strings: Strings): String? {
+    val duplicate = viewModel.duplicateProject
+    return when {
+        viewModel.baseRepositoryPath.isBlank() -> strings.baseRepositoryPathEmptyError
+        duplicate != null -> strings.baseRepositoryAlreadyAdded(duplicate.name)
+        viewModel.basePathProblem == BasePathProblem.NOT_A_REPOSITORY -> strings.notAGitRepository(viewModel.baseRepositoryPath)
+        viewModel.basePathProblem == BasePathProblem.NOT_TOP_LEVEL -> strings.baseRepositoryNotTopLevelError
+        else -> null
+    }
 }
 
 @Composable
@@ -725,9 +738,9 @@ private fun EditorOverrideField(viewModel: ProjectConfigViewModel) {
             placeholder = strings.projectEditorLabel,
             modifier = Modifier.fillMaxWidth(),
         )
-        if (viewModel.editorOverrideMissing && override != null) {
+        viewModel.missingEditorOverride?.let { missing ->
             Text(
-                strings.editorOverrideMissing(override.displayName),
+                strings.editorOverrideMissing(missing.displayName),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.error,
             )

@@ -103,7 +103,7 @@ fun WorktreeListPane(
         val selected = board.selected ?: return@LaunchedEffect
         val index = items.indexOfFirst {
             (it is ListItem.WorktreeItem && it.ref == selected) || (it is ListItem.StateRow && it.ref == selected) ||
-                (it is ListItem.ChangeRow && it.ref == selected)
+                (it is ListItem.ChangeRow && it.ref == selected) || (it is ListItem.ChangeChild && it.ref == selected)
         }
         if (index >= 0) listState.bringIntoViewBelowHeader(index)
     }
@@ -136,6 +136,7 @@ fun WorktreeListPane(
             items.mapNotNull { item ->
                 when (item) {
                     is ListItem.ChangeRow -> item.aliased.alias
+                    is ListItem.ChangeChild -> item.aliased.alias
                     is ListItem.StateRow -> board.aliasOf(item.entry.project.id)
                     else -> null
                 }
@@ -190,6 +191,24 @@ fun WorktreeListPane(
                     is ListItem.ChangeRow -> item(key = item.key) {
                         val entry = item.aliased.entry
                         WorktreeRowFor(board, entry.project, entry.holder, entry.worktree, projectName = null, compact = compact, showExecution = showExecution, alias = item.aliased.alias, aliasWidth = aliasWidth)
+                        HorizontalDivider()
+                    }
+                    is ListItem.ActiveChange -> item(key = item.key) {
+                        ActiveChangeRowFor(board, item.group, item.expanded, compact, showExecution, onOpenGroup)
+                        HorizontalDivider()
+                    }
+                    is ListItem.ChangeChild -> item(key = item.key) {
+                        val entry = item.aliased.entry
+                        WorktreeRowFor(
+                            board, entry.project, entry.holder, entry.worktree,
+                            projectName = null,
+                            compact = compact,
+                            showExecution = showExecution,
+                            alias = item.aliased.alias,
+                            aliasWidth = aliasWidth,
+                            label = entry.project.name,
+                            showsGroupTag = false,
+                        )
                         HorizontalDivider()
                     }
                     is ListItem.GroupState -> item(key = item.key) {
@@ -252,11 +271,11 @@ internal sealed interface ListItem {
         override val key = "header:${group.project.id}"
     }
 
-    data class StateHeader(val group: StateGroup<WorktreeEntry>) : ListItem {
+    data class StateHeader(val group: StateGroup<StateItem>) : ListItem {
         override val key = "state-header:${group.kind}"
     }
 
-    data class StateRow(val group: StateGroup<WorktreeEntry>, val entry: WorktreeEntry) : ListItem {
+    data class StateRow(val group: StateGroup<StateItem>, val entry: WorktreeEntry) : ListItem {
         val ref = entry.ref
         override val key = "state-row:${entry.project.id}:${entry.worktree.path}"
     }
@@ -282,16 +301,27 @@ internal sealed interface ListItem {
         val ref = aliased.ref
         override val key = "change-row:${aliased.entry.project.id}:${aliased.entry.worktree.path}"
     }
+
+    data class ActiveChange(val group: ChangeGroup, val expanded: Boolean) : ListItem {
+        override val key = "active-change:${group.multirepoFolder}:${group.branch}"
+    }
+
+    data class ChangeChild(val aliased: AliasedEntry) : ListItem {
+        val ref = aliased.ref
+        override val key = "change-child:${aliased.entry.project.id}:${aliased.entry.worktree.path}"
+    }
 }
 
 internal fun usesExecution(items: List<ListItem>, board: WorktreeBoard, now: Instant, strings: Strings): Boolean =
-    items.mapNotNull { it.rowEntry() }.any { (holder, worktree) -> !executionCellOf(board, holder, worktree, now, strings).isEmpty }
+    items.flatMap { it.rowEntries() }.any { (holder, worktree) -> !executionCellOf(board, holder, worktree, now, strings).isEmpty }
 
-private fun ListItem.rowEntry(): Pair<ProjectWorktrees, Worktree>? = when (this) {
-    is ListItem.StateRow -> entry.holder to entry.worktree
-    is ListItem.ChangeRow -> aliased.entry.holder to aliased.entry.worktree
-    is ListItem.WorktreeItem -> group.holder to worktree
-    else -> null
+private fun ListItem.rowEntries(): List<Pair<ProjectWorktrees, Worktree>> = when (this) {
+    is ListItem.StateRow -> listOf(entry.holder to entry.worktree)
+    is ListItem.ChangeRow -> listOf(aliased.entry.holder to aliased.entry.worktree)
+    is ListItem.ChangeChild -> listOf(aliased.entry.holder to aliased.entry.worktree)
+    is ListItem.ActiveChange -> group.members.map { it.entry.holder to it.entry.worktree }
+    is ListItem.WorktreeItem -> listOf(group.holder to worktree)
+    else -> emptyList()
 }
 
 private fun executionCellOf(board: WorktreeBoard, holder: ProjectWorktrees, worktree: Worktree, now: Instant, strings: Strings): ExecutionCell =
@@ -335,8 +365,14 @@ private fun stateListItems(board: WorktreeBoard): List<ListItem> {
         ListItem.GroupState(WorktreeGroup(project, holder, emptyList(), collapsed = false), showsProjectName = true)
     }
     return notices + board.stateGroups.flatMap { group ->
-        listOf<ListItem>(ListItem.StateHeader(group)) + if (group.collapsed) emptyList() else group.items.map { ListItem.StateRow(group, it) }
+        listOf<ListItem>(ListItem.StateHeader(group)) + if (group.collapsed) emptyList() else group.items.flatMap { stateRowItems(group, it) }
     }
+}
+
+private fun stateRowItems(group: StateGroup<StateItem>, item: StateItem): List<ListItem> = when (item) {
+    is StateItem.Single -> listOf(ListItem.StateRow(group, item.entry))
+    is StateItem.Change -> listOf<ListItem>(ListItem.ActiveChange(item.group, item.expanded)) +
+        if (item.expanded) item.group.entries.map(ListItem::ChangeChild) else emptyList()
 }
 
 private fun projectListItems(board: WorktreeBoard): List<ListItem> = board.groups.flatMap { group ->
@@ -604,10 +640,12 @@ private fun WorktreeRowFor(
     alias: String? = null,
     aliasWidth: Dp = DefaultAliasColumnWidth,
     onOpenGroup: (GroupTag) -> Unit = {},
+    label: String? = null,
+    showsGroupTag: Boolean = true,
 ) {
     val strings = LocalStrings.current
     val ref = WorktreeRef(project.id, worktree.path)
-    val groupTag = board.groupTagOf(ref)
+    val groupTag = board.groupTagOf(ref)?.takeIf { showsGroupTag }
     WorktreeRow(
         model = worktreeRowModel(
             worktree = worktree,
@@ -623,6 +661,7 @@ private fun WorktreeRowFor(
             strings = strings,
             alias = alias,
             groupTag = groupTag?.label,
+            label = label,
             desktopTurn = board.desktopTurn.rowTurn(worktree.path),
             headlessApp = holder.headlessApps[worktree.path]?.takeIf { holder.isHeadlessAppRepository },
             agentsReadAt = holder.agentsReadAt,
@@ -648,28 +687,52 @@ private fun ChangeGroupHeader(group: ChangeGroup, board: WorktreeBoard) {
     val strings = LocalStrings.current
     ChangeGroupHeaderView(
         group = group,
-        catalog = groupCatalog(
-            GroupActionContext(
-                orcaInstalled = board.isOrcaInstalled,
-                isOpeningInOrca = group.branch in board.openingGroupsInOrca,
-                defaultRunner = board.defaultRunner,
-                addableAliases = if (board.canAddRepositories(group)) board.missingAliases(group) else emptyList(),
-                isAdding = board.addingToGroup.any { it.startsWith("${group.branch}:") },
-                cleanUpBlocked = board.groupCleanUpBlock(group)?.describe(strings),
-            ),
-            strings,
-        ),
+        catalog = groupCatalogOf(board, group, strings),
         onToggle = { board.toggleChangeCollapsed(group.branch) },
-        onAction = { spec ->
-            when (val id = spec.id) {
-                ActionId.OpenAll(OpenTarget.HERDR) -> board.openAllInHerdr(group)
-                ActionId.OpenAll(OpenTarget.ORCA) -> board.openAllInOrca(group)
-                is ActionId.AddRepository -> board.addRepositoryToGroup(group, id.alias)
-                ActionId.CleanUpGroup -> board.openGroupCleanup(group)
-                else -> Unit
-            }
-        },
+        onAction = { spec -> board.performGroupAction(group, spec.id) },
         agent = agentIndicator(board.agentsOf(group), board.agentsReadAtOf(group), Instant.now(), strings),
+    )
+}
+
+internal fun groupCatalogOf(board: WorktreeBoard, group: ChangeGroup, strings: Strings): GroupCatalog = groupCatalog(
+    GroupActionContext(
+        orcaInstalled = board.isOrcaInstalled,
+        isOpeningInOrca = group.branch in board.openingGroupsInOrca,
+        defaultRunner = board.defaultRunner,
+        addableAliases = if (board.canAddRepositories(group)) board.missingAliases(group) else emptyList(),
+        isAdding = board.addingToGroup.any { it.startsWith("${group.branch}:") },
+        cleanUpBlocked = board.groupCleanUpBlock(group)?.describe(strings),
+    ),
+    strings,
+)
+
+@Composable
+private fun ActiveChangeRowFor(
+    board: WorktreeBoard,
+    group: ChangeGroup,
+    expanded: Boolean,
+    compact: Boolean,
+    showExecution: Boolean,
+    onOpenGroup: (GroupTag) -> Unit,
+) {
+    val strings = LocalStrings.current
+    val catalog = groupCatalogOf(board, group, strings)
+    ActiveChangeRow(
+        group = group,
+        expanded = expanded,
+        agent = agentIndicator(board.agentsOf(group), board.agentsReadAtOf(group), Instant.now(), strings),
+        menu = {
+            changeRowMenu(
+                catalog = catalog,
+                strings = strings,
+                onAction = { id -> board.performGroupAction(group, id) },
+                onShowInMultirepo = { onOpenGroup(group.tag) },
+            )
+        },
+        isBusy = catalog.isBusy,
+        compact = compact,
+        showExecution = showExecution,
+        onToggle = { board.toggleChangeExpanded(group.key) },
     )
 }
 
@@ -730,6 +793,7 @@ internal fun CleanupBlock.describe(strings: Strings): String = when (this) {
     CleanupBlock.Running -> strings.cleanUpBlockedRunning
     CleanupBlock.NothingToCleanUp -> strings.cleanUpBlockedNothing
     CleanupBlock.NeedsReview -> strings.cleanUpBlockedReview
+    is CleanupBlock.KeptForRunningAgent -> strings.cleanUpBlockedAgentRunning(worktrees, agents)
     is CleanupBlock.Kept -> kept.describe(strings)
 }
 

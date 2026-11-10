@@ -15,12 +15,15 @@ enum class AgentToolId(val id: String, val displayName: String, val website: Str
 enum class ProviderToolId(val id: String, val displayName: String, val provider: String) {
     PROVIDERS("providers", "Providers", ""),
     GRADLE("gradle", "Gradle", "gradle"),
+    GRADLE_JAVA("gradle-java", "Java for Gradle", "gradle"),
     MAVEN("maven", "Maven", "maven"),
+    MAVEN_JAVA("maven-java", "Java for Maven", "maven"),
     ANDROID_SDK("android-sdk", "Android SDK", "emulator"),
     IOS_SIMULATOR("ios-simulator", "iOS Simulator", "ios-simulator"),
     XCODE("xcode", "Xcode", "xcode"),
     COCOAPODS("cocoapods", "CocoaPods", "xcode"),
     DOCKER_COMPOSE("docker-compose", "Docker Compose", "docker-compose"),
+    DOCKER_DAEMON("docker-daemon", "Docker daemon", "docker-compose"),
     FLUTTER("flutter", "Flutter", "flutter"),
 }
 
@@ -31,6 +34,11 @@ sealed interface ProviderToolProblem {
     data object NoAndroidVirtualDevice : ProviderToolProblem
     data object NoIosRuntime : ProviderToolProblem
     data class ProvidersUnreadable(val detail: String?) : ProviderToolProblem
+    data class JavaHomeInvalid(val javaHome: String) : ProviderToolProblem
+    data class JavaTooOld(val java: Int, val required: Int, val toolVersion: String) : ProviderToolProblem
+    data class GradleTooOld(val java: Int, val gradle: String, val required: String) : ProviderToolProblem
+    data class TooOld(val version: String, val minimum: String) : ProviderToolProblem
+    data class DaemonNotRunning(val os: HostOs, val detail: String?) : ProviderToolProblem
 }
 
 sealed interface MultirepoProblem {
@@ -110,6 +118,7 @@ sealed interface InstallationFinding {
         val location: String?,
         val problem: ProviderToolProblem? = null,
         val installed: Int? = null,
+        val version: String? = null,
     ) : InstallationFinding {
         override val id: String get() = "provider:$project:${tool.id}"
     }

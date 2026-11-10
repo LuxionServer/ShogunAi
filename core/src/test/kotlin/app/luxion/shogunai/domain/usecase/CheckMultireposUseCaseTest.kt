@@ -97,7 +97,6 @@ class CheckMultireposUseCaseTest {
     @Test
     fun `a gone declaration warns and the multirepo isn't forgotten`() = runTest {
         val source = FakeMultirepoSource(known = listOf(world.folder))
-        source.missingFolders += world.folder
 
         val checks = check(source = source)
 
