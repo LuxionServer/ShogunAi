@@ -22,6 +22,7 @@ enum class WorkflowCondition(val label: String) {
     COMPOSE_PROVIDER("when the repository declares the docker-compose provider"),
     DESKTOP_APP_PROVIDER("when the repository declares the desktop-app provider, on macOS"),
     FLUTTER_PROVIDER("when the repository declares the flutter provider"),
+    MOBILE_PROVIDER("when the repository declares the emulator or ios-simulator provider"),
 }
 
 data class WorkflowRule(
@@ -31,6 +32,7 @@ data class WorkflowRule(
     val condition: WorkflowCondition = WorkflowCondition.ALWAYS,
     val inSessionStart: Boolean = false,
     val sessionStartText: String? = null,
+    val onlyWhenApplicable: Boolean = false,
 )
 
 data class WorkflowContext(
@@ -54,6 +56,7 @@ data class WorkflowContext(
         WorkflowCondition.COMPOSE_PROVIDER -> composeProvider
         WorkflowCondition.DESKTOP_APP_PROVIDER -> desktopAppProvider
         WorkflowCondition.FLUTTER_PROVIDER -> flutterProvider
+        WorkflowCondition.MOBILE_PROVIDER -> emulatorProvider || simulatorProvider
     }
 }
 
@@ -158,6 +161,16 @@ object WorkflowRules {
             inSessionStart = true,
         ),
         WorkflowRule(
+            "resources.physical-device",
+            WorkflowTopic.RESOURCES,
+            "Ask for a physical device with `shogun device acquire --android` or `--ios` (or `--name`, `--model`) only when the task needs real hardware " +
+                "or a specific model; `shogun device list --all` shows the recorded ones. If none is free or connected, retry with `--wait` run in the background. " +
+                "Pass the device explicitly: `adb -s \"\$SHOGUN_ANDROID_DEVICE_SERIAL\"` or xcodebuild -destination \"id=\$SHOGUN_IOS_DEVICE_UDID\", " +
+                "and read them again from `shogun device status` after the device reconnects. Run `shogun device release` when done.",
+            WorkflowCondition.MOBILE_PROVIDER,
+            onlyWhenApplicable = true,
+        ),
+        WorkflowRule(
             FLUTTER_RULE_ID,
             WorkflowTopic.RESOURCES,
             flutterRuleText(usesFvm = false, android = true, ios = true),
@@ -217,7 +230,7 @@ object WorkflowRules {
         val (applicable, inapplicable) = forRunner(context.runner)
             .filter { topic == null || it.topic == topic }
             .partition { context.holds(it.condition) }
-        return WorkflowSelection(applicable.map { it.adaptedTo(context) }, inapplicable)
+        return WorkflowSelection(applicable.map { it.adaptedTo(context) }, inapplicable.filterNot { it.onlyWhenApplicable })
     }
 
     private fun WorkflowRule.adaptedTo(context: WorkflowContext): WorkflowRule =

@@ -24,6 +24,9 @@ import app.luxion.shogunai.domain.io.HerdrConfigSource
 import app.luxion.shogunai.domain.io.HostEnvironment
 import app.luxion.shogunai.domain.io.KmpTestWiring
 import app.luxion.shogunai.domain.io.MachineCapacity
+import app.luxion.shogunai.domain.io.PhysicalDeviceInventoryStore
+import app.luxion.shogunai.domain.io.PhysicalDeviceLeaseStore
+import app.luxion.shogunai.domain.io.PhysicalDevices
 import app.luxion.shogunai.domain.io.PortProbe
 import app.luxion.shogunai.domain.io.RepositoryApproval
 import app.luxion.shogunai.domain.io.ApprovalDecision
@@ -34,6 +37,12 @@ import app.luxion.shogunai.domain.io.ResourceLimitsRepository
 import app.luxion.shogunai.domain.io.RepositoryTrust
 import app.luxion.shogunai.domain.model.DesktopTurnState
 import app.luxion.shogunai.domain.model.DesktopWait
+import app.luxion.shogunai.domain.model.DevicePlatform
+import app.luxion.shogunai.domain.model.DeviceRequest
+import app.luxion.shogunai.domain.model.HeldDevice
+import app.luxion.shogunai.domain.model.HostOs
+import app.luxion.shogunai.domain.model.PhysicalDeviceWait
+import app.luxion.shogunai.domain.model.RecordedDevice
 import app.luxion.shogunai.domain.model.RepositoryApprovalSubject
 import app.luxion.shogunai.domain.model.approvalSubject
 import app.luxion.shogunai.domain.model.ANDROID_SERIAL
@@ -44,10 +53,15 @@ import app.luxion.shogunai.domain.model.DerivedDataQuotaMode
 import app.luxion.shogunai.domain.model.DerivedDataTrim
 import app.luxion.shogunai.domain.model.ResourceSettings
 import app.luxion.shogunai.domain.usecase.AcquireDesktopTurnUseCase
+import app.luxion.shogunai.domain.usecase.AcquirePhysicalDeviceUseCase
 import app.luxion.shogunai.domain.usecase.AgentSearch
 import app.luxion.shogunai.domain.usecase.DesktopTurnLedger
+import app.luxion.shogunai.domain.usecase.ManagePhysicalDevicesUseCase
+import app.luxion.shogunai.domain.usecase.PhysicalDeviceLedger
 import app.luxion.shogunai.domain.usecase.ReadDesktopTurnUseCase
+import app.luxion.shogunai.domain.usecase.ReadPhysicalDevicesUseCase
 import app.luxion.shogunai.domain.usecase.ReleaseDesktopTurnUseCase
+import app.luxion.shogunai.domain.usecase.ReleasePhysicalDeviceUseCase
 import app.luxion.shogunai.domain.usecase.TrimDerivedDataUseCase
 import app.luxion.shogunai.domain.model.AttributedDerivedData
 import app.luxion.shogunai.domain.model.BranchType
@@ -119,6 +133,8 @@ import app.luxion.shogunai.domain.io.ComposeProjectRegistry
 import app.luxion.shogunai.domain.model.ComposeAction
 import app.luxion.shogunai.domain.model.ComposeLeftoversReport
 import app.luxion.shogunai.domain.model.ComposeResourceKind
+import app.luxion.shogunai.infrastructure.AdbPhysicalDevices
+import app.luxion.shogunai.infrastructure.DevicectlPhysicalDevices
 import app.luxion.shogunai.infrastructure.JsonComposeProjectRegistry
 import app.luxion.shogunai.domain.usecase.ListComposeProjectsUseCase
 import app.luxion.shogunai.domain.usecase.ListMavenDaemonsUseCase
@@ -162,6 +178,8 @@ import app.luxion.shogunai.domain.usecase.CheckProviderToolsUseCase
 import app.luxion.shogunai.domain.usecase.CommandLineTool
 import app.luxion.shogunai.domain.usecase.InstallationReportText
 import app.luxion.shogunai.infrastructure.NioLauncherFiles
+import app.luxion.shogunai.infrastructure.NioPhysicalDeviceInventoryStore
+import app.luxion.shogunai.infrastructure.NioPhysicalDeviceLeaseStore
 import app.luxion.shogunai.infrastructure.PowerShellUserPath
 import app.luxion.shogunai.domain.usecase.ProvisionWorktreeUseCase
 import app.luxion.shogunai.domain.usecase.ReadEmulatorStatesUseCase
@@ -361,6 +379,9 @@ class ShogunCli(
     private val appWindows: AppWindowService = MacAppWindowService(executor, files.headless.toString()),
     private val pauseWhileStartingApp: suspend (Long) -> Unit = { delay(it) },
     private val desktopTurnStore: DesktopTurnStore = NioDesktopTurnStore(files.folder),
+    private val physicalDeviceSources: List<PhysicalDevices>? = null,
+    private val deviceInventory: PhysicalDeviceInventoryStore = NioPhysicalDeviceInventoryStore(files.folder),
+    private val deviceLeases: PhysicalDeviceLeaseStore = NioPhysicalDeviceLeaseStore(files.folder),
     private val claudeSessions: ClaudeSessionRegistry = FileClaudeSessionRegistry(
         ClaudeCodeHooks.claudeSessionsDirectory(environment.variable(CLAUDE_CONFIG_DIR), environment.home),
     ),
@@ -411,7 +432,7 @@ class ShogunCli(
         clock = deviceClock,
     )
     private val readReleaseRecord = ReadReleaseRecordUseCase(resolveEnvironment, environmentStateStore)
-    private val renewLeases = RenewWorktreeLeasesUseCase(resolveEnvironment, environmentStateStore)
+    private val renewLeases = RenewWorktreeLeasesUseCase(resolveEnvironment, environmentStateStore, deviceLeases = deviceLeases)
     private val acquireResource = AcquireWorktreeResourceUseCase(
         provisioningSource,
         resolveEnvironment,
@@ -437,7 +458,7 @@ class ShogunCli(
     private val readSimulatorStates = ReadSimulatorStatesUseCase(provisioningSource, appleSimulators, resolveEnvironment)
     private val deleteSimulators = DeleteSimulatorsUseCase(provisioningSource, appleSimulators, resolveEnvironment)
 
-    private fun resolverWith(factory: ProviderContributions) =
+    private fun resolverWith(factory: ProviderContributions): ResolveWorktreeEnvironmentUseCase =
         ResolveWorktreeEnvironmentUseCase(
             executor,
             provisioningSource,
@@ -447,6 +468,7 @@ class ShogunCli(
             trust = trust,
             composeRegistry = composeRegistry,
             sharedEnvironment = { repository, worktree -> MultirepoSharedEnvironment(resolveMultirepo, executor).forWorktree(repository, worktree) },
+            deviceVariables = { worktree -> physicalDevices.variablesFor(worktree) },
         )
 
     private fun simulatorSettingsFor(repositoryPath: String): SimulatorSettings {
@@ -486,6 +508,26 @@ class ShogunCli(
     private val acquireDesktopTurn = AcquireDesktopTurnUseCase(desktopTurns, resolveLimits::desktopTurnDuration)
     private val releaseDesktopTurn = ReleaseDesktopTurnUseCase(desktopTurns)
     private val readDesktopTurn = ReadDesktopTurnUseCase(desktopTurns)
+    private val physicalDevices: PhysicalDeviceLedger = PhysicalDeviceLedger(
+        physicalDeviceSources ?: listOf(
+            AdbPhysicalDevices(androidSdk) { workingDirectory },
+            DevicectlPhysicalDevices(executor, if (environment.os == HostOs.MACOS) "Mac OS X" else environment.os.name),
+        ),
+        deviceInventory,
+        deviceLeases,
+        environmentStateStore,
+        deviceWaitQueue,
+        processLiveness,
+        { resolveEnvironment.directoriesOf(it).admin },
+        resolveLimits::leaseDuration,
+        agentActivity = ReadAgentActivityUseCase(sessionStore)::invoke,
+        clock = deviceClock,
+        sleep = pauseWhileWaiting,
+    )
+    private val readPhysicalDevices = ReadPhysicalDevicesUseCase(physicalDevices)
+    private val acquirePhysicalDevice = AcquirePhysicalDeviceUseCase(physicalDevices)
+    private val releasePhysicalDevice = ReleasePhysicalDeviceUseCase(physicalDevices)
+    private val managePhysicalDevices = ManagePhysicalDevicesUseCase(physicalDevices)
 
     fun run(args: List<String>): Int = when (val parsed = parseArguments(args)) {
         is ParsedArguments.UsageError -> {
@@ -545,6 +587,7 @@ class ShogunCli(
             is CliCommand.Simulator -> simulator(command)
             is CliCommand.Headless -> headless(command)
             is CliCommand.Desktop -> desktop(command)
+            is CliCommand.Device -> device(command)
             is CliCommand.SimulatorGradleInit -> simulatorGradleInit(command)
             CliCommand.HookSessionStart -> hookSessionStart()
             CliCommand.HookHerdr -> hookHerdr()
@@ -1287,6 +1330,7 @@ class ShogunCli(
                 DetectRunningAgentsUseCase(executor, herdr, sessionStore, claudeSessions = claudeSessions, orca = orcaReader)(config, worktrees.filterNot { it.isPrunable }).getOrNull().orEmpty()
             }
             val desktopRead = async { readDesktopTurn().getOrElse { DesktopTurnState(holder = null, waiting = emptyList()) } }
+            val devicesRead = async { readPhysicalDevices.ifAnyHeld() }
             val basesRead = async { ReadBaseBranchesUseCase(config, executor)().getOrElse { emptyMap() } }
             val resolvedBasesRead = async { ResolveRecordedBasesUseCase(config, executor)() }
             val mainBranch = mainBranchRead.await()
@@ -1299,6 +1343,7 @@ class ShogunCli(
             }.awaitAll()
             val agents = agentsRead.await()
             val desktop = desktopRead.await()
+            val devices = devicesRead.await()
             val bases = basesRead.await()
             val listeningPorts = orcaReader.ports(worktrees)
             mainBranch to worktrees.zip(reads) { worktree, read ->
@@ -1311,6 +1356,7 @@ class ShogunCli(
                     desktop,
                     worktree.branch?.let(bases::get),
                     listeningPorts?.get(worktree.path),
+                    devices,
                 )
             }
         }
@@ -1372,7 +1418,7 @@ class ShogunCli(
             }
         }
         val plan = releaseResources.plan(config, worktree, worktrees)
-        val removal = RemoveWorktreeUseCase(config, executor, CloseHerdrWorkspacesUseCase(config, herdr), fileManager, stopHeadlessApp, releaseDesktopTurn, CloseOrcaTerminalsUseCase(orca))(
+        val removal = RemoveWorktreeUseCase(config, executor, CloseHerdrWorkspacesUseCase(config, herdr), fileManager, stopHeadlessApp, releaseDesktopTurn, CloseOrcaTerminalsUseCase(orca), releasePhysicalDevice)(
             worktree.path,
             branchToDelete = worktree.branch?.takeIf { command.deleteBranch || command.forceDeleteBranch },
             force = command.force,
@@ -1456,6 +1502,7 @@ class ShogunCli(
             claudeSessionNaming(herdrAgentStartTimeout),
             runningEmulator = readEmulatorStates::runningSerial,
             runningSimulator = readSimulatorStates::runningUdid,
+            heldPhysicalDevice = physicalDevices::connectedAndroidSerial,
         )
     }
 
@@ -1483,7 +1530,7 @@ class ShogunCli(
                 if (opening.outcome == RunnerOutcome.FOCUSED) "focused $path's running agent in Orca (terminal $handle)" else "opened $path in Orca with $agent (terminal $handle)"
         }
         val named = if (opening.sessionName == null) line else "$line as session ${opening.sessionName}"
-        val device = opening.emulator ?: opening.simulator
+        val device = opening.physicalDevice ?: opening.emulator ?: opening.simulator
         return if (device == null) named else "$named, with $device in its emulator view"
     }
 
@@ -1598,7 +1645,7 @@ class ShogunCli(
             return EXIT_OK
         }
         val report = CleanUpWorktreesUseCase(
-            config, executor, closeHerdrWorkspaces, composeSource, fileManager, composeRegistry, stopHeadlessApp, releaseDesktopTurn, closeOrcaTerminals,
+            config, executor, closeHerdrWorkspaces, composeSource, fileManager, composeRegistry, stopHeadlessApp, releaseDesktopTurn, closeOrcaTerminals, releasePhysicalDevice,
         )(
             candidates,
             mainBranch,
@@ -1874,7 +1921,7 @@ class ShogunCli(
             OrcaEmulatorView.Shown -> err.line("shown $device in Orca's emulator view")
             OrcaEmulatorView.Skipped -> err.line("shogun: didn't show the $kind in Orca: ${otherDeviceRunning(kind)}")
             is OrcaEmulatorView.Failed -> err.line("shogun: couldn't show the $kind in Orca: ${view.message}")
-            OrcaEmulatorView.NotOpen, null -> Unit
+            else -> Unit
         }
     }
 
@@ -1912,8 +1959,9 @@ class ShogunCli(
         val waiting = usages.associate { usage ->
             usage.kind to if (usage.kind == ResourceKind.GRADLE_DAEMON) emptyList() else acquireResource.waiting(usage.kind)
         }
+        val devices = readPhysicalDevices().getOrThrow()
         if (command.json) {
-            printJson(poolJson(usages) { waiting.getValue(it) })
+            printJson(JsonObject(poolJson(usages) { waiting.getValue(it) } + ("physicalDevices" to devicePoolJson(devices))))
             return EXIT_OK
         }
         usages.forEach { usage ->
@@ -1924,6 +1972,7 @@ class ShogunCli(
                 out.line("  waiting: ${ticket.displayName} since ${Instant.ofEpochMilli(ticket.since).toLocalClockTime()}")
             }
         }
+        devicePoolLines(devices).forEach { out.line(it) }
         return EXIT_OK
     }
 
@@ -2783,7 +2832,7 @@ class ShogunCli(
         val worktree = ListWorktreesUseCase(config, executor)().getOrThrow()
             .firstOrNull { !it.isMain && sameDirectory(it.path, path) }
             ?: throw WorktreeError.NotAWorktree(path)
-        val removal = RemoveWorktreeUseCase(config, executor, CloseHerdrWorkspacesUseCase(config, herdr), fileManager, stopHeadlessApp, releaseDesktopTurn, CloseOrcaTerminalsUseCase(orca))(
+        val removal = RemoveWorktreeUseCase(config, executor, CloseHerdrWorkspacesUseCase(config, herdr), fileManager, stopHeadlessApp, releaseDesktopTurn, CloseOrcaTerminalsUseCase(orca), releasePhysicalDevice)(
             worktree.path,
             branchToDelete = worktree.branch,
             force = true,
@@ -2844,6 +2893,82 @@ class ShogunCli(
             }
         }
         return EXIT_OK
+    }
+
+    private suspend fun device(command: CliCommand.Device): Int = when (command.action) {
+        DeviceAction.LIST -> {
+            val state = readPhysicalDevices().getOrThrow()
+            if (command.json) out.line(Json.encodeToString(JsonElement.serializer(), deviceListJson(state, command.all))) else deviceListLines(state, command.all).forEach { out.line(it) }
+            EXIT_OK
+        }
+        DeviceAction.ACQUIRE -> deviceAcquire(command)
+        DeviceAction.RELEASE -> {
+            val worktree = worktreeTopLevel(absolute(command.path ?: workingDirectory))
+            val release = releasePhysicalDevice(worktree, command.platform).getOrThrow()
+            if (command.json) printJson(deviceReleaseJson(release)) else deviceReleaseLines(release).forEach { out.line(it) }
+            EXIT_OK
+        }
+        DeviceAction.STATUS -> {
+            val worktree = worktreeTopLevel(absolute(command.path ?: workingDirectory))
+            val admin = resolveEnvironment.directoriesOf(worktree).admin
+            val state = readPhysicalDevices().getOrThrow()
+            if (command.json) printJson(deviceStatusJson(state, admin)) else deviceStatusLines(state, admin).forEach { out.line(it) }
+            EXIT_OK
+        }
+        DeviceAction.LEND -> manageDevice(command, managePhysicalDevices.lend(command.device!!)) { recordedDeviceLine(it, "is lent to agents") }
+        DeviceAction.WITHDRAW -> manageDevice(command, managePhysicalDevices.withdraw(command.device!!)) { recordedDeviceLine(it, "is withdrawn: no agent can acquire it until it's lent again") }
+        DeviceAction.RENAME -> manageDevice(command, managePhysicalDevices.rename(command.device!!, command.alias!!)) {
+            recordedDeviceLine(it.copy(alias = null), "is now called ${it.alias}")
+        }
+        DeviceAction.FORGET -> manageDevice(command, managePhysicalDevices.forget(command.device!!)) { recordedDeviceLine(it, "is forgotten") }
+    }
+
+    private fun manageDevice(command: CliCommand.Device, result: Result<RecordedDevice>, line: (RecordedDevice) -> String): Int {
+        val device = result.getOrThrow()
+        if (command.json) printJson(recordedDeviceJson(device)) else out.line(line(device))
+        return EXIT_OK
+    }
+
+    private suspend fun deviceAcquire(command: CliCommand.Device): Int {
+        val worktree = worktreeTopLevel(absolute(command.path ?: workingDirectory))
+        val request = DeviceRequest(command.platform, command.name, command.model)
+        val acquisition = acquirePhysicalDevice(worktree, request, command.wait?.let(::physicalDeviceWait)).getOrElse { error ->
+            if (error !is WorktreeError.PhysicalDevicePlatformRequired) throw error
+            err.line("shogun: ${error.message}")
+            return EXIT_USAGE
+        }
+        acquisition.waitedSeconds?.takeIf { it > 0 }?.let { err.line("waited ${Duration.ofSeconds(it).toWaitText()}") }
+        val orcaView = showPhysicalDeviceInOrca(worktree, acquisition.held)
+        reportDeviceOrcaView(acquisition.held, orcaView)
+        if (command.json) printJson(deviceAcquisitionJson(acquisition, orcaView?.jsonValue)) else deviceAcquisitionLines(acquisition).forEach { out.line(it) }
+        return EXIT_OK
+    }
+
+    private suspend fun showPhysicalDeviceInOrca(worktree: String, held: HeldDevice): OrcaEmulatorView? {
+        val connected = held.connected ?: return null
+        return showEmulatorInOrca(worktree, connected.transport.takeIf { held.lease.platform == DevicePlatform.ANDROID }) {
+            readSimulatorStates.runningUdid(configFor(worktree), worktree) != null
+        }
+    }
+
+    private fun reportDeviceOrcaView(held: HeldDevice, view: OrcaEmulatorView?) {
+        val name = held.device.displayName
+        when (view) {
+            OrcaEmulatorView.Shown -> err.line("shown $name in Orca's emulator view")
+            OrcaEmulatorView.Skipped -> err.line("shogun: didn't show $name in Orca: the worktree's simulator is booted, and Orca would shut it down")
+            OrcaEmulatorView.Unsupported -> err.line("shogun: Orca can't show a physical iPhone or iPad, so $name isn't shown in it")
+            is OrcaEmulatorView.Failed -> err.line("shogun: couldn't show $name in Orca: ${view.message}")
+            else -> Unit
+        }
+    }
+
+    private fun physicalDeviceWait(timeout: Duration): PhysicalDeviceWait {
+        var lastLine: String? = null
+        return PhysicalDeviceWait(timeout) { progress ->
+            val line = deviceWaitProgressLine(progress)
+            if (line != lastLine) err.line(line)
+            lastLine = line
+        }
     }
 
     private fun desktopWait(timeout: Duration): DesktopWait {
@@ -3167,6 +3292,7 @@ class ShogunCli(
             entry.agents.takeIf { it.isNotEmpty() }?.let { agents -> add("agents=${agents.joinToString(",") { agentLabel(it) }}") }
             entry.listeningPorts?.takeIf { it.isNotEmpty() }?.let { ports -> add("listening=${ports.joinToString(",") { it.port.toString() }}") }
             desktopTurnStatusNote(entry.desktop, worktree.path)?.let(::add)
+            addAll(deviceStatusNotes(entry.devices, worktree.path))
             when {
                 worktree.isPrunable -> add("folder-missing")
                 status == null -> add(statusUnavailable(entry.statusProblem!!))

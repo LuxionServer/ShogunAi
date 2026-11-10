@@ -20,9 +20,10 @@ class RemoveWorktreeUseCase(
     stopHeadlessApp: StopHeadlessAppUseCase? = null,
     releaseDesktopTurn: ReleaseDesktopTurnUseCase? = null,
     private val closeOrcaTerminals: CloseOrcaTerminalsUseCase? = null,
+    releasePhysicalDevices: ReleasePhysicalDeviceUseCase? = null,
 ) {
     private val folderRemoval =
-        WorktreeFolderRemoval(config, executor, fileManager, closeHerdrWorkspaces, stopHeadlessApp, releaseDesktopTurn, closeOrcaTerminals)
+        WorktreeFolderRemoval(config, executor, fileManager, closeHerdrWorkspaces, stopHeadlessApp, releaseDesktopTurn, closeOrcaTerminals, releasePhysicalDevices)
 
     suspend operator fun invoke(
         worktreePath: String,

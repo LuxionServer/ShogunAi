@@ -29,13 +29,17 @@ class ResolveWorktreeEnvironmentUseCase(
     private val trust: RepositoryTrust = RepositoryTrust.NONE,
     private val composeRegistry: ComposeProjectRegistry? = null,
     private val sharedEnvironment: SharedEnvironmentSource = SharedEnvironmentSource.NONE,
+    private val deviceVariables: suspend (worktreePath: String) -> List<Pair<String, String>> = { emptyList() },
 ) {
     suspend operator fun invoke(
         repositoryPath: String,
         worktreePath: String,
         reserve: Boolean = true,
     ): Result<WorktreeEnvironment> = runCatching {
-        resolve(repositoryPath, worktreePath, reserve, sharedVariables(repositoryPath, worktreePath, reserve))
+        val environment = resolve(repositoryPath, worktreePath, reserve, sharedVariables(repositoryPath, worktreePath, reserve))
+        val present = environment.variables.map { it.first }.toSet() + environment.awaitingApproval
+        val devices = deviceVariables(worktreePath).filterNot { it.first in present }
+        if (devices.isEmpty()) environment else environment.copy(variables = environment.variables + devices)
     }
 
     private suspend fun resolve(

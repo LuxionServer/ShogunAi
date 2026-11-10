@@ -140,7 +140,7 @@ class Sandbox : AutoCloseable {
 
         private val ISOLATED_PREFIXES = listOf(
             "HERDR_", "ORCA_", "CLAUDE", "SHOGUNAI_", "GIT_", "JAVA_OPTS", "SHOGUN_OPTS", "JAVA_TOOL_OPTIONS", "_JAVA_OPTIONS",
-            "XDG_", "TMUX", "ZELLIJ", "IOS_SIMULATOR_UDID", "ANDROID_SERIAL", "GRADLE_USER_HOME",
+            "XDG_", "TMUX", "ZELLIJ", "IOS_SIMULATOR_UDID", "ANDROID_SERIAL", "SHOGUN_ANDROID_DEVICE_SERIAL", "SHOGUN_IOS_DEVICE_UDID", "GRADLE_USER_HOME",
         )
 
         fun launcher(): Path {

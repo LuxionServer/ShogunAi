@@ -13,6 +13,7 @@ data class RunnerOpening(
     val emulator: String? = null,
     val simulator: String? = null,
     val devicesSkipped: Boolean = false,
+    val physicalDevice: String? = null,
 )
 
 data class GroupRunnerOpening(val alias: String, val path: String, val result: Result<RunnerOpening>)

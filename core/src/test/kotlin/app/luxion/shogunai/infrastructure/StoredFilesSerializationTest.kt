@@ -95,5 +95,36 @@ class StoredFilesSerializationTest {
         )
         assertRoundTrips(NioDeviceWaitQueue.QueueFile(), NioDeviceWaitQueue.QueueFile(mapOf("emulator" to listOf(NioDeviceWaitQueue.TicketEntry("t", "/a", "/w", 1, since = 2)))))
         assertRoundTrips(NioDeviceWaitQueue.TicketEntry("t", "/a", "/w", 1, processStartedAt = 3, since = 2))
+        assertRoundTrips(NioDeviceWaitQueue.TicketEntry("t", "/a", "/w", 1, since = 2, request = "platform=android"))
+    }
+
+    @Test
+    fun `a recorded device needs its id, platform and last seen time`() {
+        assertEachFieldRequired<NioPhysicalDeviceInventoryStore.InventoryFile>(mapOf("devices" to "[]"))
+        assertEachFieldRequired<NioPhysicalDeviceInventoryStore.DeviceEntry>(mapOf("id" to "\"a\"", "platform" to "\"ios\"", "lastSeen" to "1"))
+        assertRoundTrips(NioPhysicalDeviceInventoryStore.InventoryFile(listOf(NioPhysicalDeviceInventoryStore.DeviceEntry("a", "ios", lastSeen = 1))))
+        assertRoundTrips(
+            NioPhysicalDeviceInventoryStore.DeviceEntry("a", "android", "a55", "Galaxy", "samsung", "SM-A556B", "Galaxy A55", "15", lent = false, lastSeen = 1),
+        )
+    }
+
+    @Test
+    fun `a physical device lease and loss need every field`() {
+        assertEachFieldRequired<NioPhysicalDeviceLeaseStore.LeaseFile>(mapOf("leases" to "[]", "losses" to "[]"))
+        assertEachFieldRequired<NioPhysicalDeviceLeaseStore.LeaseEntry>(
+            mapOf("deviceId" to "\"a\"", "platform" to "\"ios\"", "adminDirectory" to "\"/a\"", "worktreePath" to "\"/w\"", "acquiredAt" to "1", "renewedAt" to "2"),
+        )
+        assertEachFieldRequired<NioPhysicalDeviceLeaseStore.LossEntry>(
+            mapOf(
+                "adminDirectory" to "\"/a\"", "worktreePath" to "\"/w\"", "platform" to "\"ios\"", "deviceId" to "\"a\"", "deviceName" to "\"A\"",
+                "at" to "1", "reason" to "\"taken\"", "forWorktree" to "null",
+            ),
+        )
+        assertRoundTrips(
+            NioPhysicalDeviceLeaseStore.LeaseFile(
+                listOf(NioPhysicalDeviceLeaseStore.LeaseEntry("a", "ios", "/a", "/w", 1, 2)),
+                listOf(NioPhysicalDeviceLeaseStore.LossEntry("/a", "/home/dev/projects/worktrees/TASK", "ios", "a", "A", 1, "taken", "repo · TASK-1")),
+            ),
+        )
     }
 }

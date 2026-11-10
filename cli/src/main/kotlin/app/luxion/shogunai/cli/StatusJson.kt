@@ -5,6 +5,7 @@ import app.luxion.shogunai.domain.model.AgentStateSource
 import app.luxion.shogunai.domain.model.AgentActivity
 import app.luxion.shogunai.domain.model.Divergence
 import app.luxion.shogunai.domain.model.ObservedPort
+import app.luxion.shogunai.domain.model.PhysicalDevicesState
 import app.luxion.shogunai.domain.model.RunningAgent
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.WorktreeOrigin
@@ -25,6 +26,7 @@ data class WorktreeEntry(
     val desktop: DesktopTurnState = DesktopTurnState(holder = null, waiting = emptyList()),
     val base: String? = null,
     val listeningPorts: List<ObservedPort>? = null,
+    val devices: PhysicalDevicesState? = null,
 )
 
 val WorktreeOrigin.label: String
@@ -56,6 +58,7 @@ private fun worktreeJson(entry: WorktreeEntry): JsonObject = buildJsonObject {
     put("status", entry.status?.let(::statusObject).orJsonNull())
     entry.statusProblem?.let { put("statusProblem", it) }
     put("desktop", worktreeDesktopJson(entry.desktop, worktree.path).orJsonNull())
+    put("devices", worktreeDevicesJson(entry.devices, worktree.path))
     put("listeningPorts", entry.listeningPorts?.let { ports -> buildJsonArray { ports.forEach { add(portJson(it)) } } }.orJsonNull())
 }
 

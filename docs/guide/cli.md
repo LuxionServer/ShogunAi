@@ -92,6 +92,7 @@ Lists every worktree of the repository, one per line: path, branch (or `(detache
 | `base=develop` | The recorded [base](#base) of its branch. |
 | `locked` | Held by an agent session. |
 | `desktop(until 14:10)`, `desktop(waiting 1/2)` | It holds the [desktop turn](#desktop) until that time, or waits for it in that place of the line. |
+| `android-device(Pixel 8)`, `ios-device(waiting 1/2)` | It holds that [physical device](#device) (`, disconnected` when it's unplugged), or waits for one of that platform in that place of the line. |
 | `agents=claude(blocked, app-task-123),codex` | Agents running in it, with their state (`working`, `blocked`, `done`, `idle`) when Herdr or Orca reports it or, for Claude, when its [hooks](../agents.md#agent-states-outside-herdr) do. A Claude agent also lists, after its state, the names of its live sessions whose folder is in that worktree, as Claude Code's session registry has them (`claude(app-task-123)` when there's no state). |
 | `listening=8765,10011` | The ports [Orca](../agents.md#orca) sees it listen on, while Orca runs. |
 | `changes=N` | Uncommitted changes. |
@@ -156,6 +157,7 @@ Prints one compact JSON object on a single line instead of the text lines. Error
 | `status.lastCommitAt` | Time of the last commit in ISO-8601 UTC, or `null`. |
 | `listeningPorts` | The ports [Orca](../agents.md#orca) sees it listen on, sorted: `{ "port", "process", "url" }`, `url` being the address a dev server printed in an Orca terminal, or `null`. `null` when Orca isn't installed, isn't running or couldn't be asked. |
 | `desktop` | `null`, or the worktree's [desktop turn](#desktop): `{ "role": "holder", "since", "expiresAt" }` when it holds it, `{ "role": "waiting", "position", "since" }` when it waits for it, with ISO-8601 UTC times. |
+| `devices` | `{ "android", "ios" }`, each `null`, `{ "role": "holder", "id", "alias", "model", "connected", "expiresAt" }` when the worktree holds that platform's [physical device](#device), or `{ "role": "waiting", "position", "since" }` when it waits for one, with ISO-8601 UTC times. Devices are only read while some worktree holds or waits for one. |
 | `status.createdAt` | Time the worktree was created, in ISO-8601 UTC, read from Git's administrative folder for it; `null` for the main checkout or when it can't be read. |
 
 Every field is always present, with `null` when it doesn't apply. The field names are a contract: later versions only add fields and never rename, remove or change the type of one.
@@ -478,6 +480,31 @@ While another worktree holds the turn, `acquire` fails with exit code `1`, namin
 
 `release` gives the turn back (`released the desktop`), says `nobody holds the desktop` when nobody does, and fails with exit code `1`, changing nothing, when another worktree holds it; the desktop app can release anyone's turn. `status` prints the holder with since when and until when, or `desktop free`, followed by the waiters in order. The turn is cooperative: it keeps agents that follow the [workflow rules](../agents.md#shogunais-workflow-rules) from colliding, it doesn't stop a program that ignores it. With the hooks installed, Claude Code takes the turn by itself before its own computer use or Orca's `orca computer` acts on the desktop, and is held back while another worktree has it ([`hook desktop-turn`](#agent-hooks)).
 
+### `device`
+
+```bash
+shogun device list [--all] [--json]
+shogun device acquire [<path>] [--android|--ios] [--name <alias-or-name>] [--model <text>] [--wait] [--wait-timeout <minutes>] [--json]
+shogun device release [<path>] [--android|--ios] [--json]
+shogun device status [<path>] [--json]
+shogun device lend|withdraw|forget <device> [--json]
+shogun device rename <device> <alias> [--json]
+```
+
+Lends the Android phones and tablets connected to the machine by USB or wireless debugging, and the iPhones and iPads paired with the Mac, to one worktree at a time. Every device `adb` or `xcrun devicectl` reports is recorded in the machine's inventory (`~/.shogunai/devices.json`) the first time it's seen, keyed by its `ro.serialno` or its UDID, so it keeps its entry, alias and holder when it moves from USB to Wi-Fi. A recorded device is lent to agents until you withdraw it. Emulators and simulators are never listed; pairing a device (`adb pair`, Xcode) stays manual. iOS devices are only listed on macOS.
+
+`list` prints the connected devices with their alias or name, id, platform, model, OS version, connection (`USB` or `network`, or what the device needs first: allowing USB debugging, pairing, developer mode), whether they're lent and who holds them; `--all` adds the recorded devices that aren't connected, with when they were last seen. With `--json` it prints an array of devices with `id`, `alias`, `name`, `platform`, `manufacturer`, `model`, `marketingName`, `osVersion`, `connection`, `usability`, `serial` or `udid`, `lent`, `lastSeen` and `holder`.
+
+`acquire` gives the worktree containing the path or the current directory a lent, connected, usable device that no other worktree holds, and prints it with the line to export: `export SHOGUN_ANDROID_DEVICE_SERIAL=<serial>` or `export SHOGUN_IOS_DEVICE_UDID=<udid>`. `--android` and `--ios` choose the platform; `--name` matches an alias, then a device name, exactly and ignoring case; `--model` matches part of the model or marketing name. With no option, the platform is the only one that has a free device, and both is a usage error (exit code `2`). A worktree holds at most one device per platform: acquiring again renews its lease (`already held …`), and asking for another device of the same platform fails until it releases the first. A device whose lease expired (the machine's lease duration, 20 minutes by default, renewed while the worktree's agent works) is taken over when none is free, first from a worktree with no agent session, then one whose agent is done or idle, then one whose agent is blocked; the loser's `device status` says who took it and when. While a device is unplugged, its holder keeps it and nobody can take it over.
+
+When nothing can be acquired, `acquire` exits with code `1` and says why: no recorded device matches, the matching ones aren't connected (with when they were last seen), they're withdrawn, they aren't usable yet, or they're held (naming each holder and its lease) and how many worktrees wait. With `--wait` it waits in line instead, for 30 minutes at most or the minutes given with `--wait-timeout`, printing its place and the reason on standard error only when they change, and checking for connected devices every 5 seconds; a request no recorded device matches fails at once. Waiters are served first in, first out per platform, a waiter whose request doesn't match a freed device doesn't hold back the ones behind, and an `acquire` without `--wait` can't take a device a waiter matches. With `--json` it prints `android` and `ios` (the acquired device under its platform: `id`, `alias`, `model`, `connection`, `connected`, `serial` or `udid`, `expiresAt`), `renewed`, `waited` (seconds, `null` without `--wait`), `takenFrom` and `orcaView`.
+
+When the worktree is open in [Orca](../agents.md#orca), acquiring an Android device shows it in the worktree's emulator view, unless the worktree's simulator is booted; an iPhone or iPad is reported as not shown, since Orca can't stream one. Standard error says what happened; `orcaView` is `shown`, `not-open`, `skipped`, `unsupported` or `failed`.
+
+`release` gives back the worktree's devices, or one platform's, without changing anything on them (`released Android device Pixel 8`, or `held no physical device`). `status` prints, per platform, the held device with its serial or UDID, connection and lease, or `none` and why it lost the last one, or its place in line; after a device reconnects over Wi-Fi it prints the new serial. `lend`, `withdraw`, `rename` and `forget` take a device's id, alias or name: withdrawing a held device releases it, an alias must be unique, and a forgotten device seen again comes back as a new, lent one. A name that matches several devices fails listing their ids.
+
+While a worktree holds a device, its environment (`shogun env`, the `SessionStart` hook and the environment file) carries `SHOGUN_ANDROID_DEVICE_SERIAL` or `SHOGUN_IOS_DEVICE_UDID`, unless `env` declares a variable of the same name. `ANDROID_SERIAL` and `IOS_SIMULATOR_UDID` keep pointing to the worktree's emulator and simulator, so an `adb` command reaches a physical device only when given `-s "$SHOGUN_ANDROID_DEVICE_SERIAL"`. Removing or cleaning up a worktree releases its devices and drops its waits. See [Providers › Physical devices](providers.md#physical-devices).
+
 ### `pool`
 
 ```text
@@ -485,7 +512,7 @@ shogun pool status [--json]
 shogun pool trim [--json]
 ```
 
-`status` prints each pool (`emulators 1/2`, `simulators 0/1`, `gradle daemons 3/2  over the limit`) with the limit of the machine's capacity profile and, under it, the project, worktree and state of every resource in use, followed by the worktrees waiting for an emulator or simulator (`waiting: main-repo · TASK-2 since 14:10`), in queue order. `trim` stops idle Gradle daemons, longest idle first, until they are within the limit, and prints what it stopped and kept.
+`status` prints each pool (`emulators 1/2`, `simulators 0/1`, `gradle daemons 3/2  over the limit`) with the limit of the machine's capacity profile and, under it, the project, worktree and state of every resource in use, followed by the worktrees waiting for an emulator or simulator (`waiting: main-repo · TASK-2 since 14:10`), in queue order. After the pools come the lent [physical devices](#device) of each platform that has any (`Android physical devices: 1 of 2 free`), each connected or held one with its holder and lease expiry or `free`, and the worktrees waiting for that platform; with `--json`, `physicalDevices` holds `{ "android", "ios" }`, each with `devices` (as in `device list --json`) and `waiting`. `trim` stops idle Gradle daemons, longest idle first, until they are within the limit, and prints what it stopped and kept.
 
 ### `xcode`
 
@@ -499,7 +526,7 @@ shogun xcode trim [--dry-run]
 
 ## JSON output
 
-Besides `status --json` above, every command that reports a result accepts `--json`: `new`, `base`, `provision`, `trust`, `remove`, `repair`, `open`, `clean`, `gradle`, `gradle stop`, `stacks`, `maven`, `maven stop`, `compose`, `compose up`, `compose build`, `compose down`, `compose prune`, `pool status`, `pool trim`, `project add`, `project list`, `project remove`, `xcode`, `xcode clean`, `xcode trim`, `emulator`, `simulator`, `hooks`, `doctor` and `guide install|uninstall|status` (not `simulator gradle-init`, `env`, `hook`, `help` or `--version`; on those it is an unknown option and exits with `2`). The option can go anywhere after the command.
+Besides `status --json` above, every command that reports a result accepts `--json`: `new`, `base`, `provision`, `trust`, `remove`, `repair`, `open`, `clean`, `gradle`, `gradle stop`, `stacks`, `maven`, `maven stop`, `compose`, `compose up`, `compose build`, `compose down`, `compose prune`, `pool status`, `pool trim`, `device`, `project add`, `project list`, `project remove`, `xcode`, `xcode clean`, `xcode trim`, `emulator`, `simulator`, `hooks`, `doctor` and `guide install|uninstall|status` (not `simulator gradle-init`, `env`, `hook`, `help` or `--version`; on those it is an unknown option and exits with `2`). The option can go anywhere after the command.
 
 The rules are the same for all of them:
 

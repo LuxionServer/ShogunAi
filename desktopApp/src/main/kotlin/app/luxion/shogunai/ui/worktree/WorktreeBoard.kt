@@ -37,6 +37,7 @@ import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.usecase.Activity
 import app.luxion.shogunai.domain.usecase.OrcaSyncItem
 import app.luxion.shogunai.ui.machine.DesktopTurnWatch
+import app.luxion.shogunai.ui.machine.PhysicalDevicesWatch
 import app.luxion.shogunai.ui.machine.MachineProject
 import app.luxion.shogunai.ui.tray.TrayWorktree
 import app.luxion.shogunai.domain.usecase.AgentSearch
@@ -92,6 +93,7 @@ class WorktreeBoard(
     private val multirepoActions: MultirepoActions = MultirepoActions.NONE,
     private val runnerInUse: () -> RunnerId = { RunnerId.HERDR },
     val desktopTurn: DesktopTurnWatch = DesktopTurnWatch.NONE,
+    val physicalDevices: PhysicalDevicesWatch = PhysicalDevicesWatch.NONE,
 ) : ViewModel() {
     private val deviceRefreshes = mutableMapOf<String, Instant>()
     private val listPermits = Semaphore(MAX_PARALLEL_LISTS)
@@ -900,6 +902,7 @@ class WorktreeBoard(
 
     private suspend fun checkProjects(deviceRefreshInterval: Duration) {
         desktopTurn.refresh()
+        physicalDevices.refresh()
         val unchanged = shownEntries()
             .filterNot { it.holder.isBusy }
             .filter { it.holder.checkFingerprint() == FingerprintCheck.UNCHANGED }

@@ -36,6 +36,7 @@ import app.luxion.shogunai.ui.components.SecondaryButton
 import app.luxion.shogunai.ui.components.Spacing
 import app.luxion.shogunai.ui.i18n.LocalStrings
 import app.luxion.shogunai.ui.machine.DesktopTurnWatch
+import app.luxion.shogunai.ui.machine.PhysicalDevicesWatch
 import app.luxion.shogunai.ui.worktree.inspector.AgentSection
 import app.luxion.shogunai.ui.worktree.inspector.EnvironmentSection
 import app.luxion.shogunai.ui.worktree.inspector.InspectorHeader
@@ -53,6 +54,7 @@ fun WorktreeDetailPane(
     projectName: String? = null,
     projectId: String? = null,
     desktopTurn: DesktopTurnWatch = DesktopTurnWatch.NONE,
+    physicalDevices: PhysicalDevicesWatch = PhysicalDevicesWatch.NONE,
     openWithRequests: Int = 0,
 ) {
     val strings = LocalStrings.current
@@ -96,7 +98,7 @@ fun WorktreeDetailPane(
             viewModel.ports[worktree.path].orEmpty(),
             viewModel.observedPorts[worktree.path].orEmpty(),
         )
-        ResourcesSection(worktree, viewModel, desktopTurn)
+        ResourcesSection(worktree, viewModel, desktopTurn, physicalDevices)
         ProvisioningSection(
             worktree = worktree,
             state = viewModel.provisioning[worktree.path],

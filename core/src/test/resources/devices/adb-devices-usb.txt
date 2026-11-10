@@ -1,0 +1,4 @@
+List of devices attached
+R5CT10ABCDE            device usb:1-1 product:a55xnsxx model:SM_A556B device:a55x transport_id:3
+emulator-5556          device product:sdk_gphone64_arm64 model:sdk_gphone64_arm64 device:emu64a transport_id:2
+

@@ -92,6 +92,7 @@ Lista todos los worktrees del repositorio, uno por línea: ruta, rama (o `(detac
 | `base=develop` | La [base](#base) registrada de su rama. |
 | `locked` | Lo retiene una sesión de agente. |
 | `desktop(until 14:10)`, `desktop(waiting 1/2)` | Tiene el [turno del escritorio](#desktop) hasta esa hora, o lo espera en ese puesto de la cola. |
+| `android-device(Pixel 8)`, `ios-device(waiting 1/2)` | Tiene ese [dispositivo físico](#device) (`, disconnected` cuando está desenchufado), o espera uno de esa plataforma en ese puesto de la cola. |
 | `agents=claude(blocked, app-task-123),codex` | Agentes en ejecución en él, con su estado (`working`, `blocked`, `done`, `idle`) cuando lo informa Herdr u Orca o, para Claude, sus [hooks](../agents.md#estados-de-los-agentes-fuera-de-herdr). Un agente Claude también lista, tras su estado, los nombres de sus sesiones vivas cuya carpeta está en ese worktree, tal como los tiene el registro de sesiones de Claude Code (`claude(app-task-123)` cuando no hay estado). |
 | `listening=8765,10011` | Los puertos en los que [Orca](../agents.md#orca) lo ve escuchar, mientras Orca está en marcha. |
 | `changes=N` | Cambios sin commitear. |
@@ -156,6 +157,7 @@ Imprime un único objeto JSON compacto en una línea, en vez de las líneas de t
 | `status.lastCommitAt` | Hora del último commit en ISO-8601 UTC, o `null`. |
 | `listeningPorts` | Los puertos en los que [Orca](../agents.md#orca) lo ve escuchar, ordenados: `{ "port", "process", "url" }`, siendo `url` la dirección que un servidor de desarrollo imprimió en una terminal de Orca, o `null`. `null` cuando Orca no está instalado, no está en marcha o no se le pudo preguntar. |
 | `desktop` | `null`, o el [turno del escritorio](#desktop) del worktree: `{ "role": "holder", "since", "expiresAt" }` cuando lo tiene, `{ "role": "waiting", "position", "since" }` cuando lo espera, con horas ISO-8601 UTC. |
+| `devices` | `{ "android", "ios" }`, cada uno `null`, `{ "role": "holder", "id", "alias", "model", "connected", "expiresAt" }` cuando el worktree tiene el [dispositivo físico](#device) de esa plataforma, o `{ "role": "waiting", "position", "since" }` cuando espera uno, con horas ISO-8601 en UTC. Los dispositivos solo se leen mientras algún worktree tiene o espera uno. |
 | `status.createdAt` | Hora en que se creó el worktree, en ISO-8601 UTC, leída de la carpeta administrativa de Git para él; `null` para el checkout principal o si no se puede leer. |
 
 Todos los campos están siempre presentes, con `null` cuando no aplican. Los nombres de los campos son un contrato: las versiones futuras solo añaden campos y nunca renombran, eliminan ni cambian el tipo de uno.
@@ -478,6 +480,31 @@ Mientras otro worktree tiene el turno, `acquire` falla con código de salida `1`
 
 `release` devuelve el turno (`released the desktop`), dice `nobody holds the desktop` cuando nadie lo tiene y falla con código de salida `1`, sin cambiar nada, cuando lo tiene otro worktree; la app de escritorio puede liberar el turno de cualquiera. `status` imprime quién lo tiene, desde cuándo y hasta cuándo, o `desktop free`, seguido de los que esperan por orden. El turno es cooperativo: evita que choquen los agentes que siguen las [reglas de flujo](../agents.md#reglas-de-flujo-de-shogunai), no impide nada a un programa que lo ignore. Con los hooks instalados, Claude Code toma el turno por sí solo antes de que su propio computer use u `orca computer` de Orca actúen sobre el escritorio, y se le retiene mientras lo tiene otro worktree ([`hook desktop-turn`](#hooks-de-agentes)).
 
+### `device`
+
+```bash
+shogun device list [--all] [--json]
+shogun device acquire [<path>] [--android|--ios] [--name <alias-o-nombre>] [--model <texto>] [--wait] [--wait-timeout <minutos>] [--json]
+shogun device release [<path>] [--android|--ios] [--json]
+shogun device status [<path>] [--json]
+shogun device lend|withdraw|forget <dispositivo> [--json]
+shogun device rename <dispositivo> <alias> [--json]
+```
+
+Presta los teléfonos y tabletas Android conectados a la máquina por USB o depuración inalámbrica, y los iPhone y iPad emparejados con el Mac, a un worktree a la vez. Cada dispositivo que informan `adb` o `xcrun devicectl` queda registrado en el inventario de la máquina (`~/.shogunai/devices.json`) la primera vez que se ve, identificado por su `ro.serialno` o su UDID, así que conserva su entrada, su alias y quien lo tiene cuando pasa de USB a Wi-Fi. Un dispositivo registrado está prestado a los agentes hasta que lo retiras. Los emuladores y simuladores nunca aparecen; emparejar un dispositivo (`adb pair`, Xcode) sigue siendo manual. Los dispositivos iOS solo aparecen en macOS.
+
+`list` imprime los dispositivos conectados con su alias o nombre, id, plataforma, modelo, versión del sistema, conexión (`USB` o `network`, o lo que el dispositivo necesita antes: permitir la depuración USB, emparejarlo, el modo desarrollador), si están prestados y quién los tiene; `--all` añade los registrados que no están conectados, con cuándo se vieron por última vez. Con `--json` imprime un array de dispositivos con `id`, `alias`, `name`, `platform`, `manufacturer`, `model`, `marketingName`, `osVersion`, `connection`, `usability`, `serial` o `udid`, `lent`, `lastSeen` y `holder`.
+
+`acquire` da al worktree que contiene la ruta o el directorio actual un dispositivo prestado, conectado y usable que ningún otro worktree tenga, y lo imprime con la línea que exportar: `export SHOGUN_ANDROID_DEVICE_SERIAL=<serial>` o `export SHOGUN_IOS_DEVICE_UDID=<udid>`. `--android` e `--ios` eligen la plataforma; `--name` busca un alias y después un nombre de dispositivo, exactos y sin distinguir mayúsculas; `--model` busca parte del modelo o del nombre comercial. Sin opciones, la plataforma es la única que tiene un dispositivo libre, y si las dos lo tienen es un error de uso (código `2`). Un worktree tiene como mucho un dispositivo por plataforma: volver a pedirlo renueva su lease (`already held …`), y pedir otro de la misma plataforma falla hasta que libere el primero. Un dispositivo cuyo lease caducó (la duración de lease de la máquina, 20 minutos por defecto, que se renueva mientras el agente del worktree trabaja) se cede cuando no hay ninguno libre: primero el de un worktree sin sesión de agente, después el de uno cuyo agente terminó o está inactivo, después el de uno cuyo agente está bloqueado; el `device status` del que lo pierde dice quién se lo llevó y cuándo. Mientras un dispositivo está desenchufado, quien lo tiene lo conserva y nadie puede quitárselo.
+
+Cuando no se puede obtener ninguno, `acquire` sale con código `1` y dice por qué: ningún dispositivo registrado coincide, los que coinciden no están conectados (con cuándo se vieron por última vez), están retirados, aún no son usables, o están en uso (nombrando a cada uno con su lease) y cuántos worktrees esperan. Con `--wait` espera en la cola, 30 minutos como mucho o los minutos de `--wait-timeout`, imprimiendo su puesto y el motivo en la salida de error solo cuando cambian, y comprobando cada 5 segundos los dispositivos conectados; una petición que ningún dispositivo registrado cumple falla enseguida. Los que esperan se atienden por orden de llegada en cada plataforma, uno cuya petición no coincide con el dispositivo liberado no retiene a los de detrás, y un `acquire` sin `--wait` no puede llevarse un dispositivo que coincide con alguien que espera. Con `--json` imprime `android` e `ios` (el dispositivo obtenido en su plataforma: `id`, `alias`, `model`, `connection`, `connected`, `serial` o `udid`, `expiresAt`), `renewed`, `waited` (segundos, `null` sin `--wait`), `takenFrom` y `orcaView`.
+
+Cuando el worktree está abierto en [Orca](../agents.md#orca), obtener un dispositivo Android lo muestra en la vista de emulador del worktree, salvo que el simulador del worktree esté arrancado; un iPhone o iPad se informa como no mostrado, porque Orca no puede emitirlo. La salida de error dice qué pasó; `orcaView` es `shown`, `not-open`, `skipped`, `unsupported` o `failed`.
+
+`release` devuelve los dispositivos del worktree, o los de una plataforma, sin cambiar nada en ellos (`released Android device Pixel 8`, o `held no physical device`). `status` imprime, por plataforma, el dispositivo que tiene con su serial o UDID, conexión y lease, o `none` y por qué perdió el último, o su puesto en la cola; tras reconectarse un dispositivo por Wi-Fi imprime el serial nuevo. `lend`, `withdraw`, `rename` y `forget` aceptan el id, el alias o el nombre de un dispositivo: retirar uno en uso lo libera, el alias debe ser único y un dispositivo olvidado que se vuelve a ver aparece como uno nuevo y prestado. Un nombre que coincide con varios dispositivos falla listando sus ids.
+
+Mientras un worktree tiene un dispositivo, su entorno (`shogun env`, el hook `SessionStart` y el archivo de entorno) lleva `SHOGUN_ANDROID_DEVICE_SERIAL` o `SHOGUN_IOS_DEVICE_UDID`, salvo que `env` declare una variable con el mismo nombre. `ANDROID_SERIAL` e `IOS_SIMULATOR_UDID` siguen apuntando al emulador y al simulador del worktree, así que un comando `adb` solo llega a un dispositivo físico cuando se le pasa `-s "$SHOGUN_ANDROID_DEVICE_SERIAL"`. Eliminar o limpiar un worktree libera sus dispositivos y retira sus esperas. Ver [Providers › Dispositivos físicos](providers.md#dispositivos-fisicos).
+
 ### `pool`
 
 ```text
@@ -485,7 +512,7 @@ shogun pool status [--json]
 shogun pool trim [--json]
 ```
 
-`status` imprime cada pool (`emulators 1/2`, `simulators 0/1`, `gradle daemons 3/2  over the limit`) con el límite del perfil de capacidad de la máquina y, debajo, el proyecto, el worktree y el estado de cada recurso en uso, seguidos de los worktrees que esperan un emulador o un simulador (`waiting: main-repo · TASK-2 since 14:10`), en el orden de la cola. `trim` detiene los daemons de Gradle inactivos, primero los que llevan más tiempo inactivos, hasta quedar dentro del límite, e imprime lo que detuvo y conservó.
+`status` imprime cada pool (`emulators 1/2`, `simulators 0/1`, `gradle daemons 3/2  over the limit`) con el límite del perfil de capacidad de la máquina y, debajo, el proyecto, el worktree y el estado de cada recurso en uso, seguidos de los worktrees que esperan un emulador o un simulador (`waiting: main-repo · TASK-2 since 14:10`), en el orden de la cola. Tras los pools vienen los [dispositivos físicos](#device) prestados de cada plataforma que tenga alguno (`Android physical devices: 1 of 2 free`), cada uno conectado o en uso con quien lo tiene y cuándo caduca su lease, o `free`, y los worktrees que esperan esa plataforma; con `--json`, `physicalDevices` contiene `{ "android", "ios" }`, cada uno con `devices` (como en `device list --json`) y `waiting`. `trim` detiene los daemons de Gradle inactivos, primero los que llevan más tiempo inactivos, hasta quedar dentro del límite, e imprime lo que detuvo y conservó.
 
 ### `xcode`
 
@@ -501,7 +528,7 @@ shogun xcode trim [--dry-run]
 
 ## Salida JSON
 
-Además de `status --json`, todos los comandos que informan de un resultado aceptan `--json`: `new`, `base`, `provision`, `trust`, `remove`, `repair`, `open`, `clean`, `gradle`, `gradle stop`, `stacks`, `maven`, `maven stop`, `compose`, `compose up`, `compose build`, `compose down`, `compose prune`, `pool status`, `pool trim`, `project add`, `project list`, `project remove`, `xcode`, `xcode clean`, `xcode trim`, `emulator`, `simulator`, `hooks`, `doctor` y `guide install|uninstall|status` (no `simulator gradle-init`, `env`, `hook`, `help` ni `--version`; en ellos es una opción desconocida y sale con `2`). La opción puede ir en cualquier posición tras el comando.
+Además de `status --json`, todos los comandos que informan de un resultado aceptan `--json`: `new`, `base`, `provision`, `trust`, `remove`, `repair`, `open`, `clean`, `gradle`, `gradle stop`, `stacks`, `maven`, `maven stop`, `compose`, `compose up`, `compose build`, `compose down`, `compose prune`, `pool status`, `pool trim`, `device`, `project add`, `project list`, `project remove`, `xcode`, `xcode clean`, `xcode trim`, `emulator`, `simulator`, `hooks`, `doctor` y `guide install|uninstall|status` (no `simulator gradle-init`, `env`, `hook`, `help` ni `--version`; en ellos es una opción desconocida y sale con `2`). La opción puede ir en cualquier posición tras el comando.
 
 Las reglas son las mismas para todos:
 

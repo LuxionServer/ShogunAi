@@ -54,6 +54,26 @@ class NioDeviceWaitQueueTest {
     }
 
     @Test
+    fun `physical device queues keep each ticket's request and older tickets have none`() {
+        queue.write(WaitQueueName.ANDROID_DEVICE, listOf(ticket("TASK-2", 1).copy(request = "platform=android\nname=a55")))
+        queue.write(WaitQueueName.IOS_DEVICE, listOf(ticket("TASK-3", 2)))
+
+        assertEquals("platform=android\nname=a55", queue.read(WaitQueueName.ANDROID_DEVICE).single().request)
+        assertEquals(null, queue.read(WaitQueueName.IOS_DEVICE).single().request)
+        val file = machine.resolve(NioDeviceWaitQueue.QUEUE_FILE_NAME).toFile().readText()
+        assertTrue("\"android-device\"" in file && "\"ios-device\"" in file)
+    }
+
+    @Test
+    fun `a ticket written by an older version reads without a request`() {
+        machine.resolve(NioDeviceWaitQueue.QUEUE_FILE_NAME).writeText(
+            """{"queues":{"android-device":[{"id":"t","adminDirectory":"/a","worktreePath":"/w","pid":1,"since":2}]}}""",
+        )
+
+        assertEquals(WaitTicket("t", "/a", "/w", ProcessIdentity(1, null), 2), queue.read(WaitQueueName.ANDROID_DEVICE).single())
+    }
+
+    @Test
     fun `removing the last ticket deletes the file`() {
         queue.write(ResourceKind.EMULATOR, listOf(ticket("TASK-2", 1)))
 

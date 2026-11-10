@@ -1,0 +1,10 @@
+[Build.BRAND]: [MTK]
+[aaudio.mmap_exclusive_policy]: [2]
+[aaudio.mmap_policy]: [2]
+[persist.sys.boot.reason.history]: [reboot,userrequested,1793793196
+cold,powerkey,1793729110]
+[ro.build.version.release]: [16]
+[ro.product.manufacturer]: [Xiaomi]
+[ro.product.marketname]: [POCO X6 Pro 5G]
+[ro.product.model]: [2311DRK48G]
+[ro.serialno]: [XMPOCO0123456789]

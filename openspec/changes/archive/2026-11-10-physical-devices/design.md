@@ -65,7 +65,7 @@ acquire(request) under lock:
   candidates = inventory ∩ request ∩ lent ∩ connected ∩ usable
   free = candidates without a holder
   if others wait and a waiter ahead matches one of them → blocked (not first)
-  pick free (least recently acquired first), else
+  pick free (inventory order), else
   pick expired, by releaseRank (no session, done/idle, blocked), never working,
        never disconnected
   else → blocked with reasons (held / disconnected / withdrawn / unusable / none match)
@@ -89,13 +89,26 @@ The Orca step reuses `ShowEmulatorInOrcaUseCase`'s checks and `attachEmulator` w
 
 If task 1.2 shows that Orca doesn't stream a physical device, the requirement stays and every attempt reports `failed` with Orca's message. The roadmap's Orca item then gets the follow-up.
 
+Task 1.2 wasn't run: Orca wasn't open with a device at hand when the change closed. The Orca step ships as specified, best effort, and the first real attach (over USB, over Wi-Fi and with the worktree's emulator running) is a follow-up recorded in the roadmap.
+
 ### Desktop app
 
 A `Devices` Machine entry, shown while the inventory isn't empty, with its view and actions, built on the shared list row and the patterns of the Android emulators view; and a section in the worktree detail. Lending, aliases and forgetting live in the Devices view rather than in Preferences, because they act on a list of devices that changes as they are plugged in, which is what Machine views show, while Preferences holds settings. Reads go through `Dispatchers.IO` like the other machine views, and the `adb devices` reading goes through `SharedDeviceStatesAndroidSdk`.
 
 ### Coverage
 
-The new `@Serializable` classes (inventory entry, lease record, and the files that hold their lists) give their identity fields no defaults, so they don't add a deserializer branch nobody can reach. If one ends up with every field defaulted, the change raises `core`'s missed-branch maximum by one for it and says so here.
+The new `@Serializable` classes (inventory entry, lease, loss and the files that hold their lists) give their identity fields no defaults, so `core`'s missed-branch maximum stays at 18. The desktop app's figures crossed whole percentages with this change, so its floors go from 88 % to 89 % of lines and from 74 % to 75 % of branches.
+
+### Decided during implementation
+
+- **Free devices are taken in inventory order**, not least recently acquired: nothing records when a device was last released, and with one or two devices per platform the order doesn't matter. Take-over still orders by release rank, then by how long ago the lease was acquired.
+- **What `devicectl` counts as connected.** It lists every paired device, also those that aren't reachable. A device is listed as connected when it reports a `transportType` (`wired` is USB, anything else the network) and a tunnel state other than `unavailable` (`disconnected` only means no tunnel is open yet, which `devicectl` opens on demand). It's usable when `pairingState` is `paired` and developer mode is `enabled`. Each field is read from the deprecated `hardwareProperties`, `deviceProperties` and `connectionProperties` first and from the `properties` dictionary that replaces them otherwise, so the adapter keeps working once Apple removes the old fields.
+- **`adb devices -l` for every reading.** `LocalAndroidSdk` now reads `adb devices -l` once (`attachedDevices`) and derives the emulator states from it (`emulatorStates`), so `SharedDeviceStatesAndroidSdk` shares a single reading between emulators and physical devices. `getprop` runs as one `adb -s <serial> shell getprop` whose whole output is parsed.
+- **A loss keeps the worktree's path** next to its admin directory, so the desktop app can show it in the worktree's detail without resolving Git directories.
+- **iOS in Orca** goes through `ShowEmulatorInOrcaUseCase` with no device: it runs the same checks (installed, running, worktree listed) and reports `unsupported` instead of attaching, so `not-open` still means the worktree isn't open in Orca.
+- **The guide rule is left out where it doesn't apply.** Other inapplicable rules are listed after the applicable ones, marked with their condition; the physical device rule has `onlyWhenApplicable`, so a backend repository's `shogun guide resources` doesn't mention devices at all, as the spec asks.
+- **`shogun status` reads devices only while someone holds or waits for one** (`ReadPhysicalDevicesUseCase.ifAnyHeld`), so a status in a repository that doesn't use devices runs neither `adb` nor `devicectl`.
+- **Fixtures (task 1.1).** The `devicectl` fixtures come from a real paired iPhone reached over the network, with its UDID, serial, ECID, hostnames and name replaced by placeholders; the USB, unplugged, developer-mode-off, unpaired and properties-only variants are derived from that capture by changing the fields that differ. The `adb devices -l` and `getprop` fixtures were checked against a real Xiaomi phone on Android 16 over USB: `getprop-poco.txt` and `adb-devices-poco.txt` are excerpts of that capture with its serial replaced by a placeholder, including a multi-line property value, which the parser skips. That phone had no `ro.kernel.qemu`, read as not an emulator. The Wi-Fi listing, the `unauthorized` line and every `devicectl` state other than the network one are still derived from the documented formats; no real device was available to check them, so they ship pending feedback.
 
 ## Risks / Trade-offs
 

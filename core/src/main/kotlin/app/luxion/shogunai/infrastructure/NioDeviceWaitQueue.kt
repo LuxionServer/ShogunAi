@@ -61,11 +61,12 @@ class NioDeviceWaitQueue(
         val pid: Long,
         val processStartedAt: Long? = null,
         val since: Long,
+        val request: String? = null,
     ) {
-        fun toTicket() = WaitTicket(id, adminDirectory, worktreePath, ProcessIdentity(pid, processStartedAt), since)
+        fun toTicket() = WaitTicket(id, adminDirectory, worktreePath, ProcessIdentity(pid, processStartedAt), since, request)
     }
 
-    private fun WaitTicket.toEntry() = TicketEntry(id, adminDirectory, worktreePath, process.pid, process.startedAt, since)
+    private fun WaitTicket.toEntry() = TicketEntry(id, adminDirectory, worktreePath, process.pid, process.startedAt, since, request)
 
     companion object {
         const val QUEUE_FILE_NAME = "device-queue.json"

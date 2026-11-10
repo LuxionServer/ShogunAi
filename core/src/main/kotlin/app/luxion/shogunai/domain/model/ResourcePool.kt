@@ -122,3 +122,19 @@ fun effectiveLimit(kind: ResourceKind, limit: Int?): Int? = when (kind) {
     ResourceKind.EMULATOR -> minOf(limit ?: EMULATOR_PORT_PAIRS, EMULATOR_PORT_PAIRS)
     else -> limit
 }
+
+fun releaseRank(stopped: Boolean, busy: Boolean, leaseExpiresAt: Instant?, agent: AgentState?, now: Instant): Int? {
+    if (agent == AgentState.WORKING || busy) return null
+    if (leaseExpiresAt != null && leaseExpiresAt.isAfter(now)) return null
+    if (agent == AgentState.BLOCKED) return RANK_BLOCKED
+    return when {
+        !stopped -> RANK_RUNNING
+        agent == null -> RANK_NO_SESSION
+        else -> RANK_DONE
+    }
+}
+
+private const val RANK_NO_SESSION = 1
+private const val RANK_DONE = 2
+private const val RANK_RUNNING = 3
+private const val RANK_BLOCKED = 4
