@@ -17,6 +17,7 @@ import app.luxion.shogunai.domain.model.ProvisionDriftState
 import app.luxion.shogunai.domain.model.AppLanguage
 import app.luxion.shogunai.domain.usecase.HookEntry
 import app.luxion.shogunai.domain.usecase.HookReplacement
+import app.luxion.shogunai.domain.model.HerdrPluginState
 import app.luxion.shogunai.domain.usecase.HooksInstallState
 import app.luxion.shogunai.domain.model.HostOs
 import app.luxion.shogunai.domain.usecase.CommandLineToolInstallation
@@ -235,6 +236,22 @@ object EnglishStrings : Strings {
     override val claudeHooksCancel = "Cancel"
     override val claudeHooksConfirm = "Apply"
     override val claudeHooksNeedsTool = "Install the command-line tool first"
+    override val herdrPluginLabel = "Herdr plugin"
+    override fun herdrPluginStatus(state: HerdrPluginState) = when (state) {
+        HerdrPluginState.INSTALLED -> "ShogunAi's Herdr plugin is installed"
+        HerdrPluginState.DISABLED -> "ShogunAi's Herdr plugin is disabled in Herdr"
+        HerdrPluginState.BROKEN -> "ShogunAi's Herdr plugin is broken"
+        HerdrPluginState.MISSING -> "ShogunAi's Herdr plugin isn't installed"
+        HerdrPluginState.UNKNOWN -> "Couldn't check ShogunAi's Herdr plugin"
+    }
+    override fun herdrPluginWarning(warning: String) = "Herdr says: $warning"
+    override val herdrPluginBrokenHint = "Herdr can't load it, so the worktrees it creates aren't provisioned."
+    override val herdrPluginReinstall = "Reinstall"
+    override val herdrPluginInstall = "Install"
+    override fun herdrPluginDialogTitle(state: HerdrPluginState) =
+        if (state == HerdrPluginState.BROKEN) "Reinstall the Herdr plugin" else "Install the Herdr plugin"
+    override val herdrPluginDialogIntro = "ShogunAi will run these Herdr commands to install it from its repository:"
+    override val herdrPluginRun = "Run"
     override val commandLineToolLabel = "Command-line tool"
     override fun commandLineToolStatus(status: CommandLineToolStatus) = when (status.state) {
         CommandLineToolState.AVAILABLE -> "The shogun command is available"

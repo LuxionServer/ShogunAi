@@ -39,7 +39,7 @@ In `domain/model/Herdr.kt`:
 - `enum HerdrPluginState { INSTALLED, DISABLED, BROKEN, MISSING, UNKNOWN }`.
 - `HerdrPluginStatus(state, plugin: HerdrPlugin?, error: String?)`, where `error` is Herdr's message for `UNKNOWN`.
 
-`HerdrClient` gains `listPlugins()`, `unlinkPlugin(id)`, `uninstallPlugin(id)` and `installPlugin(source)`. They have no default implementations, like the rest of the port, so `FakeHerdrClient` and any test double of the port implement them. The CLI's end-to-end fake `herdr` binary answers `plugin list --json` too, so `hooks status` runs end to end.
+`HerdrPluginStep` (`Unlink`, `Uninstall`, `Install`) carries the argv of each Herdr command, so the commands shown to the user and the ones run come from one place. `HerdrClient` gains `listPlugins()` and `changePlugins(step)`. They have no default implementations, like the rest of the port, so `FakeHerdrClient` and any test double of the port implement them. The CLI's end-to-end fake `herdr` binary answers `plugin list --json` too, so `hooks status` runs end to end.
 
 ### Use case `HerdrPluginHealth`
 
@@ -58,8 +58,8 @@ The source is the constant `LuxionServer/ShogunAi/integrations/herdr`, the same 
 ### Command line
 
 - `hooks status` prints a `herdr plugin:` line after the Claude Code ones, followed by indented warning lines and the hint `reinstall it with: shogun hooks install --herdr` for broken and missing. Its JSON adds `herdr: null | {state, source, root, warnings, error}`.
-- `hooks install --herdr` is parsed into the existing `CliCommand.Hooks` with a `herdr` flag; `--herdr` with `uninstall`, `status` or `--project` is a usage error. It prints the Herdr commands (`  $ herdr plugin unlink shogunai.worktrees`), asks `Run them? [y/N]` unless `--yes`, and with `--json` prints `{state, steps, applied}`.
-- The exit code is 0 when nothing needed doing or the reinstall succeeded, 1 when Herdr isn't installed or a command failed.
+- `hooks install --herdr` is parsed into the existing `CliCommand.Hooks` with a `herdr` flag; `--herdr` with `uninstall`, `status` or `--project` is a usage error. It prints the Herdr commands (`  $ herdr plugin unlink shogunai.worktrees`), asks `Run them? [y/N]` unless `--yes`, and with `--json` prints `{steps, applied, herdr}`, where `herdr` is the plugin's status as in `hooks status`, read again after a reinstall.
+- The exit code is 0 when nothing needed doing or the reinstall succeeded, 1 when Herdr isn't installed, can't be checked or a command failed.
 
 ### App
 

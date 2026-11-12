@@ -261,6 +261,8 @@ import app.luxion.shogunai.domain.usecase.WriteEnvironmentFileUseCase
 import app.luxion.shogunai.infrastructure.AwtClipboardWriter
 import app.luxion.shogunai.infrastructure.FileKmpTestWiring
 import app.luxion.shogunai.infrastructure.CliHerdrClient
+import app.luxion.shogunai.domain.usecase.HerdrPluginHealth
+import app.luxion.shogunai.ui.shell.HerdrPluginSettings
 import app.luxion.shogunai.infrastructure.HerdrConfigFile
 import app.luxion.shogunai.infrastructure.JsonLanguagePreferenceRepository
 import app.luxion.shogunai.infrastructure.JsonProjectRepository
@@ -542,6 +544,7 @@ class AppContainer(private val hostEnvironment: HostEnvironment = SystemHostEnvi
         ClaudeCodeHooks.claudeSessionsDirectory(hostEnvironment.variable("CLAUDE_CONFIG_DIR"), hostEnvironment.home),
     )
     private val herdrLauncher = HerdrAgentLauncher(herdrClient, registry = claudeSessions)
+    val herdrPlugin = HerdrPluginSettings(HerdrPluginHealth(herdrClient))
     private val processEnvironment = SystemProcessEnvironmentReader(shellCommandExecutor)
 
     private fun orcaSessionNaming() = ClaudeSessionNaming(claudeSessions, processEnvironment = processEnvironment)

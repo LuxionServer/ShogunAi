@@ -434,6 +434,14 @@ class ParseArgumentsTest {
     }
 
     @Test
+    fun `hooks install takes herdr, only without project`() {
+        assertEquals(CliCommand.Hooks(HooksAction.INSTALL, yes = true, herdr = true), command("hooks", "install", "--herdr", "--yes"))
+        assertEquals("'--herdr' only applies to 'hooks install'", usageError("hooks", "status", "--herdr"))
+        assertEquals("'--herdr' only applies to 'hooks install'", usageError("hooks", "uninstall", "--herdr"))
+        assertEquals("'--herdr' can't be combined with '--project'", usageError("hooks", "install", "--herdr", "--project"))
+    }
+
+    @Test
     fun `guide usage errors`() {
         assertEquals("unknown option '--bogus' for 'guide'", usageError("guide", "--bogus"))
         val topic = WorkflowTopic.entries.first().id

@@ -111,6 +111,7 @@ private class FakeHerdr(history: List<List<String>>) {
 
     private val workspaces = mutableListOf<Workspace>()
     private val panes = mutableListOf<Pane>()
+    private val plugins = mutableListOf(plugin("local", warnings = listOf("manifest unavailable: No such file or directory (os error 2)")))
 
     init {
         history.forEach { apply(it) }
@@ -147,6 +148,10 @@ private class FakeHerdr(history: List<List<String>>) {
                 }
             }))
         }
+        call.startsWith("plugin", "list") -> buildJsonObject { put("plugins", JsonArray(plugins.toList())) }
+        call.startsWith("plugin", "unlink") || call.startsWith("plugin", "uninstall") ->
+            empty().also { plugins.removeAll { it["plugin_id"]?.jsonPrimitive?.content == call[2] } }
+        call.startsWith("plugin", "install") -> empty().also { plugins += plugin("github", warnings = emptyList()) }
         call.startsWith("worktree", "list") -> buildJsonObject {
             val cwd = call.option("--cwd")
             put("worktrees", JsonArray(workspaces.filter { it.path != null && it.cwd == cwd }.map { workspace ->
@@ -178,6 +183,14 @@ private class FakeHerdr(history: List<List<String>>) {
     }
 
     private fun livePanes(): List<Pane> = panes.filterNot { it.closed }
+
+    private fun plugin(kind: String, warnings: List<String>): JsonObject = buildJsonObject {
+        put("plugin_id", "shogunai.worktrees")
+        put("enabled", true)
+        put("plugin_root", "/plugins/$kind/integrations/herdr")
+        put("source", buildJsonObject { put("kind", kind) })
+        if (warnings.isNotEmpty()) put("warnings", buildJsonArray { warnings.forEach { add(JsonPrimitive(it)) } })
+    }
 
     private fun paneJson(pane: Pane): JsonObject = buildJsonObject {
         put("pane_id", pane.id)
