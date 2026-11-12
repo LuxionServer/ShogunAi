@@ -53,9 +53,10 @@ jobs:
 
   smoke-test:
     name: Smoke test
-    needs: package
+    needs: [resolve-version, package]
     permissions:
       contents: read
     uses: ./.github/workflows/smoke-test.yml
     with:
+      version: ${{ needs.resolve-version.outputs.version }}
       ref: ${{ github.sha }}

@@ -3,6 +3,9 @@ name: Smoke test
 on:
   workflow_call:
     inputs:
+      version:
+        type: string
+        required: true
       ref:
         type: string
         required: true
@@ -64,5 +67,88 @@ jobs:
         if: always()
         with:
           name: smoke-test-${{ matrix.os }}
+          path: ${{ runner.temp }}/smoke/out
+          if-no-files-found: warn
+
+  homebrew-cask:
+    name: Homebrew Cask on ${{ matrix.name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS Apple Silicon
+            os: macos-latest
+          - name: macOS Intel
+            os: macos-26-intel
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+          sparse-checkout: |
+            .github/smoke
+            .github/homebrew
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: installer-macos-latest
+          path: ${{ runner.temp }}/installer-arm64
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: installer-macos-26-intel
+          path: ${{ runner.temp }}/installer-x64
+
+      - name: Install the cask rendered for the release
+        shell: bash
+        env:
+          VERSION: ${{ inputs.version }}
+          DOWNLOAD_BASE: https://github.com/${{ github.repository }}/releases/download/v${{ inputs.version }}
+        run: |
+          .github/smoke/smoke-homebrew.sh \
+            "$(ls "$RUNNER_TEMP"/installer-arm64/*.dmg)" \
+            "$(ls "$RUNNER_TEMP"/installer-x64/*.dmg)" \
+            "$VERSION" "$DOWNLOAD_BASE" "$RUNNER_TEMP/smoke"
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: smoke-test-homebrew-${{ matrix.os }}
+          path: ${{ runner.temp }}/smoke/out
+          if-no-files-found: warn
+
+  scoop:
+    name: Scoop manifest on Windows
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+          sparse-checkout: |
+            .github/smoke
+            .github/scoop
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: installer-windows-latest
+          path: ${{ runner.temp }}/installer
+
+      - name: Install the manifest rendered for the release
+        shell: pwsh
+        env:
+          VERSION: ${{ inputs.version }}
+          DOWNLOAD_BASE: https://github.com/${{ github.repository }}/releases/download/v${{ inputs.version }}
+        run: |
+          $msi = Get-ChildItem "$env:RUNNER_TEMP\installer\*.msi" | Select-Object -First 1
+          .github/smoke/smoke-scoop.ps1 -Msi $msi.FullName -Version $env:VERSION -DownloadBase $env:DOWNLOAD_BASE -Work "$env:RUNNER_TEMP\smoke"
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: smoke-test-scoop
           path: ${{ runner.temp }}/smoke/out
           if-no-files-found: warn
