@@ -89,6 +89,10 @@ private fun englishWorktreeTexts(error: WorktreeError, gitCause: GitFailureCause
                 "Fix the file. If you add or remove a project, the unreadable file is first kept next to it.",
             )
         }
+    is WorktreeError.LocalFileFromNewerVersion -> ErrorTexts(
+        "The file ${error.path} was written by a newer version of ShogunAi, so this version leaves it unchanged.",
+        "Update ShogunAi to make this change.",
+    )
     is WorktreeError.WorktreeAlreadyExists -> ErrorTexts(
         "The folder ${error.path} already exists.",
         "Use another task id, or remove the existing folder.",
