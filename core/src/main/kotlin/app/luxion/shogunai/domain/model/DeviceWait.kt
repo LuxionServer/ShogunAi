@@ -9,6 +9,8 @@ enum class WaitQueueName(val key: String) {
     EMULATOR("emulator"),
     IOS_SIMULATOR("ios-simulator"),
     DESKTOP("desktop"),
+    ANDROID_DEVICE("android-device"),
+    IOS_DEVICE("ios-device"),
 }
 
 val ResourceKind.queueName: WaitQueueName
@@ -26,6 +28,7 @@ data class WaitTicket(
     val worktreePath: String,
     val process: ProcessIdentity,
     val since: Long,
+    val request: String? = null,
 ) {
     val displayName: String
         get() = poolDisplayName(adminDirectory, worktreePath)

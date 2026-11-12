@@ -1,0 +1,4 @@
+[ro.build.version.release]: [15]
+[ro.kernel.qemu]: [1]
+[ro.product.model]: [sdk_gphone64_arm64]
+[ro.serialno]: [EMULATOR35X1X1X0]

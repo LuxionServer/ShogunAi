@@ -48,6 +48,16 @@ Implementation of `AndroidSdk` on the SDK's own tools:
 
 An `AndroidSdk` decorator the desktop app wraps around its single `LocalAndroidSdk`; the CLI uses `LocalAndroidSdk` directly. It delegates everything except `deviceStates`, which it serves from one shared read per `adb` path: a caller that arrives while a read runs waits for it (a `Mutex`), and one that arrives less than 2 seconds after the last read gets that result. Every project checked in the same cycle, the machine view and the boot wait thus share one `adb devices`. `stopEmulator` drops the cached result, so the next read after a stop is fresh. The clock is injected for tests.
 
+## `AdbPhysicalDevices` / `DevicectlPhysicalDevices`
+
+`AdbPhysicalDevices` lists physical Android devices on top of the `AndroidSdk` port: `attachedDevices` (`adb devices -l`, read once and shared with the emulator states by `SharedDeviceStatesAndroidSdk`), skipping `emulator-*` serials, and `deviceProperties` (one `adb -s <serial> shell getprop`) for each new transport, cached while that transport stays listed. A transport whose `ro.kernel.qemu` is `1` is an emulator reached over TCP and is skipped; one that isn't `device` yet, or whose `ro.serialno` can't be read, is pending. A serial with `:` or `._adb-tls-connect.` is a network connection. The marketing name is `ro.product.marketname`, then Samsung's `ro.config.marketing_name`, then the model. No SDK lists nothing.
+
+`DevicectlPhysicalDevices` runs `xcrun devicectl list devices --json-output <temp file>` on macOS only (it takes `osName`), reads the temporary file and deletes it. It keeps the entries whose `reality` is `physical` and that have a transport and a tunnel state other than `unavailable`, reading the deprecated `hardwareProperties`, `deviceProperties` and `connectionProperties` first and the `properties` dictionary that replaces them otherwise. A device that isn't `paired` is `UNPAIRED`, one whose developer mode isn't `enabled` (or isn't reported) is `DEVELOPER_MODE_OFF`. Fixtures captured from a real device pin the format.
+
+## `NioPhysicalDeviceInventoryStore` / `NioPhysicalDeviceLeaseStore`
+
+The inventory lives in `~/.shogunai/devices.json` (`{ "devices": [...] }`) and the leases and losses in `~/.shogunai/device-leases.json` (`{ "leases": [...], "losses": [...] }`, deleted when both are empty), written atomically through a temporary file and read as empty when missing or corrupt; entries with an unknown platform are skipped. Both are read and written under the environment state store's lock, together with `device-queue.json`, whose tickets gain an optional `request` that older versions ignore.
+
 ## `HerdrConfigFile`
 
 Implementation of `HerdrConfigSource`. It reads Herdr's `config.toml` from the same place Herdr does: `HERDR_CONFIG_PATH`, else `$XDG_CONFIG_HOME/herdr/`, else `%APPDATA%\herdr\` on Windows, else `~/.config/herdr/`. A small line reader takes the `directory` key of the `[worktrees]` table (basic or literal string, trailing comments allowed) and expands a leading `~`; it's not a full TOML parser, since that's the only key ShogunAi needs. A missing, unreadable or unparseable file, or no such key, gives Herdr's default, `~/.herdr/worktrees`.

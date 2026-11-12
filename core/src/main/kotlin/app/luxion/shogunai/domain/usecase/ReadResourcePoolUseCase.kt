@@ -20,6 +20,7 @@ import app.luxion.shogunai.domain.model.ResourceKind
 import app.luxion.shogunai.domain.model.SimulatorState
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.effectiveLimit
+import app.luxion.shogunai.domain.model.releaseRank
 import app.luxion.shogunai.domain.model.emulatorSerial
 import java.time.Duration
 import java.time.Instant
@@ -139,20 +140,14 @@ class ReadResourcePoolUseCase(
             reference = reference,
             leaseExpiresAt = leaseExpiresAt,
             agentState = agent,
-            releaseRank = releaseRank(state, leaseExpiresAt, agent),
+            releaseRank = releaseRank(
+                stopped = state == PoolHolderState.STOPPED || state == PoolHolderState.SHUTDOWN,
+                busy = state == PoolHolderState.BOOTING,
+                leaseExpiresAt = leaseExpiresAt,
+                agent = agent,
+                now = clock(),
+            ),
         )
-    }
-
-    private fun releaseRank(state: PoolHolderState, leaseExpiresAt: Instant?, agent: AgentState?): Int? {
-        if (agent == AgentState.WORKING || state == PoolHolderState.BOOTING) return null
-        if (leaseExpiresAt != null && leaseExpiresAt.isAfter(clock())) return null
-        if (agent == AgentState.BLOCKED) return RANK_BLOCKED
-        val stopped = state == PoolHolderState.STOPPED || state == PoolHolderState.SHUTDOWN
-        return when {
-            !stopped -> RANK_RUNNING
-            agent == null -> RANK_NO_SESSION
-            else -> RANK_DONE
-        }
     }
 
     private fun usage(kind: ResourceKind, holders: List<PoolHolder>): PoolUsage {
@@ -165,12 +160,5 @@ class ReadResourcePoolUseCase(
             return normalizePath(commonDirectory).removeSuffix("/.git").takeIf { it.isNotEmpty() }
         }
         return fileManager.readText("$adminDirectory/gitdir")?.let { normalizePath(it.trim()).removeSuffix("/.git") }
-    }
-
-    private companion object {
-        const val RANK_NO_SESSION = 1
-        const val RANK_DONE = 2
-        const val RANK_RUNNING = 3
-        const val RANK_BLOCKED = 4
     }
 }

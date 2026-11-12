@@ -1,5 +1,11 @@
 package app.luxion.shogunai.domain.usecase
 
+import app.luxion.shogunai.domain.FakePhysicalDeviceInventoryStore
+import app.luxion.shogunai.domain.FakePhysicalDeviceLeaseStore
+import app.luxion.shogunai.domain.model.DeviceLeases
+import app.luxion.shogunai.domain.model.DevicePlatform
+import app.luxion.shogunai.domain.model.PhysicalDeviceLease
+import app.luxion.shogunai.domain.model.RecordedDevice
 import app.luxion.shogunai.domain.FakeAndroidSdk
 import app.luxion.shogunai.domain.FakeEnvironmentStateStore
 import app.luxion.shogunai.domain.FakeFileManager
@@ -312,6 +318,24 @@ class ResourceLeasesTest {
         assertEquals(expired.toEpochMilli(), store.readLastUsed(admin1)["emulator"])
         assertTrue(store.readLeases(admin2).isEmpty())
         assertTrue(store.readPorts(admin2).isEmpty())
+    }
+
+    @Test
+    fun `a working agent's renewal also renews the physical devices its worktree holds`() = runTest {
+        val leases = FakePhysicalDeviceLeaseStore(
+            DeviceLeases(
+                listOf(
+                    PhysicalDeviceLease("android:3A281FDJH000AB", DevicePlatform.ANDROID, admin1, task1, 0, 0),
+                    PhysicalDeviceLease("ios:00008150-000A1B2C3D4E5F60", DevicePlatform.IOS, admin2, task2, 0, 0),
+                ),
+            ),
+        )
+        val renew = RenewWorktreeLeasesUseCase(pool.resolve, store, clock = { pool.now }, deviceLeases = leases)
+
+        renew(task1).getOrThrow()
+        renew(task3).getOrThrow()
+
+        assertEquals(listOf(pool.now.toEpochMilli(), 0L), leases.leases.leases.map { it.renewedAt })
     }
 
     @Test

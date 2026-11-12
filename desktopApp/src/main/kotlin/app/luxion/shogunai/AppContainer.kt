@@ -3,11 +3,17 @@ package app.luxion.shogunai
 import app.luxion.shogunai.domain.io.AgentRunner
 import app.luxion.shogunai.domain.model.RunnerId
 import app.luxion.shogunai.domain.usecase.HerdrAgentRunner
+import app.luxion.shogunai.domain.usecase.ManagePhysicalDevicesUseCase
 import app.luxion.shogunai.domain.usecase.OrcaAgentRunner
 import app.luxion.shogunai.domain.usecase.DesktopTurnLedger
+import app.luxion.shogunai.domain.usecase.PhysicalDeviceLedger
 import app.luxion.shogunai.domain.usecase.ReadDesktopTurnUseCase
 import app.luxion.shogunai.domain.usecase.ReadHeadlessAppUseCase
+import app.luxion.shogunai.domain.usecase.ReadPhysicalDevicesUseCase
 import app.luxion.shogunai.domain.usecase.ReleaseDesktopTurnUseCase
+import app.luxion.shogunai.domain.usecase.ReleasePhysicalDeviceUseCase
+import app.luxion.shogunai.infrastructure.AdbPhysicalDevices
+import app.luxion.shogunai.infrastructure.DevicectlPhysicalDevices
 import app.luxion.shogunai.infrastructure.MacAppWindowService
 import app.luxion.shogunai.infrastructure.GradleHeadlessAppLauncher
 import app.luxion.shogunai.domain.usecase.StopHeadlessAppUseCase
@@ -35,8 +41,12 @@ import app.luxion.shogunai.domain.usecase.WorktreeGroup
 import app.luxion.shogunai.infrastructure.JsonDerivedDataSizeStore
 import app.luxion.shogunai.infrastructure.JsonMultirepoSource
 import app.luxion.shogunai.infrastructure.NioDesktopTurnStore
+import app.luxion.shogunai.infrastructure.NioPhysicalDeviceInventoryStore
+import app.luxion.shogunai.infrastructure.NioPhysicalDeviceLeaseStore
 import app.luxion.shogunai.ui.components.ShownErrorLog
 import app.luxion.shogunai.ui.machine.DesktopTurnWatch
+import app.luxion.shogunai.ui.machine.PhysicalDeviceActions
+import app.luxion.shogunai.ui.machine.PhysicalDevicesWatch
 import app.luxion.shogunai.ui.multirepo.FolderInspection
 import app.luxion.shogunai.ui.multirepo.MultirepoActions
 import app.luxion.shogunai.ui.multirepo.MultirepoSetup
@@ -277,6 +287,7 @@ import app.luxion.shogunai.infrastructure.SocketPortProbe
 import app.luxion.shogunai.infrastructure.SystemHostEnvironment
 import app.luxion.shogunai.infrastructure.defaultGradleUserHome
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
@@ -444,6 +455,7 @@ class AppContainer(private val hostEnvironment: HostEnvironment = SystemHostEnvi
         repositoryTrust,
         composeProjectRegistry,
         { repository, worktree -> MultirepoSharedEnvironment(resolveMultirepo, shellCommandExecutor).forWorktree(repository, worktree) },
+        deviceVariables = { worktree -> physicalDeviceLedger.variablesFor(worktree) },
     )
 
     private suspend fun startEmulatorShownInOrca(config: ProjectConfig, worktreePath: String): Result<DeviceStart<WorktreeEmulator>> =
@@ -542,6 +554,7 @@ class AppContainer(private val hostEnvironment: HostEnvironment = SystemHostEnvi
             orcaSessionNaming(),
             runningEmulator = { config, path -> readEmulatorStates.runningSerial(config, path) },
             runningSimulator = { config, path -> readSimulatorStates.runningUdid(config, path) },
+            heldPhysicalDevice = { path -> physicalDeviceLedger.connectedAndroidSerial(path) },
         ),
     ).associateBy { it.id }
     private val readPool = ReadResourcePoolUseCase(
@@ -597,6 +610,33 @@ class AppContainer(private val hostEnvironment: HostEnvironment = SystemHostEnvi
     val desktopTurn = DesktopTurnWatch(
         read = { withContext(Dispatchers.IO) { readDesktopTurn() } },
         forceRelease = { withContext(Dispatchers.IO) { releaseDesktopTurn.force() } },
+    )
+    private val physicalDeviceLedger: PhysicalDeviceLedger = PhysicalDeviceLedger(
+        listOf(AdbPhysicalDevices(androidSdk) { hostEnvironment.home }, DevicectlPhysicalDevices(shellCommandExecutor)),
+        NioPhysicalDeviceInventoryStore(files.folder),
+        NioPhysicalDeviceLeaseStore(files.folder),
+        environmentStateStore,
+        deviceWaitQueue,
+        ProcessHandleLiveness(),
+        { resolveEnvironment.directoriesOf(it).admin },
+        resolveResourceLimits::leaseDuration,
+        agentActivity = ReadAgentActivityUseCase(agentSessionStore)::invoke,
+        sleep = { delay(it.toMillis()) },
+    )
+    private val readPhysicalDevices = ReadPhysicalDevicesUseCase(physicalDeviceLedger)
+    private val releasePhysicalDevice = ReleasePhysicalDeviceUseCase(physicalDeviceLedger)
+    private val managePhysicalDevices = ManagePhysicalDevicesUseCase(physicalDeviceLedger)
+    var declaresMobileProviders: () -> Boolean = { false }
+    val physicalDevices = PhysicalDevicesWatch(
+        read = { withContext(Dispatchers.IO) { readPhysicalDevices() } },
+        actions = PhysicalDeviceActions(
+            release = { id -> withContext(Dispatchers.IO) { releasePhysicalDevice.force(id) } },
+            lend = { id -> withContext(Dispatchers.IO) { managePhysicalDevices.lend(id) } },
+            withdraw = { id -> withContext(Dispatchers.IO) { managePhysicalDevices.withdraw(id) } },
+            rename = { id, alias -> withContext(Dispatchers.IO) { managePhysicalDevices.rename(id, alias) } },
+            forget = { id -> withContext(Dispatchers.IO) { managePhysicalDevices.forget(id) } },
+        ),
+        shouldRead = { declaresMobileProviders() || withContext(Dispatchers.IO) { readPhysicalDevices.hasRecorded() } },
     )
     private val readReleaseRecord = ReadReleaseRecordUseCase(resolveEnvironment, environmentStateStore)
     private val readEmulatorStates = ReadEmulatorStatesUseCase(repositoryProvisioningSource, resolveEnvironment, androidSdk)
@@ -850,6 +890,7 @@ class AppContainer(private val hostEnvironment: HostEnvironment = SystemHostEnvi
             stopHeadlessApp,
             releaseDesktopTurn,
             CloseOrcaTerminalsUseCase(orcaClient),
+            releasePhysicalDevice,
         ),
         deleteBranch = DeleteBranchUseCase(config, shellCommandExecutor),
         copyLaunchCommand = CopyWorktreeLaunchCommandUseCase(config, clipboardWriter),
@@ -868,6 +909,7 @@ class AppContainer(private val hostEnvironment: HostEnvironment = SystemHostEnvi
             stopHeadlessApp,
             releaseDesktopTurn,
             CloseOrcaTerminalsUseCase(orcaClient),
+            releasePhysicalDevice,
         ),
         detectAgents = { worktrees -> detectRunningAgents(config, worktrees) },
         measureSize = MeasureWorktreeSizeUseCase(fileManager),

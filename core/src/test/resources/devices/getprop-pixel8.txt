@@ -1,0 +1,5 @@
+[ro.build.version.release]: [16]
+[ro.product.manufacturer]: [Google]
+[ro.product.marketname]: [Pixel 8]
+[ro.product.model]: [Pixel 8]
+[ro.serialno]: [3A281FDJH000AB]

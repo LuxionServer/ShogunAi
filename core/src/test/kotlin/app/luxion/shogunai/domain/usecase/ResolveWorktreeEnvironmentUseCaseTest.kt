@@ -203,6 +203,24 @@ class ResolveWorktreeEnvironmentUseCaseTest {
     }
 
     @Test
+    fun `held physical devices are added unless a declared variable has the same name`() = runTest {
+        val devices: suspend (String) -> List<Pair<String, String>> = { worktree ->
+            if (worktree == task) listOf("SHOGUN_ANDROID_DEVICE_SERIAL" to "R5CT10ABCDE", "SHOGUN_IOS_DEVICE_UDID" to "UDID-1") else emptyList()
+        }
+        val resolver = { source: FakeRepositoryProvisioningSource ->
+            ResolveWorktreeEnvironmentUseCase(gitExecutor(), source, FakeEnvironmentStateStore(), FakePortProbe(), trust = FakeRepositoryTrust(approvesEverything = true), deviceVariables = devices)
+        }
+
+        val plain = resolver(declaring())(repository, task).getOrThrow()
+        val overridden = resolver(declaring("SHOGUN_IOS_DEVICE_UDID" to "mine"))(repository, task).getOrThrow()
+        val none = resolver(declaring())(repository, other).getOrThrow()
+
+        assertEquals(listOf("SHOGUN_ANDROID_DEVICE_SERIAL" to "R5CT10ABCDE", "SHOGUN_IOS_DEVICE_UDID" to "UDID-1"), plain.variables)
+        assertEquals(listOf("SHOGUN_IOS_DEVICE_UDID" to "mine", "SHOGUN_ANDROID_DEVICE_SERIAL" to "R5CT10ABCDE"), overridden.variables)
+        assertEquals(WorktreeEnvironment(), none)
+    }
+
+    @Test
     fun `reading without reserving never writes`() = runTest {
         val store = FakeEnvironmentStateStore(mapOf("$common/worktrees/TASK-456" to mapOf("PORT" to 20003)))
         val source = declaring("PORT" to "\${port}")

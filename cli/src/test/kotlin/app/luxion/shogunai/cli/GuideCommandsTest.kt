@@ -210,6 +210,26 @@ class GuideCommandsTest {
     }
 
     @Test
+    fun `guide resources tells mobile repositories how to use a physical device`() {
+        assertEquals(0, cli(everything()).run(listOf("guide", "resources")))
+
+        assertTrue(out.contains("shogun device acquire"), out.toString())
+        assertTrue(out.contains("adb -s \"\$SHOGUN_ANDROID_DEVICE_SERIAL\""), out.toString())
+        assertTrue(out.contains("shogun device release"), out.toString())
+    }
+
+    @Test
+    fun `a backend repository's guide and a mobile session start have no physical device rule`() {
+        assertEquals(0, cli(declaring(RepositoryProviders(dockerCompose = DockerComposeProvider()))).run(listOf("guide", "resources")))
+        assertFalse(out.contains("shogun device"), out.toString())
+        out.setLength(0)
+
+        assertEquals(0, cli(everything(), input = """{"cwd": "$linked"}""", herdr = fakeHerdr()).run(listOf("hook", "session-start")), err.toString())
+
+        assertFalse(out.contains("shogun device"), out.toString())
+    }
+
+    @Test
     fun `guide marks the rules of an undeclared provider after the others`() {
         assertEquals(0, cli().run(listOf("guide", "resources")))
 

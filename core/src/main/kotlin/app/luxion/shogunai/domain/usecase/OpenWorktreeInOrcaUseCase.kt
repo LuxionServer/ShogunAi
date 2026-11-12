@@ -26,6 +26,7 @@ class OpenWorktreeInOrcaUseCase(
     pollInterval: Duration = 500.milliseconds,
     private val runningEmulator: suspend (String) -> String? = { null },
     private val runningSimulator: suspend (String) -> String? = { null },
+    private val heldPhysicalDevice: suspend (String) -> String? = { null },
 ) {
     private val launcher = OrcaAgentLauncher(orca, naming, samePath, timeout, pollInterval)
 
@@ -50,8 +51,10 @@ class OpenWorktreeInOrcaUseCase(
     private suspend fun showRunningDevice(workspace: OrcaWorkspace, worktreePath: String): ShownDevices {
         val serial = runCatching { runningEmulator(worktreePath) }.getOrNull()
         val udid = runCatching { runningSimulator(worktreePath) }.getOrNull()
+        val physical = runCatching { heldPhysicalDevice(worktreePath) }.getOrNull()
         return when {
-            serial != null && udid != null -> ShownDevices(skipped = true)
+            udid != null && (serial != null || physical != null) -> ShownDevices(skipped = true)
+            physical != null -> ShownDevices(physicalDevice = attached(workspace, physical))
             serial != null -> ShownDevices(emulator = attached(workspace, serial))
             udid != null -> ShownDevices(simulator = attached(workspace, udid))
             else -> ShownDevices()
@@ -61,7 +64,13 @@ class OpenWorktreeInOrcaUseCase(
     private suspend fun attached(workspace: OrcaWorkspace, device: String): String? =
         runCatching { orca.attachEmulator(workspace, device) }.map { device }.getOrNull()
 
-    private data class ShownDevices(val emulator: String? = null, val simulator: String? = null, val skipped: Boolean = false) {
-        fun applyTo(opening: OrcaOpening): OrcaOpening = opening.copy(emulator = emulator, simulator = simulator, devicesSkipped = skipped)
+    private data class ShownDevices(
+        val emulator: String? = null,
+        val simulator: String? = null,
+        val skipped: Boolean = false,
+        val physicalDevice: String? = null,
+    ) {
+        fun applyTo(opening: OrcaOpening): OrcaOpening =
+            opening.copy(emulator = emulator, simulator = simulator, devicesSkipped = skipped, physicalDevice = physicalDevice)
     }
 }

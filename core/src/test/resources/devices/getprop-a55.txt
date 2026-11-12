@@ -1,0 +1,6 @@
+[ro.build.version.release]: [15]
+[ro.config.marketing_name]: [Galaxy A55 5G]
+[ro.kernel.qemu]: []
+[ro.product.manufacturer]: [samsung]
+[ro.product.model]: [SM-A556B]
+[ro.serialno]: [R5CT10ABCDE]

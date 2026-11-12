@@ -32,7 +32,16 @@ import app.luxion.shogunai.ui.components.Spacing
 import app.luxion.shogunai.ui.components.StatusChip
 import app.luxion.shogunai.ui.i18n.LocalStrings
 import app.luxion.shogunai.ui.i18n.Strings
+import app.luxion.shogunai.domain.model.DeviceConnection
+import app.luxion.shogunai.domain.model.DeviceLoss
+import app.luxion.shogunai.domain.model.DeviceLossReason
+import app.luxion.shogunai.domain.model.DeviceOverview
+import app.luxion.shogunai.domain.model.HeldDevice
+import app.luxion.shogunai.ui.machine.ConfirmDeviceDialog
 import app.luxion.shogunai.ui.machine.DesktopTurnWatch
+import app.luxion.shogunai.ui.machine.DeviceWaitPlace
+import app.luxion.shogunai.ui.machine.PendingDeviceAction
+import app.luxion.shogunai.ui.machine.PhysicalDevicesWatch
 import app.luxion.shogunai.ui.machine.ReleaseDesktopTurnDialog
 import app.luxion.shogunai.ui.machine.clockTime
 import app.luxion.shogunai.ui.theme.ShogunTheme
@@ -46,7 +55,12 @@ import kotlinx.coroutines.launch
 import java.time.Instant
 
 @Composable
-fun ResourcesSection(worktree: Worktree, viewModel: ProjectWorktrees, desktopTurn: DesktopTurnWatch) {
+fun ResourcesSection(
+    worktree: Worktree,
+    viewModel: ProjectWorktrees,
+    desktopTurn: DesktopTurnWatch,
+    physicalDevices: PhysicalDevicesWatch = PhysicalDevicesWatch.NONE,
+) {
     val strings = LocalStrings.current
     val path = worktree.path
     val present = !worktree.isPrunable
@@ -57,7 +71,11 @@ fun ResourcesSection(worktree: Worktree, viewModel: ProjectWorktrees, desktopTur
     val held = desktopTurn.heldBy(path)
     val waiting = desktopTurn.waitOf(path)
     val size = viewModel.sizes[path]
-    val applies = showEmulator || showSimulator || showHeadless || showCompose || held != null || waiting != null
+    val devices = physicalDevices.heldBy(path)
+    val deviceWaits = physicalDevices.waitsOf(path)
+    val deviceLosses = physicalDevices.lossesOf(path)
+    val usesDevices = devices.isNotEmpty() || deviceWaits.isNotEmpty() || deviceLosses.isNotEmpty()
+    val applies = showEmulator || showSimulator || showHeadless || showCompose || held != null || waiting != null || usesDevices
     InspectorSection(
         id = InspectorSectionId.RESOURCES,
         title = strings.resourcesTitle,
@@ -103,6 +121,7 @@ fun ResourcesSection(worktree: Worktree, viewModel: ProjectWorktrees, desktopTur
             )
         }
         DesktopTurnRow(path, desktopTurn)
+        if (usesDevices) PhysicalDeviceRows(physicalDevices, devices, deviceWaits, deviceLosses)
         size?.let { PropertyList(listOf(Property(strings.diskTitle, formatSize(it)))) }
     }
 }
@@ -244,6 +263,54 @@ private fun DesktopTurnRow(path: String, watch: DesktopTurnWatch) {
         ResourceRow(strings.desktopTurnDetailTitle) {
             MutedValue(strings.desktopTurnDetailWaiting(waiting.position, clockTime(waiting.ticket.since), waiting.holder?.displayName))
         }
+    }
+}
+
+@Composable
+private fun PhysicalDeviceRows(
+    watch: PhysicalDevicesWatch,
+    devices: List<HeldDevice>,
+    waits: List<DeviceWaitPlace>,
+    losses: List<DeviceLoss>,
+) {
+    val strings = LocalStrings.current
+    val scope = rememberCoroutineScope()
+    devices.forEach { held ->
+        ResourceRow(strings.physicalDeviceDetailTitle(held.lease.platform.label)) {
+            DataValue(held.device.displayName)
+            val connected = held.connected
+            if (connected == null) {
+                StatusChip(Status.WARNING, strings.deviceDisconnected)
+            } else {
+                StatusChip(Status.SUCCESS, strings.deviceConnection(connected.connection == DeviceConnection.NETWORK))
+            }
+            MutedValue(strings.deviceHeldUntil(held.expiresAt.toLocalClockTime()))
+            if (watch.busyDevice == held.device.id) {
+                InlineProgress(size = ProgressSize.Small)
+            } else {
+                GhostButton(onClick = { watch.request(PendingDeviceAction.Release(DeviceOverview(held.device, connected, held))) }) { Text(strings.releaseDevice) }
+            }
+        }
+    }
+    waits.forEach { place ->
+        ResourceRow(strings.physicalDeviceDetailTitle(place.platform.label)) {
+            MutedValue(strings.deviceDetailWaiting(place.position, clockTime(place.ticket.since)))
+        }
+    }
+    losses.forEach { loss ->
+        ResourceRow(strings.physicalDeviceDetailTitle(loss.platform.label)) {
+            val at = clockTime(loss.at)
+            MutedValue(if (loss.reason == DeviceLossReason.TAKEN) strings.deviceTakenFor(loss.deviceName, loss.forWorktree.orEmpty(), at) else strings.deviceWithdrawnAt(loss.deviceName, at))
+        }
+    }
+    (watch.pending as? PendingDeviceAction.Release)?.takeIf { pending -> devices.any { it.device.id == pending.device.device.id } }?.let { pending ->
+        ConfirmDeviceDialog(
+            title = strings.confirmReleaseDeviceTitle,
+            message = strings.confirmReleaseDeviceMessage(pending.device.device.displayName, pending.device.holder?.holderName.orEmpty()),
+            action = strings.releaseDevice,
+            onConfirm = { scope.launch { watch.confirm() } },
+            onDismiss = watch::cancel,
+        )
     }
 }
 

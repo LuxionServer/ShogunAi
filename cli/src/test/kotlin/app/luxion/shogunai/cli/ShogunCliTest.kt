@@ -162,6 +162,9 @@ class ShogunCliTest {
 
     private val androidSdk = FakeAndroidSdk()
     private val appleSimulators = FakeAppleSimulators()
+    private val physicalDevices = app.luxion.shogunai.domain.FakePhysicalDevices()
+    private val deviceInventory = app.luxion.shogunai.domain.FakePhysicalDeviceInventoryStore()
+    private val deviceLeases = app.luxion.shogunai.domain.FakePhysicalDeviceLeaseStore()
     private val kmpTestWiring = FakeKmpTestWiring()
     private val out = StringBuilder()
     private val err = StringBuilder()
@@ -232,6 +235,9 @@ class ShogunCliTest {
         packageCacheSource = { packageCaches },
         isClaudeProcessAlive = { true },
         onShutdown = onShutdown,
+        physicalDeviceSources = listOf(physicalDevices),
+        deviceInventory = deviceInventory,
+        deviceLeases = deviceLeases,
     )
 
     private val gradleUserHome = "/home/dev/.gradle"
@@ -2015,7 +2021,7 @@ class ShogunCliTest {
                     "uncommittedChanges": 0, "upstream": null, "mainBranch": null, "base": null,
                     "merged": false, "lastCommitAt": null, "createdAt": null
                   },
-                  "desktop": null, "listeningPorts": null
+                  "desktop": null, "devices": {"android": null, "ios": null}, "listeningPorts": null
                 },
                 {
                   "path": "$merged", "branch": "feature/TASK-1", "head": "2222222222222222222222222222222222222222",
@@ -2025,7 +2031,7 @@ class ShogunCliTest {
                     "base": {"branch": "main", "ahead": 0, "behind": 3},
                     "merged": true, "lastCommitAt": null, "createdAt": null
                   },
-                  "desktop": null, "listeningPorts": null
+                  "desktop": null, "devices": {"android": null, "ios": null}, "listeningPorts": null
                 },
                 {
                   "path": "$dirty", "branch": "worktree-spike", "head": "3333333333333333333333333333333333333333",
@@ -2035,7 +2041,7 @@ class ShogunCliTest {
                     "base": {"branch": "main", "ahead": 2, "behind": 0},
                     "merged": false, "lastCommitAt": null, "createdAt": null
                   },
-                  "desktop": null, "listeningPorts": null
+                  "desktop": null, "devices": {"android": null, "ios": null}, "listeningPorts": null
                 }
               ]
             }
@@ -3397,6 +3403,38 @@ class ShogunCliTest {
         assertEquals("opened $merged in Orca with Claude (terminal term_1)\n", out.toString())
         assertTrue(err.contains("shogun: didn't show $merged's devices in Orca: its emulator and simulator are both running"), err.toString())
         assertTrue(orca.attachedEmulators.isEmpty())
+    }
+
+    @Test
+    fun `open in orca shows the held physical device in place of the running emulator`() {
+        environmentStore.portsByAdminDirectory["$base/.git/worktrees/TASK-1"] = mapOf("emulator" to 5556)
+        androidSdk.states["emulator-5556"] = EmulatorState.RUNNING
+        val pixel = app.luxion.shogunai.domain.model.PhysicalDevice(
+            app.luxion.shogunai.domain.model.DevicePlatform.ANDROID, "3A281FDJH000AB", "3A281FDJH000AB", app.luxion.shogunai.domain.model.DeviceConnection.USB, model = "Pixel 8",
+        )
+        physicalDevices.connected = listOf(pixel)
+        deviceInventory.devices = listOf(app.luxion.shogunai.domain.model.RecordedDevice(pixel.id, pixel.platform, model = "Pixel 8", lastSeen = 0))
+        deviceLeases.leases = app.luxion.shogunai.domain.model.DeviceLeases(
+            listOf(app.luxion.shogunai.domain.model.PhysicalDeviceLease(pixel.id, pixel.platform, "$base/.git/worktrees/TASK-1", merged, 0, now.toEpochMilli())),
+        )
+        val provisioning = FakeRepositoryProvisioningSource(
+            byRepository = mapOf(base to RepositoryProvisioning(providers = RepositoryProviders(emulator = EmulatorProvider()))),
+        )
+        val orca = FakeOrcaClient(repos = listOf(OrcaRepo("r1", base)), visibleWorktrees = mapOf("r1" to listOf(OrcaWorktree(merged, false))))
+
+        val text = FakeOrcaClient(repos = listOf(OrcaRepo("r1", base)), visibleWorktrees = mapOf("r1" to listOf(OrcaWorktree(merged, false))))
+        assertEquals(0, cli(executorWithAdminDirectories(), provisioning = provisioning, orca = text).run(listOf("open", "TASK-1", "--orca")), err.toString())
+        assertEquals("opened $merged in Orca with Claude (terminal term_1), with 3A281FDJH000AB in its emulator view\n", out.toString())
+        out.clear()
+
+        val exitCode = cli(executorWithAdminDirectories(), provisioning = provisioning, orca = orca).run(listOf("open", "TASK-1", "--orca", "--json"))
+
+        assertEquals(0, exitCode, err.toString())
+        val json = Json.parseToJsonElement(out.toString()).jsonObject
+        assertEquals("3A281FDJH000AB", json["physicalDevice"]?.jsonPrimitive?.content)
+        assertEquals(JsonNull, json["emulator"])
+        assertEquals(listOf("attach:$merged:3A281FDJH000AB", "create:$merged"), orca.events)
+        assertTrue(androidSdk.stopped.isEmpty())
     }
 
     @Test

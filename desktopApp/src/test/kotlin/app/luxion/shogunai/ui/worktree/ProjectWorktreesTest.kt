@@ -4194,6 +4194,70 @@ class ProjectWorktreesTest {
         onNodeWithText("Release").assertDoesNotExist()
     }
 
+    private fun physicalDevicesFor(path: String): app.luxion.shogunai.ui.machine.PhysicalDevicesFixture {
+        val fixture = app.luxion.shogunai.ui.machine.PhysicalDevicesFixture()
+        val lease = fixture.pixelLease.copy(adminDirectory = "${config.baseRepositoryPath}/.git/worktrees/TASK-123", worktreePath = path)
+        fixture.state = fixture.state.copy(
+            devices = fixture.state.devices.map { overview -> overview.holder?.let { overview.copy(holder = it.copy(lease = lease)) } ?: overview },
+        )
+        return fixture
+    }
+
+    @OptIn(ExperimentalTestApi::class)
+    @Test
+    fun `the detail shows the held physical device and releases it after confirming`() = runComposeUiTest {
+        val fixture = physicalDevicesFor(worktreePath)
+        runBlocking { fixture.watch.refresh() }
+        val holder = loadedProjectWorktrees(useCases(listingResponder()))
+        setContent { MaterialTheme { WorktreeDetailPane(worktree, config, holder, physicalDevices = fixture.watch) } }
+
+        onNodeWithText("Android device").assertIsDisplayed()
+        onNodeWithText("Pixel 8").assertIsDisplayed()
+        onNodeWithText("USB").assertIsDisplayed()
+        onNodeWithText("Lease until ${fixture.expiresAt.toLocalClockTime()}").assertIsDisplayed()
+        onNodeWithText("Release").performClick()
+        onNodeWithText("Release the device?").assertIsDisplayed()
+        onAllNodesWithText("Release")[1].performClick()
+        waitUntil { fixture.released.isNotEmpty() }
+        waitUntil { onAllNodesWithText("Android device").fetchSemanticsNodes().isEmpty() }
+
+        assertEquals(listOf(fixture.pixel.id), fixture.released)
+    }
+
+    @OptIn(ExperimentalTestApi::class)
+    @Test
+    fun `the detail shows a disconnected device, a wait and who took a device`() = runComposeUiTest {
+        val fixture = physicalDevicesFor(worktreePath)
+        val held = fixture.state.devices.first()
+        fixture.state = fixture.state.copy(
+            devices = listOf(held.copy(connected = null, holder = held.holder?.copy(connected = null))),
+            waiting = mapOf(
+                app.luxion.shogunai.domain.model.DevicePlatform.ANDROID to emptyList(),
+                app.luxion.shogunai.domain.model.DevicePlatform.IOS to listOf(fixture.ticket.copy(worktreePath = worktreePath)),
+            ),
+            losses = listOf(fixture.loss(app.luxion.shogunai.domain.model.DeviceLossReason.TAKEN).copy(worktreePath = worktreePath, platform = app.luxion.shogunai.domain.model.DevicePlatform.IOS)),
+        )
+        runBlocking { fixture.watch.refresh() }
+        val holder = loadedProjectWorktrees(useCases(listingResponder()))
+        setContent { MaterialTheme { WorktreeDetailPane(worktree, config, holder, physicalDevices = fixture.watch) } }
+
+        onNodeWithText("Disconnected").assertIsDisplayed()
+        onNodeWithText("Waiting, number 1 since ${fixture.now.toLocalClockTime()}").assertIsDisplayed()
+        onNodeWithText("a55 was taken for api · api-TASK-1 at ${fixture.now.toLocalClockTime()}").assertIsDisplayed()
+    }
+
+    @OptIn(ExperimentalTestApi::class)
+    @Test
+    fun `the detail says when the user withdrew a device`() = runComposeUiTest {
+        val fixture = app.luxion.shogunai.ui.machine.PhysicalDevicesFixture()
+        fixture.state = fixture.state.copy(losses = listOf(fixture.loss(app.luxion.shogunai.domain.model.DeviceLossReason.WITHDRAWN).copy(worktreePath = worktreePath)))
+        runBlocking { fixture.watch.refresh() }
+        val holder = loadedProjectWorktrees(useCases(listingResponder()))
+        setContent { MaterialTheme { WorktreeDetailPane(worktree, config, holder, physicalDevices = fixture.watch) } }
+
+        onNodeWithText("a55 was withdrawn at ${fixture.now.toLocalClockTime()}").assertIsDisplayed()
+    }
+
     private class ToolCalls {
         val terminals = mutableListOf<Pair<String, TerminalId>>()
         val editors = mutableListOf<Pair<String, EditorId>>()

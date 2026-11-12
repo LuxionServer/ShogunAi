@@ -12,5 +12,6 @@ fun MachineView(resource: MachineResource, machine: MachineResources, onOpenWork
         MachineResource.MAVEN_DAEMONS -> MavenDaemonsView(machine, onOpenWorktree)
         MachineResource.COMPOSE_PROJECTS -> ComposeProjectsView(machine, onOpenWorktree)
         MachineResource.DESKTOP_TURN -> DesktopTurnView(machine, onOpenWorktree)
+        MachineResource.PHYSICAL_DEVICES -> PhysicalDevicesView(machine, onOpenWorktree)
     }
 }

@@ -18,7 +18,8 @@ class WorkflowRulesTest {
             val selection = WorkflowRules.rulesFor(context)
             selection.applicable.forEach { assertTrue(context.holds(it.condition), it.id) }
             selection.inapplicable.forEach { assertFalse(context.holds(it.condition), it.id) }
-            assertEquals(WorkflowRules.all.size, selection.applicable.size + selection.inapplicable.size)
+            val hidden = WorkflowRules.all.count { it.onlyWhenApplicable && !context.holds(it.condition) }
+            assertEquals(WorkflowRules.all.size, selection.applicable.size + selection.inapplicable.size + hidden)
         }
     }
 
@@ -124,6 +125,18 @@ class WorkflowRulesTest {
     @Test
     fun `the flutter rule applies only with the provider`() {
         assertTrue("resources.flutter" in ids(WorkflowRules.rulesFor(worktree.copy(flutterProvider = false)).inapplicable))
+    }
+
+    @Test
+    fun `the physical device rule applies with either mobile provider and is left out otherwise`() {
+        val android = WorkflowRules.rulesFor(bare.copy(emulatorProvider = true), WorkflowTopic.RESOURCES)
+        val ios = WorkflowRules.rulesFor(bare.copy(simulatorProvider = true), WorkflowTopic.RESOURCES)
+        val backend = WorkflowRules.rulesFor(bare.copy(composeProvider = true), WorkflowTopic.RESOURCES)
+
+        assertTrue("resources.physical-device" in ids(android.applicable))
+        assertTrue("resources.physical-device" in ids(ios.applicable))
+        assertFalse("resources.physical-device" in ids(backend.applicable + backend.inapplicable))
+        assertFalse("resources.physical-device" in ids(WorkflowRules.sessionStartRules(worktree)))
     }
 
     @Test

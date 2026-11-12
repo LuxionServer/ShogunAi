@@ -1,5 +1,12 @@
 package app.luxion.shogunai.domain.usecase
 
+import app.luxion.shogunai.domain.FakePhysicalDeviceInventoryStore
+import app.luxion.shogunai.domain.FakePhysicalDeviceLeaseStore
+import app.luxion.shogunai.domain.model.DeviceLeases
+import app.luxion.shogunai.domain.model.DevicePlatform
+import app.luxion.shogunai.domain.model.PhysicalDeviceLease
+import app.luxion.shogunai.domain.model.RecordedDevice
+import java.time.Duration
 import app.luxion.shogunai.domain.FakeAppWindowService
 import app.luxion.shogunai.domain.FakeComposeProjectRegistry
 import app.luxion.shogunai.domain.FakeComposeProjectSource
@@ -217,6 +224,38 @@ class CleanUpWorktreesUseCaseTest {
 
         assertEquals(null, store.turn)
         assertTrue(queue.read(WaitQueueName.DESKTOP).isEmpty())
+    }
+
+
+    private fun physicalDevices(inventory: FakePhysicalDeviceInventoryStore, leases: FakePhysicalDeviceLeaseStore, queue: FakeDeviceWaitQueue) = ReleasePhysicalDeviceUseCase(
+        PhysicalDeviceLedger(
+            emptyList(), inventory, leases, FakeEnvironmentStateStore(), queue, FakeProcessLiveness(),
+            { path -> "/home/dev/projects/main-repo/.git/worktrees/${path.substringAfterLast('/')}" },
+            { Duration.ofMinutes(20) },
+            sleep = {},
+        ),
+    )
+
+    private fun pixel() = RecordedDevice("android:3A281FDJH000AB", DevicePlatform.ANDROID, lastSeen = 0)
+
+    private fun lease(admin: String, worktree: String) = PhysicalDeviceLease("android:3A281FDJH000AB", DevicePlatform.ANDROID, admin, worktree, 0, 0)
+
+    @Test
+    fun `cleaning up releases the physical devices and waits of removed worktrees`() = runTest {
+        val admin1 = "/home/dev/projects/main-repo/.git/worktrees/TASK-1"
+        val admin2 = "/home/dev/projects/main-repo/.git/worktrees/TASK-2"
+        val leases = FakePhysicalDeviceLeaseStore(DeviceLeases(listOf(lease(admin1, first.path))))
+        val queue = FakeDeviceWaitQueue()
+        queue.write(WaitQueueName.ANDROID_DEVICE, listOf(WaitTicket("ticket", admin2, second.path, ProcessIdentity(3000, 1), 0, "platform=android")))
+
+        CleanUpWorktreesUseCase(config, executor(), releasePhysicalDevices = physicalDevices(FakePhysicalDeviceInventoryStore(listOf(pixel())), leases, queue))(
+            listOf(first, second),
+            mainBranch,
+            deleteBranches = false,
+        ).getOrThrow()
+
+        assertEquals(DeviceLeases(), leases.leases)
+        assertTrue(queue.read(WaitQueueName.ANDROID_DEVICE).isEmpty())
     }
 
     @Test

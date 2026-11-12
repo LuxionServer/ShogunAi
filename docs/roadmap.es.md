@@ -48,6 +48,8 @@ Estado: **Empezado**.
 - **Compose Desktop**: las apps se ejecutan ocultas en segundo plano para que los agentes las comprueben en macOS.
 - **Turno del escritorio**: los agentes se turnan para manejar el escritorio real con `shogun desktop acquire --wait`, que Claude toma por sí solo antes de que actúe su propio computer use o el de Orca, y que solo lo detiene cuando otro worktree tiene el turno.
   Quién lo tiene y la cola se ven en la torre de control y en `shogun status`.
+- **Dispositivos físicos**: los móviles y tablets Android, iPhone y iPad conectados a la máquina se registran en un inventario, se prestan a los agentes por defecto y se adquieren de un worktree en uno con `shogun device acquire`, con las mismas concesiones y la misma cola `--wait` que emuladores y simuladores.
+  Se ven en `shogun status`, en una vista Dispositivos de la torre de control y en la vista de emulador de Orca (Android).
 - **Maven**: los backends JVM obtienen compilaciones de Maven acotadas en memoria, ven sus daemons de Maven y pueden parar los ociosos.
 - **Docker Compose**: los backends JVM obtienen un proyecto de Docker Compose y puertos por worktree, que se arrancan y construyen con `shogun compose up` y se limpian junto con los volúmenes, redes e imágenes que dejan los worktrees eliminados.
 - **Flutter**: los repositorios reciben `flutter pub get` en cada worktree nuevo, con su build de Gradle en `android/` gestionado por los providers de Gradle y del emulador.
@@ -114,7 +116,9 @@ Por orden:
     Orca 1.4.243 acepta como padre de un worktree existente un espacio Git o de «Abrir como carpeta», pero no un folder workspace.
   - Un worktree con su emulador y su simulador en marcha a la vez mostrado en la vista de emuladores de Orca.
     Orca 1.4.243 muestra un dispositivo por worktree y apaga el simulador al que sustituye, así que por ahora ShogunAi no muestra ninguno.
+  - Un iPhone o iPad físico mostrado en la vista de emulador de Orca, cuando Orca pueda emitir uno.
 - Comprobar:
+  - Que Orca emite un dispositivo Android físico conectado por su serial de transporte, por USB y por depuración inalámbrica, y que el emulador del worktree sigue en marcha.
   - En Windows y en Linux (`orca-ide`), la ubicación de la CLI y la shell que ejecutan las terminales de Orca, que solo cubren pruebas con dobles.
   - Que Orca detecta un agente envuelto por Headroom.
   - Que los avisos de Orca y su app móvil siguen a los agentes que ShogunAi arranca en Orca.
@@ -133,6 +137,12 @@ Provisionado y recursos acotados para los stacks en los que un worktree recién 
   - Los monorrepositorios de Dart con pub workspaces o Melos, que hoy declaran su propio bootstrap como comando post-creación.
 - Decidir si la regla del inicio de sesión de ejecutar `shogun emulator start` antes de cada uso del emulador sigue haciendo falta ahora que la concesión del dispositivo se renueva mientras la sesión trabaja (una sesión larga que nunca envía un prompt aún puede perder su emulador), o si los fallos de `adb` deberían remitir a `shogun emulator start`, tras observarlo en uso.
 - Esperar un dispositivo desde la app de escritorio y mostrar en sus vistas de máquina los worktrees que esperan cada pool; hoy solo esperan `shogun emulator start --wait` y `shogun simulator start --wait`, y la app hace fallar un arranque mientras otros esperan.
+- Seguimiento de los dispositivos físicos:
+  - Comprobarlos con dispositivos reales más allá de un móvil Android por USB: depuración inalámbrica, un iPhone o iPad por USB y por la red, y enchufar un dispositivo registrado mientras un worktree lo espera.
+  - Preferir automáticamente un dispositivo físico o uno virtual, en lugar de que el agente elija entre `shogun device acquire` y `shogun emulator start`.
+  - Desinstalar la app del proyecto de un dispositivo al liberarlo.
+  - Mostrar los dispositivos físicos de un worktree en su fila de la lista de worktrees.
+  - Dar más espacio al nombre del dispositivo en la vista Dispositivos, que lo corta con el ancho de ventana por defecto.
 
 ### Todos los agentes, no solo Claude Code
 

@@ -387,6 +387,7 @@ private fun SelectedDetail(board: WorktreeBoard, selected: SelectedWorktree, mod
         projectName = selected.project.name.takeIf { !board.isFiltered },
         projectId = selected.project.id,
         desktopTurn = board.desktopTurn,
+        physicalDevices = board.physicalDevices,
         openWithRequests = board.openWithRequests,
         modifier = modifier,
     )

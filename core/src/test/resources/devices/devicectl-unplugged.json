@@ -1,0 +1,210 @@
+{
+  "info": {
+    "arguments": [
+      "devicectl",
+      "list",
+      "devices",
+      "--json-output",
+      "/tmp/devicectl.json"
+    ],
+    "commandType": "devicectl.list.devices",
+    "environment": {
+      "TERM": "xterm-256color"
+    },
+    "jsonVersion": 5,
+    "outcome": "success",
+    "version": "642.16"
+  },
+  "result": {
+    "devices": [
+      {
+        "_deprecationNotice": {
+          "deprecatedFields": [
+            "hardwareProperties",
+            "deviceProperties",
+            "connectionProperties"
+          ],
+          "message": "The 'hardwareProperties', 'deviceProperties', 'connectionProperties' fields are deprecated and will be removed in a future release. Use the 'properties' dictionary instead.",
+          "replacement": "properties"
+        },
+        "capabilities": [
+          {
+            "featureIdentifier": "com.apple.coredevice.feature.acquireusageassertion",
+            "name": "Acquire Usage Assertion"
+          },
+          {
+            "featureIdentifier": "com.apple.coredevice.feature.connectdevice",
+            "name": "Connect to Device"
+          },
+          {
+            "featureIdentifier": "com.apple.coredevice.feature.default.user.credentials",
+            "name": "Modify Credentials for Default Users for a Device"
+          },
+          {
+            "featureIdentifier": "com.apple.coredevice.feature.tags",
+            "name": "Modify Tags"
+          },
+          {
+            "featureIdentifier": "com.apple.coredevice.feature.unpairdevice",
+            "name": "Unpair Device"
+          }
+        ],
+        "connectionProperties": {
+          "authenticationType": "manualPairing",
+          "isMobileDeviceOnly": false,
+          "lastConnectionDate": "2026-10-31T06:09:00.000Z",
+          "pairingState": "paired",
+          "potentialHostnames": [
+            "Test-iPhone.coredevice.local",
+            "11111111-2222-3333-4444-555555555555.coredevice.local",
+            "00008150-000A1B2C3D4E5F60.coredevice.local"
+          ],
+          "tunnelState": "unavailable",
+          "tunnelTransportProtocol": "tcp"
+        },
+        "deviceProperties": {
+          "bootState": "booted",
+          "ddiServicesAvailable": false,
+          "developerModeStatus": "enabled",
+          "hasInternalOSBuild": false,
+          "name": "Test iPhone",
+          "osBuildUpdate": "23G71",
+          "osVersionNumber": "26.6"
+        },
+        "hardwareProperties": {
+          "cpuType": {
+            "name": "arm64e",
+            "subType": -2147483646,
+            "type": 16777228
+          },
+          "deviceType": "iPhone",
+          "ecid": 1000000000000000,
+          "hardwareModel": "V57AP",
+          "isProductionFused": true,
+          "marketingName": "iPhone 17",
+          "platform": "iOS",
+          "productType": "iPhone18,3",
+          "reality": "physical",
+          "serialNumber": "SERIAL0000",
+          "supportedCPUTypes": [
+            {
+              "name": "arm64e",
+              "subType": -2147483646,
+              "type": 16777228
+            },
+            {
+              "name": "arm64",
+              "subType": 0,
+              "type": 16777228
+            }
+          ],
+          "supportedDeviceFamilies": [
+            1
+          ],
+          "thinningProductType": "iPhone18,3",
+          "udid": "00008150-000A1B2C3D4E5F60"
+        },
+        "identifier": "11111111-2222-3333-4444-555555555555",
+        "properties": {
+          "connection": {
+            "authenticationType": "manualPairing",
+            "lastConnectionDate": 815119740,
+            "pairingState": "paired",
+            "state": "unavailable",
+            "tunnelTransportProtocol": "tcp"
+          },
+          "hardware": {
+            "cpuType": {
+              "subtype": 18446744071562067970,
+              "type": 16777228
+            },
+            "deviceType": "iPhone",
+            "ecid": 1000000000000000,
+            "marketingName": "iPhone 17",
+            "platform": "iOS",
+            "productType": "iPhone18,3",
+            "reality": "physical",
+            "serialNumber": "SERIAL0000",
+            "supportedCPUTypes": [
+              {
+                "subtype": 18446744071562067970,
+                "type": 16777228
+              },
+              {
+                "subtype": 0,
+                "type": 16777228
+              }
+            ],
+            "supportedDeviceFamilies": [
+              1
+            ],
+            "thinningProductType": "iPhone18,3",
+            "udid": "00008150-000A1B2C3D4E5F60"
+          },
+          "software": {
+            "osBuildVersions": {
+              "buildVersion": {
+                "majorLetterComponent": "G",
+                "majorNumberComponent": 23,
+                "name": "23G71",
+                "revisionVersion": {
+                  "components": [
+                    23,
+                    7,
+                    71,
+                    0,
+                    0
+                  ],
+                  "originalComponentsCount": 5,
+                  "stringValue": "23.7.71.0.0"
+                },
+                "trainProgram": "iOS",
+                "updateNumberComponent": 71
+              },
+              "supplementalBuildVersion": {
+                "majorLetterComponent": "G",
+                "majorNumberComponent": 23,
+                "name": "23G71",
+                "revisionVersion": {
+                  "components": [
+                    23,
+                    7,
+                    71,
+                    0,
+                    0
+                  ],
+                  "originalComponentsCount": 5,
+                  "stringValue": "23.7.71.0.0"
+                },
+                "trainProgram": "iOS",
+                "updateNumberComponent": 71
+              }
+            },
+            "osVersionNumber": {
+              "components": [
+                26,
+                6,
+                0,
+                0,
+                0
+              ],
+              "originalComponentsCount": 2,
+              "stringValue": "26.6"
+            }
+          },
+          "state": {
+            "bootState": "booted",
+            "developerModeStatus": {
+              "enabled": {
+                "mode": 1
+              }
+            },
+            "name": "Test iPhone"
+          }
+        },
+        "propertyDisplayNames": null,
+        "visibilityClass": "default"
+      }
+    ]
+  }
+}

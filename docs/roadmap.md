@@ -48,6 +48,8 @@ Status: **Started**.
 - **Compose Desktop**: apps run hidden in the background for agents to check on macOS.
 - **Desktop turn**: agents take turns to drive the real desktop with `shogun desktop acquire --wait`, which Claude takes by itself before its own computer use or Orca's acts, only stopping when another worktree holds it.
   The holder and the queue show in the control tower and `shogun status`.
+- **Physical devices**: Android phones and tablets, iPhones and iPads connected to the machine are recorded in an inventory, lent to agents by default and acquired one worktree at a time with `shogun device acquire`, under the same leases and `--wait` queue as emulators and simulators.
+  They show in `shogun status`, a Devices view in the control tower and Orca's emulator view (Android).
 - **Maven**: JVM backends get Maven builds bounded in memory, see their Maven daemons and can stop the idle ones.
 - **Docker Compose**: JVM backends get a Docker Compose project and ports per worktree, started and built with `shogun compose up`, and cleaned up with the volumes, networks and images removed worktrees leave behind.
 - **Flutter**: repositories get `flutter pub get` in every new worktree, with their Gradle build in `android/` handled by the Gradle and emulator providers.
@@ -114,7 +116,9 @@ In order:
     Orca 1.4.243 accepts a Git or "Open as Folder" workspace as the parent of an existing worktree, but not a folder workspace.
   - A worktree running both its emulator and its simulator shown in Orca's emulator view.
     Orca 1.4.243 shows one device per worktree and shuts down the simulator it replaces, so ShogunAi shows neither for now.
+  - A physical iPhone or iPad shown in Orca's emulator view, once Orca can stream one.
 - Checking:
+  - That Orca streams a physical Android device attached by its transport serial, over USB and wireless debugging, and that the worktree's emulator keeps running.
   - On Windows and Linux (`orca-ide`), the CLI's location and the shell Orca's terminals run, which only tests with fakes cover.
   - That Orca detects an agent wrapped by Headroom.
   - That Orca's notifications and its mobile companion follow the agents ShogunAi starts in Orca.
@@ -133,6 +137,12 @@ Provisioning and bounded resources for the stacks where a fresh worktree is furt
   - Dart mono-repositories with pub workspaces or Melos, which today declare their own bootstrap as a post-creation command.
 - Deciding whether the session-start rule to run `shogun emulator start` before every use of the emulator is still needed now that the device lease is renewed while the session works (a long session that never sends a prompt can still lose its emulator), or whether `adb` failures should point to `shogun emulator start` instead, after watching it in use.
 - Waiting for a device from the desktop app, and showing the worktrees waiting for each pool in its machine views; today only `shogun emulator start --wait` and `shogun simulator start --wait` wait, and the app fails a start while others wait.
+- Physical devices follow-ups:
+  - Checking them with real devices beyond an Android phone over USB: wireless debugging, an iPhone or iPad over USB and on the network, and plugging a recorded device in while a worktree waits for it.
+  - Preferring a physical device or a virtual one automatically, instead of the agent choosing between `shogun device acquire` and `shogun emulator start`.
+  - Uninstalling the project's app from a device when it's released.
+  - Showing a worktree's physical devices in its row of the worktree list.
+  - Giving the device's name more room in the Devices view, which cuts it at the default window width.
 
 ### Every agent, not only Claude Code
 

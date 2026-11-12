@@ -2,6 +2,7 @@ package app.luxion.shogunai.cli
 
 import app.luxion.shogunai.domain.model.BranchType
 import app.luxion.shogunai.domain.model.DEFAULT_DEVICE_WAIT_MINUTES
+import app.luxion.shogunai.domain.model.DevicePlatform
 import app.luxion.shogunai.domain.model.RunnerId
 import app.luxion.shogunai.domain.model.WorkflowTopic
 import app.luxion.shogunai.domain.usecase.EnvironmentFormat
@@ -196,6 +197,20 @@ sealed interface CliCommand {
     ) : CliCommand, JsonOutput {
         override fun withJson() = copy(json = true)
     }
+    data class Device(
+        val action: DeviceAction,
+        val path: String? = null,
+        val json: Boolean = false,
+        val all: Boolean = false,
+        val platform: DevicePlatform? = null,
+        val name: String? = null,
+        val model: String? = null,
+        val wait: Duration? = null,
+        val device: String? = null,
+        val alias: String? = null,
+    ) : CliCommand, JsonOutput {
+        override fun withJson() = copy(json = true)
+    }
     data class Simulator(
         val action: SimulatorAction,
         val path: String? = null,
@@ -257,6 +272,7 @@ fun parseArguments(args: List<String>): ParsedArguments {
                 "simulator" -> parseSimulator(arguments)
                 "headless" -> parseHeadless(arguments)
                 "desktop" -> parseDesktop(arguments)
+                "device" -> parseDevice(arguments)
                 else -> throw UsageException("unknown command '$name'")
             }.withJsonOutput(json),
         )
@@ -269,7 +285,7 @@ private const val JSON_FLAG = "--json"
 
 private const val ARGUMENTS_SEPARATOR = "--"
 
-private val JSON_COMMANDS = setOf("new", "base", "multirepo", "provision", "trust", "remove", "repair", "open", "clean", "gradle", "stacks", "maven", "compose", "pool", "project", "xcode", "emulator", "simulator", "headless", "desktop", "hooks", "guide", "doctor")
+private val JSON_COMMANDS = setOf("new", "base", "multirepo", "provision", "trust", "remove", "repair", "open", "clean", "gradle", "stacks", "maven", "compose", "pool", "project", "xcode", "emulator", "simulator", "headless", "desktop", "device", "hooks", "guide", "doctor")
 
 private fun isSimulatorGradleInit(name: String, rest: List<String>) = name == "simulator" && rest.firstOrNull() == "gradle-init"
 
@@ -803,6 +819,65 @@ private fun parseDesktop(rest: List<String>): CliCommand.Desktop {
         throw UsageException("--wait and --wait-timeout only apply to 'desktop acquire'")
     }
     return CliCommand.Desktop(action, path, wait = wait.duration)
+}
+
+enum class DeviceAction { LIST, ACQUIRE, RELEASE, STATUS, LEND, WITHDRAW, RENAME, FORGET }
+
+private fun parseDevice(rest: List<String>): CliCommand.Device {
+    val actions = "list, acquire, release, status, lend, withdraw, rename or forget"
+    val name = rest.firstOrNull() ?: throw UsageException("'device' needs an action: $actions")
+    val action = DeviceAction.entries.firstOrNull { it.name.equals(name, ignoreCase = true) }
+        ?: throw UsageException("unknown action '$name' for 'device', expected $actions")
+    var command = CliCommand.Device(action)
+    val positional = mutableListOf<String>()
+    val platforms = mutableSetOf<DevicePlatform>()
+    val wait = DeviceWaitOptions()
+    val remaining = ArrayDeque(rest.drop(1))
+    while (remaining.isNotEmpty()) {
+        when (val argument = remaining.removeFirst()) {
+            "--all" -> command = command.copy(all = true)
+            "--android" -> platforms += DevicePlatform.ANDROID
+            "--ios" -> platforms += DevicePlatform.IOS
+            "--name" -> command = command.copy(name = remaining.valueOf(argument))
+            "--model" -> command = command.copy(model = remaining.valueOf(argument))
+            "--wait" -> wait.requested = true
+            "--wait-timeout" -> wait.timeout(remaining.valueOf(argument))
+            else -> {
+                if (argument.startsWith("-")) throw UsageException("unknown option '$argument' for 'device'")
+                positional += argument
+            }
+        }
+    }
+    if (platforms.size > 1) throw UsageException("'device $name' takes --android or --ios, not both")
+    command = command.copy(platform = platforms.singleOrNull(), wait = wait.duration)
+    requireDeviceOptions(command, name, wait.requested)
+    return withDevicePositionals(command, name, positional)
+}
+
+private fun requireDeviceOptions(command: CliCommand.Device, name: String, waits: Boolean) {
+    val acquire = command.action == DeviceAction.ACQUIRE
+    if (command.all && command.action != DeviceAction.LIST) throw UsageException("--all only applies to 'device list'")
+    if (!acquire && (command.name != null || command.model != null)) throw UsageException("--name and --model only apply to 'device acquire'")
+    if (!acquire && waits) throw UsageException("--wait and --wait-timeout only apply to 'device acquire'")
+    if (command.platform != null && !acquire && command.action != DeviceAction.RELEASE) {
+        throw UsageException("--android and --ios only apply to 'device acquire' and 'device release', not 'device $name'")
+    }
+}
+
+private fun withDevicePositionals(command: CliCommand.Device, name: String, positional: List<String>): CliCommand.Device = when (command.action) {
+    DeviceAction.LIST -> command.also { if (positional.isNotEmpty()) throw UsageException("'device list' takes no arguments, got '${positional.first()}'") }
+    DeviceAction.ACQUIRE, DeviceAction.RELEASE, DeviceAction.STATUS -> {
+        if (positional.size > 1) throw UsageException("'device $name' takes at most one path")
+        command.copy(path = positional.firstOrNull())
+    }
+    DeviceAction.RENAME -> {
+        if (positional.size != 2) throw UsageException("'device rename' needs a device and its new alias")
+        command.copy(device = positional[0], alias = positional[1])
+    }
+    DeviceAction.LEND, DeviceAction.WITHDRAW, DeviceAction.FORGET -> {
+        if (positional.size != 1) throw UsageException("'device $name' needs one device: its id, alias or name")
+        command.copy(device = positional.single())
+    }
 }
 
 private fun parseEmulator(rest: List<String>): CliCommand.Emulator {
