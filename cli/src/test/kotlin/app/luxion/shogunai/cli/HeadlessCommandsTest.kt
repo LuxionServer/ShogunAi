@@ -1,5 +1,7 @@
 package app.luxion.shogunai.cli
 
+import app.luxion.shogunai.engine.EngineOptions
+import app.luxion.shogunai.engine.ShogunEngine
 import app.luxion.shogunai.domain.FakeAndroidSdk
 import app.luxion.shogunai.domain.FakeAppWindowService
 import app.luxion.shogunai.domain.FakeAppleSimulators
@@ -82,31 +84,39 @@ class HeadlessCommandsTest {
     )
 
     private fun cli(declared: Boolean = true, workingDirectory: String = linked, input: String = "", environment: Map<String, String> = emptyMap(), provisioning: FakeRepositoryProvisioningSource = provisioning(declared)) = ShogunCli(
-        executor = executor,
-        fileManager = files,
-        projectRepository = FakeProjectRepository(emptyList()),
-        provisioningSource = provisioning,
-        daemonSource = FakeGradleDaemonSource(),
-        gradleUserHome = "/home/dev/.gradle",
-        environmentStateStore = FakeEnvironmentStateStore(),
-        portProbe = FakePortProbe(),
-        androidSdk = FakeAndroidSdk(),
-        appleSimulators = FakeAppleSimulators(),
-        kmpTestWiring = FakeKmpTestWiring(),
-        resourceLimits = FakeResourceLimitsRepository(ResourceSettings(CapacityProfile.PER_WORKTREE)),
-        machineCapacity = FakeMachineCapacity(),
-        derivedDataSource = FakeDerivedDataSource(),
-        herdrConfig = FakeHerdrConfigSource(),
-        orca = FakeOrcaClient(installed = false),
+        engine = ShogunEngine(
+            cliEnginePorts(
+                executor = executor,
+                fileManager = files,
+                projectRepository = FakeProjectRepository(emptyList()),
+                provisioningSource = provisioning,
+                gradleDaemons = FakeGradleDaemonSource(),
+                gradleUserHome = "/home/dev/.gradle",
+                environmentStateStore = FakeEnvironmentStateStore(),
+                portProbe = FakePortProbe(),
+                androidSdk = FakeAndroidSdk(),
+                appleSimulators = FakeAppleSimulators(),
+                kmpTestWiring = FakeKmpTestWiring(),
+                resourceLimits = FakeResourceLimitsRepository(ResourceSettings(CapacityProfile.PER_WORKTREE)),
+                machineCapacity = FakeMachineCapacity(),
+                derivedData = FakeDerivedDataSource(),
+                herdrConfig = FakeHerdrConfigSource(),
+                orca = FakeOrcaClient(installed = false),
+                workingDirectory = workingDirectory,
+                environment = hostEnvironment(variables = environment),
+                headlessLauncher = launcher,
+                appWindows = windows,
+            ),
+            EngineOptions(
+                pauseWhileStartingApp = {},
+            ),
+        ),
         workingDirectory = workingDirectory,
         out = out,
         err = err,
         readInput = { input },
         canonicalPath = { it.trimEnd('/') },
         environment = hostEnvironment(variables = environment),
-        headlessLauncher = launcher,
-        appWindows = windows,
-        pauseWhileStartingApp = {},
     )
 
     private fun appWindow() {
@@ -238,29 +248,35 @@ class HeadlessCommandsTest {
         appWindow()
         windows.windowAfterPolls = 1
         val realPauses = ShogunCli(
-            executor = executor,
-            fileManager = files,
-            projectRepository = FakeProjectRepository(emptyList()),
-            provisioningSource = provisioning(true),
-            daemonSource = FakeGradleDaemonSource(),
-            gradleUserHome = "/home/dev/.gradle",
-            environmentStateStore = FakeEnvironmentStateStore(),
-            portProbe = FakePortProbe(),
-            androidSdk = FakeAndroidSdk(),
-            appleSimulators = FakeAppleSimulators(),
-            kmpTestWiring = FakeKmpTestWiring(),
-            resourceLimits = FakeResourceLimitsRepository(ResourceSettings(CapacityProfile.PER_WORKTREE)),
-            machineCapacity = FakeMachineCapacity(),
-            derivedDataSource = FakeDerivedDataSource(),
-            herdrConfig = FakeHerdrConfigSource(),
-            orca = FakeOrcaClient(installed = false),
+            engine = ShogunEngine(
+                cliEnginePorts(
+                    executor = executor,
+                    fileManager = files,
+                    projectRepository = FakeProjectRepository(emptyList()),
+                    provisioningSource = provisioning(true),
+                    gradleDaemons = FakeGradleDaemonSource(),
+                    gradleUserHome = "/home/dev/.gradle",
+                    environmentStateStore = FakeEnvironmentStateStore(),
+                    portProbe = FakePortProbe(),
+                    androidSdk = FakeAndroidSdk(),
+                    appleSimulators = FakeAppleSimulators(),
+                    kmpTestWiring = FakeKmpTestWiring(),
+                    resourceLimits = FakeResourceLimitsRepository(ResourceSettings(CapacityProfile.PER_WORKTREE)),
+                    machineCapacity = FakeMachineCapacity(),
+                    derivedData = FakeDerivedDataSource(),
+                    herdrConfig = FakeHerdrConfigSource(),
+                    orca = FakeOrcaClient(installed = false),
+                    workingDirectory = linked,
+                    environment = hostEnvironment(),
+                    headlessLauncher = launcher,
+                    appWindows = windows,
+                ),
+            ),
             workingDirectory = linked,
             out = out,
             err = err,
             canonicalPath = { it.trimEnd('/') },
             environment = hostEnvironment(),
-            headlessLauncher = launcher,
-            appWindows = windows,
         )
 
         assertEquals(0, realPauses.run(listOf("headless", "start")), err.toString())

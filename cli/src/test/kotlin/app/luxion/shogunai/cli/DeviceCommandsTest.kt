@@ -1,5 +1,7 @@
 package app.luxion.shogunai.cli
 
+import app.luxion.shogunai.engine.EngineOptions
+import app.luxion.shogunai.engine.ShogunEngine
 import app.luxion.shogunai.domain.FakeAndroidSdk
 import app.luxion.shogunai.domain.FakeAppleSimulators
 import app.luxion.shogunai.domain.FakeDerivedDataSource
@@ -123,37 +125,45 @@ class DeviceCommandsTest {
     private val environmentStore = FakeEnvironmentStateStore()
 
     private fun cli(workingDirectory: String = task1, orcaClient: FakeOrcaClient = orca) = ShogunCli(
-        executor = executor,
-        fileManager = FakeFileManager(existing = listOf(base, task1, task2)),
-        projectRepository = FakeProjectRepository(emptyList()),
-        provisioningSource = provisioning,
-        daemonSource = FakeGradleDaemonSource(),
-        gradleUserHome = "/home/dev/.gradle",
-        environmentStateStore = environmentStore,
-        portProbe = FakePortProbe(),
-        androidSdk = FakeAndroidSdk(),
-        appleSimulators = simulators,
-        kmpTestWiring = FakeKmpTestWiring(),
-        resourceLimits = FakeResourceLimitsRepository(ResourceSettings(leaseMinutes = 20)),
-        machineCapacity = FakeMachineCapacity(),
-        derivedDataSource = FakeDerivedDataSource(),
-        herdrConfig = FakeHerdrConfigSource(),
-        orca = orcaClient,
+        engine = ShogunEngine(
+            cliEnginePorts(
+                executor = executor,
+                fileManager = FakeFileManager(existing = listOf(base, task1, task2)),
+                projectRepository = FakeProjectRepository(emptyList()),
+                provisioningSource = provisioning,
+                gradleDaemons = FakeGradleDaemonSource(),
+                gradleUserHome = "/home/dev/.gradle",
+                environmentStateStore = environmentStore,
+                portProbe = FakePortProbe(),
+                androidSdk = FakeAndroidSdk(),
+                appleSimulators = simulators,
+                kmpTestWiring = FakeKmpTestWiring(),
+                resourceLimits = FakeResourceLimitsRepository(ResourceSettings(leaseMinutes = 20)),
+                machineCapacity = FakeMachineCapacity(),
+                derivedData = FakeDerivedDataSource(),
+                herdrConfig = FakeHerdrConfigSource(),
+                orca = orcaClient,
+                workingDirectory = workingDirectory,
+                environment = hostEnvironment(),
+                deviceWaitQueue = queue,
+                processLiveness = FakeProcessLiveness(),
+                physicalDevices = listOf(devices),
+                deviceInventory = inventory,
+                deviceLeases = leases,
+            ),
+            EngineOptions(
+                clock = { now },
+                pauseWhileWaiting = { pause ->
+            now += pause
+            onPause.removeFirstOrNull()?.invoke()
+        },
+            ),
+        ),
         workingDirectory = workingDirectory,
         out = out,
         err = err,
         canonicalPath = { it.trimEnd('/') },
         environment = hostEnvironment(),
-        deviceWaitQueue = queue,
-        processLiveness = FakeProcessLiveness(),
-        deviceClock = { now },
-        pauseWhileWaiting = { pause ->
-            now += pause
-            onPause.removeFirstOrNull()?.invoke()
-        },
-        physicalDeviceSources = listOf(devices),
-        deviceInventory = inventory,
-        deviceLeases = leases,
     )
 
     private fun run(vararg args: String, workingDirectory: String = task1): Int = cli(workingDirectory).run(args.toList())
@@ -445,13 +455,41 @@ class DeviceCommandsTest {
         val orcaCli = { device: PhysicalDevice ->
             devices.connected = listOf(device)
             ShogunCli(
-                executor = executor, fileManager = FakeFileManager(existing = listOf(base, task1, task2)), projectRepository = FakeProjectRepository(emptyList()),
-                provisioningSource = FakeRepositoryProvisioningSource(), daemonSource = FakeGradleDaemonSource(), gradleUserHome = "/home/dev/.gradle",
-                environmentStateStore = FakeEnvironmentStateStore(), portProbe = FakePortProbe(), androidSdk = FakeAndroidSdk(), appleSimulators = simulators,
-                kmpTestWiring = FakeKmpTestWiring(), resourceLimits = FakeResourceLimitsRepository(ResourceSettings()), machineCapacity = FakeMachineCapacity(),
-                derivedDataSource = FakeDerivedDataSource(), herdrConfig = FakeHerdrConfigSource(), orca = open, workingDirectory = task1, out = out, err = err,
-                canonicalPath = { it.trimEnd('/') }, environment = hostEnvironment(), deviceWaitQueue = queue, processLiveness = FakeProcessLiveness(),
-                deviceClock = { now }, physicalDeviceSources = listOf(devices), deviceInventory = inventory, deviceLeases = leases,
+                engine = ShogunEngine(
+                    cliEnginePorts(
+                        executor = executor,
+                        fileManager = FakeFileManager(existing = listOf(base, task1, task2)),
+                        projectRepository = FakeProjectRepository(emptyList()),
+                        provisioningSource = FakeRepositoryProvisioningSource(),
+                        gradleDaemons = FakeGradleDaemonSource(),
+                        gradleUserHome = "/home/dev/.gradle",
+                        environmentStateStore = FakeEnvironmentStateStore(),
+                        portProbe = FakePortProbe(),
+                        androidSdk = FakeAndroidSdk(),
+                        appleSimulators = simulators,
+                        kmpTestWiring = FakeKmpTestWiring(),
+                        resourceLimits = FakeResourceLimitsRepository(ResourceSettings()),
+                        machineCapacity = FakeMachineCapacity(),
+                        derivedData = FakeDerivedDataSource(),
+                        herdrConfig = FakeHerdrConfigSource(),
+                        orca = open,
+                        workingDirectory = task1,
+                        environment = hostEnvironment(),
+                        deviceWaitQueue = queue,
+                        processLiveness = FakeProcessLiveness(),
+                        physicalDevices = listOf(devices),
+                        deviceInventory = inventory,
+                        deviceLeases = leases,
+                    ),
+                    EngineOptions(
+                        clock = { now },
+                    ),
+                ),
+                workingDirectory = task1,
+                out = out,
+                err = err,
+                canonicalPath = { it.trimEnd('/') },
+                environment = hostEnvironment(),
             )
         }
 

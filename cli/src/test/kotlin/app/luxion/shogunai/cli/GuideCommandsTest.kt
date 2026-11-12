@@ -1,5 +1,6 @@
 package app.luxion.shogunai.cli
 
+import app.luxion.shogunai.engine.ShogunEngine
 import app.luxion.shogunai.domain.model.FlutterProvider
 import app.luxion.shogunai.domain.FakeAndroidSdk
 import app.luxion.shogunai.domain.FakeAppleSimulators
@@ -95,29 +96,35 @@ class GuideCommandsTest {
         runner: FakeToolPreferenceRepository = FakeToolPreferenceRepository(),
         orca: FakeOrcaClient = FakeOrcaClient(installed = false),
     ) = ShogunCli(
-        executor = executor,
-        fileManager = files,
-        projectRepository = FakeProjectRepository(if (registered) listOf(project) else emptyList()),
-        provisioningSource = provisioning,
-        daemonSource = FakeGradleDaemonSource(),
-        gradleUserHome = "$home/.gradle",
-        environmentStateStore = FakeEnvironmentStateStore(),
-        portProbe = FakePortProbe(),
-        androidSdk = FakeAndroidSdk(),
-        appleSimulators = FakeAppleSimulators(),
-        kmpTestWiring = FakeKmpTestWiring(),
-        resourceLimits = FakeResourceLimitsRepository(ResourceSettings(CapacityProfile.PER_WORKTREE)),
-        machineCapacity = FakeMachineCapacity(),
-        derivedDataSource = FakeDerivedDataSource(),
-        herdrConfig = FakeHerdrConfigSource(),
-        orca = orca,
+        engine = ShogunEngine(
+            cliEnginePorts(
+                executor = executor,
+                fileManager = files,
+                projectRepository = FakeProjectRepository(if (registered) listOf(project) else emptyList()),
+                provisioningSource = provisioning,
+                gradleDaemons = FakeGradleDaemonSource(),
+                gradleUserHome = "$home/.gradle",
+                environmentStateStore = FakeEnvironmentStateStore(),
+                portProbe = FakePortProbe(),
+                androidSdk = FakeAndroidSdk(),
+                appleSimulators = FakeAppleSimulators(),
+                kmpTestWiring = FakeKmpTestWiring(),
+                resourceLimits = FakeResourceLimitsRepository(ResourceSettings(CapacityProfile.PER_WORKTREE)),
+                machineCapacity = FakeMachineCapacity(),
+                derivedData = FakeDerivedDataSource(),
+                herdrConfig = FakeHerdrConfigSource(),
+                orca = orca,
+                workingDirectory = workingDirectory,
+                environment = hostEnvironment(home, environment),
+                herdr = herdr,
+            ),
+        ),
         workingDirectory = workingDirectory,
         out = out,
         err = err,
         readInput = { input },
         canonicalPath = { it.trimEnd('/') },
         environment = hostEnvironment(home, environment),
-        herdr = herdr,
         toolPreferences = runner,
         readAnswer = { answer },
     )

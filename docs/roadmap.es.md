@@ -181,6 +181,8 @@ Quedaron fuera:
 - Soporte de repositorios bare con worktrees (el esquema «bare clone»), que cambia lo que significan el repositorio base y copiar desde él.
   Hoy ShogunAi los rechaza con un error específico.
 - Dividir `ProjectWorktrees.kt` y `ProjectSettingsView.kt` en holders y secciones más pequeños.
+- Dividir `ShogunCli.kt` por familias de comandos, cada una sobre el `ShogunEngine` compartido, y revisar las pocas llamadas que aún cablea distinto del motor (detección de agentes en `remove` y `clean`, daemons de Gradle con sesiones, el reloj de `xcode trim`).
+- Sacar de `AppContainer` los estados de UI y la lógica que aún viven en él (`readComposeStates`, `startEmulatorShownInOrca`…) a holders propios, construidos sobre el `ShogunEngine` compartido.
 - Comprobar el recorrido guiado en Windows y Linux con una app instalada real: la creación del ejemplo con el Git del sistema, y el comando del agente del recorrido, cuyo prompt se entrecomilla para la shell que ejecuta cada terminal.
 - Quitar Cmd/Ctrl+E, que se mantiene una versión como alias de Cmd/Ctrl+O desde que el atajo pasó al runner por defecto.
 - Mostrar en la vista de Gradle de la app de escritorio la build que ocupa un daemon; hoy `shogun gradle` la nombra, con su cliente, sus tareas y la sesión de agente que la lanzó.

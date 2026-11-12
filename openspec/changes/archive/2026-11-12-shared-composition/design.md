@@ -53,6 +53,8 @@ It builds once, eagerly, every machine-wide use case both surfaces share: `contr
 
 `EngineOptions` carries what may differ per surface or per test: `clock`, `pauseWhileWaiting`, `pauseWhileStartingApp` and `environmentCache: WorktreeEnvironmentCache?` (null by default). The app passes a cache; the command line passes none (see Context).
 
+Two DerivedData listings are exposed because the surfaces measure differently: `listDerivedData` (sizes and package caches, the CLI's `xcode` commands) and `listDerivedDataFolders` (sizes only, the app's machine view and Xcode section, which measure package caches separately). A few calls stay in the command line, built from `engine.ports`, because they're wired differently from the shared use case and switching them would change those commands' behaviour, which this change doesn't touch: agent detection without Claude sessions or without Herdr in `remove` and `clean`, Gradle daemons naming their sessions in `gradle`, and `xcode trim`'s clock, which follows the CLI's `now`. Reviewing them belongs to the split of `ShogunCli` by command family.
+
 The graph has no branches of its own besides the simulator settings lookup, so one construction test covers its lines, and its lambdas are covered by tests that run the operations through the engine.
 
 ### 4. Per-project use cases: `engine.project(config)`
@@ -72,7 +74,7 @@ Alternative considered: change the use cases to take the config per call. Reject
 
 ### 7. Tests
 
-`core/src/testFixtures` gets `fakeEnginePorts(...)`, which returns `EnginePorts` with a fake for each port and named parameters to replace any of them. CLI tests build `ShogunCli(ShogunEngine(fakeEnginePorts(...), EngineOptions(...)), ...)` through their existing helper functions, so each test file changes in one place. Engine tests in `core` cover construction, the per-project factory and the simulator settings lookup.
+`core/src/testFixtures` gets `fakeEnginePorts(...)`, which returns `EnginePorts` with a fake for each port and named parameters to replace any of them. CLI tests build `ShogunCli(ShogunEngine(cliEnginePorts(...), EngineOptions(...)), ...)` through their existing helper functions, so each test file changes in one place; `cliEnginePorts` (in `cli`'s tests) keeps the defaults `ShogunCli`'s constructor used to have (real adapters such as `CliHerdrClient` or `JsonOrcaWorkspaceStore` driven by the test's fake executor and home, `NONE` stores), so no existing CLI test changes what it exercises. Engine tests in `core` cover construction, the per-project factory and the simulator settings lookup.
 
 The simulator settings bug gets a regression test first: the lookup is moved into the engine as the app had it, a test with a project registered through a symbolic link fails, then the lookup switches to `sameDirectory` and the test passes. A second test covers the unreadable catalog. The missing-base behaviour of the command line gets a CLI test that fails before the CLI lists through the engine.
 

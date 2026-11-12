@@ -1,5 +1,7 @@
 package app.luxion.shogunai.cli
 
+import app.luxion.shogunai.engine.EngineOptions
+import app.luxion.shogunai.engine.ShogunEngine
 import app.luxion.shogunai.domain.FakeAndroidSdk
 import app.luxion.shogunai.domain.FakeAppleSimulators
 import app.luxion.shogunai.domain.FakeDerivedDataSource
@@ -95,35 +97,43 @@ class DesktopCommandsTest {
     }
 
     private fun cli(workingDirectory: String = task1, input: String = "", store: DesktopTurnStore = turnStore, git: ShellCommandExecutor = executor) = ShogunCli(
-        executor = git,
-        fileManager = FakeFileManager(existing = listOf(base, task1, task2)),
-        projectRepository = FakeProjectRepository(emptyList()),
-        provisioningSource = FakeRepositoryProvisioningSource(),
-        daemonSource = FakeGradleDaemonSource(),
-        gradleUserHome = "/home/dev/.gradle",
-        environmentStateStore = stateStore,
-        portProbe = FakePortProbe(),
-        androidSdk = FakeAndroidSdk(),
-        appleSimulators = FakeAppleSimulators(),
-        kmpTestWiring = FakeKmpTestWiring(),
-        resourceLimits = FakeResourceLimitsRepository(ResourceSettings(desktopTurnMinutes = 10)),
-        machineCapacity = FakeMachineCapacity(),
-        derivedDataSource = FakeDerivedDataSource(),
-        herdrConfig = FakeHerdrConfigSource(),
-        orca = FakeOrcaClient(installed = false),
+        engine = ShogunEngine(
+            cliEnginePorts(
+                executor = git,
+                fileManager = FakeFileManager(existing = listOf(base, task1, task2)),
+                projectRepository = FakeProjectRepository(emptyList()),
+                provisioningSource = FakeRepositoryProvisioningSource(),
+                gradleDaemons = FakeGradleDaemonSource(),
+                gradleUserHome = "/home/dev/.gradle",
+                environmentStateStore = stateStore,
+                portProbe = FakePortProbe(),
+                androidSdk = FakeAndroidSdk(),
+                appleSimulators = FakeAppleSimulators(),
+                kmpTestWiring = FakeKmpTestWiring(),
+                resourceLimits = FakeResourceLimitsRepository(ResourceSettings(desktopTurnMinutes = 10)),
+                machineCapacity = FakeMachineCapacity(),
+                derivedData = FakeDerivedDataSource(),
+                herdrConfig = FakeHerdrConfigSource(),
+                orca = FakeOrcaClient(installed = false),
+                workingDirectory = workingDirectory,
+                environment = hostEnvironment(),
+                deviceWaitQueue = queue,
+                processLiveness = FakeProcessLiveness(),
+                desktopTurns = store,
+            ),
+            EngineOptions(
+                clock = { now },
+                pauseWhileWaiting = { pause ->
+            now += pause
+            onPause.removeFirstOrNull()?.invoke()
+        },
+            ),
+        ),
         workingDirectory = workingDirectory,
         out = out,
         err = err,
         canonicalPath = { it.trimEnd('/') },
         environment = hostEnvironment(),
-        deviceWaitQueue = queue,
-        processLiveness = FakeProcessLiveness(),
-        deviceClock = { now },
-        pauseWhileWaiting = { pause ->
-            now += pause
-            onPause.removeFirstOrNull()?.invoke()
-        },
-        desktopTurnStore = store,
         readInput = { input },
     )
 
@@ -560,30 +570,36 @@ class DesktopCommandsTest {
         val start = Instant.now()
         turnStore.turn = DesktopTurn(admin2, task2, start.toEpochMilli(), (start + Duration.ofMillis(100)).toEpochMilli())
         val realTime = ShogunCli(
-            executor = executor,
-            fileManager = FakeFileManager(existing = listOf(base, task1, task2)),
-            projectRepository = FakeProjectRepository(emptyList()),
-            provisioningSource = FakeRepositoryProvisioningSource(),
-            daemonSource = FakeGradleDaemonSource(),
-            gradleUserHome = "/home/dev/.gradle",
-            environmentStateStore = stateStore,
-            portProbe = FakePortProbe(),
-            androidSdk = FakeAndroidSdk(),
-            appleSimulators = FakeAppleSimulators(),
-            kmpTestWiring = FakeKmpTestWiring(),
-            resourceLimits = FakeResourceLimitsRepository(ResourceSettings(desktopTurnMinutes = 10)),
-            machineCapacity = FakeMachineCapacity(),
-            derivedDataSource = FakeDerivedDataSource(),
-            herdrConfig = FakeHerdrConfigSource(),
-            orca = FakeOrcaClient(installed = false),
+            engine = ShogunEngine(
+                cliEnginePorts(
+                    executor = executor,
+                    fileManager = FakeFileManager(existing = listOf(base, task1, task2)),
+                    projectRepository = FakeProjectRepository(emptyList()),
+                    provisioningSource = FakeRepositoryProvisioningSource(),
+                    gradleDaemons = FakeGradleDaemonSource(),
+                    gradleUserHome = "/home/dev/.gradle",
+                    environmentStateStore = stateStore,
+                    portProbe = FakePortProbe(),
+                    androidSdk = FakeAndroidSdk(),
+                    appleSimulators = FakeAppleSimulators(),
+                    kmpTestWiring = FakeKmpTestWiring(),
+                    resourceLimits = FakeResourceLimitsRepository(ResourceSettings(desktopTurnMinutes = 10)),
+                    machineCapacity = FakeMachineCapacity(),
+                    derivedData = FakeDerivedDataSource(),
+                    herdrConfig = FakeHerdrConfigSource(),
+                    orca = FakeOrcaClient(installed = false),
+                    workingDirectory = task1,
+                    environment = hostEnvironment(),
+                    deviceWaitQueue = queue,
+                    processLiveness = FakeProcessLiveness(),
+                    desktopTurns = turnStore,
+                ),
+            ),
             workingDirectory = task1,
             out = out,
             err = err,
             canonicalPath = { it.trimEnd('/') },
             environment = hostEnvironment(),
-            deviceWaitQueue = queue,
-            processLiveness = FakeProcessLiveness(),
-            desktopTurnStore = turnStore,
         )
 
         assertEquals(0, realTime.run(listOf("desktop", "acquire", "--wait")), err.toString())
