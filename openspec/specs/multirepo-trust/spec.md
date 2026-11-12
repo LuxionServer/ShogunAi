@@ -78,7 +78,7 @@ Creating a multirepo and changing its declaration through ShogunAi (`shogun mult
 - **THEN** the command says the multirepo needs review with `shogun multirepo trust`, changes nothing and exits with code 1
 
 ### Requirement: Review and approve a multirepo from the command line
-`shogun multirepo trust [folder]` SHALL print the declaration's path, its declared `name`, each alias with its resolved repository path, the resolved worktrees root, the workspace repository and each shared variable with its alias and template, marking every path outside the multirepo folder's parent, and say whether it's approved. On a terminal it SHALL ask and, on an explicit yes, register and approve it; `--yes` SHALL do so without asking. The folder SHALL default to the nearest declaration in the current folder or a parent.
+`shogun multirepo trust [folder]` SHALL print the declaration's path, its declared `name`, each alias with its resolved repository path, the resolved worktrees root, the workspace repository and each shared variable with its alias and template, marking every path outside the multirepo folder's parent, and say whether it's approved. The folder SHALL default to the nearest declaration in the current folder or a parent.
 
 #### Scenario: Approve a cloned workspace repository
 - **WHEN** the user runs `shogun multirepo trust` in a cloned `~/projects/product` whose declaration lists `app` as `product-app` and answers yes
@@ -132,3 +132,18 @@ A multirepo registered by an earlier version, with no approval stored, SHALL cou
 #### Scenario: Upgrade
 - **WHEN** the user upgrades ShogunAi with `~/projects/product` already registered
 - **THEN** commands there print the note naming `shogun multirepo trust`, the app marks it as needing review, and after one approval it applies as before
+
+### Requirement: Confirm a multirepo's approval
+On a terminal, `shogun multirepo trust` SHALL ask and, on an explicit yes, register and approve the multirepo; `--yes` SHALL do so without asking.
+
+#### Scenario: Yes on a terminal
+- **WHEN** the user runs `shogun multirepo trust` on a terminal and answers yes
+- **THEN** the multirepo is registered and approved
+
+#### Scenario: Without asking
+- **WHEN** the user runs `shogun multirepo trust --yes`
+- **THEN** nothing is asked and the multirepo is registered and approved
+
+#### Scenario: No or Enter
+- **WHEN** the user answers no or just presses Enter
+- **THEN** nothing is registered or approved and the command exits with code 0

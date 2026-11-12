@@ -6,7 +6,7 @@ Keeps the worktree screen up to date with what happens in the repository while i
 ## Requirements
 
 ### Requirement: Reload when the repository's Git metadata changes
-While a worktree view is shown, the system SHALL check the Git metadata of every saved project at the interval of the refresh cadence, whichever projects the view shows, and reload that project's worktree list, statuses and overview when its metadata differs from the previous check. Projects whose metadata didn't change SHALL NOT be reloaded. The watched metadata is each main repository's `HEAD`, `index`, `packed-refs`, `FETCH_HEAD`, everything under `refs`, and everything under `worktrees`, which holds each linked worktree's `HEAD`, `index` and lock.
+While a worktree view is shown, the system SHALL check the Git metadata of every saved project at the interval of the refresh cadence, whichever projects the view shows, and reload that project's worktree list, statuses and overview when its metadata differs from the previous check. Projects whose metadata didn't change SHALL NOT be reloaded.
 
 #### Scenario: Worktree created from a terminal
 - **WHEN** a worktree is added to a shown project's repository by another tool
@@ -36,7 +36,7 @@ The system SHALL detect running agents again on every check, once for the worktr
 - **THEN** running processes are inspected once, and each agent is attributed to its worktree in any of the three projects
 
 ### Requirement: Watch only while it is useful
-The system SHALL only check the Git metadata of the projects shown in the current worktree view, SHALL stop checking a project when no shown view includes it, and SHALL skip a project's check while it is loading or busy creating, removing or cleaning up. Checks SHALL run while the main window is visible, at the refresh cadence's focused interval when it is focused and at its unfocused interval when it isn't, and SHALL pause while it is minimized, in the tray or the app is hidden; unreported states count as visible and focused. The light refresh on focus SHALL run when the window regains focus.
+The system SHALL only check the Git metadata of the projects shown in the current worktree view, SHALL stop checking a project when no shown view includes it, and SHALL skip a project's check while it is loading or busy creating, removing or cleaning up.
 
 #### Scenario: Leaving the screen
 - **WHEN** the user switches from "All worktrees" to the view filtered to `api`
@@ -102,3 +102,29 @@ When the only watched metadata of a project that changed since the previous chec
 #### Scenario: Index and branch change together
 - **WHEN** a commit in a listed worktree changes its `index` and a ref
 - **THEN** the project is reloaded as for any other metadata change
+
+### Requirement: The Git metadata that is watched
+A project's watched Git metadata SHALL be its main repository's `HEAD`, `index`, `packed-refs`, `FETCH_HEAD`, everything under `refs`, and everything under `worktrees`, which holds each linked worktree's `HEAD`, `index` and lock.
+
+#### Scenario: Fetch
+- **WHEN** a fetch from a terminal updates `FETCH_HEAD` and a remote ref of a shown project
+- **THEN** that project is reloaded by the next check
+
+#### Scenario: Linked worktree's index
+- **WHEN** a file is staged in a listed linked worktree, changing its `index` under `worktrees`
+- **THEN** that project is reloaded by the next check
+
+### Requirement: Check while the window is visible
+Checks SHALL run while the main window is visible, at the refresh cadence's focused interval when it is focused and at its unfocused interval when it isn't, and SHALL pause while it is minimized, in the tray or the app is hidden; unreported states count as visible and focused. The light refresh on focus SHALL run when the window regains focus.
+
+#### Scenario: Visible but not focused
+- **WHEN** the profile is Balanced, the window stays visible on a second monitor while the user works in another app, and an agent starts in a shown worktree
+- **THEN** checks keep running every 15 seconds and the worktree shows the agent by the next check, without the window regaining focus
+
+#### Scenario: Minimized, in the tray or hidden
+- **WHEN** the user minimizes the window, closes it to the tray, or hides the app, for a minute
+- **THEN** no check runs during that minute, and checks resume when the window is shown again
+
+#### Scenario: Focus regained
+- **WHEN** the window regains focus
+- **THEN** the light refresh on focus runs

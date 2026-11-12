@@ -83,7 +83,7 @@ The system SHALL mark a worktree's branch as merged when, against its base or ag
 - **THEN** the worktree is shown as merged
 
 ### Requirement: Show worktree statuses in the worktree list
-The system SHALL show each worktree's status compactly in its row (uncommitted changes count, commits ahead of and behind its base, merged, and the activity date) and in full in its detail (also the upstream divergence, the base's name, the last commit date and the creation date). The list SHALL appear without waiting for the statuses, each row SHALL show that its status is loading until it is read for the first time, and a worktree whose status can't be read SHALL show that it is unavailable without affecting the other rows. When statuses are read again, each row SHALL keep showing its previous status until the new one is read. Dates are shown relative to now.
+The system SHALL show each worktree's status compactly in its row (uncommitted changes count, commits ahead of and behind its base, merged, and the activity date) and in full in its detail (also the upstream divergence, the base's name, the last commit date and the creation date). Dates are shown relative to now.
 
 #### Scenario: List shown before statuses
 - **WHEN** the worktree view loads a project's worktrees for the first time
@@ -176,3 +176,18 @@ A worktree's activity date SHALL be the date of its last commit when its branch 
 #### Scenario: Branch of an epic without commits of its own
 - **WHEN** a worktree was created 2 days ago on a new branch at `epic/redesign`'s tip, its recorded base, which is 5 commits ahead of `develop`
 - **THEN** its activity date is 2 days ago, labelled as its creation
+
+### Requirement: The list doesn't wait for the statuses
+The worktree list SHALL appear without waiting for the statuses, each row SHALL show that its status is loading until it is read for the first time, and a worktree whose status can't be read SHALL show that it is unavailable without affecting the other rows. When statuses are read again, each row SHALL keep showing its previous status until the new one is read.
+
+#### Scenario: First load
+- **WHEN** the worktree view loads a project's worktrees for the first time
+- **THEN** the worktrees are listed as soon as the list is read, and each row shows a loading state until its status is read
+
+#### Scenario: Reload
+- **WHEN** the list of a project whose statuses were already read is reloaded
+- **THEN** each row keeps its previous status, without a loading state, until its new status is read, and "Active" doesn't move it out of its group meanwhile
+
+#### Scenario: One status unreadable
+- **WHEN** reading a worktree's status fails, for example because its folder no longer exists
+- **THEN** that row shows that its status is unavailable, and the other rows show their statuses
