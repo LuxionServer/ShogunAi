@@ -72,7 +72,7 @@ The use case gains a `home: String` constructor parameter (the host environment'
 
 ### Java for Gradle's daemon
 
-- Criteria apply → version `N`. Unreadable → `Unusable` naming `gradle/gradle-daemon-jvm.properties` and `toolchainVersion`, a fix to regenerate them with `./gradlew updateDaemonJvm`. Found installed → passes with that home as location and `N`. Not found but `toolchainUrl.` entries and downloads allowed → passes with `provisioned = true`. Otherwise → new problem `JavaNotInstalled(versions = [N], searched)`.
+- Criteria apply → version `N`. Unreadable → new problem `DaemonCriteriaUnreadable(path)`, with the fix to regenerate them with `./gradlew updateDaemonJvm`. Found installed → passes with that home as location and `N`. Not found but `toolchainUrl.` entries and downloads allowed → passes with `provisioned = true`. Otherwise → new problem `JavaNotInstalled(versions = [N], searched)`.
 - Else `org.gradle.java.home` → `<value>/bin/java` (`\bin\java.exe` on Windows, the existing `javaUnder`). Missing → new problem `GradleJavaHomeInvalid(javaHome, propertiesFile)`, no fallback (Gradle fails too). Else `java -version` as the `GRADLE_JAVA` check does: failure → `Unusable(output)`.
 - Then the Gradle compatibility of the version, as for the client's Java, reusing `JavaTooOld` and `GradleTooOld`. Both gain `source: JavaSource = JavaSource.ENVIRONMENT` (`ENVIRONMENT`, `GRADLE_PROPERTY`, `DAEMON_CRITERIA`), so the fix names `JAVA_HOME`, `org.gradle.java.home` or `toolchainVersion`. A criteria Java that isn't installed is still judged first for compatibility: a version Gradle can't run is the root problem.
 
@@ -87,7 +87,7 @@ The daemon's Java version is the criteria's `N`, else `org.gradle.java.home`'s m
 ### Model changes
 
 - `ProviderToolId`: the three ids above.
-- `ProviderToolProblem`: `JavaNotInstalled(versions: List<Int>, searched: List<String>)`, `GradleJavaHomeInvalid(javaHome, propertiesFile)`, `AndroidGradlePluginNeedsJava(java, required, agp, source)`; `source` on `JavaTooOld` and `GradleTooOld`.
+- `ProviderToolProblem`: `JavaNotInstalled(versions: List<Int>, searched: List<String>)`, `GradleJavaHomeInvalid(javaHome, propertiesFile)`, `DaemonCriteriaUnreadable(path)`, `AndroidGradlePluginNeedsJava(java, required, agp, source)`; `source` on `JavaTooOld` and `GradleTooOld`.
 - `InstallationFinding.ProviderTool`: `provisioned: Boolean = false` and `java: Int? = null`.
 - `JavaSource` enum next to the problems.
 
@@ -95,7 +95,7 @@ The daemon's Java version is the criteria's `N`, else `org.gradle.java.home`'s m
 
 ### Structure of the use case
 
-`CheckProviderToolsUseCase` keeps one `invoke`. The Gradle step's dependent becomes a list: after `GRADLE_JAVA` it reads `GradleJavaSettings` and emits the three checks, each guarded like the others (an exception becomes `Unusable`). The settings reading and `JavaInstallations` live in their own files so the use case doesn't grow past what reads easily.
+`CheckProviderToolsUseCase` keeps one `invoke`. A located tool's dependent becomes a list of checks: Gradle's is `GRADLE_JAVA` followed by the three build checks, Maven's `MAVEN_JAVA`, Compose's `DOCKER_DAEMON`. The client's Java is guarded as before. The three build checks are guarded together: reading the settings is file reads that already turn errors into "missing", so the only thing that can throw is `org.gradle.java.home`'s `java -version`, and then a single `GRADLE_DAEMON_JAVA` check reports `Unusable` with the reason. The settings reading (`GradleJavaSettingsReader`) and `JavaInstallations` live in their own files so the use case doesn't grow past what reads easily.
 
 ## Risks / Trade-offs
 
@@ -106,4 +106,10 @@ The daemon's Java version is the criteria's `N`, else `org.gradle.java.home`'s m
 
 ## Coverage
 
-No new `@Serializable` class and no exclusion: `core`'s maximum of missed branches doesn't change, and `core` and `cli` stay at 100% of lines and branches. The desktop texts gain cases for the new tools and problems, covered by `InstallationCheckUiTest` and `EveryTextTest`; if the new fields push `TextSamples`' combinations past its limit, the limit is raised rather than sampling by hand. Any desktop floor crossed upwards is raised in this change.
+No new `@Serializable` class and no exclusion: `core`'s maximum of missed branches doesn't change, and `core` and `cli` stay at 100% of lines and branches. The desktop texts gain cases for the new tools and problems, covered by `InstallationCheckUiTest` and `EveryTextTest`.
+
+`TextSamples` builds every combination of a data class's fields. With three more tools, four more problems, `source` and the two new fields, `ProviderTool` alone reached about 240,000 combinations, and `InstallationCheck` four times that: raising the limit wasn't enough. So `TextSamples` samples `ProviderTool` directly: every tool with every problem (with and without a location), and the full product of location, installed, version, `provisioned` and `java` only for passing checks, the only ones whose texts read those fields. That is about 7,000 findings, under the existing limit of 50,000 for `InstallationCheck`, which stays.
+
+The fake `FileManager` of the test fixtures lists children of Windows paths too (a backslash separator), so the Windows JDK folders are tested on the macOS job.
+
+The desktop app's branches are at 79.6% with this change, but they were already above 79% before it (the change adds far fewer branches than it would take to cross), so the floors stay as they are; lines stay under 92%.

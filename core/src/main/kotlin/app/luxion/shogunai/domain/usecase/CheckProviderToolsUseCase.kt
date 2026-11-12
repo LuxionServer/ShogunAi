@@ -10,6 +10,7 @@ import app.luxion.shogunai.domain.model.CheckState
 import app.luxion.shogunai.domain.model.HostOs
 import app.luxion.shogunai.domain.model.InstallationCheck
 import app.luxion.shogunai.domain.model.InstallationFinding
+import app.luxion.shogunai.domain.model.JavaSource
 import app.luxion.shogunai.domain.model.ProviderToolId
 import app.luxion.shogunai.domain.model.ProviderToolProblem
 import app.luxion.shogunai.domain.model.RepositoryProviders
@@ -25,7 +26,11 @@ class CheckProviderToolsUseCase(
     private val simulators: AppleSimulators,
     private val environmentVariable: (String) -> String?,
     private val os: HostOs,
+    home: String,
 ) {
+
+    private val gradleSettings = GradleJavaSettingsReader(fileManager, environmentVariable, home)
+    private val javaInstallations = JavaInstallations(fileManager, environmentVariable, os, home)
 
     suspend operator fun invoke(project: String, repository: String, providers: RepositoryProviders): List<InstallationCheck> {
         val tools = buildList<Pair<ProviderToolId, suspend () -> Located>> {
@@ -40,13 +45,15 @@ class CheckProviderToolsUseCase(
         }
         return tools.flatMap { (tool, locate) ->
             val located = locateGuarded(locate)
-            val dependent = located.then?.let { (next, locateNext) -> check(project, next, locateGuarded(locateNext)) }
-            listOfNotNull(check(project, tool, located), dependent)
+            val dependents = located.then?.invoke().orEmpty()
+            listOf(check(project, tool, located)) + dependents.map { (next, nextLocated) -> check(project, next, nextLocated) }
         }
     }
 
     private fun check(project: String, tool: ProviderToolId, located: Located): InstallationCheck {
-        val finding = InstallationFinding.ProviderTool(project, tool, located.location, located.problem, located.installed, located.version)
+        val finding = InstallationFinding.ProviderTool(
+            project, tool, located.location, located.problem, located.installed, located.version, located.provisioned, located.java,
+        )
         return InstallationCheck(if (located.problem == null) CheckState.PASSED else CheckState.WARNING, finding)
     }
 
@@ -68,7 +75,10 @@ class CheckProviderToolsUseCase(
         val problem: ProviderToolProblem? = null,
         val installed: Int? = null,
         val version: String? = null,
-        val then: Pair<ProviderToolId, suspend () -> Located>? = null,
+        val then: (suspend () -> List<Pair<ProviderToolId, Located>>)? = null,
+        val provisioned: Boolean = false,
+        val java: Int? = null,
+        val runtime: InstalledJava? = null,
     )
 
     private enum class BuildTool(
@@ -99,7 +109,87 @@ class CheckProviderToolsUseCase(
             val command = findExecutable(tool.command) ?: return Located(null, ProviderToolProblem.NotFound(listOf(wrapperPath), listOf(tool.command)))
             command to printedVersion(command, tool.printedVersion)
         }
-        return Located(location, version = version, then = tool.java to { java(tool, version) })
+        return Located(location, version = version, then = { javaChecks(repository, tool, version) })
+    }
+
+    private suspend fun javaChecks(repository: String, tool: BuildTool, version: String?): List<Pair<ProviderToolId, Located>> {
+        val client = locateGuarded { java(tool, version) }
+        val build = if (tool == BuildTool.GRADLE) gradleBuildChecksGuarded(repository, version, client.runtime) else emptyList()
+        return listOf(tool.java to client) + build
+    }
+
+    private suspend fun gradleBuildChecksGuarded(repository: String, gradle: String?, client: InstalledJava?): List<Pair<ProviderToolId, Located>> = try {
+        gradleBuildChecks(repository, gradle, client)
+    } catch (error: CancellationException) {
+        throw error
+    } catch (error: Exception) {
+        listOf(ProviderToolId.GRADLE_DAEMON_JAVA to Located(null, ProviderToolProblem.Unusable(error.message)))
+    }
+
+    private suspend fun gradleBuildChecks(repository: String, gradle: String?, client: InstalledJava?): List<Pair<ProviderToolId, Located>> {
+        val settings = gradleSettings.read(repository)
+        val search by lazy { javaInstallations.search(settings, gradleSettings.gradleUserHome, client) }
+        val daemon = daemonJava(settings, gradle) { search }
+        val toolchains = toolchains(settings) { search }
+        val daemonJava = if (daemon != null) daemon.java?.let { it to daemon.source } else client?.let { it.major to JavaSource.ENVIRONMENT }
+        val agp = settings.androidGradlePlugin?.let { agp -> daemonJava?.let { (java, source) -> androidGradlePlugin(agp, java, source) } }
+        return listOfNotNull(
+            daemon?.let { ProviderToolId.GRADLE_DAEMON_JAVA to it.located },
+            toolchains?.let { ProviderToolId.GRADLE_TOOLCHAINS to it },
+            agp?.let { ProviderToolId.ANDROID_GRADLE_PLUGIN_JAVA to it },
+        )
+    }
+
+    private data class DaemonJava(val located: Located, val java: Int?, val source: JavaSource)
+
+    private suspend fun daemonJava(settings: GradleJavaSettings, gradle: String?, search: () -> JavaSearch): DaemonJava? {
+        val criteria = settings.daemonCriteria?.takeIf { criteria ->
+            gradle?.let(ToolVersions::numeric)?.let { CheckInstallationUseCase.isAtLeast(it, DAEMON_CRITERIA_GRADLE) } ?: true
+        }
+        if (criteria != null) return criteriaJava(criteria, settings, gradle, search)
+        val javaHome = settings.javaHome ?: return null
+        return propertyJava(javaHome, gradle)
+    }
+
+    private fun criteriaJava(criteria: DaemonJvmCriteria, settings: GradleJavaSettings, gradle: String?, search: () -> JavaSearch): DaemonJava {
+        val source = JavaSource.DAEMON_CRITERIA
+        val version = criteria.version
+            ?: return DaemonJava(Located(criteria.path, ProviderToolProblem.DaemonCriteriaUnreadable(criteria.path)), null, source)
+        val installed = search().find(version)
+        val located = compatibility(BuildTool.GRADLE, gradle, version, source)?.let { Located(installed?.home, it, version = version.toString()) }
+            ?: installed?.let { Located(it.home, version = version.toString()) }
+            ?: if (criteria.downloadable && settings.autoDownload) {
+                Located(null, version = version.toString(), provisioned = true)
+            } else {
+                Located(null, ProviderToolProblem.JavaNotInstalled(listOf(version), search().searched), version = version.toString())
+            }
+        return DaemonJava(located, version, source)
+    }
+
+    private suspend fun propertyJava(javaHome: GradleJavaHome, gradle: String?): DaemonJava {
+        val source = JavaSource.GRADLE_PROPERTY
+        val java = javaUnder(javaHome.value).takeIf(fileManager::exists)
+            ?: return DaemonJava(Located(null, ProviderToolProblem.GradleJavaHomeInvalid(javaHome.value, javaHome.propertiesFile)), null, source)
+        val measured = measure(java)
+        val major = measured.runtime?.major ?: return DaemonJava(measured, null, source)
+        return DaemonJava(Located(java, compatibility(BuildTool.GRADLE, gradle, major, source), version = major.toString()), major, source)
+    }
+
+    private fun toolchains(settings: GradleJavaSettings, search: () -> JavaSearch): Located? {
+        if (settings.toolchains.isEmpty()) return null
+        val versions = settings.toolchains.joinToString(", ")
+        val missing = settings.toolchains.filter { search().find(it) == null }
+        return when {
+            missing.isEmpty() -> Located(null, version = versions)
+            settings.toolchainResolver && settings.autoDownload -> Located(null, version = versions, provisioned = true)
+            else -> Located(null, ProviderToolProblem.JavaNotInstalled(missing, search().searched), version = versions)
+        }
+    }
+
+    private fun androidGradlePlugin(agp: String, java: Int, source: JavaSource): Located {
+        val required = JavaCompatibility.minimumJavaForAndroidGradlePlugin(agp)
+        val problem = if (java < required) ProviderToolProblem.AndroidGradlePluginNeedsJava(java, required, agp, source) else null
+        return Located(null, problem, version = agp, java = java)
     }
 
     private suspend fun printedVersion(command: String, parse: (String) -> String?): String? = try {
@@ -117,21 +207,27 @@ class CheckProviderToolsUseCase(
         } else {
             findExecutable("java") ?: return Located(null, ProviderToolProblem.NotFound(listOf(JAVA_HOME), listOf("java")))
         }
+        val measured = measure(java)
+        val major = measured.runtime?.major ?: return measured
+        return measured.copy(problem = compatibility(tool, toolVersion, major, JavaSource.ENVIRONMENT))
+    }
+
+    private suspend fun measure(java: String): Located {
         val result = executor.executeWithin(listOf(java, "-version"), CommandTimeouts.LISTING)
         if (!result.isSuccess) return Located(java, ProviderToolProblem.Unusable(output(result)))
         val major = ToolVersions.javaMajor(result.stderr + "\n" + result.stdout) ?: return Located(java, ProviderToolProblem.Unusable(output(result)))
-        return Located(java, compatibility(tool, toolVersion, major), version = major.toString())
+        return Located(java, version = major.toString(), runtime = InstalledJava(java, major))
     }
 
     private fun javaUnder(javaHome: String): String =
         if (os.isWindows) "${javaHome.trimEnd('\\', '/')}\\bin\\java.exe" else joinPath(javaHome, "bin", "java")
 
-    private fun compatibility(tool: BuildTool, toolVersion: String?, java: Int): ProviderToolProblem? {
+    private fun compatibility(tool: BuildTool, toolVersion: String?, java: Int, source: JavaSource): ProviderToolProblem? {
         val version = toolVersion?.let(ToolVersions::numeric) ?: return null
         val required = tool.minimumJava(version)
-        if (java < required) return ProviderToolProblem.JavaTooOld(java, required, toolVersion)
+        if (java < required) return ProviderToolProblem.JavaTooOld(java, required, toolVersion, source)
         val first = tool.firstSupporting(java) ?: return null
-        return if (CheckInstallationUseCase.isAtLeast(version, first)) null else ProviderToolProblem.GradleTooOld(java, toolVersion, first)
+        return if (CheckInstallationUseCase.isAtLeast(version, first)) null else ProviderToolProblem.GradleTooOld(java, toolVersion, first, source)
     }
 
     private suspend fun dockerCompose(): Located = runs("docker", listOf("compose", "version")) { docker, output ->
@@ -141,7 +237,7 @@ class CheckProviderToolsUseCase(
             docker,
             tooOld?.let { ProviderToolProblem.TooOld(it, ToolVersions.MINIMUM_COMPOSE) },
             version = version,
-            then = ProviderToolId.DOCKER_DAEMON to { dockerDaemon(docker) },
+            then = { listOf(ProviderToolId.DOCKER_DAEMON to locateGuarded { dockerDaemon(docker) }) },
         )
     }
 
@@ -191,5 +287,6 @@ class CheckProviderToolsUseCase(
 
     private companion object {
         const val JAVA_HOME = "JAVA_HOME"
+        const val DAEMON_CRITERIA_GRADLE = "8.8"
     }
 }

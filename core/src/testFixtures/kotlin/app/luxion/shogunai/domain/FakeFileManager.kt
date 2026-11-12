@@ -35,8 +35,9 @@ class FakeFileManager(
 
     override fun listNames(path: String): List<String>? {
         if (path in unreadable) return null
-        val prefix = "${path.trimEnd('/')}/"
-        val children = (paths + directories).filter { it.startsWith(prefix) }.map { it.removePrefix(prefix).substringBefore('/') }
+        val separator = if ('\\' in path && '/' !in path) '\\' else '/'
+        val prefix = "${path.trimEnd(separator)}$separator"
+        val children = (paths + directories).filter { it.startsWith(prefix) }.map { it.removePrefix(prefix).substringBefore(separator) }
         if (children.isEmpty() && path !in directories) return null
         return children.distinct().sorted()
     }

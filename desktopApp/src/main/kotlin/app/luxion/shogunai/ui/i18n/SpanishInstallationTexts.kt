@@ -5,6 +5,7 @@ import app.luxion.shogunai.domain.model.CheckState
 import app.luxion.shogunai.domain.model.HostOs
 import app.luxion.shogunai.domain.model.InstallationCheck
 import app.luxion.shogunai.domain.model.InstallationFinding
+import app.luxion.shogunai.domain.model.JavaSource
 import app.luxion.shogunai.domain.model.InstallationReport
 import app.luxion.shogunai.domain.model.MULTIREPO_FILE_NAME
 import app.luxion.shogunai.domain.model.MultirepoProblem
@@ -132,7 +133,11 @@ private fun spanishProviderSummary(finding: InstallationFinding.ProviderTool): S
         null -> when (finding.tool) {
             ProviderToolId.ANDROID_SDK -> "$subject está en ${finding.location} (${spanishCount(finding.installed ?: 0, "dispositivo virtual", "dispositivos virtuales")})"
             ProviderToolId.IOS_SIMULATOR -> "$subject tiene ${spanishCount(finding.installed ?: 0, "runtime de iOS", "runtimes de iOS")}"
-            ProviderToolId.GRADLE_JAVA, ProviderToolId.MAVEN_JAVA -> "$subject es Java ${finding.version} en ${finding.location}"
+            ProviderToolId.GRADLE_JAVA, ProviderToolId.MAVEN_JAVA, ProviderToolId.GRADLE_DAEMON_JAVA -> spanishJavaPassing(finding, subject)
+            ProviderToolId.GRADLE_TOOLCHAINS ->
+                if (finding.provisioned) "$subject: Java ${finding.version}, que Gradle descarga si faltan"
+                else "$subject: Java ${finding.version} instalados"
+            ProviderToolId.ANDROID_GRADLE_PLUGIN_JAVA -> "${finding.project}: el Android Gradle Plugin ${finding.version} se ejecuta con Java ${finding.java}"
             ProviderToolId.DOCKER_DAEMON -> "${finding.project}: el daemon de Docker${finding.version?.let { " $it" }.orEmpty()} está en marcha"
             else -> "$subject${finding.version?.let { " $it" }.orEmpty()} está en ${finding.location}"
         }
@@ -144,9 +149,16 @@ private fun spanishProviderSummary(finding: InstallationFinding.ProviderTool): S
         is ProviderToolProblem.ProvidersUnreadable -> "${finding.project}: no se han podido leer sus proveedores${problem.detail.asSuffix()}"
         is ProviderToolProblem.JavaHomeInvalid -> "$subject no está instalado: JAVA_HOME es ${problem.javaHome}, que no tiene bin/java"
         is ProviderToolProblem.JavaTooOld ->
-            "$subject es Java ${problem.java} en ${finding.location}, pero ${spanishBuildTool(finding.tool)} ${problem.toolVersion} necesita Java ${problem.required} o posterior"
+            "$subject es Java ${problem.java}${finding.location?.let { " en $it" }.orEmpty()}, pero ${spanishBuildTool(finding.tool)} ${problem.toolVersion} necesita Java ${problem.required} o posterior"
         is ProviderToolProblem.GradleTooOld ->
-            "$subject es Java ${problem.java} en ${finding.location}, que necesita Gradle ${problem.required} o posterior, pero el proyecto usa Gradle ${problem.gradle}"
+            "$subject es Java ${problem.java}${finding.location?.let { " en $it" }.orEmpty()}, que necesita Gradle ${problem.required} o posterior, pero el proyecto usa Gradle ${problem.gradle}"
+        is ProviderToolProblem.JavaNotInstalled ->
+            "$subject: Java ${problem.versions.joinToString(" y ")} no ${if (problem.versions.size == 1) "está instalado" else "están instalados"} (se ha buscado en ${problem.searched.joinToString()})"
+        is ProviderToolProblem.GradleJavaHomeInvalid ->
+            "$subject no está instalado: org.gradle.java.home es ${problem.javaHome} en ${problem.propertiesFile}, que no tiene bin/java"
+        is ProviderToolProblem.DaemonCriteriaUnreadable -> "$subject: no se ha podido leer toolchainVersion en ${problem.path}"
+        is ProviderToolProblem.AndroidGradlePluginNeedsJava ->
+            "${finding.project}: el Android Gradle Plugin ${problem.agp} necesita Java ${problem.required} o posterior, pero el daemon de Gradle usa Java ${problem.java}"
         is ProviderToolProblem.TooOld ->
             "$subject ${problem.version} en ${finding.location} es anterior a ${problem.minimum}, la primera con el docker compose ls que usa ShogunAi"
         is ProviderToolProblem.DaemonNotRunning -> "${finding.project}: el daemon de Docker no está en marcha${problem.detail.asSuffix()}"
@@ -157,10 +169,35 @@ private fun spanishToolName(tool: ProviderToolId): String = when (tool) {
     ProviderToolId.GRADLE_JAVA -> "Java de Gradle"
     ProviderToolId.MAVEN_JAVA -> "Java de Maven"
     ProviderToolId.DOCKER_DAEMON -> "Daemon de Docker"
+    ProviderToolId.GRADLE_DAEMON_JAVA -> "Java del daemon de Gradle"
+    ProviderToolId.GRADLE_TOOLCHAINS -> "Toolchains de Java"
+    ProviderToolId.ANDROID_GRADLE_PLUGIN_JAVA -> "Java del Android Gradle Plugin"
     else -> tool.displayName
 }
 
-private fun spanishBuildTool(tool: ProviderToolId): String = if (tool == ProviderToolId.GRADLE_JAVA) "Gradle" else "Maven"
+private fun spanishJavaPassing(finding: InstallationFinding.ProviderTool, subject: String): String =
+    if (finding.provisioned) "$subject es Java ${finding.version}, que Gradle descarga si falta"
+    else "$subject es Java ${finding.version} en ${finding.location}"
+
+private fun spanishBuildTool(tool: ProviderToolId): String = if (tool == ProviderToolId.MAVEN_JAVA) "Maven" else "Gradle"
+
+private fun spanishNewerJava(source: JavaSource, required: Int): String = when (source) {
+    JavaSource.ENVIRONMENT -> "Instala Java $required o posterior y apunta JAVA_HOME a él."
+    JavaSource.GRADLE_PROPERTY -> "Instala Java $required o posterior y apunta org.gradle.java.home a él."
+    JavaSource.DAEMON_CRITERIA -> "Sube el Java del daemon a $required o posterior con ./gradlew updateDaemonJvm --jvm-version=$required."
+}
+
+private fun spanishOlderJava(source: JavaSource): String = when (source) {
+    JavaSource.ENVIRONMENT -> "apunta JAVA_HOME a un Java anterior"
+    JavaSource.GRADLE_PROPERTY -> "apunta org.gradle.java.home a un Java anterior"
+    JavaSource.DAEMON_CRITERIA -> "baja toolchainVersion en gradle/gradle-daemon-jvm.properties"
+}
+
+private fun spanishMissingJava(tool: ProviderToolId, versions: String): String = if (tool == ProviderToolId.GRADLE_TOOLCHAINS) {
+    "Instala un JDK de Java $versions (por ejemplo desde https://adoptium.net), o aplica el plugin org.gradle.toolchains.foojay-resolver-convention en el script de settings para que Gradle lo descargue."
+} else {
+    "Instala un JDK de Java $versions (por ejemplo desde https://adoptium.net), o añade un repositorio de descarga de toolchains y ejecuta ./gradlew updateDaemonJvm para que Gradle lo descargue."
+}
 
 private fun spanishProviderFix(tool: ProviderToolId, problem: ProviderToolProblem): String = when (problem) {
     ProviderToolProblem.NeedsMacOs -> "Usa el proveedor ${tool.provider} en un Mac con Xcode, o ignora este aviso en otros sistemas."
@@ -168,8 +205,13 @@ private fun spanishProviderFix(tool: ProviderToolId, problem: ProviderToolProble
     ProviderToolProblem.NoIosRuntime -> "Instala un runtime de iOS desde Ajustes › Componentes de Xcode."
     is ProviderToolProblem.ProvidersUnreadable -> "Corrige el .shogunai.json del repositorio para que sea válido."
     is ProviderToolProblem.JavaHomeInvalid -> "Apunta JAVA_HOME a la carpeta de un JDK (la que tiene bin/java), o quítala para usar el java de tu PATH."
-    is ProviderToolProblem.JavaTooOld -> "Instala Java ${problem.required} o posterior y apunta JAVA_HOME a él."
-    is ProviderToolProblem.GradleTooOld -> "Actualiza el wrapper de Gradle del proyecto a ${problem.required} o posterior, o apunta JAVA_HOME a un Java anterior."
+    is ProviderToolProblem.JavaTooOld -> spanishNewerJava(problem.source, problem.required)
+    is ProviderToolProblem.GradleTooOld -> "Actualiza el wrapper de Gradle del proyecto a ${problem.required} o posterior, o ${spanishOlderJava(problem.source)}."
+    is ProviderToolProblem.JavaNotInstalled -> spanishMissingJava(tool, problem.versions.joinToString(" y "))
+    is ProviderToolProblem.GradleJavaHomeInvalid ->
+        "Apunta org.gradle.java.home de ${problem.propertiesFile} a la carpeta de un JDK (la que tiene bin/java), o quítala."
+    is ProviderToolProblem.DaemonCriteriaUnreadable -> "Regenera los criterios de JVM del daemon con ./gradlew updateDaemonJvm --jvm-version=<versión>."
+    is ProviderToolProblem.AndroidGradlePluginNeedsJava -> spanishNewerJava(problem.source, problem.required)
     is ProviderToolProblem.TooOld -> "Actualiza Docker, o su plugin Compose, a Compose ${problem.minimum} o posterior desde https://docs.docker.com/compose/install/."
     is ProviderToolProblem.DaemonNotRunning -> when (problem.os) {
         HostOs.LINUX -> "Arranca el servicio de Docker con sudo systemctl start docker, o abre Docker Desktop, y vuelve a comprobarlo."
@@ -178,7 +220,9 @@ private fun spanishProviderFix(tool: ProviderToolId, problem: ProviderToolProble
     is ProviderToolProblem.NotFound, is ProviderToolProblem.Unusable -> when (tool) {
         ProviderToolId.GRADLE -> "Añade el wrapper de Gradle (gradlew) al repositorio, o instala Gradle desde https://gradle.org/install/."
         ProviderToolId.MAVEN -> "Añade el wrapper de Maven (mvnw) al repositorio, o instala Maven desde https://maven.apache.org/install.html."
-        ProviderToolId.GRADLE_JAVA, ProviderToolId.MAVEN_JAVA ->
+        ProviderToolId.GRADLE_JAVA, ProviderToolId.MAVEN_JAVA, ProviderToolId.GRADLE_DAEMON_JAVA, ProviderToolId.GRADLE_TOOLCHAINS,
+        ProviderToolId.ANDROID_GRADLE_PLUGIN_JAVA,
+        ->
             "Instala un JDK (por ejemplo desde https://adoptium.net) y define JAVA_HOME con su carpeta o pon su java en tu PATH. En macOS, /usr/bin/java solo funciona con un JDK instalado."
         ProviderToolId.ANDROID_SDK -> "Instala el SDK de Android y su emulador con Android Studio (https://developer.android.com/studio), o define ANDROID_HOME con su ubicación."
         ProviderToolId.IOS_SIMULATOR, ProviderToolId.XCODE -> "Instala Xcode desde la App Store y selecciónalo con sudo xcode-select -s /Applications/Xcode.app."
