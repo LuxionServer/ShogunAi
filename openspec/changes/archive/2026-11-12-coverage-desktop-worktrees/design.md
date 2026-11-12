@@ -85,7 +85,7 @@ Measured on macOS after this change, with the end-to-end tests:
 | `ui/worktree` and `ui/worktree/inspector` | 99.90% (3 uncovered of 2,871) | 98.11% (41 uncovered of 2,175) |
 | whole desktop app outside composables | 93.93% (778 uncovered of 12,815) | 87.55% (963 uncovered of 7,737) |
 
-The floors go from 91 to 93 (lines) and from 78 to 87 (branches).
+The floors go from 91 to 93 (lines) and from 78 to 87 (branches). Measured again after bringing in `develop` at fdda1d05: 93.98% of lines (779 uncovered of 12,931) and 87.73% of branches (965 uncovered of 7,862), so the floors stay at 93 and 87.
 
 ## Risks / Trade-offs
 
