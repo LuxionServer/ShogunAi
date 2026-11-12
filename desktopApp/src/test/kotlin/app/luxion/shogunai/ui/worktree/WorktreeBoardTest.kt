@@ -69,6 +69,7 @@ import app.luxion.shogunai.domain.usecase.ResolveMainBranchUseCase
 import app.luxion.shogunai.domain.usecase.StopGradleDaemonsUseCase
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
@@ -3025,10 +3026,9 @@ class WorktreeBoardTest {
         assertTrue(board.changeView.groups.none { it.collapsed && it.branch == "feature/TASK-1" })
     }
 
-    private fun TestScope.toolsWith(detected: DetectedTools, runner: RunnerId? = null): ToolUseCases {
+    private fun toolsWith(detected: DetectedTools, runner: RunnerId? = null): ToolUseCases {
         val preferences = ToolsPreferences(FakeToolPreferenceRepository(runner = runner), FakeToolDetector(detected))
-        backgroundScope.launch { preferences.refresh() }
-        runCurrent()
+        runBlocking { preferences.refresh() }
         return ToolUseCases.NONE.copy(preferences = preferences)
     }
 
