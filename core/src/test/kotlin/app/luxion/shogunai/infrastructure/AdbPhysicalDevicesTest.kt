@@ -36,6 +36,7 @@ class AdbPhysicalDevicesTest {
         fileManager = FakeFileManager(existing = listOf(location.emulator)),
         environmentVariable = { if (it == "ANDROID_HOME") location.root else null },
         userHome = "/home/dev",
+        osName = "Mac OS X",
         logDirectory = Files.createTempDirectory("adb-physical"),
     )
 
