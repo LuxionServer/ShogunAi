@@ -58,4 +58,31 @@ class WorktreeSortingTest {
 
         assertEquals(listOf("Task-1", "task-1"), ordered)
     }
+
+    @Test
+    fun `a name that extends another comes after it`() {
+        assertEquals(listOf("x1", "x1y"), sort(WorktreeSort.NAME, emptyMap(), worktree("x1y"), worktree("x1")))
+    }
+
+    @Test
+    fun `a detached worktree is sorted by its folder name`() {
+        val detached = Worktree(path = "C:\\Users\\dev\\TASK-2\\", branch = null)
+
+        assertEquals("TASK-2", worktreeSortLabel(detached))
+        assertEquals(listOf(null, "TASK-3"), sort(WorktreeSort.NAME, emptyMap(), worktree("TASK-3"), detached))
+    }
+
+    @Test
+    fun `undated worktrees keep their place among themselves and go after the dated ones`() {
+        val dates = mapOf<String, Instant?>("TASK-1" to null, "TASK-2" to null, "TASK-3" to now)
+
+        assertEquals(
+            listOf("TASK-3", "TASK-1", "TASK-2"),
+            sort(WorktreeSort.ACTIVITY, dates, worktree("TASK-1"), worktree("TASK-2"), worktree("TASK-3")),
+        )
+        assertEquals(
+            listOf("TASK-3", "TASK-1", "TASK-2"),
+            sort(WorktreeSort.ACTIVITY, dates, worktree("TASK-3"), worktree("TASK-2"), worktree("TASK-1")),
+        )
+    }
 }

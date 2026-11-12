@@ -259,8 +259,12 @@ internal fun scrollDeltaToReveal(itemOffset: Int, itemSize: Int, headerHeight: I
     else -> 0
 }
 
-private fun Any.isHeaderKey(): Boolean =
-    this is String && (startsWith("header:") || startsWith("state-header:") || startsWith("change-header:") || this == UNGROUPED_HEADER_KEY)
+private fun Any.isHeaderKey(): Boolean {
+    val key = toString()
+    return key == UNGROUPED_HEADER_KEY || HeaderKeyPrefixes.any(key::startsWith)
+}
+
+private val HeaderKeyPrefixes = listOf("header:", "state-header:", "change-header:")
 
 private const val UNGROUPED_HEADER_KEY = "ungrouped-header"
 
@@ -330,9 +334,9 @@ private fun executionCellOf(board: WorktreeBoard, holder: ProjectWorktrees, work
         agentsReadAt = holder.agentsReadAt,
         now = now,
         desktopTurn = board.desktopTurn.rowTurn(worktree.path),
-        emulator = holder.emulators[worktree.path]?.takeIf { holder.isEmulatorRepository },
-        simulator = holder.simulators[worktree.path]?.takeIf { holder.isSimulatorRepository },
-        headlessApp = holder.headlessApps[worktree.path]?.takeIf { holder.isHeadlessAppRepository },
+        emulator = holder.emulators[worktree.path],
+        simulator = holder.simulators[worktree.path],
+        headlessApp = holder.headlessApps[worktree.path],
         strings = strings,
     )
 
@@ -343,10 +347,9 @@ internal fun listItems(board: WorktreeBoard): List<ListItem> = when {
 }
 
 private fun changeListItems(board: WorktreeBoard): List<ListItem> {
-    val notices = board.shownProjects.mapNotNull { project ->
-        val holder = board.holder(project.id)?.takeIf { it.hasNotice || it.loadState !is ProjectLoadState.Loaded } ?: return@mapNotNull null
-        ListItem.GroupState(WorktreeGroup(project, holder, emptyList(), collapsed = false), showsProjectName = true)
-    }
+    val notices = board.shownHolders
+        .filter { it.holder.hasNotice || it.holder.loadState !is ProjectLoadState.Loaded }
+        .map(::noticeItem)
     val view = board.changeView
     val groups = view.groups.flatMap { group ->
         listOf<ListItem>(ListItem.ChangeHeader(group)) + if (group.collapsed) emptyList() else group.entries.map(ListItem::ChangeRow)
@@ -360,14 +363,14 @@ private fun changeListItems(board: WorktreeBoard): List<ListItem> {
 }
 
 private fun stateListItems(board: WorktreeBoard): List<ListItem> {
-    val notices = board.shownProjects.mapNotNull { project ->
-        val holder = board.holder(project.id)?.takeIf { it.hasNotice } ?: return@mapNotNull null
-        ListItem.GroupState(WorktreeGroup(project, holder, emptyList(), collapsed = false), showsProjectName = true)
-    }
+    val notices = board.shownHolders.filter { it.holder.hasNotice }.map(::noticeItem)
     return notices + board.stateGroups.flatMap { group ->
         listOf<ListItem>(ListItem.StateHeader(group)) + if (group.collapsed) emptyList() else group.items.flatMap { stateRowItems(group, it) }
     }
 }
+
+private fun noticeItem(shown: ProjectHolder): ListItem =
+    ListItem.GroupState(WorktreeGroup(shown.project, shown.holder, emptyList(), collapsed = false), showsProjectName = true)
 
 private fun stateRowItems(group: StateGroup<StateItem>, item: StateItem): List<ListItem> = when (item) {
     is StateItem.Single -> listOf(ListItem.StateRow(group, item.entry))
@@ -451,8 +454,8 @@ private fun ProjectGroupHeader(
         IconAction(icon = Icons.Default.Add, label = strings.newWorktree, onClick = { board.openCreateDialog(projectId) })
         MoreMenuButton(
             label = strings.moreActions,
-            entries = projectGroupOverflow(board.cleanUpBlock(projectId)?.describe(strings), strings).toMenu(strings) { spec, _ ->
-                if (spec.id == ActionId.CleanUp) board.openCleanup(projectId)
+            entries = projectGroupOverflow(board.cleanUpBlock(projectId)?.describe(strings), strings).toMenu(strings) { _, _ ->
+                board.openCleanup(projectId)
             },
         )
     }
@@ -486,7 +489,6 @@ private fun GroupState(holder: ProjectWorktrees, projectId: String, projectName:
             onDismiss = { holder.dismissError() },
             modifier = noticeModifier,
             projectId = projectId,
-            onRetry = holder.errorRetry?.let { { holder.retryError() } },
         )
     }
     holder.cleanupIssues?.let { report ->
@@ -652,8 +654,8 @@ private fun WorktreeRowFor(
             status = holder.statuses[worktree.path],
             mainBranchName = holder.mainBranch?.name,
             agents = holder.agents.orEmpty()[worktree.path].orEmpty(),
-            emulator = holder.emulators[worktree.path]?.takeIf { holder.isEmulatorRepository },
-            simulator = holder.simulators[worktree.path]?.takeIf { holder.isSimulatorRepository },
+            emulator = holder.emulators[worktree.path],
+            simulator = holder.simulators[worktree.path],
             origin = classifyOrigin(worktree, project.config, holder.herdrWorktreesRoot, holder.orcaOrigins),
             projectName = projectName,
             inactiveAfter = board.inactivity.threshold,
@@ -663,7 +665,7 @@ private fun WorktreeRowFor(
             groupTag = groupTag?.label,
             label = label,
             desktopTurn = board.desktopTurn.rowTurn(worktree.path),
-            headlessApp = holder.headlessApps[worktree.path]?.takeIf { holder.isHeadlessAppRepository },
+            headlessApp = holder.headlessApps[worktree.path],
             agentsReadAt = holder.agentsReadAt,
         ),
         selected = board.selected == ref,
@@ -674,7 +676,7 @@ private fun WorktreeRowFor(
         onSelect = { board.select(ref) },
         onCopyLaunchCommand = { holder.copyLaunchCommand(worktree) },
         contextMenu = worktreeContextMenu(holder, worktree),
-        onOpenGroupTag = { groupTag?.let(onOpenGroup) },
+        onOpenGroupTag = groupTagOpener(groupTag, onOpenGroup),
         onFocusAgent = {
             board.select(ref)
             holder.focusAgent(worktree)
@@ -693,6 +695,8 @@ private fun ChangeGroupHeader(group: ChangeGroup, board: WorktreeBoard) {
         agent = agentIndicator(board.agentsOf(group), board.agentsReadAtOf(group), Instant.now(), strings),
     )
 }
+
+internal fun groupTagOpener(tag: GroupTag?, onOpenGroup: (GroupTag) -> Unit): () -> Unit = { tag?.let(onOpenGroup) }
 
 internal fun groupCatalogOf(board: WorktreeBoard, group: ChangeGroup, strings: Strings): GroupCatalog = groupCatalog(
     GroupActionContext(

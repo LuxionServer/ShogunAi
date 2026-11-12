@@ -59,6 +59,7 @@ import app.luxion.shogunai.domain.model.AgentLaunchConfig
 import app.luxion.shogunai.ui.shell.AgentChoices
 import app.luxion.shogunai.SimulatorUseCases
 import app.luxion.shogunai.domain.model.AgentState
+import app.luxion.shogunai.domain.model.AgentActivity
 import app.luxion.shogunai.domain.model.AgentStateSource
 import app.luxion.shogunai.domain.model.HerdrOpening
 import app.luxion.shogunai.domain.model.ObservedPort
@@ -4708,4 +4709,294 @@ class ProjectWorktreesTest {
         actionCatalog(worktree, EnglishStrings).opens
             .map { (it.id as ActionId.Open).target to it.label }
             .filter { it.first != OpenTarget.HERDR && it.first != OpenTarget.ORCA }
+
+    @Test
+    fun `cleanup reports the daemons it couldn't stop as neither stopped nor kept`() = runTest(dispatcher) {
+        val gradleSource = FakeGradleDaemonSource(
+            daemons = listOf(gradleDaemon(10, idle, lastBuildDirectory = worktreePath)),
+            laterFailure = WorktreeError.ProcessListingFailed(listOf("jps"), 1),
+        )
+        val mavenSource = FakeMavenDaemonSource(
+            listOf(mavenDaemon(20, idle, workingDirectory = worktreePath)),
+            laterFailure = WorktreeError.ProcessListingFailed(listOf("jps"), 1),
+        )
+        val maven = mavenRepository(mergedResponder(), mavenSource)
+        val executor = FakeShellCommandExecutor(mergedResponder())
+        val board = board(maven.copy(gradle = gradleUseCases(executor, gradleSource, provider = GradleProvider())))
+        advanceUntilIdle()
+
+        board.openCleanup()
+        board.confirmCleanup()
+        advanceUntilIdle()
+
+        assertEquals(WorktreeSuccess.CleanedUp(removedCount = 1), board.cleanupSuccess)
+    }
+
+    @Test
+    fun `cleanup reports compose projects it couldn't take down and branches it kept`() = runTest(dispatcher) {
+        val source = FakeComposeProjectSource(
+            listOf(ComposeProject(worktreeComposeName, "running(1)", emptyList())),
+            failingDowns = mapOf(worktreeComposeName to "in use"),
+        )
+        val board = board(composeRepository(mergedResponder(), source))
+        advanceUntilIdle()
+
+        board.openCleanup()
+        board.confirmCleanup()
+        advanceUntilIdle()
+        assertEquals(1, board.project.cleanupIssues?.composeDown?.failures?.size)
+
+        val keeping = board(
+            useCases { command ->
+                if (command.take(3) == listOf("git", "branch", "-D") || command.take(3) == listOf("git", "branch", "-d")) {
+                    failure(command, stderr = "branch is checked out")
+                } else {
+                    mergedResponder()(command)
+                }
+            },
+        )
+        advanceUntilIdle()
+        keeping.openCleanup()
+        keeping.cleanupDeleteBranches = true
+        keeping.confirmCleanup()
+        advanceUntilIdle()
+        assertTrue(keeping.project.cleanupIssues?.keptBranches.orEmpty().isNotEmpty())
+    }
+
+    @OptIn(ExperimentalTestApi::class)
+    @Test
+    fun `the detail starts and stops an emulator and says who it was released for`() = runComposeUiTest {
+        val gate = CompletableDeferred<Unit>()
+        val emulators = RecordingEmulators()
+        val release = ReleaseRecord(1_000L, "main-repo · TASK-9")
+        val useCases = emulators.useCases()
+        val holder = loadedProjectWorktrees(
+            useCases(listingResponder()).copy(
+                emulator = useCases.copy(start = { path -> gate.await(); useCases.start(path) }, readRelease = { release }),
+            ),
+        )
+        setContent { MaterialTheme { WorktreeDetailPane(worktree, config, holder) } }
+
+        waitUntil { onAllNodesWithText(EnglishStrings.notAcquired).fetchSemanticsNodes().isNotEmpty() }
+        onNodeWithText("Released for main-repo · TASK-9", substring = true).assertIsDisplayed()
+        onNodeWithText(EnglishStrings.startEmulator).performClick()
+        waitUntil { worktreePath in holder.startingEmulators }
+        gate.complete(Unit)
+        waitUntil { onAllNodesWithText(EnglishStrings.stopEmulator).fetchSemanticsNodes().isNotEmpty() }
+        onNodeWithText(EnglishStrings.stopEmulator).performClick()
+        waitUntil { emulators.stopped.isNotEmpty() }
+    }
+
+    @OptIn(ExperimentalTestApi::class)
+    @Test
+    fun `the detail starts and stops a simulator`() = runComposeUiTest {
+        val gate = CompletableDeferred<Unit>()
+        val simulators = RecordingSimulators()
+        val useCases = simulators.useCases()
+        val holder = loadedProjectWorktrees(
+            useCases(listingResponder()).copy(
+                simulator = useCases.copy(start = { path -> gate.await(); useCases.start(path) }, readRelease = { ReleaseRecord(1_000L, "main-repo · TASK-9") }),
+            ),
+        )
+        setContent { MaterialTheme { WorktreeDetailPane(worktree, config, holder) } }
+
+        waitUntil { onAllNodesWithText(EnglishStrings.notAcquired).fetchSemanticsNodes().isNotEmpty() }
+        onNodeWithText(EnglishStrings.startSimulator).performClick()
+        waitUntil { worktreePath in holder.startingSimulators }
+        gate.complete(Unit)
+        waitUntil { onAllNodesWithText(EnglishStrings.stopSimulator).fetchSemanticsNodes().isNotEmpty() }
+        onNodeWithText(EnglishStrings.stopSimulator).performClick()
+        waitUntil { simulators.stopped.isNotEmpty() }
+    }
+
+    @OptIn(ExperimentalTestApi::class)
+    @Test
+    fun `the detail takes running compose services down and shows the disk used`() = runComposeUiTest {
+        val gate = CompletableDeferred<Unit>()
+        var downs = 0
+        val compose = composeSection(status = { "running(1)" }).copy(down = { downs++; gate.await(); Result.success(Unit) })
+        val sized = useCasesWithFiles(FakeFileManager(existing = listOf(config.baseRepositoryPath, worktreePath), sizes = mapOf(worktreePath to 2048L)), listingResponder())
+        val holder = loadedProjectWorktrees(sized.copy(compose = compose))
+        setContent { MaterialTheme { WorktreeDetailPane(worktree, config, holder) } }
+
+        waitUntil { onAllNodesWithText(EnglishStrings.takeDownComposeServices).fetchSemanticsNodes().isNotEmpty() }
+        onNodeWithText(EnglishStrings.takeDownComposeServices).performClick()
+        waitUntil { downs == 1 }
+        waitForIdle()
+        onNodeWithText(EnglishStrings.takeDownComposeServices).assertDoesNotExist()
+        gate.complete(Unit)
+        waitUntil { onAllNodesWithText(EnglishStrings.diskTitle).fetchSemanticsNodes().isNotEmpty() }
+    }
+
+    @OptIn(ExperimentalTestApi::class)
+    @Test
+    fun `the detail shows the desktop being released and a wait without a holder`() = runComposeUiTest {
+        val gate = CompletableDeferred<Unit>()
+        val acquiredAt = Instant.parse("2026-01-05T14:00:00Z")
+        val turn = DesktopTurnState(DesktopTurn("${config.baseRepositoryPath}/.git/worktrees/TASK-123", worktreePath, acquiredAt.toEpochMilli(), acquiredAt.plusSeconds(600).toEpochMilli()), emptyList())
+        val watch = DesktopTurnWatch(read = { Result.success(turn) }, forceRelease = { gate.await(); Result.success(DesktopTurnRelease.NobodyHolds) })
+        runBlocking { watch.refresh() }
+        val holder = loadedProjectWorktrees(useCases(listingResponder()))
+        setContent { MaterialTheme { WorktreeDetailPane(worktree, config, holder, desktopTurn = watch) } }
+
+        onNodeWithText(EnglishStrings.releaseDesktopTurn).performClick()
+        onAllNodesWithText(EnglishStrings.releaseDesktopTurn)[1].performClick()
+        waitUntil { watch.isReleasing }
+        waitForIdle()
+        gate.complete(Unit)
+        waitUntil { !watch.isReleasing }
+
+        val since = Instant.parse("2026-01-05T14:03:00Z")
+        val waiting = DesktopTurnWatch(
+            read = { Result.success(DesktopTurnState(null, listOf(WaitTicket("b", "${config.baseRepositoryPath}/.git/worktrees/TASK-123", worktreePath, ProcessIdentity(2, 1), since.toEpochMilli())))) },
+            forceRelease = { Result.success(DesktopTurnRelease.NobodyHolds) },
+        )
+        runBlocking { waiting.refresh() }
+        assertEquals(1, waiting.waitOf(worktreePath)?.position)
+    }
+
+    @OptIn(ExperimentalTestApi::class)
+    @Test
+    fun `the detail shows a device on the network being released`() = runComposeUiTest {
+        val fixture = physicalDevicesFor(worktreePath)
+        val network = fixture.connectedPixel.copy(connection = app.luxion.shogunai.domain.model.DeviceConnection.NETWORK)
+        val held = fixture.state.devices.first()
+        fixture.state = fixture.state.copy(devices = listOf(held.copy(connected = network, holder = held.holder?.copy(connected = network))))
+        val gate = CompletableDeferred<Unit>()
+        val watch = app.luxion.shogunai.ui.machine.PhysicalDevicesWatch(
+            read = { Result.success(fixture.state) },
+            actions = app.luxion.shogunai.ui.machine.PhysicalDeviceActions(
+                release = { gate.await(); Result.success(app.luxion.shogunai.domain.model.DeviceRelease(emptyList())) },
+                lend = { Result.failure(IllegalStateException()) },
+                withdraw = { Result.failure(IllegalStateException()) },
+                rename = { _, _ -> Result.failure(IllegalStateException()) },
+                forget = { Result.failure(IllegalStateException()) },
+            ),
+            shouldRead = { true },
+        )
+        runBlocking { watch.refresh() }
+        val holder = loadedProjectWorktrees(useCases(listingResponder()))
+        setContent { MaterialTheme { WorktreeDetailPane(worktree, config, holder, physicalDevices = watch) } }
+
+        waitUntil { onAllNodesWithText(EnglishStrings.releaseDevice).fetchSemanticsNodes().isNotEmpty() }
+        onNodeWithText(EnglishStrings.releaseDevice).performClick()
+        onAllNodesWithText(EnglishStrings.releaseDevice)[1].performClick()
+        waitUntil { watch.busyDevice != null }
+        waitForIdle()
+        gate.complete(Unit)
+        waitUntil { watch.busyDevice == null }
+    }
+
+    @OptIn(ExperimentalTestApi::class)
+    @Test
+    fun `the detail lists the agent's activity and the environment, and copies it as a dotenv`() = runComposeUiTest {
+        portsByWorktree = mapOf(worktreePath to mapOf("PORT" to 4123))
+        val environment = WorktreeEnvironment(variables = listOf("PORT" to "4123"), awaitingApproval = listOf("SECRET"))
+        val holder = loadedProjectWorktrees(
+            useCases(listingResponder()).copy(
+                readEnvironment = { Result.success(environment) },
+                orca = OrcaUseCases.NONE.copy(ports = { mapOf(worktreePath to listOf(ObservedPort(4123, "node"))) }),
+            ),
+        )
+        setContent { MaterialTheme { WorktreeDetailPane(worktree, config, holder) } }
+        waitUntil { holder.agents != null }
+        runOnIdle { holder.applyAgents(mapOf(worktreePath to listOf(RunningAgent("claude", AgentState.WORKING, activity = AgentActivity(prompt = "Fix the build"))))) }
+
+        waitUntil { onAllNodesWithText(EnglishStrings.copyAsEnv).fetchSemanticsNodes().isNotEmpty() }
+        waitUntil { onAllNodesWithText("Fix the build", substring = true).fetchSemanticsNodes().isNotEmpty() }
+        onNodeWithText(EnglishStrings.orcaPortsTitle).assertIsDisplayed()
+        onNodeWithText("Fix the build", substring = true).assertExists()
+        onNodeWithText(EnglishStrings.copyAsEnv).performClick()
+        waitForIdle()
+    }
+
+    @OptIn(ExperimentalTestApi::class)
+    @Test
+    fun `the detail shows devices, apps and services while they change`() = runComposeUiTest {
+        val gate = CompletableDeferred<Unit>()
+        val emulators = RecordingEmulators(initial = mapOf(worktreePath to WorktreeEmulator("emulator-5554", EmulatorState.RUNNING)))
+        val simulators = RecordingSimulators(initial = mapOf(worktreePath to WorktreeSimulator("SIM-1", "ShogunAi · main-repo · TASK-123", SimulatorState.BOOTED)))
+        val apps = RecordingHeadlessApps(mapOf(worktreePath to runningApp()))
+        val emulatorUseCases = emulators.useCases()
+        val simulatorUseCases = simulators.useCases()
+        val appUseCases = apps.useCases()
+        val composeGate = CompletableDeferred<Unit>()
+        val holder = loadedProjectWorktrees(
+            useCases(listingResponder()).copy(
+                emulator = emulatorUseCases.copy(stop = { path -> gate.await(); emulatorUseCases.stop(path) }),
+                simulator = simulatorUseCases.copy(stop = { path -> gate.await(); simulatorUseCases.stop(path) }),
+                headlessApp = appUseCases.copy(stop = { path -> gate.await(); appUseCases.stop(path) }),
+                compose = ComposeUseCases(provider = { DockerComposeProvider() }, readStates = { composeGate.await(); Result.success(emptyMap()) }),
+            ),
+        )
+        setContent { MaterialTheme { WorktreeDetailPane(worktree, config, holder) } }
+        waitUntil { onAllNodesWithText(EnglishStrings.stopHeadlessApp).fetchSemanticsNodes().isNotEmpty() }
+
+        runOnIdle {
+            holder.stopEmulator(worktree)
+            holder.stopSimulator(worktree)
+            holder.stopHeadlessApp(worktree)
+        }
+        waitUntil { worktreePath in holder.stoppingHeadlessApps }
+        waitForIdle()
+        gate.complete(Unit)
+        composeGate.complete(Unit)
+        waitUntil { holder.stoppingHeadlessApps.isEmpty() }
+    }
+
+    @OptIn(ExperimentalTestApi::class)
+    @Test
+    fun `the detail shows a wait without a holder and a device taken without a recorded worktree`() = runComposeUiTest {
+        val since = Instant.parse("2026-01-05T14:03:00Z")
+        val turn = desktopTurnWatch({
+            DesktopTurnState(null, listOf(WaitTicket("b", "${config.baseRepositoryPath}/.git/worktrees/TASK-123", worktreePath, ProcessIdentity(2, 1), since.toEpochMilli())))
+        })
+        runBlocking { turn.refresh() }
+        val fixture = app.luxion.shogunai.ui.machine.PhysicalDevicesFixture()
+        fixture.state = fixture.state.copy(
+            losses = listOf(fixture.loss(app.luxion.shogunai.domain.model.DeviceLossReason.TAKEN).copy(worktreePath = worktreePath, forWorktree = null)),
+        )
+        runBlocking { fixture.watch.refresh() }
+        val holder = loadedProjectWorktrees(useCases(listingResponder()))
+        setContent { MaterialTheme { WorktreeDetailPane(worktree, config, holder, desktopTurn = turn, physicalDevices = fixture.watch) } }
+
+        waitUntil { onAllNodesWithText("#1", substring = true).fetchSemanticsNodes().isNotEmpty() }
+        onNodeWithText("a55", substring = true).assertExists()
+    }
+
+    @OptIn(ExperimentalTestApi::class)
+    @Test
+    fun `the detail shows ports without an environment, variables awaiting approval and a provisioning running`() = runComposeUiTest {
+        portsByWorktree = mapOf(worktreePath to mapOf("PORT" to 4123))
+        val gate = CompletableDeferred<Unit>()
+        var environment: WorktreeEnvironment? = null
+        val stale = ProvisioningUseCases(
+            check = { Result.success(listOf(ProvisionDrift(".env", ProvisionDriftState.DIFFERS))) },
+            provision = { gate.await(); Result.success(ProvisionResult(emptyList())) },
+        )
+        val holder = loadedProjectWorktrees(
+            useCases(listingResponder()).copy(
+                readEnvironment = { environment?.let { Result.success(it) } ?: Result.failure(IOException("no environment")) },
+                provisioning = stale,
+            ),
+        )
+        setContent { MaterialTheme { WorktreeDetailPane(worktree, config, holder) } }
+        waitUntil { onAllNodesWithText("4123", substring = true).fetchSemanticsNodes().isNotEmpty() }
+
+        runOnIdle { holder.provision(worktree) }
+        waitUntil { worktreePath in holder.provisioningInProgress }
+        waitForIdle()
+        environment = WorktreeEnvironment(awaitingApproval = listOf("SECRET"))
+        gate.complete(Unit)
+        waitUntil { onAllNodesWithText("SECRET", substring = true).fetchSemanticsNodes().isNotEmpty() }
+    }
+
+    @Test
+    fun `resolving an approval that nobody asked for does nothing`() {
+        val approval = DialogRepositoryApproval()
+
+        approval.resolve(app.luxion.shogunai.domain.io.ApprovalDecision.APPROVE)
+
+        assertNull(approval.pending)
+    }
 }

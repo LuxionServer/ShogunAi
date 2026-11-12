@@ -50,6 +50,7 @@ import app.luxion.shogunai.domain.usecase.normalizeTaskId
 import app.luxion.shogunai.domain.usecase.GroupKept
 import app.luxion.shogunai.domain.usecase.GroupCreation
 import app.luxion.shogunai.domain.usecase.GroupRepositoryOutcome
+import app.luxion.shogunai.domain.usecase.GroupRepositoryResult
 import app.luxion.shogunai.domain.usecase.GroupWorktree
 import app.luxion.shogunai.domain.usecase.GroupWorktreeState
 import app.luxion.shogunai.domain.usecase.MultirepoMember
@@ -103,8 +104,8 @@ class WorktreeBoard(
     private var watchJob: Job? = null
     private val windowActivity = MutableStateFlow(WindowActivity.FOCUSED)
 
-    var projects by mutableStateOf<List<Project>>(emptyList())
-        private set
+    val projects: List<Project>
+        get() = entries.values.map { it.project }
     var projectFilter by mutableStateOf<String?>(null)
         private set
     var mode by mutableStateOf(GroupedView.ALL)
@@ -193,13 +194,13 @@ class WorktreeBoard(
         get() = mode == GroupedView.MULTIREPO
 
     val shownMultirepo: MultirepoMembership?
-        get() = multirepoFolder?.takeIf { isMultirepoView }?.let { folder -> memberships.firstOrNull { it.folder == folder } }
+        get() = if (isMultirepoView) memberships.firstOrNull { it.folder == multirepoFolder } else null
 
     val shownProjects: List<Project>
-        get() = when {
-            isMultirepoView -> shownMultirepo?.let { membership -> projects.filter { it.id in membership.aliases } }.orEmpty()
-            else -> effectiveProjectFilter?.let { id -> projects.filter { it.id == id } } ?: projects
-        }
+        get() = shownEntries().map { it.project }
+
+    val shownHolders: List<ProjectHolder>
+        get() = shownEntries().map { ProjectHolder(it.project, it.holder) }
 
     val isFiltered: Boolean
         get() = effectiveProjectFilter != null
@@ -227,8 +228,7 @@ class WorktreeBoard(
         get() = sorts.getValue(sortedView)
 
     val groups: List<WorktreeGroup>
-        get() = shownProjects.mapNotNull { project ->
-            val holder = holder(project.id) ?: return@mapNotNull null
+        get() = shownEntries().mapNotNull { (project, holder) ->
             val rows = listedRows(project, holder)
             if ((isTextFiltering || isActiveView) && rows.isEmpty() && holder.listFailure == null) return@mapNotNull null
             WorktreeGroup(project, holder, rows, collapsed = project.id in collapsedProjects && !isFiltered)
@@ -238,8 +238,7 @@ class WorktreeBoard(
         get() {
             val changes = if (foldsChanges) activeChanges() else emptyList()
             val folded = changes.flatMapTo(mutableSetOf()) { change -> change.members.map { it.ref } }
-            val singles = shownProjects.flatMap { project ->
-                val holder = holder(project.id) ?: return@flatMap emptyList()
+            val singles = shownEntries().flatMap { (project, holder) ->
                 filterWorktrees(holder.worktrees, textFilter).filterNot { isMultirepoView && it.isMain }.map { worktree ->
                     WorktreeEntry(project, holder, worktree)
                 }.filterNot { it.ref in folded }.map { entry ->
@@ -340,8 +339,7 @@ class WorktreeBoard(
         }
 
     private fun aliasedEntries(membership: MultirepoMembership): List<AliasedEntry> =
-        projects.filter { it.id in membership.aliases }.flatMap { project ->
-            val holder = holder(project.id) ?: return@flatMap emptyList()
+        entries.values.flatMap { (project, holder) ->
             val alias = membership.aliasOf(project.id) ?: return@flatMap emptyList()
             holder.worktrees.filterNot { it.isMain }.map { AliasedEntry(alias, WorktreeEntry(project, holder, it)) }
         }
@@ -362,21 +360,18 @@ class WorktreeBoard(
     fun multirepoNameOf(projectId: String): String? = memberships.firstOrNull { projectId in it.aliases }?.name
 
     val isReadingActivity: Boolean
-        get() = shownProjects.any { project ->
-            val holder = holder(project.id) ?: return@any false
-            (!holder.hasLoaded && holder.listFailure == null) ||
+        get() = shownEntries().any { (_, holder) ->
+            !holder.hasLoaded ||
                 holder.statuses.values.any { it == WorktreeStatusState.Loading }
         }
 
     val isNothingWaiting: Boolean
-        get() = isActiveView && !isTextFiltering && !isReadingActivity && shownProjects.none { project ->
-            val holder = holder(project.id) ?: return@none false
+        get() = isActiveView && !isTextFiltering && !isReadingActivity && shownEntries().none { (project, holder) ->
             holder.listFailure != null || listedRows(project, holder).any { activityOf(holder, it) == Activity.WaitingForYou }
         }
 
     val workingAgentCount: Int
-        get() = shownProjects.sumOf { project ->
-            val holder = holder(project.id) ?: return@sumOf 0
+        get() = shownEntries().sumOf { (project, holder) ->
             listedRows(project, holder).sumOf { worktree ->
                 holder.agents?.get(worktree.path).orEmpty().count { it.state == AgentState.WORKING || it.state == null }
             }
@@ -425,8 +420,8 @@ class WorktreeBoard(
 
     private fun orcaSyncItems(holder: ProjectWorktrees): List<OrcaSyncItem> =
         holder.worktrees.mapNotNull { worktree ->
-            val status = (holder.statuses[worktree.path] as? WorktreeStatusState.Loaded)?.status ?: return@mapNotNull null
-            OrcaSyncItem(worktree, status, holder.agents?.get(worktree.path).orEmpty(), activityOf(holder, worktree))
+            val loaded = holder.statuses[worktree.path] as? WorktreeStatusState.Loaded ?: return@mapNotNull null
+            OrcaSyncItem(worktree, loaded.status, holder.agents?.get(worktree.path).orEmpty(), activityOf(holder, worktree))
         }
 
     private fun activityDateOf(holder: ProjectWorktrees, worktree: Worktree): Instant? {
@@ -452,8 +447,7 @@ class WorktreeBoard(
     val selectedWorktree: SelectedWorktree?
         get() {
             val ref = selected ?: return null
-            val project = shownProjects.firstOrNull { it.id == ref.projectId } ?: return null
-            val holder = holder(project.id) ?: return null
+            val (project, holder) = shownEntries().firstOrNull { it.project.id == ref.projectId } ?: return null
             val worktree = holder.worktrees.firstOrNull { it.path == ref.path } ?: return null
             return SelectedWorktree(project, holder, worktree)
         }
@@ -468,9 +462,8 @@ class WorktreeBoard(
         get() = cleanupScope != null
 
     val cleanupProjects: List<WorktreeGroup>
-        get() = cleanupScope.orEmpty().mapNotNull { id ->
-            val project = projects.firstOrNull { it.id == id } ?: return@mapNotNull null
-            val holder = holder(id) ?: return@mapNotNull null
+        get() = cleanupScope.orEmpty().map { id ->
+            val (project, holder) = entries.getValue(id)
             val only = cleanupOnly
             WorktreeGroup(project, holder, holder.cleanupCandidates.filter { only == null || it.path in only }, collapsed = false)
         }
@@ -496,7 +489,7 @@ class WorktreeBoard(
 
     fun menuBarCatalog(strings: Strings): WorktreeCatalog = selectedCatalog(strings) ?: worktreeCatalog(
         WorktreeActionContext(
-            tools = entries.values.firstOrNull()?.holder?.actionTools(strings) ?: ActionTools(RunnerId.entries, RunnerId.HERDR, null, null, false),
+            tools = menuBarTools(strings),
             isMain = false,
             isFolderMissing = false,
             agents = emptyList(),
@@ -504,6 +497,11 @@ class WorktreeBoard(
         ),
         strings,
     )
+
+    private fun menuBarTools(strings: Strings): ActionTools {
+        val first = entries.values.firstOrNull() ?: return ActionTools(RunnerId.entries, RunnerId.HERDR, null, null, false)
+        return first.holder.actionTools(strings)
+    }
 
     fun performOnSelected(id: ActionId, agent: String? = null) {
         selectedWorktree?.let { it.holder.perform(it.worktree, id, agent) }
@@ -528,8 +526,7 @@ class WorktreeBoard(
         get() = projects.isNotEmpty() && entries.values.all { it.holder.hasLoaded }
 
     val machineProjects: List<MachineProject>
-        get() = projects.mapNotNull { project ->
-            val holder = holder(project.id) ?: return@mapNotNull null
+        get() = entries.values.map { (project, holder) ->
             MachineProject(
                 project = project,
                 worktrees = holder.worktrees.takeIf { holder.hasLoaded },
@@ -543,8 +540,7 @@ class WorktreeBoard(
     fun holder(projectId: String): ProjectWorktrees? = entries[projectId]?.holder
 
     val paletteWorktrees: List<PaletteWorktree>
-        get() = projects.flatMap { project ->
-            val holder = holder(project.id) ?: return@flatMap emptyList()
+        get() = entries.values.flatMap { (project, holder) ->
             ordered(holder).map { worktree ->
                 val kind = activityOf(holder, worktree).badgeKind()
                 PaletteWorktree(project, worktree, kind.takeIf { it != StateBadgeKind.OTHER })
@@ -563,15 +559,14 @@ class WorktreeBoard(
 
     fun trayWorktrees(recents: List<RecentWorktree>, strings: Strings): List<TrayWorktree> =
         recents.mapNotNull { recent ->
-            val project = projects.firstOrNull { it.id == recent.projectId } ?: return@mapNotNull null
-            val holder = holder(project.id)
-            val worktree = holder?.worktrees?.firstOrNull { it.path == recent.path }
-            if (holder?.hasLoaded == true && worktree == null) return@mapNotNull null
+            val (project, holder) = entries[recent.projectId] ?: return@mapNotNull null
+            val worktree = holder.worktrees.firstOrNull { it.path == recent.path }
+            if (holder.hasLoaded && worktree == null) return@mapNotNull null
             TrayWorktree(
                 ref = WorktreeRef(project.id, recent.path),
                 name = worktree?.branch ?: recent.path.replace('\\', '/').trimEnd('/').substringAfterLast('/'),
                 projectName = project.name,
-                activity = if (holder != null && worktree != null) activityOf(holder, worktree) else Activity.Unknown,
+                activity = if (worktree != null) activityOf(holder, worktree) else Activity.Unknown,
                 isLoaded = worktree != null,
                 actions = worktree?.let { holder.actionCatalog(it, strings).trayEntries() },
             )
@@ -583,7 +578,6 @@ class WorktreeBoard(
     }
 
     fun syncCatalog(catalog: List<Project>) {
-        projects = catalog
         val current = entries
         val next = catalog.associate { project ->
             val existing = current[project.id]
@@ -597,12 +591,12 @@ class WorktreeBoard(
         }
         current.filterKeys { it !in next }.values.forEach { it.dispose() }
         entries = next
-        if (selected?.projectId?.let { it !in next } == true) selected = null
-        if (projectFilter?.let { it !in next } == true) projectFilter = null
+        selected = selected?.takeIf { it.projectId in next }
+        projectFilter = projectFilter?.takeIf { it in next }
         viewProjectFilters = viewProjectFilters.filterValues { it in next }
-        if (createProjectId?.let { it !in next } == true) createProjectId = null
-        cleanupScope = cleanupScope?.filter { it in next }?.takeIf { it.isNotEmpty() }
-        sizeQueue.prioritize(shownHolders())
+        createProjectId = createProjectId?.takeIf { it in next }
+        cleanupScope = cleanupScope?.let { scope -> scope.filter { it in next }.takeIf { it.isNotEmpty() } }
+        sizeQueue.prioritize(shownHolderSet())
     }
 
     private fun createEntry(project: Project): Entry {
@@ -623,14 +617,14 @@ class WorktreeBoard(
 
     fun syncMultirepos(memberships: List<MultirepoMembership>) {
         this.memberships = memberships
-        sizeQueue.prioritize(shownHolders())
+        sizeQueue.prioritize(shownHolderSet())
     }
 
     fun showMultirepo(folder: String) {
         mode = GroupedView.MULTIREPO
         projectFilter = null
         multirepoFolder = folder
-        sizeQueue.prioritize(shownHolders())
+        sizeQueue.prioritize(shownHolderSet())
         viewModelScope.launch { applyMultirepoAgents(detectAgents(multirepoSearches()).getOrNull()) }
     }
 
@@ -638,13 +632,24 @@ class WorktreeBoard(
         clearTextFilter()
         collapsedChanges = collapsedChanges - branch
         val group = changeView.groups.firstOrNull { it.branch == branch } ?: return
-        if (group.entries.none { it.ref == selected }) group.entries.firstOrNull()?.let { select(it.ref) }
+        if (group.entries.none { it.ref == selected }) select(group.entries.first().ref)
     }
 
     fun toggleChangeCollapsed(branch: String) {
         collapsedChanges = if (branch in collapsedChanges) collapsedChanges - branch else collapsedChanges + branch
         if (branch in collapsedChanges && changeView.groups.any { group -> group.branch == branch && group.entries.any { it.ref == selected } }) {
             selected = null
+        }
+    }
+
+    fun performViewAction(id: ActionId) {
+        when (id) {
+            ActionId.OpenMultirepoAgent(OpenTarget.HERDR) -> openMultirepoAgent()
+            ActionId.OpenMultirepoAgent(OpenTarget.ORCA) -> openMultirepoAgentInOrca()
+            ActionId.CleanUp -> openCleanup()
+            ActionId.NewChange -> openNewChange()
+            ActionId.NewWorktree -> openCreateDialog()
+            else -> Unit
         }
     }
 
@@ -665,7 +670,7 @@ class WorktreeBoard(
     val isOrcaInstalled: Boolean get() = multirepoActions.orcaInstalled
 
     val defaultRunner: RunnerId
-        get() = entries.values.firstOrNull()?.holder?.tools?.defaultRunner ?: RunnerId.HERDR
+        get() = entries.values.firstOrNull()?.let { it.holder.tools.defaultRunner } ?: RunnerId.HERDR
 
     fun openAllInOrca(group: ChangeGroup) {
         if (group.branch in openingGroupsInOrca) return
@@ -676,13 +681,14 @@ class WorktreeBoard(
                 withContext(ioDispatcher) { multirepoActions.openGroup(RunnerId.ORCA, branchGroupOf(group)) }
                     .onSuccess { openings ->
                         openings.forEach { opening ->
-                            members.firstOrNull { it.entry.worktree.path == opening.path }?.entry?.holder?.showOpenResult(opening.path, opening.result)
+                            members.firstOrNull { it.entry.worktree.path == opening.path }?.let { it.entry.holder.showOpenResult(opening.path, opening.result) }
                         }
                         val outcomes = openings.mapNotNull { opening -> opening.result.getOrNull()?.let { opening.alias to it.outcome } }
-                        multirepoNotice = if (outcomes.isEmpty()) {
-                            openings.firstNotNullOfOrNull { it.result.exceptionOrNull() }?.let(MultirepoNotice::Failed)
-                        } else {
-                            MultirepoNotice.GroupOpenedInOrca(group.title, outcomes)
+                        val failures = openings.mapNotNull { it.result.exceptionOrNull() }
+                        multirepoNotice = when {
+                            outcomes.isNotEmpty() -> MultirepoNotice.GroupOpenedInOrca(group.title, outcomes)
+                            failures.isNotEmpty() -> MultirepoNotice.Failed(failures.first())
+                            else -> null
                         }
                     }
                     .onFailure { multirepoNotice = MultirepoNotice.Failed(it) }
@@ -697,8 +703,10 @@ class WorktreeBoard(
 
     private fun membershipOf(group: ChangeGroup): MultirepoMembership? = memberships.firstOrNull { it.folder == group.multirepoFolder }
 
-    fun missingAliases(group: ChangeGroup): List<String> =
-        membershipOf(group)?.aliases?.values?.filter { it !in group.aliases }?.sorted().orEmpty()
+    fun missingAliases(group: ChangeGroup): List<String> {
+        val membership = membershipOf(group) ?: return emptyList()
+        return membership.aliases.values.filter { it !in group.aliases }.sorted()
+    }
 
     fun canAddRepositories(group: ChangeGroup): Boolean = branchTypeOf(group.branch) != null && missingAliases(group).isNotEmpty()
 
@@ -706,7 +714,7 @@ class WorktreeBoard(
         val membership = membershipOf(group) ?: return
         val (type, id) = branchTypeOf(group.branch) ?: return
         val projectId = membership.projectIdOf(alias) ?: return
-        val project = projects.firstOrNull { it.id == projectId } ?: return
+        val project = (entries[projectId] ?: return).project
         val key = "${group.branch}:$alias"
         if (key in addingToGroup) return
         addingToGroup = addingToGroup + key
@@ -715,18 +723,23 @@ class WorktreeBoard(
                 val result = withContext(ioDispatcher) {
                     multirepoActions.createGroup(listOf(MultirepoMember(alias, project.config)), id, type, false) {}
                 }
-                val repository = result.getOrNull()?.repositories?.singleOrNull()
-                multirepoNotice = when {
-                    result.isFailure -> MultirepoNotice.Failed(result.exceptionOrNull()!!)
-                    repository?.outcome == GroupRepositoryOutcome.FAILED -> MultirepoNotice.Failed(repository.error ?: IllegalStateException(alias))
-                    else -> MultirepoNotice.AddedToGroup(alias, group.title)
-                }
+                multirepoNotice = result.fold(
+                    onSuccess = { creation -> addedToGroupNotice(creation.repositories.singleOrNull(), alias, group) },
+                    onFailure = MultirepoNotice::Failed,
+                )
                 holder(projectId)?.refresh()
             } finally {
                 addingToGroup = addingToGroup - key
             }
         }
     }
+
+    private fun addedToGroupNotice(repository: GroupRepositoryResult?, alias: String, group: ChangeGroup): MultirepoNotice =
+        if (repository?.outcome == GroupRepositoryOutcome.FAILED) {
+            MultirepoNotice.Failed(repository.error ?: IllegalStateException(alias))
+        } else {
+            MultirepoNotice.AddedToGroup(alias, group.title)
+        }
 
     fun groupCleanupBlocker(group: ChangeGroup): GroupKept? {
         val branchGroup = branchGroupOf(group)
@@ -757,33 +770,21 @@ class WorktreeBoard(
         if (!canCleanUpGroup(group)) return
         resetCleanupOptions()
         cleanupOnly = group.members.mapTo(mutableSetOf()) { it.entry.worktree.path }
-        cleanupScope = group.members.map { it.entry.project.id }.distinct().also { ids ->
-            ids.forEach { holder(it)?.lookUpCleanupCandidatesInHerdr() }
-        }
+        group.members.map { it.entry.holder }.distinct().forEach { it.lookUpCleanupCandidatesInHerdr() }
+        cleanupScope = group.members.map { it.entry.project.id }.distinct()
     }
 
-    fun openMultirepoAgent() {
-        val multirepo = shownMultirepo?.multirepo?.takeIf { it.approved } ?: return
-        if (isOpeningMultirepoAgent) return
+    fun openMultirepoAgent() = openMultirepoAgentIn(RunnerId.HERDR)
+
+    fun openMultirepoAgentInOrca() = openMultirepoAgentIn(RunnerId.ORCA)
+
+    private fun openMultirepoAgentIn(runner: RunnerId) {
+        val multirepo = (shownMultirepo ?: return).multirepo
+        if (!multirepo.approved || isOpeningMultirepoAgent) return
         isOpeningMultirepoAgent = true
         viewModelScope.launch {
             try {
-                withContext(ioDispatcher) { multirepoActions.openAgent(RunnerId.HERDR, multirepo) }
-                    .onSuccess { multirepoNotice = MultirepoNotice.AgentOpened(it.runner, it.outcome) }
-                    .onFailure { multirepoNotice = MultirepoNotice.Failed(it) }
-            } finally {
-                isOpeningMultirepoAgent = false
-            }
-        }
-    }
-
-    fun openMultirepoAgentInOrca() {
-        val multirepo = shownMultirepo?.multirepo?.takeIf { it.approved } ?: return
-        if (isOpeningMultirepoAgent) return
-        isOpeningMultirepoAgent = true
-        viewModelScope.launch {
-            try {
-                withContext(ioDispatcher) { multirepoActions.openAgent(RunnerId.ORCA, multirepo) }
+                withContext(ioDispatcher) { multirepoActions.openAgent(runner, multirepo) }
                     .onSuccess { multirepoNotice = MultirepoNotice.AgentOpened(it.runner, it.outcome) }
                     .onFailure { multirepoNotice = MultirepoNotice.Failed(it) }
             } finally {
@@ -802,8 +803,8 @@ class WorktreeBoard(
     }
 
     fun trustShownMultirepo(onTrusted: () -> Unit) {
-        val multirepo = shownMultirepo?.multirepo?.takeIf { !it.approved } ?: return
-        if (isTrustingMultirepo) return
+        val multirepo = (shownMultirepo ?: return).multirepo
+        if (multirepo.approved || isTrustingMultirepo) return
         isTrustingMultirepo = true
         viewModelScope.launch {
             try {
@@ -823,9 +824,9 @@ class WorktreeBoard(
     fun confirmNewChange() {
         val change = newChange ?: return
         if (!change.canConfirm) return
+        val projectIds = change.membership.aliases.entries.associate { (projectId, alias) -> alias to projectId }
         val members = change.orderedSelection.mapNotNull { alias ->
-            val project = change.membership.projectIdOf(alias)?.let { id -> projects.firstOrNull { it.id == id } } ?: return@mapNotNull null
-            MultirepoMember(alias, project.config)
+            entries[projectIds.getValue(alias)]?.let { MultirepoMember(alias, it.project.config) }
         }
         change.isCreating = true
         change.error = null
@@ -835,7 +836,7 @@ class WorktreeBoard(
                     multirepoActions.createGroup(members, change.taskId, change.branchType, change.fetchFirst) {}
                 }.onSuccess { creation ->
                     change.results = creation.repositories
-                    members.forEach { member -> change.membership.projectIdOf(member.alias)?.let(::holder)?.refresh() }
+                    members.forEach { member -> holder(projectIds.getValue(member.alias))?.refresh() }
                     val runner = change.runner
                     if (runner != null && creation.repositories.any { it.path != null }) {
                         change.openings = withContext(ioDispatcher) { openCreated(runner, members, creation) }
@@ -866,7 +867,7 @@ class WorktreeBoard(
     fun show(projectFilter: String?, mode: GroupedView = GroupedView.ALL) {
         this.mode = mode
         this.projectFilter = projectFilter?.takeIf { id -> mode == GroupedView.ALL && projects.any { it.id == id } }
-        sizeQueue.prioritize(shownHolders())
+        sizeQueue.prioritize(shownHolderSet())
     }
 
     fun updateViewProjectFilter(projectId: String?) {
@@ -875,7 +876,7 @@ class WorktreeBoard(
         } else {
             viewProjectFilters - mode
         }
-        sizeQueue.prioritize(shownHolders())
+        sizeQueue.prioritize(shownHolderSet())
     }
 
     fun updateGrouping(grouping: Grouping) {
@@ -901,7 +902,7 @@ class WorktreeBoard(
     }
 
     fun refreshShown() {
-        shownHolders().forEach { holder ->
+        shownHolderSet().forEach { holder ->
             holder.refresh(remeasureSizes = true)
             if (isCreateDialogOpen && createHolder == holder) holder.loadBranches()
         }
@@ -920,9 +921,8 @@ class WorktreeBoard(
     }
 
     private fun isDueForFocusRefresh(holder: ProjectWorktrees): Boolean {
-        if (holder.isBusy || !holder.hasLoaded) return false
-        val lastRead = holder.lastReadAt ?: return true
-        return clock() >= lastRead + FOCUS_REFRESH_MIN_INTERVAL.toJavaDuration()
+        if (holder.isBusy) return false
+        return clock() >= holder.lastReadAt + FOCUS_REFRESH_MIN_INTERVAL.toJavaDuration()
     }
 
     fun repairAfterMove(projectId: String, previousWorktreesRoot: String) {
@@ -989,7 +989,8 @@ class WorktreeBoard(
 
     fun revealInAllWorktrees(ref: WorktreeRef) {
         clearTextFilter()
-        if (viewProjectFilters[GroupedView.ALL]?.let { it != ref.projectId } == true) {
+        val allFilter = viewProjectFilters[GroupedView.ALL]
+        if (allFilter != null && allFilter != ref.projectId) {
             viewProjectFilters = viewProjectFilters - GroupedView.ALL
         }
         if (ref.projectId in collapsedProjects) toggleCollapsed(ref.projectId)
@@ -1055,17 +1056,20 @@ class WorktreeBoard(
         preferences.loadLastCreateProject()?.takeIf { id -> projects.any { it.id == id } } ?: projects.firstOrNull()?.id
 
     fun selectCreateProject(projectId: String) {
-        if (createHolder?.isCreating == true || holder(projectId) == null) return
+        val holder = holder(projectId)
+        if (createHolder?.isCreating == true || holder == null) return
         createProjectId = projectId
         selectedBranch = null
         startFrom = null
         fetchFirst = fetchPreferenceOf(projectId)
-        holder(projectId)?.dismissCreateError()
-        holder(projectId)?.loadBranches()
+        holder.dismissCreateError()
+        holder.loadBranches()
     }
 
-    private fun fetchPreferenceOf(projectId: String): Boolean =
-        projects.firstOrNull { it.id == projectId }?.config?.fetchBeforeCreate ?: false
+    private fun fetchPreferenceOf(projectId: String): Boolean {
+        val entry = entries[projectId]
+        return entry != null && entry.project.config.fetchBeforeCreate
+    }
 
     fun updateCreateMode(mode: CreateMode) {
         createMode = mode
@@ -1083,7 +1087,7 @@ class WorktreeBoard(
         get() = startFrom ?: StartOption.Current
 
     val currentBranchName: String?
-        get() = createHolder?.worktrees?.firstOrNull { it.isMain }?.branch
+        get() = createHolder?.let { holder -> holder.worktrees.firstOrNull { it.isMain }?.branch }
 
     val canFetchFirst: Boolean
         get() = createHolder?.hasOrigin == true
@@ -1109,14 +1113,14 @@ class WorktreeBoard(
     }
 
     fun confirmCreate(skipFetch: Boolean = false) {
-        if (!canCreate) return
         val projectId = createProjectId ?: return
         val holder = holder(projectId) ?: return
+        if (!canCreate) return
         if (holder.hasOrigin && fetchFirst != fetchPreferenceOf(projectId)) rememberFetchBeforeCreate(projectId, fetchFirst)
         val fetch = fetchFirst && holder.hasOrigin && !skipFetch
         val onCreated: (Worktree) -> Unit = {
             preferences.saveLastCreateProject(projectId)
-            if (createProjectId == projectId) createProjectId = null
+            createProjectId = null
         }
         when (createMode) {
             CreateMode.NEW_BRANCH -> holder.create(taskId, branchType, effectiveStartFrom.ref, fetch, onCreated)
@@ -1132,13 +1136,14 @@ class WorktreeBoard(
 
     fun canCleanUp(projectId: String? = null): Boolean = cleanUpBlock(projectId) == null
 
-    private fun cleanupScopeIds(projectId: String?): List<String> = projectId?.let(::listOf) ?: shownProjects.map { it.id }
+    private fun cleanupScopeEntries(projectId: String?): List<Entry> =
+        if (projectId == null) shownEntries() else listOfNotNull(entries[projectId])
 
-    private fun cleanupTargets(projectId: String?): List<String> =
-        cleanupScopeIds(projectId).filter { holder(it)?.canCleanUp == true }
+    private fun cleanupTargets(projectId: String?): List<Entry> =
+        cleanupScopeEntries(projectId).filter { it.holder.canCleanUp }
 
     private fun keptForRunningAgentBlock(projectId: String?): CleanupBlock.KeptForRunningAgent? {
-        val kept = cleanupScopeIds(projectId).flatMap { holder(it)?.cleanupKeptForRunningAgent.orEmpty().entries }
+        val kept = cleanupScopeEntries(projectId).flatMap { it.holder.cleanupKeptForRunningAgent.entries }
         if (kept.isEmpty()) return null
         return CleanupBlock.KeptForRunningAgent(
             worktrees = kept.map { it.key.path.substringAfterLast('/') },
@@ -1150,9 +1155,9 @@ class WorktreeBoard(
         if (!canCleanUp(projectId)) return
         resetCleanupOptions()
         cleanupOnly = null
-        cleanupScope = cleanupTargets(projectId).also { targets ->
-            targets.forEach { holder(it)?.lookUpCleanupCandidatesInHerdr() }
-        }
+        val targets = cleanupTargets(projectId)
+        targets.forEach { it.holder.lookUpCleanupCandidatesInHerdr() }
+        cleanupScope = targets.map { it.project.id }
     }
 
     private fun resetCleanupOptions() {
@@ -1212,9 +1217,16 @@ class WorktreeBoard(
         selectedWorktree?.takeIf { !it.worktree.isMain }?.let { it.holder.requestRemoval(it.worktree) }
     }
 
-    private fun shownEntries(): List<Entry> = shownProjects.mapNotNull { entries[it.id] }
+    private fun shownEntries(): List<Entry> {
+        if (isMultirepoView) {
+            val membership = shownMultirepo ?: return emptyList()
+            return entries.values.filter { it.project.id in membership.aliases }
+        }
+        val filter = effectiveProjectFilter ?: return entries.values.toList()
+        return entries.values.filter { it.project.id == filter }
+    }
 
-    private fun shownHolders(): Set<ProjectWorktrees> = shownEntries().map { it.holder }.toSet()
+    private fun shownHolderSet(): Set<ProjectWorktrees> = shownEntries().map { it.holder }.toSet()
 
     override fun onCleared() {
         entries.values.forEach { it.dispose() }
@@ -1242,6 +1254,8 @@ data class WorktreeEntry(val project: Project, val holder: ProjectWorktrees, val
 }
 
 data class PaletteWorktree(val project: Project, val worktree: Worktree, val indicator: StateBadgeKind?)
+
+data class ProjectHolder(val project: Project, val holder: ProjectWorktrees)
 
 data class SelectedWorktree(val project: Project, val holder: ProjectWorktrees, val worktree: Worktree)
 

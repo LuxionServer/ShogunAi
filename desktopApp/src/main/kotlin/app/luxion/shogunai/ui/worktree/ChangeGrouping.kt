@@ -42,6 +42,6 @@ fun combinedActivity(activities: List<Activity>): Activity {
 
 fun groupedBranches(entries: List<AliasedEntry>): Map<String, List<AliasedEntry>> =
     entries
-        .filter { it.entry.worktree.branch != null && !it.entry.worktree.isMain }
-        .groupBy { it.entry.worktree.branch!! }
+        .mapNotNull { member -> member.entry.worktree.branch?.let { it to member } }
+        .groupBy({ it.first }, { it.second })
         .filterValues { members -> members.map { it.alias }.distinct().size >= 2 }

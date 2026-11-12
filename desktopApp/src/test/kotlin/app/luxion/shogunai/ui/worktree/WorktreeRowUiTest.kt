@@ -34,6 +34,9 @@ import app.luxion.shogunai.domain.model.toLocalClockTime
 import app.luxion.shogunai.ui.i18n.EnglishStrings
 import java.time.Duration
 import java.time.Instant
+import androidx.compose.ui.test.assertCountEquals
+import app.luxion.shogunai.domain.model.WorktreeSimulator
+import app.luxion.shogunai.domain.model.SimulatorState
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -366,5 +369,37 @@ class WorktreeRowUiTest {
         setContent { MaterialTheme { Column(Modifier.width(900.dp)) { Row(blocked) } } }
 
         onNodeWithText("Claude · needs you", useUnmergedTree = true).assertIsDisplayed()
+    }
+
+    @Test
+    fun `rows show a simulator or a background app, a copied command and a status that couldn't be read`() = runComposeUiTest {
+        val worktree = Worktree(path = "/home/dev/projects/TASK-5", branch = "feature/TASK-5")
+        fun row(simulator: WorktreeSimulator? = null, headlessApp: HeadlessAppProcess? = null, state: WorktreeStatusState? = WorktreeStatusState.Loaded(status())) =
+            worktreeRowModel(
+                worktree = worktree,
+                status = state,
+                mainBranchName = "develop",
+                agents = emptyList(),
+                emulator = null,
+                simulator = simulator,
+                origin = null,
+                projectName = null,
+                inactiveAfter = Duration.ofDays(3),
+                now = now,
+                strings = EnglishStrings,
+                headlessApp = headlessApp,
+            )
+        setContent {
+            MaterialTheme {
+                Column {
+                    WorktreeRow(row(simulator = WorktreeSimulator("SIM-1", "iPhone 16", SimulatorState.BOOTED)), selected = false, isCopied = true, onSelect = {}, onCopyLaunchCommand = {})
+                    WorktreeRow(row(headlessApp = HeadlessAppProcess(HeadlessAppState.RUNNING, 4242, "/home/dev/state/launch.log")), selected = false, isCopied = false, onSelect = {}, onCopyLaunchCommand = {})
+                    WorktreeRow(row(state = WorktreeStatusState.Unavailable), selected = false, isCopied = false, onSelect = {}, onCopyLaunchCommand = {})
+                    WorktreeRow(row(state = null), selected = false, isCopied = false, onSelect = {}, onCopyLaunchCommand = {})
+                }
+            }
+        }
+
+        onAllNodesWithText("—").assertCountEquals(2)
     }
 }

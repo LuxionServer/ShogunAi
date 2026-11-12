@@ -15,6 +15,13 @@ import app.luxion.shogunai.GradleUseCases
 import app.luxion.shogunai.SimulatorUseCases
 import app.luxion.shogunai.WorktreeUseCases
 import app.luxion.shogunai.XcodeUseCases
+import app.luxion.shogunai.ToolUseCases
+import app.luxion.shogunai.domain.FakeToolDetector
+import app.luxion.shogunai.domain.FakeToolPreferenceRepository
+import app.luxion.shogunai.domain.model.DetectedTools
+import app.luxion.shogunai.domain.model.TerminalId
+import app.luxion.shogunai.ui.shell.ToolsPreferences
+import app.luxion.shogunai.ui.multirepo.MultirepoMembership
 import app.luxion.shogunai.domain.FakeClipboardWriter
 import app.luxion.shogunai.domain.FakeDerivedDataSource
 import app.luxion.shogunai.domain.FakeFileManager
@@ -62,6 +69,7 @@ import app.luxion.shogunai.domain.usecase.ResolveMainBranchUseCase
 import app.luxion.shogunai.domain.usecase.StopGradleDaemonsUseCase
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
@@ -82,6 +90,9 @@ import app.luxion.shogunai.ui.i18n.EnglishStrings
 import app.luxion.shogunai.ui.i18n.describe
 import app.luxion.shogunai.ui.tray.trayWorktreeLabel
 import java.time.Instant
+import app.luxion.shogunai.domain.model.AgentStateSource
+import kotlin.test.assertNotNull
+import kotlinx.coroutines.launch
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -175,13 +186,21 @@ class WorktreeBoardTest {
         var listGate: CompletableDeferred<Unit>? = null
         var removeGate: CompletableDeferred<Unit>? = null
         var statusGate: CompletableDeferred<Unit>? = null
+        var addGate: CompletableDeferred<Unit>? = null
+        var psGate: CompletableDeferred<Unit>? = null
+        var tools: ToolUseCases = ToolUseCases.NONE
+        var statusFails = false
+        var mergeBaseFails = false
+        var hasOrigin = true
+        var locked: Set<String> = emptySet()
         val files = FakeFileManager(existing = listOf(base), directories = setOf("$base/.git")).apply {
             stamps["$base/.git/HEAD"] = 1
         }
 
         val porcelain: String
             get() = (listOf(base to "main") + worktrees).joinToString("\n\n") { (path, branch) ->
-                "worktree $path\nHEAD abc\nbranch refs/heads/$branch"
+                val head = if (branch.isEmpty()) "worktree $path\nHEAD abc\ndetached" else "worktree $path\nHEAD abc\nbranch refs/heads/$branch"
+                if (path in locked) "$head\nlocked" else head
             }
 
         fun touch() {
@@ -200,8 +219,10 @@ class WorktreeBoardTest {
                     command == forEachRefCommand -> success(command, stdout = "refs/heads/main\nrefs/heads/hotfix/fix\n")
                     command == statusCommand -> {
                         statusGate?.await()
-                        success(command)
+                        if (statusFails) failure(command, stderr = "unreadable") else success(command)
                     }
+                    command.take(2) == listOf("git", "merge-base") && mergeBaseFails -> failure(command, exitCode = 1, stderr = "")
+                    command == listOf("git", "remote", "get-url", "origin") && !hasOrigin -> failure(command, stderr = "no origin")
                     command.getOrNull(1) == "symbolic-ref" -> success(command, stdout = "origin/main\n")
                     command == listOf("git", "rev-list", "--left-right", "--count", "origin/main...HEAD") ->
                         success(command, stdout = if (workingDirectory in unmergedPaths) "0\t1\n" else divergenceOutput)
@@ -209,6 +230,14 @@ class WorktreeBoardTest {
                         success(command, stdout = upstreamOutput!!)
                     command == listOf("git", "log", "-1", "--format=%ct") -> success(command, stdout = lastCommitOutput)
                     command.getOrNull(1) == "rev-list" -> failure(command, stderr = "no upstream")
+                    command.firstOrNull() == "ps" && psGate != null -> {
+                        psGate?.await()
+                        success(command)
+                    }
+                    command.take(3) == listOf("git", "worktree", "add") -> {
+                        addGate?.await()
+                        success(command)
+                    }
                     command.take(3) == listOf("git", "worktree", "remove") -> {
                         removeGate?.await()
                         success(command)
@@ -249,6 +278,7 @@ class WorktreeBoardTest {
             },
             simulator = SimulatorUseCases.NONE,
             herdr = HerdrUseCases.NONE.copy(open = { target, _ -> openedInHerdr += target.path; Result.success(HerdrOpening(HerdrOutcome.OPENED, "w1:p1", "Claude")) }),
+            tools = tools,
             orca = OrcaUseCases.NONE.copy(
                 open = { target, _ -> openedInOrca += target.path; Result.success(OrcaOpening(OrcaOutcome.STARTED_AGENT, "term_1", "Claude")) },
                 withTerminals = { paths -> paths.filter { it in orcaTerminalPaths }.toSet() },
@@ -2518,5 +2548,1288 @@ class WorktreeBoardTest {
 
         assertEquals(1, board.multirepoAgentsOf(product.folder).size)
         assertEquals(1, board.multirepoWaitingCountOf(product.folder))
+    }
+
+    private val apiRef = WorktreeRef("api", "/home/dev/projects/api-TASK-12")
+    private val mainRef = WorktreeRef("main-repo", "/home/dev/projects/TASK-123")
+
+    @Test
+    fun `a multirepo view without a known folder shows nothing and the other views show no multirepo`() = runTest(dispatcher) {
+        val board = productBoard()
+        board.showMultirepo("/home/dev/projects/unknown")
+
+        assertNull(board.shownMultirepo)
+        assertTrue(board.shownProjects.isEmpty())
+        assertTrue(board.changeView.isEmpty)
+        assertTrue(board.isListEmpty)
+
+        board.show(null)
+        assertNull(board.shownMultirepo)
+        assertNull(board.aliasOf("app"))
+    }
+
+    @Test
+    fun `a saved grouping that doesn't apply to the view falls back to the view's default`() = runTest(dispatcher) {
+        preferences.saveGrouping(GroupedView.MULTIREPO, Grouping.BY_PROJECT)
+        val board = productBoard()
+
+        assertEquals(GroupedView.MULTIREPO.defaultGrouping, board.grouping)
+
+        board.updateGrouping(Grouping.BY_STATE)
+        assertFalse(board.isGroupedByChange)
+        assertTrue(board.isGroupedByState)
+        assertFalse(board.isListEmpty)
+    }
+
+    @Test
+    fun `collapsing an expanded change clears a selection inside it`() = runTest(dispatcher) {
+        unmergedPaths += "/home/dev/projects/api-TASK-1"
+        val board = activeProductBoard()
+        val change = board.activeChanges().single().group
+        board.select(apiTask1)
+        assertTrue(board.activeChanges().single().expanded)
+
+        board.toggleChangeExpanded(change.key)
+        assertNull(board.selected)
+
+        board.toggleChangeExpanded(change.key)
+        board.toggleChangeExpanded(change.key)
+        assertFalse(board.activeChanges().single().expanded)
+        assertNull(board.selected)
+    }
+
+    @Test
+    fun `state groups can be collapsed in a view without collapsed groups`() = runTest(dispatcher) {
+        val board = board()
+        advanceUntilIdle()
+        board.updateGrouping(Grouping.BY_STATE)
+        val kind = board.stateGroups.first().kind
+        board.select(apiRef)
+
+        board.toggleStateCollapsed(kind)
+
+        assertTrue(board.stateGroups.first { it.kind == kind }.collapsed)
+        assertNull(board.selected)
+    }
+
+    @Test
+    fun `the change view sorts its loose worktrees`() = runTest(dispatcher) {
+        productApi.worktrees = productApi.worktrees + ("/home/dev/projects/api-other" to "feature/other")
+        val board = productBoard()
+
+        board.updateSort(WorktreeSort.ACTIVITY)
+
+        assertEquals(
+            listOf("/home/dev/projects/api-loose", "/home/dev/projects/api-other"),
+            board.changeView.ungrouped.map { it.entry.worktree.path }.sorted(),
+        )
+    }
+
+    @Test
+    fun `a project that failed to list isn't reading activity`() = runTest(dispatcher) {
+        api.exists = false
+        repositories = listOf(api)
+        val board = board()
+        advanceUntilIdle()
+        board.show(null, GroupedView.ACTIVE)
+
+        assertNotNull(board.holder("api")!!.listFailure)
+        assertFalse(board.isReadingActivity)
+        assertFalse(board.isNothingWaiting)
+    }
+
+    @Test
+    fun `nothing waits while a filter is typed or activity is being read`() = runTest(dispatcher) {
+        repositories = listOf(api)
+        val board = board()
+        advanceUntilIdle()
+        board.startWatching()
+        tick()
+        board.stopWatching()
+        board.show(null, GroupedView.ACTIVE)
+        assertTrue(board.isNothingWaiting)
+
+        board.updateTextFilter("TASK")
+        assertFalse(board.isNothingWaiting)
+        board.clearTextFilter()
+
+        board.show(null, GroupedView.ALL)
+        assertFalse(board.isNothingWaiting)
+
+    }
+
+    @Test
+    fun `nothing waits while the worktrees are still being read`() = runTest(dispatcher) {
+        repositories = listOf(api)
+        api.listGate = CompletableDeferred()
+        val board = board()
+        runCurrent()
+        board.show(null, GroupedView.ACTIVE)
+
+        assertTrue(board.isReadingActivity)
+        assertFalse(board.isNothingWaiting)
+        api.listGate!!.complete(Unit)
+        advanceUntilIdle()
+    }
+
+    @Test
+    fun `working agents count agents without a state and skip worktrees without agents`() = runTest(dispatcher) {
+        val board = board()
+        advanceUntilIdle()
+        assertEquals(0, board.workingAgentCount)
+
+        board.holder("api")!!.applyAgents(
+            mapOf(
+                "/home/dev/projects/api-TASK-12" to listOf(
+                    RunningAgent("codex", state = AgentState.WORKING),
+                    RunningAgent("claude"),
+                    RunningAgent("other", state = AgentState.IDLE),
+                ),
+            ),
+        )
+
+        assertEquals(2, board.workingAgentCount)
+    }
+
+    @Test
+    fun `a claude agent without a state source is noticed`() = runTest(dispatcher) {
+        val board = board()
+        advanceUntilIdle()
+        assertFalse(board.hasClaudeWithoutState)
+
+        board.holder("api")!!.applyAgents(mapOf("/home/dev/projects/api-TASK-12" to listOf(RunningAgent("codex"))))
+        assertFalse(board.hasClaudeWithoutState)
+
+        board.holder("api")!!.applyAgents(
+            mapOf("/home/dev/projects/api-TASK-12" to listOf(RunningAgent("claude", stateSource = AgentStateSource.CLAUDE_CODE))),
+        )
+        assertFalse(board.hasClaudeWithoutState)
+
+        board.holder("api")!!.applyAgents(mapOf("/home/dev/projects/api-TASK-12" to listOf(RunningAgent("claude"))))
+        assertTrue(board.hasClaudeWithoutState)
+    }
+
+    @Test
+    fun `a change gathers its members' agents and the latest time they were read`() = runTest(dispatcher) {
+        productApp.psGate = CompletableDeferred()
+        productApi.psGate = CompletableDeferred()
+        val board = productBoard()
+        val group = board.changeView.groups.single { it.title == "TASK-1" }
+        assertTrue(board.agentsOf(group).isEmpty())
+        assertNull(board.agentsReadAtOf(group))
+        assertTrue(board.multirepoAgentsOf("/home/dev/projects/unknown").isEmpty())
+
+        board.holder("app")!!.applyAgents(mapOf("/home/dev/projects/app-TASK-1" to listOf(RunningAgent("claude"))))
+        board.holder("api")!!.applyAgents(emptyMap())
+
+        assertEquals(listOf("claude"), board.agentsOf(group).map { it.name })
+        assertNotNull(board.agentsReadAtOf(group))
+        productApp.psGate!!.complete(Unit)
+        productApi.psGate!!.complete(Unit)
+        advanceUntilIdle()
+    }
+
+    @Test
+    fun `failing to detect agents leaves the multirepo agents unread`() = runTest(dispatcher) {
+        agentResult = Result.failure(IllegalStateException("ps failed"))
+        val board = productBoard()
+        advanceUntilIdle()
+
+        assertTrue(board.multirepoAgentsOf(product.folder).isEmpty())
+        assertNull(board.multirepoAgentsReadAt)
+
+        board.refreshOnFocus()
+        advanceUntilIdle()
+        assertNull(board.multirepoAgentsReadAt)
+    }
+
+    @Test
+    fun `the selected worktree stays listed in active even when it isn't active`() = runTest(dispatcher) {
+        val board = board()
+        advanceUntilIdle()
+        board.show(null, GroupedView.ACTIVE)
+        val merged = board.stateGroups.flatMap { it.items }.flatMap { it.entries }.map { it.ref }
+        assertFalse(apiRef in merged)
+
+        board.select(apiRef)
+
+        assertTrue(apiRef in board.stateGroups.flatMap { it.items }.flatMap { it.entries }.map { it.ref })
+    }
+
+    @Test
+    fun `a selection in a project that isn't shown has no selected worktree`() = runTest(dispatcher) {
+        val board = board()
+        advanceUntilIdle()
+        board.select(apiRef)
+
+        board.show("main-repo")
+
+        assertNull(board.selectedWorktree)
+        assertNull(board.selectedCatalog(EnglishStrings))
+        board.performOnSelected(ActionId.CopyPath)
+        assertFalse(board.focusSelectedAgent())
+    }
+
+    @Test
+    fun `the create dialog has no holder, options or branch until it is opened`() = runTest(dispatcher) {
+        val board = board()
+        advanceUntilIdle()
+
+        assertNull(board.createHolder)
+        assertTrue(board.startOptions.isEmpty())
+        assertNull(board.currentBranchName)
+        assertFalse(board.canFetchFirst)
+        assertFalse(board.canCreate)
+        board.confirmCreate()
+        assertTrue(executed.none { it.getOrNull(2) == "add" })
+
+        board.openCreateDialog("api")
+        assertEquals("main", board.currentBranchName)
+    }
+
+    @Test
+    fun `a create dialog opened for an unknown project doesn't create`() = runTest(dispatcher) {
+        val board = board()
+        advanceUntilIdle()
+
+        board.openCreateDialog("unknown")
+        board.updateTaskId("TASK-99")
+        board.confirmCreate()
+        advanceUntilIdle()
+
+        assertEquals("unknown", board.createProjectId)
+        assertNull(board.createHolder)
+        assertFalse(board.fetchFirst)
+        assertTrue(executed.none { it.getOrNull(2) == "add" })
+    }
+
+    @Test
+    fun `the create dialog doesn't open twice or without projects`() = runTest(dispatcher) {
+        repositories = emptyList()
+        val empty = board()
+        empty.openCreateDialog()
+        assertFalse(empty.isCreateDialogOpen)
+
+        repositories = listOf(api, mainRepo)
+        val board = board()
+        advanceUntilIdle()
+        board.openCreateDialog("api")
+        board.openCreateDialog("main-repo")
+        assertEquals("api", board.createProjectId)
+    }
+
+    @Test
+    fun `a last create project that was removed falls back to the first project`() = runTest(dispatcher) {
+        preferences.lastCreateProject = "removed"
+        val board = board()
+        advanceUntilIdle()
+
+        board.openCreateDialog()
+
+        assertEquals("api", board.createProjectId)
+    }
+
+    @Test
+    fun `the create project can't change to an unknown project or while creating`() = runTest(dispatcher) {
+        val board = board()
+        advanceUntilIdle()
+        board.openCreateDialog("api")
+
+        board.selectCreateProject("unknown")
+        assertEquals("api", board.createProjectId)
+
+        board.updateTaskId("TASK-99")
+        api.addGate = CompletableDeferred()
+        board.confirmCreate()
+        runCurrent()
+        assertTrue(board.createHolder!!.isCreating)
+        board.selectCreateProject("main-repo")
+        board.dismissCreateDialog()
+        assertEquals("api", board.createProjectId)
+        api.addGate!!.complete(Unit)
+        advanceUntilIdle()
+    }
+
+    @Test
+    fun `creating without fetching when asked to skip it`() = runTest(dispatcher) {
+        val board = board()
+        advanceUntilIdle()
+        board.openCreateDialog("api")
+        board.fetchFirst = true
+        board.updateTaskId("TASK-99")
+
+        board.confirmCreate(skipFetch = true)
+        advanceUntilIdle()
+
+        assertTrue(executed.none { it.take(2) == listOf("git", "fetch") })
+    }
+
+    @Test
+    fun `cleanup projects are empty without a cleanup and a cleanup result can be dismissed`() = runTest(dispatcher) {
+        val board = board()
+        advanceUntilIdle()
+        assertTrue(board.cleanupProjects.isEmpty())
+        assertNull(board.pendingSuccess)
+
+        board.openCleanup("api")
+        board.confirmCleanup()
+        advanceUntilIdle()
+
+        val pending = board.pendingSuccess!!
+        assertNull(pending.projectId)
+        board.dismissSuccess(pending)
+        assertNull(board.cleanupSuccess)
+        board.dismissSuccess(PendingSuccess("unknown", WorktreeSuccess.CleanedUp(removedCount = 1)))
+    }
+
+    @Test
+    fun `a project's own success is pending until it is dismissed`() = runTest(dispatcher) {
+        val board = board()
+        advanceUntilIdle()
+        board.openCreateDialog("api")
+        board.updateTaskId("TASK-99")
+        board.confirmCreate()
+        advanceUntilIdle()
+
+        val pending = board.pendingSuccess!!
+        assertEquals("api", pending.projectId)
+        board.dismissSuccess(pending)
+        assertNull(board.pendingSuccess)
+    }
+
+    @Test
+    fun `the menu bar offers default tools without projects`() = runTest(dispatcher) {
+        repositories = emptyList()
+        val board = board()
+
+        assertTrue(board.menuBarCatalog(EnglishStrings).menuBarEntries().isNotEmpty())
+        assertEquals(RunnerId.HERDR, board.defaultRunner)
+    }
+
+    @Test
+    fun `the menu copies the selected launch command and asks to remove the selected worktree`() = runTest(dispatcher) {
+        val board = board()
+        advanceUntilIdle()
+        board.select(mainRef)
+
+        board.runFromMenu(ActionId.CopyLaunchCommand)
+        runCurrent()
+        assertEquals(mainRef.path, board.holder("main-repo")!!.copiedWorktreePath)
+
+        board.runFromMenu(ActionId.RemoveWorktree)
+        assertEquals(mainRef.path, board.pendingRemoval?.worktreePendingRemoval?.path)
+    }
+
+    @Test
+    fun `the palette lists every worktree with its state`() = runTest(dispatcher) {
+        val board = board()
+        advanceUntilIdle()
+
+        val palette = board.paletteWorktrees
+
+        assertEquals(5, palette.size)
+        assertTrue(palette.any { it.indicator == null })
+        assertTrue(palette.any { it.indicator == StateBadgeKind.MERGED })
+    }
+
+    @Test
+    fun `actions run on a worktree by reference and unknown references are ignored`() = runTest(dispatcher) {
+        val board = board()
+        advanceUntilIdle()
+
+        board.perform(WorktreeRef("unknown", apiRef.path), ActionId.CopyPath)
+        board.perform(WorktreeRef("api", "/home/dev/projects/missing"), ActionId.CopyPath)
+        board.copyLaunchCommand(WorktreeRef("unknown", apiRef.path))
+        board.copyLaunchCommand(WorktreeRef("api", "/home/dev/projects/missing"))
+        assertTrue(board.actionErrors.isEmpty())
+
+        var copied = false
+        board.copyLaunchCommand(apiRef) { copied = true }
+        board.perform(apiRef, ActionId.RemoveWorktree)
+        advanceUntilIdle()
+        assertTrue(copied)
+        assertEquals(apiRef.path, board.pendingRemoval?.worktreePendingRemoval?.path)
+    }
+
+    @Test
+    fun `a recent worktree whose project hasn't loaded is named after its folder`() = runTest(dispatcher) {
+        api.listGate = CompletableDeferred()
+        val board = board()
+        runCurrent()
+
+        val listed = board.trayWorktrees(listOf(RecentWorktree("api", "/home/dev/projects/api-TASK-12/")), EnglishStrings).single()
+
+        assertEquals("api-TASK-12", listed.name)
+        assertEquals(Activity.Unknown, listed.activity)
+        assertNull(listed.actions)
+        api.listGate!!.complete(Unit)
+        advanceUntilIdle()
+    }
+
+    @Test
+    fun `removing a project from the catalog clears what pointed at it`() = runTest(dispatcher) {
+        val board = board()
+        advanceUntilIdle()
+        board.select(apiRef)
+        board.show("api")
+        board.openCreateDialog("api")
+        board.dismissCreateDialog()
+        board.openCleanup("api")
+
+        board.syncCatalog(listOf(mainRepo.project))
+
+        assertNull(board.selected)
+        assertNull(board.projectFilter)
+        assertNull(board.createProjectId)
+        assertNull(board.cleanupScope)
+    }
+
+    @Test
+    fun `a catalog change keeps what still points at a project`() = runTest(dispatcher) {
+        val board = board()
+        advanceUntilIdle()
+        board.select(apiRef)
+        board.show("api")
+        board.openCleanup("api")
+        board.openCreateDialog("api")
+
+        board.syncCatalog(listOf(api.project))
+
+        assertEquals(apiRef, board.selected)
+        assertEquals("api", board.projectFilter)
+        assertEquals("api", board.createProjectId)
+        assertEquals(listOf("api"), board.cleanupScope)
+    }
+
+    @Test
+    fun `revealing a group keeps a selection already inside it and ignores unknown groups`() = runTest(dispatcher) {
+        val board = productBoard()
+        board.select(apiTask1)
+
+        board.revealGroup("feature/TASK-1")
+        assertEquals(apiTask1, board.selected)
+
+        board.revealGroup("feature/unknown")
+        assertEquals(apiTask1, board.selected)
+    }
+
+    @Test
+    fun `collapsing a change clears a selection inside it and expanding it again keeps none`() = runTest(dispatcher) {
+        val board = productBoard()
+        board.select(apiTask1)
+
+        board.toggleChangeCollapsed("feature/TASK-2")
+        assertEquals(apiTask1, board.selected)
+        board.toggleChangeCollapsed("feature/TASK-1")
+        assertNull(board.selected)
+        board.toggleChangeCollapsed("feature/TASK-1")
+        assertTrue(board.changeView.groups.none { it.collapsed && it.branch == "feature/TASK-1" })
+    }
+
+    private fun toolsWith(detected: DetectedTools, runner: RunnerId? = null): ToolUseCases {
+        val preferences = ToolsPreferences(FakeToolPreferenceRepository(runner = runner), FakeToolDetector(detected))
+        runBlocking { preferences.refresh() }
+        return ToolUseCases.NONE.copy(preferences = preferences)
+    }
+
+    @Test
+    fun `collapsing a change keeps a selection held by another change or a loose worktree`() = runTest(dispatcher) {
+        unmergedPaths += listOf("/home/dev/projects/api-TASK-1", "/home/dev/projects/api-loose", "/home/dev/projects/docs-TASK-2")
+        val board = activeProductBoard()
+        val task1 = board.activeChanges().single { it.group.title == "TASK-1" }.group
+        val loose = WorktreeRef("api", "/home/dev/projects/api-loose")
+        board.toggleChangeExpanded(task1.key)
+        board.select(loose)
+
+        board.toggleChangeExpanded(task1.key)
+
+        assertEquals(loose, board.selected)
+    }
+
+    @Test
+    fun `statuses still loading are read as activity being read`() = runTest(dispatcher) {
+        repositories = listOf(api)
+        api.statusGate = CompletableDeferred()
+        val board = board()
+        runCurrent()
+
+        assertTrue(board.holder("api")!!.hasLoaded)
+        assertTrue(board.isReadingActivity)
+        api.statusGate!!.complete(Unit)
+        advanceUntilIdle()
+        assertFalse(board.isReadingActivity)
+    }
+
+    @Test
+    fun `agents not read yet count no working agents`() = runTest(dispatcher) {
+        repositories = listOf(api)
+        api.psGate = CompletableDeferred()
+        val board = board()
+        runCurrent()
+
+        assertNull(board.holder("api")!!.agents)
+        assertEquals(0, board.workingAgentCount)
+        api.psGate!!.complete(Unit)
+        advanceUntilIdle()
+    }
+
+    @Test
+    fun `orca is synced only with the worktrees whose status was read, without agents when they couldn't be read`() = runTest(dispatcher) {
+        repositories = listOf(api)
+        agentResult = Result.failure(IllegalStateException("ps failed"))
+        val synced = mutableListOf<List<OrcaSyncItem>>()
+        val board = board(syncOrca = { synced += it })
+        advanceUntilIdle()
+        board.startWatching()
+        tick()
+
+        assertTrue(synced.last().isNotEmpty())
+        assertTrue(synced.last().all { it.agents.isEmpty() })
+
+        api.statusFails = true
+        api.touch()
+        tick()
+        tick()
+        board.stopWatching()
+        assertTrue(synced.last().isEmpty())
+    }
+
+    @Test
+    fun `worktrees whose status can't be read sort by activity after the dated ones`() = runTest(dispatcher) {
+        mainRepo.statusFails = true
+        repositories = listOf(mainRepo)
+        val board = board()
+        advanceUntilIdle()
+        board.updateSort(WorktreeSort.ACTIVITY)
+
+        assertEquals(3, board.groups.single().worktrees.size)
+        assertEquals(StateBadgeKind.OTHER, board.paletteWorktrees.first().indicator ?: StateBadgeKind.OTHER)
+    }
+
+    @Test
+    fun `a forced branch deletion being confirmed blocks removing the selection`() = runTest(dispatcher) {
+        mainRepo.mergeBaseFails = true
+        val board = board()
+        advanceUntilIdle()
+        val holder = board.holder("main-repo")!!
+        holder.remove(holder.worktrees.first { it.path == mainRef.path }, branchToDelete = "feature/TASK-123")
+        advanceUntilIdle()
+        assertNull(board.keptBranchDeletion)
+
+        holder.requestForcedBranchDeletion()
+
+        assertSame(holder, board.keptBranchDeletion)
+        board.select(WorktreeRef("main-repo", "/home/dev/projects/task-456"))
+        board.deleteSelectedWorktree()
+        assertNull(board.pendingRemoval)
+    }
+
+    @Test
+    fun `a terminal being chosen blocks removing the selection`() = runTest(dispatcher) {
+        api.tools = toolsWith(DetectedTools(terminals = listOf(TerminalId.TERMINAL)))
+        val board = board()
+        advanceUntilIdle()
+        val holder = board.holder("api")!!
+        assertNull(board.terminalChoice)
+
+        holder.openInTerminal(holder.worktrees.first { it.path == apiRef.path })
+
+        assertSame(holder, board.terminalChoice)
+        board.select(apiRef)
+        board.deleteSelectedWorktree()
+        assertNull(board.pendingRemoval)
+    }
+
+    @Test
+    fun `the default runner comes from the first project's tools and falls back to Herdr`() = runTest(dispatcher) {
+        api.tools = toolsWith(DetectedTools(runners = setOf(RunnerId.ORCA)), runner = RunnerId.ORCA)
+        repositories = listOf(api)
+        assertEquals(RunnerId.ORCA, board().defaultRunner)
+
+        api.tools = toolsWith(DetectedTools(runners = emptySet()))
+        assertEquals(RunnerId.HERDR, board().defaultRunner)
+    }
+
+    @Test
+    fun `the selection can't be acted on while the create dialog is open or a text field has focus`() = runTest(dispatcher) {
+        val board = board()
+        advanceUntilIdle()
+        board.select(apiRef)
+
+        board.openCreateDialog("api")
+        board.requestOpenWith()
+        board.copySelectedLaunchCommand()
+        board.deleteSelectedWorktree()
+        assertEquals(0, board.openWithRequests)
+        board.dismissCreateDialog()
+
+        TextInputFocus.enter()
+        try {
+            board.requestOpenWith()
+            board.copySelectedLaunchCommand()
+            assertEquals(0, board.openWithRequests)
+        } finally {
+            TextInputFocus.leave()
+        }
+        runCurrent()
+        assertNull(board.holder("api")!!.copiedWorktreePath)
+    }
+
+    @Test
+    fun `removing the selection is ignored for the main worktree, without a selection or while a dialog is open`() = runTest(dispatcher) {
+        val board = board()
+        advanceUntilIdle()
+        board.deleteSelectedWorktree()
+        assertNull(board.pendingRemoval)
+
+        board.select(WorktreeRef("api", api.base))
+        board.deleteSelectedWorktree()
+        assertNull(board.pendingRemoval)
+
+        board.select(apiRef)
+        board.openCleanup()
+        board.deleteSelectedWorktree()
+        assertNull(board.pendingRemoval)
+        board.dismissCleanup()
+
+        board.deleteSelectedWorktree()
+        board.select(mainRef)
+        board.deleteSelectedWorktree()
+        assertEquals(apiRef.path, board.pendingRemoval?.worktreePendingRemoval?.path)
+    }
+
+    @Test
+    fun `a recent detached worktree is named after its folder`() = runTest(dispatcher) {
+        api.worktrees = listOf("/home/dev/projects/api-detached" to "")
+        val board = board()
+        advanceUntilIdle()
+
+        val listed = board.trayWorktrees(listOf(RecentWorktree("api", "/home/dev/projects/api-detached")), EnglishStrings).single()
+
+        assertEquals("api-detached", listed.name)
+        assertTrue(listed.isLoaded)
+    }
+
+    @Test
+    fun `removing the create dialog's project closes it`() = runTest(dispatcher) {
+        val board = board()
+        advanceUntilIdle()
+        board.openCreateDialog("api")
+
+        board.syncCatalog(listOf(mainRepo.project))
+
+        assertNull(board.createProjectId)
+    }
+
+    @Test
+    fun `opening a group in Orca twice at once opens it once`() = runTest(dispatcher) {
+        val gate = CompletableDeferred<Unit>()
+        var opened = 0
+        val board = productBoard(orcaActions(openGroupInOrca = { group -> opened++; gate.await(); orcaOpened(group) { Result.failure(IllegalStateException(it)) } }))
+        val group = board.changeView.groups.single { it.title == "TASK-1" }
+
+        board.openAllInOrca(group)
+        board.openAllInOrca(group)
+        runCurrent()
+        gate.complete(Unit)
+        advanceUntilIdle()
+
+        assertEquals(1, opened)
+        assertIs<MultirepoNotice.Failed>(board.multirepoNotice)
+    }
+
+    @Test
+    fun `opening a group in Orca with no openings leaves no notice and ignores openings of other worktrees`() = runTest(dispatcher) {
+        var openings: List<GroupOrcaOpening> = emptyList()
+        val board = productBoard(orcaActions(openGroupInOrca = { Result.success(openings) }))
+        val group = board.changeView.groups.single { it.title == "TASK-1" }
+
+        board.openAllInOrca(group)
+        advanceUntilIdle()
+        assertNull(board.multirepoNotice)
+
+        openings = listOf(GroupOrcaOpening("api", "/home/dev/projects/elsewhere", Result.success(OrcaOpening(OrcaOutcome.FOCUSED, "term_1", "claude"))))
+        board.openAllInOrca(group)
+        advanceUntilIdle()
+        assertIs<MultirepoNotice.GroupOpenedInOrca>(board.multirepoNotice)
+        board.dismissMultirepoNotice()
+        assertNull(board.multirepoNotice)
+    }
+
+    @Test
+    fun `only a known multirepo's feature or fix change can take more repositories`() = runTest(dispatcher) {
+        val board = productBoard()
+        val unknown = ChangeGroup("feature/TASK-9", emptyList(), Activity.Unknown, multirepoFolder = "/home/dev/projects/unknown")
+        val bugfix = board.changeView.groups.single { it.title == "TASK-1" }.copy(branch = "bugfix/TASK-1")
+
+        assertTrue(board.missingAliases(unknown).isEmpty())
+        assertFalse(board.canAddRepositories(unknown))
+        assertFalse(board.canAddRepositories(bugfix))
+    }
+
+    @Test
+    fun `adding a repository to a group is ignored when the group, branch, alias or project is unknown`() = runTest(dispatcher) {
+        val calls = mutableListOf<String>()
+        val actions = MultirepoActions(createGroup = { members, _, _, _, _ -> calls += members.map { it.alias }; Result.failure(IllegalStateException()) })
+        val board = productBoard(actions)
+        val group = board.changeView.groups.single { it.title == "TASK-1" }
+        board.syncMultirepos(listOf(MultirepoMembership(product, mapOf("app" to "app", "api" to "api", "ghost" to "ghost"))))
+
+        board.addRepositoryToGroup(group.copy(multirepoFolder = "/home/dev/projects/unknown"), "docs")
+        board.addRepositoryToGroup(group.copy(branch = "bugfix/TASK-1"), "docs")
+        board.addRepositoryToGroup(group, "docs")
+        board.addRepositoryToGroup(group, "ghost")
+        advanceUntilIdle()
+
+        assertTrue(calls.isEmpty())
+    }
+
+    @Test
+    fun `adding a repository reports a failure, a failed repository and adds it once while in flight`() = runTest(dispatcher) {
+        val failure = IllegalStateException("clone failed")
+        var outcome: Result<GroupCreation> = Result.failure(failure)
+        val gate = CompletableDeferred<Unit>()
+        var calls = 0
+        val board = productBoard(
+            MultirepoActions(createGroup = { members, taskId, _, _, _ ->
+                calls++
+                gate.await()
+                outcome.map { it.copy(branch = "feature/$taskId") }.also { members.size }
+            }),
+        )
+        val group = board.changeView.groups.single { it.title == "TASK-1" }
+        gate.complete(Unit)
+
+        board.addRepositoryToGroup(group, "docs")
+        advanceUntilIdle()
+        assertEquals(MultirepoNotice.Failed(failure), board.multirepoNotice)
+
+        outcome = Result.success(GroupCreation("", listOf(GroupRepositoryResult("docs", GroupRepositoryOutcome.FAILED, error = failure))))
+        board.addRepositoryToGroup(group, "docs")
+        advanceUntilIdle()
+        assertEquals(MultirepoNotice.Failed(failure), board.multirepoNotice)
+
+        outcome = Result.success(GroupCreation("", listOf(GroupRepositoryResult("docs", GroupRepositoryOutcome.FAILED))))
+        board.addRepositoryToGroup(group, "docs")
+        advanceUntilIdle()
+        assertEquals("docs", (board.multirepoNotice as MultirepoNotice.Failed).error.message)
+
+        outcome = Result.success(GroupCreation("", emptyList()))
+        board.addRepositoryToGroup(group, "docs")
+        advanceUntilIdle()
+        assertEquals(MultirepoNotice.AddedToGroup("docs", "TASK-1"), board.multirepoNotice)
+        assertEquals(4, calls)
+    }
+
+    @Test
+    fun `a repository is added once while it is being added, even if its project leaves the catalog`() = runTest(dispatcher) {
+        val gate = CompletableDeferred<Unit>()
+        var calls = 0
+        val board = productBoard(
+            MultirepoActions(createGroup = { _, _, _, _, _ ->
+                calls++
+                gate.await()
+                Result.success(GroupCreation("feature/TASK-1", emptyList()))
+            }),
+        )
+        val group = board.changeView.groups.single { it.title == "TASK-1" }
+
+        board.addRepositoryToGroup(group, "docs")
+        board.addRepositoryToGroup(group, "docs")
+        runCurrent()
+        board.syncCatalog(listOf(productApp.project, productApi.project))
+        gate.complete(Unit)
+        advanceUntilIdle()
+
+        assertEquals(1, calls)
+        assertTrue(board.addingToGroup.isEmpty())
+    }
+
+    @Test
+    fun `a group can't be cleaned up while its statuses are unread, a cleanup runs or a member isn't a candidate`() = runTest(dispatcher) {
+        productApi.statusFails = true
+        val board = productBoard()
+        val group = board.changeView.groups.single { it.title == "TASK-1" }
+        assertNotNull(board.groupCleanUpBlock(group))
+
+        board.openGroupCleanup(group)
+        assertNull(board.cleanupScope)
+    }
+
+    @Test
+    fun `a group whose statuses are still loading can't be cleaned up`() = runTest(dispatcher) {
+        productApi.statusGate = CompletableDeferred()
+        val board = productBoard()
+        val group = board.changeView.groups.single { it.title == "TASK-1" }
+
+        assertNotNull(board.groupCleanUpBlock(group))
+        productApi.statusGate!!.complete(Unit)
+        advanceUntilIdle()
+    }
+
+    @Test
+    fun `a group is blocked while any cleanup runs and needs every member to be a candidate`() = runTest(dispatcher) {
+        productApp.psGate = CompletableDeferred()
+        val board = productBoard()
+        val group = board.changeView.groups.single { it.title == "TASK-1" }
+        assertNull(board.groupCleanUpBlock(group))
+        productApp.psGate!!.complete(Unit)
+        advanceUntilIdle()
+
+        productApp.removeGate = CompletableDeferred()
+        board.openGroupCleanup(group)
+        board.confirmCleanup()
+        runCurrent()
+        assertEquals(CleanupBlock.Running, board.groupCleanUpBlock(group))
+        assertEquals(CleanupBlock.Running, board.cleanUpBlock())
+        board.confirmCleanup()
+        board.dismissCleanup()
+        board.openCleanup()
+        assertTrue(board.isCleanupDialogOpen)
+        productApp.removeGate!!.complete(Unit)
+        advanceUntilIdle()
+
+        productDocs.locked = setOf("/home/dev/projects/docs-TASK-2")
+        board.refreshShown()
+        advanceUntilIdle()
+        val task2 = board.changeView.groups.single { it.title == "TASK-2" }
+        assertEquals(CleanupBlock.NothingToCleanUp, board.groupCleanUpBlock(task2))
+
+        board.holder("docs")!!.applyAgents(mapOf("/home/dev/projects/docs-TASK-2" to listOf(RunningAgent("claude"))))
+        assertIs<CleanupBlock.Kept>(board.groupCleanUpBlock(task2))
+    }
+
+    @Test
+    fun `cleanup confirmation without projects does nothing`() = runTest(dispatcher) {
+        val board = board()
+        advanceUntilIdle()
+
+        board.confirmCleanup()
+
+        assertFalse(board.isCleaningUp)
+    }
+
+    @Test
+    fun `the multirepo agent opens only from an approved multirepo view and once at a time`() = runTest(dispatcher) {
+        val gate = CompletableDeferred<Unit>()
+        var calls = 0
+        val board = productBoard(
+            MultirepoActions(
+                createGroup = { _, _, _, _, _ -> Result.failure(IllegalStateException()) },
+                openAgent = { runner, _ ->
+                    calls++
+                    gate.await()
+                    Result.success(HerdrOpening(HerdrOutcome.OPENED, "w1:p1", "Claude").toRunnerOpening().copy(runner = runner))
+                },
+            ),
+        )
+
+        board.openMultirepoAgent()
+        board.openMultirepoAgentInOrca()
+        runCurrent()
+        gate.complete(Unit)
+        advanceUntilIdle()
+        assertEquals(1, calls)
+
+        board.show(null)
+        board.openMultirepoAgent()
+        board.syncMultirepos(multirepoMemberships(listOf(product.copy(approved = false)), board.projects))
+        board.showMultirepo(product.folder)
+        board.openMultirepoAgentInOrca()
+        advanceUntilIdle()
+        assertEquals(1, calls)
+    }
+
+    @Test
+    fun `a new change opens once and only from an approved multirepo view`() = runTest(dispatcher) {
+        val board = productBoard()
+        board.openNewChange()
+        val first = board.newChange
+        assertNotNull(first)
+        board.openNewChange()
+        assertSame(first, board.newChange)
+        board.dismissNewChange()
+
+        board.show(null)
+        board.openNewChange()
+        assertNull(board.newChange)
+
+        board.syncMultirepos(multirepoMemberships(listOf(product.copy(approved = false)), board.projects))
+        board.showMultirepo(product.folder)
+        board.openNewChange()
+        assertNull(board.newChange)
+        board.dismissNewChange()
+    }
+
+    @Test
+    fun `trusting a multirepo applies only to an unapproved one shown, once at a time, and reports failures`() = runTest(dispatcher) {
+        val failure = IllegalStateException("can't trust")
+        var result: Result<Multirepo> = Result.failure(failure)
+        val gate = CompletableDeferred<Unit>()
+        var calls = 0
+        var trusted = 0
+        val board = productBoard(
+            MultirepoActions(
+                createGroup = { _, _, _, _, _ -> Result.failure(IllegalStateException()) },
+                trust = { calls++; gate.await(); result },
+            ),
+        )
+        board.trustShownMultirepo { trusted++ }
+        board.show(null)
+        board.trustShownMultirepo { trusted++ }
+        assertEquals(0, calls)
+
+        board.syncMultirepos(multirepoMemberships(listOf(product.copy(approved = false)), board.projects))
+        board.showMultirepo(product.folder)
+        board.trustShownMultirepo { trusted++ }
+        board.trustShownMultirepo { trusted++ }
+        runCurrent()
+        gate.complete(Unit)
+        advanceUntilIdle()
+        assertEquals(1, calls)
+        assertEquals(MultirepoNotice.Failed(failure), board.multirepoNotice)
+
+        result = Result.success(product)
+        board.trustShownMultirepo { trusted++ }
+        advanceUntilIdle()
+        assertEquals(1, trusted)
+    }
+
+    @Test
+    fun `a new change is confirmed once, skips repositories outside the catalog and reports failures`() = runTest(dispatcher) {
+        val failure = IllegalStateException("can't create")
+        val gate = CompletableDeferred<Unit>()
+        val created = mutableListOf<List<String>>()
+        val board = productBoard(
+            MultirepoActions(createGroup = { members, _, _, _, _ ->
+                created += members.map { it.alias }
+                gate.await()
+                Result.failure(failure)
+            }),
+        )
+        board.confirmNewChange()
+        board.openNewChange()
+        val change = board.newChange!!
+        board.confirmNewChange()
+        change.updateTaskId("TASK-9")
+        board.syncCatalog(listOf(productApp.project, productDocs.project, tools.project))
+
+        board.confirmNewChange()
+        runCurrent()
+        board.dismissNewChange()
+        assertSame(change, board.newChange)
+        board.confirmNewChange()
+        gate.complete(Unit)
+        advanceUntilIdle()
+
+        assertEquals(listOf(listOf("app")), created)
+        assertEquals(failure, change.error)
+        board.dismissNewChange()
+        assertNull(board.newChange)
+        board.dismissNewChange()
+    }
+
+    @Test
+    fun `a created change replaced meanwhile stays, and a project gone meanwhile isn't refreshed`() = runTest(dispatcher) {
+        val gate = CompletableDeferred<Unit>()
+        val board = productBoard(
+            MultirepoActions(createGroup = { members, taskId, _, _, _ ->
+                gate.await()
+                Result.success(GroupCreation("feature/$taskId", members.map { GroupRepositoryResult(it.alias, GroupRepositoryOutcome.CREATED) }))
+            }),
+        )
+        board.openNewChange()
+        val change = board.newChange!!
+        change.updateTaskId("TASK-9")
+
+        board.confirmNewChange()
+        runCurrent()
+        change.isCreating = false
+        board.dismissNewChange()
+        board.openNewChange()
+        val replacement = board.newChange
+        board.syncCatalog(listOf(productApp.project, productDocs.project, tools.project))
+        gate.complete(Unit)
+        advanceUntilIdle()
+
+        assertSame(replacement, board.newChange)
+        assertEquals(MultirepoNotice.ChangeCreated("TASK-9", listOf("api", "app")), board.multirepoNotice)
+    }
+
+    @Test
+    fun `a created change opens only the repositories it created and reports an opening failure for each`() = runTest(dispatcher) {
+        val failure = IllegalStateException("runner down")
+        val board = productBoard(
+            MultirepoActions(
+                createGroup = { _, taskId, _, _, _ ->
+                    Result.success(
+                        GroupCreation(
+                            "feature/$taskId",
+                            listOf(
+                                GroupRepositoryResult("app", GroupRepositoryOutcome.CREATED, "/home/dev/projects/app-$taskId"),
+                                GroupRepositoryResult("stranger", GroupRepositoryOutcome.CREATED, "/home/dev/projects/stranger-$taskId"),
+                                GroupRepositoryResult("api", GroupRepositoryOutcome.FAILED),
+                            ),
+                        ),
+                    )
+                },
+                openGroup = { _, _ -> Result.failure(failure) },
+                installedRunners = setOf(RunnerId.HERDR, RunnerId.ORCA),
+            ),
+            runnerInUse = RunnerId.ORCA,
+        )
+        board.openNewChange()
+        val change = board.newChange!!
+        change.updateTaskId("TASK-9")
+
+        board.confirmNewChange()
+        advanceUntilIdle()
+
+        assertEquals(mapOf("app" to Result.failure<RunnerOpening>(failure)), change.openings)
+    }
+
+    @Test
+    fun `a project filter applies only to all worktrees and known projects`() = runTest(dispatcher) {
+        val board = board()
+        advanceUntilIdle()
+
+        board.show("api", GroupedView.ACTIVE)
+        assertNull(board.projectFilter)
+        board.show("unknown")
+        assertNull(board.projectFilter)
+
+        board.updateViewProjectFilter("unknown")
+        assertNull(board.viewProjectFilter)
+        board.updateViewProjectFilter("api")
+        board.updateViewProjectFilter(null)
+        assertNull(board.viewProjectFilter)
+
+        board.requestFind()
+        assertEquals(1, board.findRequests)
+    }
+
+    @Test
+    fun `focus refreshes only loaded idle projects read long enough ago and survives a detection failure`() = runTest(dispatcher) {
+        repositories = listOf(api)
+        val board = board(clock = { now })
+        advanceUntilIdle()
+        val searches = agentSearches.size
+
+        board.refreshOnFocus()
+        assertEquals(searches, agentSearches.size)
+
+        now = now.plusSeconds(60)
+        agentResult = Result.failure(IllegalStateException("ps failed"))
+        board.refreshOnFocus()
+        advanceUntilIdle()
+        assertEquals(searches + 1, agentSearches.size)
+
+        now = now.plusSeconds(60)
+        api.listGate = CompletableDeferred()
+        board.refreshShown()
+        runCurrent()
+        board.refreshOnFocus()
+        api.listGate!!.complete(Unit)
+        advanceUntilIdle()
+        assertEquals(searches + 1, agentSearches.size)
+    }
+
+    @Test
+    fun `repairing after a move applies only to known projects`() = runTest(dispatcher) {
+        val board = board()
+        advanceUntilIdle()
+
+        board.repairAfterMove("unknown", "/home/dev/old")
+        board.repairAfterMove("api", "/home/dev/old")
+        advanceUntilIdle()
+
+        assertTrue(board.holder("api")!!.hasLoaded)
+    }
+
+    @Test
+    fun `watching restarts cleanly and stopping without watching does nothing`() = runTest(dispatcher) {
+        val board = board()
+        advanceUntilIdle()
+
+        board.stopWatching()
+        board.startWatching()
+        board.startWatching()
+        tick()
+        board.stopWatching()
+
+        assertTrue(agentSearches.isNotEmpty())
+    }
+
+    @Test
+    fun `hidden projects busy or not loaded aren't checked and a detection failure keeps the board`() = runTest(dispatcher) {
+        agentResult = Result.failure(IllegalStateException("ps failed"))
+        val board = board()
+        advanceUntilIdle()
+        board.show("api")
+        mainRepo.listGate = CompletableDeferred()
+        board.holder("main-repo")!!.refresh()
+        runCurrent()
+
+        board.startWatching()
+        tick()
+        board.stopWatching()
+        mainRepo.listGate!!.complete(Unit)
+        advanceUntilIdle()
+
+        assertTrue(agentSearches.flatten().none { search -> search.worktrees.any { it.path == mainRef.path } })
+    }
+
+    @Test
+    fun `revealing in all worktrees clears another project's filter and expands a collapsed project`() = runTest(dispatcher) {
+        val board = board()
+        advanceUntilIdle()
+        board.updateViewProjectFilter("main-repo")
+        board.toggleCollapsed("api")
+
+        board.revealInAllWorktrees(apiRef)
+
+        assertNull(board.viewProjectFilter)
+        assertFalse("api" in board.collapsedProjects)
+        assertEquals(apiRef, board.selected)
+
+        board.updateViewProjectFilter("api")
+        board.revealInAllWorktrees(apiRef)
+        assertEquals("api", board.viewProjectFilter)
+    }
+
+    @Test
+    fun `moving the selection does nothing without rows and starts from the end going back`() = runTest(dispatcher) {
+        repositories = emptyList()
+        val empty = board()
+        empty.selectNext()
+        assertNull(empty.selected)
+
+        repositories = listOf(api)
+        val board = board()
+        advanceUntilIdle()
+        board.selectPrevious()
+        assertEquals(apiRef, board.selected)
+    }
+
+    @Test
+    fun `collapsing a project clears only a selection inside it`() = runTest(dispatcher) {
+        val board = board()
+        advanceUntilIdle()
+        board.select(mainRef)
+
+        board.toggleCollapsed("api")
+        assertEquals(mainRef, board.selected)
+        board.toggleCollapsed("api")
+        board.toggleCollapsed("main-repo")
+        assertNull(board.selected)
+    }
+
+    @Test
+    fun `the create project can't be chosen without an open dialog's holder and the branch is unknown before listing`() = runTest(dispatcher) {
+        api.listGate = CompletableDeferred()
+        api.hasOrigin = false
+        val board = board()
+        runCurrent()
+
+        board.selectCreateProject("api")
+        assertEquals("api", board.createProjectId)
+        assertNull(board.currentBranchName)
+        api.listGate!!.complete(Unit)
+        advanceUntilIdle()
+        assertFalse(board.canFetchFirst)
+
+        board.openCreateDialog("unknown")
+        board.dismissCreateDialog()
+        board.dismissCreateDialog()
+        assertNull(board.createProjectId)
+    }
+
+    @Test
+    fun `last activity orders worktrees by their dates`() = runTest(dispatcher) {
+        lastCommitOutput = "${now.minusSeconds(3600).epochSecond}\n"
+        val board = board()
+        advanceUntilIdle()
+
+        board.updateSort(WorktreeSort.ACTIVITY)
+
+        assertEquals(listOf(true, false), board.groups.first().worktrees.map { it.isMain })
+    }
+
+    @Test
+    fun `active grouped by project keeps the selected inactive worktree listed`() = runTest(dispatcher) {
+        val board = board()
+        advanceUntilIdle()
+        board.show(null, GroupedView.ACTIVE)
+        board.updateGrouping(Grouping.BY_PROJECT)
+        assertTrue(board.groups.none { group -> group.worktrees.any { it.path == apiRef.path } })
+
+        board.select(apiRef)
+
+        assertTrue(board.groups.any { group -> group.worktrees.any { it.path == apiRef.path } })
+    }
+
+    @Test
+    fun `revealing without a project filter only selects and collapsing without a selection keeps none`() = runTest(dispatcher) {
+        val board = board()
+        advanceUntilIdle()
+
+        board.toggleCollapsed("api")
+        board.toggleCollapsed("api")
+        assertNull(board.selected)
+        board.toggleCollapsed("api")
+        board.select(apiRef)
+        board.toggleCollapsed("api")
+        assertEquals(apiRef, board.selected)
+        board.clearSelection()
+
+        board.revealInAllWorktrees(mainRef)
+        assertEquals(mainRef, board.selected)
+        assertNull(board.viewProjectFilter)
+    }
+
+    @Test
+    fun `fetching first is offered when the project has an origin`() = runTest(dispatcher) {
+        val board = board()
+        advanceUntilIdle()
+
+        board.openCreateDialog("main-repo")
+        advanceUntilIdle()
+
+        assertTrue(board.canFetchFirst)
+    }
+
+    @Test
+    fun `a detached worktree of a multirepo stays ungrouped`() = runTest(dispatcher) {
+        productApi.worktrees = productApi.worktrees + ("/home/dev/projects/api-detached" to "")
+        val board = productBoard()
+
+        assertTrue(board.changeView.ungrouped.any { it.entry.worktree.path == "/home/dev/projects/api-detached" })
+    }
+
+    @Test
+    fun `view actions open the multirepo agent, the cleanup and the creation dialogs and ignore the rest`() = runTest(dispatcher) {
+        val runners = mutableListOf<RunnerId>()
+        val board = productBoard(
+            MultirepoActions(
+                createGroup = { _, _, _, _, _ -> Result.failure(IllegalStateException()) },
+                openAgent = { runner, _ -> runners += runner; Result.failure(IllegalStateException()) },
+            ),
+        )
+
+        board.performViewAction(ActionId.OpenMultirepoAgent(OpenTarget.HERDR))
+        advanceUntilIdle()
+        board.performViewAction(ActionId.OpenMultirepoAgent(OpenTarget.ORCA))
+        advanceUntilIdle()
+        board.performViewAction(ActionId.NewChange)
+        board.performViewAction(ActionId.Reload)
+        assertEquals(listOf(RunnerId.HERDR, RunnerId.ORCA), runners)
+        assertNotNull(board.newChange)
+
+        board.show(null)
+        board.performViewAction(ActionId.CleanUp)
+        assertTrue(board.isCleanupDialogOpen)
+        board.dismissCleanup()
+        board.performViewAction(ActionId.NewWorktree)
+        assertTrue(board.isCreateDialogOpen)
     }
 }

@@ -99,9 +99,10 @@ Ninguno de los dos fallos apareció en la máquina de desarrollo, cuya propia co
 Por orden:
 
 - Tests que obligan al producto a cumplirlo:
-  - Subir hasta el 100% los suelos de cobertura que exige CI: las líneas (hoy 91%) y ramas (78%) de la app de escritorio fuera de sus composables, que cubren los tests end to end.
+  - Subir hasta el 100% los suelos de cobertura que exige CI: las líneas (hoy 93%) y ramas (87%) de la app de escritorio fuera de sus composables, que cubren los tests end to end.
     Las líneas de `core` y `cli`, las ramas de `cli`, todas las ramas de `core` a las que llega alguna entrada, y los textos y los ajustes de proyecto de la app de escritorio ya están cubiertos.
-    La app de escritorio sube un paquete por cambio, en este orden: los worktrees y su inspector, el shell y el icono de la barra de menús, las vistas de la máquina y los multirepos, los componentes compartidos y, por último, el cableado de la app.
+    Los worktrees y su inspector están cubiertos salvo 41 ramas de su lista, sus filas y sus barras de acciones, que quedan para el cambio de los componentes compartidos.
+    La app de escritorio sube un paquete por cambio, en este orden: el shell y el icono de la barra de menús, las vistas de la máquina y los multirepos, los componentes compartidos y, por último, el cableado de la app.
 - Las comprobaciones de Gradle de `shogun doctor` y «Comprobar instalación» para un build de Gradle en una subcarpeta, como `android/` en un repositorio Flutter: hoy solo leen la raíz del repositorio.
 
 ### Orca, un segundo runner de primera clase
