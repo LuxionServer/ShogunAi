@@ -2367,7 +2367,7 @@ class ShogunCli(
             projects = projectRepository,
             fileManager = fileManager,
             provisioningSource = provisioningSource,
-            providerTools = CheckProviderToolsUseCase(executor, findExecutable, fileManager, androidSdk, appleSimulators, environment::variable, environment.os),
+            providerTools = CheckProviderToolsUseCase(executor, findExecutable, fileManager, androidSdk, appleSimulators, environment::variable, environment.os, environment.home),
             multirepos = CheckMultireposUseCase(multirepoSource, resolveMultirepo, DetectGroupsUseCase(executor), projectRepository),
         )()
         if (command.json) printJson(doctorJson(report)) else InstallationReportText.lines(report).forEach { out.line(it) }

@@ -16,6 +16,7 @@ import app.luxion.shogunai.domain.model.HostOs
 import app.luxion.shogunai.domain.model.InstallationCheck
 import app.luxion.shogunai.domain.model.InstallationFinding
 import app.luxion.shogunai.domain.model.InstallationReport
+import app.luxion.shogunai.domain.model.JavaSource
 import app.luxion.shogunai.domain.model.LocalFileOrigin
 import app.luxion.shogunai.domain.model.MultirepoProblem
 import app.luxion.shogunai.domain.model.ProviderToolId
@@ -111,6 +112,7 @@ class InstallationCheckUiTest {
         InstallationCheck(CheckState.WARNING, InstallationFinding.ProviderTool("main-repo", ProviderToolId.DOCKER_DAEMON, null, ProviderToolProblem.DaemonNotRunning(HostOs.MACOS, "Cannot connect"))),
         InstallationCheck(CheckState.WARNING, InstallationFinding.ProviderTool("main-repo", ProviderToolId.DOCKER_DAEMON, null, ProviderToolProblem.DaemonNotRunning(HostOs.LINUX, null))),
         InstallationCheck(CheckState.WARNING, InstallationFinding.ProviderTool("main-repo", ProviderToolId.DOCKER_DAEMON, null, ProviderToolProblem.DaemonNotRunning(HostOs.WINDOWS, null))),
+    ) + gradleBuildJava + listOf(
         InstallationCheck(CheckState.PASSED, InstallationFinding.MultirepoCheck(multirepo, "product", listOf("app", "api"), 1, emptyList())),
         InstallationCheck(CheckState.PASSED, InstallationFinding.MultirepoCheck(multirepo, "product", listOf("app", "api"), 2, emptyList())),
         InstallationCheck(CheckState.WARNING, InstallationFinding.MultirepoCheck(multirepo, "product", emptyList(), 0, listOf(MultirepoProblem.DeclarationMissing))),
@@ -129,6 +131,67 @@ class InstallationCheckUiTest {
         ),
         InstallationCheck(CheckState.WARNING, InstallationFinding.MultirepoCheck(multirepo, "product", listOf("app"), 0, listOf(MultirepoProblem.NotTrusted))),
     )
+
+    private val gradleBuildJava: List<InstallationCheck>
+        get() {
+            val daemon = ProviderToolId.GRADLE_DAEMON_JAVA
+            val searched = listOf("/home/dev/.gradle/jdks", "/usr/lib/jvm")
+            fun tool(tool: ProviderToolId, location: String?, problem: ProviderToolProblem? = null, version: String? = null, provisioned: Boolean = false, java: Int? = null) =
+                InstallationCheck(
+                    if (problem == null) CheckState.PASSED else CheckState.WARNING,
+                    InstallationFinding.ProviderTool("main-repo", tool, location, problem, version = version, provisioned = provisioned, java = java),
+                )
+            return listOf(
+                tool(daemon, "/opt/jdk-21", version = "21"),
+                tool(daemon, null, version = "21", provisioned = true),
+                tool(ProviderToolId.GRADLE_TOOLCHAINS, null, version = "17, 21"),
+                tool(ProviderToolId.GRADLE_TOOLCHAINS, null, version = "17", provisioned = true),
+                tool(ProviderToolId.ANDROID_GRADLE_PLUGIN_JAVA, null, version = "8.5.2", java = 17),
+                tool(daemon, null, ProviderToolProblem.JavaNotInstalled(listOf(21), searched), "21"),
+                tool(ProviderToolId.GRADLE_TOOLCHAINS, null, ProviderToolProblem.JavaNotInstalled(listOf(11, 17), searched), "11, 17"),
+                tool(daemon, null, ProviderToolProblem.GradleJavaHomeInvalid("/opt/jdk-gone", "/repo/gradle.properties")),
+                tool(daemon, "/repo/gradle/gradle-daemon-jvm.properties", ProviderToolProblem.DaemonCriteriaUnreadable("/repo/gradle/gradle-daemon-jvm.properties")),
+            ) + JavaSource.entries.flatMap { source ->
+                listOf(
+                    tool(daemon, null, ProviderToolProblem.JavaTooOld(11, 17, "9.1.0", source), "11"),
+                    tool(daemon, null, ProviderToolProblem.GradleTooOld(25, "8.10", "9.1", source), "25"),
+                    tool(ProviderToolId.ANDROID_GRADLE_PLUGIN_JAVA, null, ProviderToolProblem.AndroidGradlePluginNeedsJava(11, 17, "8.2.0", source), "8.2.0", java = 11),
+                )
+            }
+        }
+
+    @Test
+    fun `the Java the Gradle build chooses reads in both languages`() {
+        val byText = gradleBuildJava.associate { EnglishStrings.installationSummary(it) to SpanishStrings.installationSummary(it) }
+        assertEquals("main-repo: Java del daemon de Gradle es Java 21 en /opt/jdk-21", byText["main-repo: Java for Gradle's daemon is Java 21 at /opt/jdk-21"])
+        assertEquals(
+            "main-repo: Java del daemon de Gradle es Java 21, que Gradle descarga si falta",
+            byText["main-repo: Java for Gradle's daemon is Java 21, which Gradle downloads when it's missing"],
+        )
+        assertEquals("main-repo: Toolchains de Java: Java 17, 21 instalados", byText["main-repo: Java toolchains: Java 17, 21 installed"])
+        assertEquals(
+            "main-repo: el Android Gradle Plugin 8.5.2 se ejecuta con Java 17",
+            byText["main-repo: the Android Gradle Plugin 8.5.2 runs on Java 17"],
+        )
+        assertEquals(
+            "main-repo: Toolchains de Java: Java 11 y 17 no están instalados (se ha buscado en /home/dev/.gradle/jdks, /usr/lib/jvm)",
+            byText["main-repo: Java toolchains: Java 11 and 17 aren't installed (looked in /home/dev/.gradle/jdks, /usr/lib/jvm)"],
+        )
+        assertEquals(
+            "main-repo: Java del daemon de Gradle: Java 21 no está instalado (se ha buscado en /home/dev/.gradle/jdks, /usr/lib/jvm)",
+            byText["main-repo: Java for Gradle's daemon: Java 21 isn't installed (looked in /home/dev/.gradle/jdks, /usr/lib/jvm)"],
+        )
+        val agp = gradleBuildJava.first { (it.finding as InstallationFinding.ProviderTool).problem is ProviderToolProblem.AndroidGradlePluginNeedsJava }
+        assertEquals(
+            "main-repo: the Android Gradle Plugin 8.2.0 needs Java 17 or newer, but Gradle's daemon runs Java 11",
+            EnglishStrings.installationSummary(agp),
+        )
+        assertEquals("Install Java 17 or newer and point JAVA_HOME at it.", EnglishStrings.installationFix(agp))
+        assertEquals("Instala Java 17 o posterior y apunta JAVA_HOME a él.", SpanishStrings.installationFix(agp))
+        val fixes = gradleBuildJava.map { EnglishStrings.installationFix(it) }
+        assertTrue("Raise the daemon's Java to 17 or newer with ./gradlew updateDaemonJvm --jvm-version=17." in fixes, "$fixes")
+        assertTrue("Update the project's Gradle wrapper to 9.1 or newer, or lower toolchainVersion in gradle/gradle-daemon-jvm.properties." in fixes, "$fixes")
+    }
 
     private fun ComposeUiTest.show(strings: Strings = EnglishStrings, content: @Composable () -> Unit) = setContent {
         CompositionLocalProvider(LocalStrings provides strings) {

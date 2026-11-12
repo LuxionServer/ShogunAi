@@ -513,7 +513,7 @@ class AppContainer(private val hostEnvironment: HostEnvironment = SystemHostEnvi
             projects = projectRepository,
             fileManager = fileManager,
             provisioningSource = repositoryProvisioningSource,
-            providerTools = CheckProviderToolsUseCase(shellCommandExecutor, locator::find, fileManager, androidSdk, appleSimulators, hostEnvironment::variable, hostEnvironment.os),
+            providerTools = CheckProviderToolsUseCase(shellCommandExecutor, locator::find, fileManager, androidSdk, appleSimulators, hostEnvironment::variable, hostEnvironment.os, hostEnvironment.home),
             multirepos = CheckMultireposUseCase(multirepoSource, resolveMultirepo, DetectGroupsUseCase(shellCommandExecutor), projectRepository),
         )
     }

@@ -296,4 +296,48 @@ class DoctorCommandTest {
         assertEquals(0, exit)
         assertTrue("warn  main-repo: Java for Maven not found: JAVA_HOME is /opt/jdk-gone, which has no bin/java" in out.lines(), out.toString())
     }
+
+    @Test
+    fun `the Java the Gradle build chooses is checked, in text and json`() {
+        val base = "$home/projects/main-repo"
+        val project = Project("1", "main-repo", ProjectConfig(base, "$home/worktrees", emptyList()))
+        val provisioning = FakeRepositoryProvisioningSource(mapOf(base to RepositoryProvisioning(providers = RepositoryProviders(gradle = GradleProvider()))))
+        val criteria = "$base/gradle/gradle-daemon-jvm.properties"
+        val fileManager = FakeFileManager(
+            existing = listOf("$base/gradlew", criteria),
+            directories = setOf(base),
+            properties = mapOf(
+                "$base/gradle/wrapper/gradle-wrapper.properties" to mapOf("distributionUrl" to "https://services.gradle.org/distributions/gradle-8.10.2-bin.zip"),
+                criteria to mapOf("toolchainVersion" to "17"),
+            ),
+        )
+        fileManager.writeText("/usr/lib/jvm/java-17-openjdk/release", "JAVA_VERSION=\"17.0.12\"")
+        fileManager.writeText("$base/app/build.gradle.kts", "plugins { id(\"com.android.application\") version \"8.5.2\" }\nkotlin { jvmToolchain(21) }")
+        val executor = FakeShellCommandExecutor { command ->
+            if (command.getOrNull(1) == "-version") CommandResult(command, 0, "", "openjdk version \"11.0.24\" 2024-07-16\n")
+            else FakeShellCommandExecutor.success(command, "git version 2.45.1\n")
+        }
+        val run = { arguments: List<String> ->
+            out.clear()
+            cli(
+                executables = setOf("/usr/bin/git", "/usr/bin/shogun", "/usr/bin/java"),
+                projects = listOf(project),
+                fileManager = fileManager,
+                provisioning = provisioning,
+                executor = executor,
+            ).run(arguments)
+        }
+
+        assertEquals(0, run(listOf("doctor")))
+        val lines = out.lines()
+        assertTrue("ok    main-repo: Java for Gradle's daemon 17 at /usr/lib/jvm/java-17-openjdk" in lines, out.toString())
+        val toolchains = lines.indexOfFirst { it.startsWith("warn  main-repo: Java toolchains: Java 21 isn't installed (looked in $home/.gradle/jdks, ") }
+        assertTrue(toolchains >= 0, out.toString())
+        assertTrue(lines[toolchains + 1].startsWith("      fix: Install a Java 21 JDK"), out.toString())
+        assertTrue("ok    main-repo: Android Gradle Plugin 8.5.2 runs on Java 17" in lines, out.toString())
+
+        assertEquals(0, run(listOf("doctor", "--json")))
+        val ids = Json.parseToJsonElement(out.toString()).jsonObject.getValue("checks").jsonArray.map { it.jsonObject.getValue("id").jsonPrimitive.content }
+        assertTrue(ids.containsAll(listOf("provider:main-repo:gradle-daemon-java", "provider:main-repo:gradle-toolchains", "provider:main-repo:agp-java")), "$ids")
+    }
 }
