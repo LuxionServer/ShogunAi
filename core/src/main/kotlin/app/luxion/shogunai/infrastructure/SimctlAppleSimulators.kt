@@ -29,35 +29,35 @@ class SimctlAppleSimulators(
     override suspend fun devices(): List<SimulatorDevice> = parseDevices(simctl("list", "-j", "devices", timeout = CommandTimeouts.LISTING).stdout)
 
     override suspend fun create(name: String, deviceTypeIdentifier: String, runtimeIdentifier: String): String =
-        simctl("create", name, deviceTypeIdentifier, runtimeIdentifier).stdout.trim()
+        simctl("create", name, deviceTypeIdentifier, runtimeIdentifier, timeout = CommandTimeouts.LOCAL_TOOL).stdout.trim()
 
     override suspend fun boot(udid: String) {
-        simctl("boot", udid, toleratedState = "Booted")
+        simctl("boot", udid, toleratedState = "Booted", timeout = CommandTimeouts.LOCAL_WORK)
     }
 
     override suspend fun show(udid: String) {
         val simulatorApp = listOf("open", "-b", SIMULATOR_BUNDLE_ID, "--args", "-CurrentDeviceUDID", udid)
-        if (executor.execute(simulatorApp).isSuccess) return
+        if (executor.executeWithin(simulatorApp, CommandTimeouts.LOCAL_TOOL).isSuccess) return
         val deviceHub = listOf("open", "-b", DEVICE_HUB_BUNDLE_ID)
-        val result = executor.execute(deviceHub)
+        val result = executor.executeWithin(deviceHub, CommandTimeouts.LOCAL_TOOL)
         if (!result.isSuccess) throw WorktreeError.AppleToolFailed(deviceHub, result.exitCode, result.stderr.trim())
     }
 
     override suspend fun shutdown(udid: String) {
-        simctl("shutdown", udid, toleratedState = "Shutdown")
+        simctl("shutdown", udid, toleratedState = "Shutdown", timeout = CommandTimeouts.LOCAL_TOOL)
     }
 
     override suspend fun delete(udid: String) {
-        simctl("delete", udid)
+        simctl("delete", udid, timeout = CommandTimeouts.LOCAL_TOOL)
     }
 
     private suspend fun simctl(
         vararg arguments: String,
         toleratedState: String? = null,
-        timeout: Duration? = null,
+        timeout: Duration,
     ): CommandResult {
         val command = listOf("xcrun", "simctl") + arguments
-        val result = if (timeout != null) executor.executeWithin(command, timeout) else executor.execute(command)
+        val result = executor.executeWithin(command, timeout)
         val tolerated = toleratedState != null && result.stderr.contains("current state: $toleratedState")
         if (!result.isSuccess && !tolerated) {
             throw WorktreeError.AppleToolFailed(command, result.exitCode, result.stderr.trim())

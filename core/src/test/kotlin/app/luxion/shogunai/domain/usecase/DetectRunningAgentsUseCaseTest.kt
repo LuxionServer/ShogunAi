@@ -28,6 +28,7 @@ import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
@@ -1034,7 +1035,7 @@ class DetectRunningAgentsUseCaseTest {
             override suspend fun listAgents(): List<HerdrAgent> = throw kotlinx.coroutines.CancellationException("stopped")
         }
 
-        assertTrue(DetectRunningAgentsUseCase(executor(), herdr)(config, worktrees).isFailure)
+        assertFailsWith<kotlinx.coroutines.CancellationException> { DetectRunningAgentsUseCase(executor(), herdr)(config, worktrees) }
     }
 
     @Test

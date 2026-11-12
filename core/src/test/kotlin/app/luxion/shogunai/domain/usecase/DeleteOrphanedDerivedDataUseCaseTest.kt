@@ -2,12 +2,14 @@ package app.luxion.shogunai.domain.usecase
 
 import app.luxion.shogunai.domain.FakeDerivedDataSource
 import app.luxion.shogunai.domain.FakeDerivedDataSource.Companion.derivedData
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.test.runTest
 import app.luxion.shogunai.domain.io.DerivedDataSource
 import app.luxion.shogunai.domain.model.DerivedDataDeletionFailure
 import app.luxion.shogunai.domain.model.DerivedDataFolder
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 class DeleteOrphanedDerivedDataUseCaseTest {
@@ -68,6 +70,18 @@ class DeleteOrphanedDerivedDataUseCaseTest {
         assertEquals(1_000_000_000L, deletion.bytesFreed)
         assertTrue(deletion.failures.isEmpty())
         assertEquals(listOf(first.path), source.deleted)
+    }
+
+    @Test
+    fun `a deletion cancelled mid-way ends as cancelled and deletes nothing more`() = runTest {
+        val first = derivedData("First-hash", orphanProject)
+        val second = derivedData("Second-hash", restoredProject)
+        val source = FakeDerivedDataSource(existing = listOf(first, second))
+        source.beforeDelete = { throw CancellationException("cancelled") }
+
+        assertFailsWith<CancellationException> { useCase(source)() }
+
+        assertTrue(source.deleted.isEmpty())
     }
 
     @Test

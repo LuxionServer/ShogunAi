@@ -7,6 +7,7 @@ import app.luxion.shogunai.domain.io.FolderLauncher
 import app.luxion.shogunai.domain.model.EditorId
 import app.luxion.shogunai.domain.model.HostOs
 import app.luxion.shogunai.domain.model.WorktreeError
+import app.luxion.shogunai.domain.runSuspendCatching
 import java.net.URLEncoder
 
 class CommandEditorLauncher(
@@ -18,10 +19,10 @@ class CommandEditorLauncher(
     private val editorResolver: EditorExecutableResolver = EditorExecutableResolver(os, locator),
 ) : EditorLauncher {
 
-    override suspend fun open(path: String): Result<Unit> = runCatching {
+    override suspend fun open(path: String): Result<Unit> = runSuspendCatching {
         val target = if (editor == EditorId.XCODE) xcodeWorkspaceFinder.find(path) else path
         val failure = if (os == HostOs.MACOS) openBundle(target) else null
-        if (os == HostOs.MACOS && failure == null) return@runCatching
+        if (os == HostOs.MACOS && failure == null) return@runSuspendCatching
         try {
             openExecutable(target)
         } catch (executableFailure: ToolCommandFailed) {
@@ -62,7 +63,7 @@ class SystemFolderLauncher(
     private val os: HostOs = HostOs.current(),
 ) : FolderLauncher {
 
-    override suspend fun open(path: String): Result<Unit> = runCatching {
+    override suspend fun open(path: String): Result<Unit> = runSuspendCatching {
         try {
             executor.runTool(command(path))
         } catch (failure: ToolCommandFailed) {
@@ -83,7 +84,7 @@ class MacClaudeDesktopLauncher(
     private val os: HostOs = HostOs.current(),
 ) : ClaudeDesktopLauncher {
 
-    override suspend fun open(path: String): Result<Unit> = runCatching {
+    override suspend fun open(path: String): Result<Unit> = runSuspendCatching {
         if (os != HostOs.MACOS) throw WorktreeError.ClaudeDesktopLaunchFailed("it can't be opened on this system")
         try {
             executor.runTool(listOf("open", link(path)))

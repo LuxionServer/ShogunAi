@@ -6,6 +6,7 @@ import app.luxion.shogunai.domain.FakePortProbe
 import app.luxion.shogunai.domain.FakeRepositoryProvisioningSource
 import app.luxion.shogunai.domain.FakeShellCommandExecutor
 import app.luxion.shogunai.domain.FakeTerminalLauncher
+import app.luxion.shogunai.domain.ScriptedShellCommandExecutor
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.model.AgentLaunchConfig
 import app.luxion.shogunai.domain.model.EnvironmentDeclaration
@@ -31,8 +32,8 @@ class OpenWorktreeInTerminalUseCaseTest {
         agentLaunchConfig = AgentLaunchConfig(agentCommand = "claude", useHeadroom = false),
     )
 
-    private val gitExecutor = object : ShellCommandExecutor {
-        override suspend fun execute(command: List<String>, workingDirectory: String?) =
+    private val gitExecutor = object : ScriptedShellCommandExecutor() {
+        override suspend fun respond(command: List<String>, workingDirectory: String?) =
             FakeShellCommandExecutor.success(command, "$common/worktrees/TASK-8\n$common\n")
     }
 

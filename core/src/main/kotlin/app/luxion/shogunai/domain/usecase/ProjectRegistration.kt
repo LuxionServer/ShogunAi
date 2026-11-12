@@ -5,6 +5,7 @@ import app.luxion.shogunai.domain.model.Multirepo
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.newProject
+import app.luxion.shogunai.domain.runSuspendCatching
 import java.util.UUID
 
 sealed interface ProjectRegistration {
@@ -20,10 +21,10 @@ class RegisterProjectUseCase(
     private val newId: () -> String = { UUID.randomUUID().toString() },
     private val workspaceOf: (String) -> Multirepo? = { null },
 ) {
-    suspend operator fun invoke(directory: String): Result<ProjectRegistration> = runCatching {
+    suspend operator fun invoke(directory: String): Result<ProjectRegistration> = runSuspendCatching {
         val repository = resolveRepository(directory).getOrThrow()
         val existing = projects.list().firstOrNull { sameDirectory(it.config.baseRepositoryPath, repository) }
-        if (existing != null) return@runCatching ProjectRegistration.AlreadyRegistered(existing)
+        if (existing != null) return@runSuspendCatching ProjectRegistration.AlreadyRegistered(existing)
         val workspace = workspaceOf(repository)
         val created = newProject(newId(), repository)
         val workspaceRepository = workspace?.workspaceRepository
@@ -41,7 +42,7 @@ class UnregisterProjectUseCase(
     private val projects: ProjectRepository,
     private val resolveRepository: ResolveRepositoryUseCase,
 ) {
-    suspend operator fun invoke(directory: String): Result<Project> = runCatching {
+    suspend operator fun invoke(directory: String): Result<Project> = runSuspendCatching {
         val repository = resolveRepository(directory).getOrNull() ?: directory
         val project = projects.list().firstOrNull { sameDirectory(it.config.baseRepositoryPath, repository) }
             ?: throw WorktreeError.ProjectNotRegistered(repository)

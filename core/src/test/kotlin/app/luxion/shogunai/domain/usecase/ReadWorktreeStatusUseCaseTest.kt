@@ -4,6 +4,7 @@ import app.luxion.shogunai.domain.FakeFileManager
 import app.luxion.shogunai.domain.FakeShellCommandExecutor
 import app.luxion.shogunai.domain.FakeShellCommandExecutor.Companion.failure
 import app.luxion.shogunai.domain.FakeShellCommandExecutor.Companion.success
+import app.luxion.shogunai.domain.ScriptedShellCommandExecutor
 import app.luxion.shogunai.domain.executor.CommandExecutionException
 import app.luxion.shogunai.domain.executor.CommandResult
 import app.luxion.shogunai.domain.executor.CommandTimeouts
@@ -12,10 +13,12 @@ import app.luxion.shogunai.domain.model.Divergence
 import app.luxion.shogunai.domain.model.MainBranch
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.WorktreeError
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.test.runTest
 import java.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import kotlin.test.assertIs
@@ -66,13 +69,22 @@ class ReadWorktreeStatusUseCaseTest {
         ReadWorktreeStatusUseCase(fake, FakeFileManager())(worktree, mainBranch).getOrThrow()
         assertEquals(CommandTimeouts.GIT_READ, fake.timeouts[statusCommand])
 
-        val hung = object : ShellCommandExecutor {
-            override suspend fun execute(command: List<String>, workingDirectory: String?): CommandResult =
+        val hung = object : ScriptedShellCommandExecutor() {
+            override suspend fun respond(command: List<String>, workingDirectory: String?): CommandResult =
                 throw CommandExecutionException.TimedOut(command, CommandTimeouts.GIT_READ)
         }
         val failure = ReadWorktreeStatusUseCase(hung, FakeFileManager())(worktree, mainBranch).exceptionOrNull()
 
         assertIs<CommandExecutionException.TimedOut>(failure)
+    }
+
+    @Test
+    fun `a read cancelled mid-way ends as cancelled and runs no further command`() = runTest {
+        val fake = executor(mapOf(statusCommand to { _ -> throw CancellationException("cancelled") }))
+
+        assertFailsWith<CancellationException> { ReadWorktreeStatusUseCase(fake, FakeFileManager())(worktree, mainBranch) }
+
+        assertEquals(listOf(statusCommand), fake.executedCommands)
     }
 
     @Test

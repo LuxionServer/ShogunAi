@@ -188,6 +188,10 @@ Quedaron fuera:
 - Quitar Cmd/Ctrl+E, que se mantiene una versión como alias de Cmd/Ctrl+O desde que el atajo pasó al runner por defecto.
 - Mostrar en la vista de Gradle de la app de escritorio la build que ocupa un daemon; hoy `shogun gradle` la nombra, con su cliente, sus tareas y la sesión de agente que la lanzó.
 - Escribir en la fuente de la interfaz los textos de estado que quedan en las vistas de Máquina: la vista de Compose aún escribe el título de los restos y un worktree eliminado como dueño en la fuente de datos.
+- Hacer menos con el bloqueo de estado de la máquina tomado al adquirir un emulador o simulador: leer los dispositivos antes de tomarlo, dejar solo la reserva dentro, y parar, borrar o crear dispositivos después de soltarlo.
+  Todo comando que se lanza con el bloqueo tomado tiene ya un límite de tiempo, pero los demás procesos siguen esperando a esos comandos.
+- Un bloqueo de estado de la máquina que se pueda esperar sin ocupar un hilo, para que cancelar la adquisición de un dispositivo llegue al trabajo hecho con el bloqueo tomado.
+- Dejar pasar las cancelaciones en la herramienta de línea de comandos y en la app de escritorio como ya hace `core`, donde `runCatching` aún convierte una en un fallo corriente.
 
 ## Más adelante
 

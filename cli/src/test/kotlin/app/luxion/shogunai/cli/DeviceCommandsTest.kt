@@ -19,8 +19,8 @@ import app.luxion.shogunai.domain.FakeProcessLiveness
 import app.luxion.shogunai.domain.FakeProjectRepository
 import app.luxion.shogunai.domain.FakeRepositoryProvisioningSource
 import app.luxion.shogunai.domain.FakeResourceLimitsRepository
+import app.luxion.shogunai.domain.ScriptedShellCommandExecutor
 import app.luxion.shogunai.domain.executor.CommandResult
-import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.model.DeviceConnection
 import app.luxion.shogunai.domain.model.DeviceLeases
 import app.luxion.shogunai.domain.model.DeviceLoss
@@ -99,8 +99,8 @@ class DeviceCommandsTest {
         name = "Test iPhone", manufacturer = "Apple", model = "iPhone18,3", marketingName = "iPhone 17", osVersion = "26.6",
     )
 
-    private val executor = object : ShellCommandExecutor {
-        override suspend fun execute(command: List<String>, workingDirectory: String?): CommandResult {
+    private val executor = object : ScriptedShellCommandExecutor() {
+        override suspend fun respond(command: List<String>, workingDirectory: String?): CommandResult {
             if (workingDirectory?.startsWith("/home/dev/projects") != true) return CommandResult(command, 128, "", "not a git repository")
             val worktree = listOf(task1, task2).firstOrNull { workingDirectory.startsWith(it) } ?: base
             val admin = when (worktree) {

@@ -5,6 +5,7 @@ import app.luxion.shogunai.domain.io.DerivedDataSource
 import app.luxion.shogunai.domain.model.DerivedDataFolder
 import app.luxion.shogunai.domain.model.MeasuredSize
 import app.luxion.shogunai.domain.model.RememberedSize
+import app.luxion.shogunai.domain.runSuspendCatching
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
@@ -20,7 +21,7 @@ class MeasureDerivedDataUseCase(
     private val concurrency: Int = MAX_PARALLEL_MEASUREMENTS,
 ) {
     operator fun invoke(folders: List<DerivedDataFolder>, remeasure: Boolean = false): Flow<MeasuredSize> = channelFlow {
-        val remembered = runCatching { store.load() }.getOrDefault(emptyMap())
+        val remembered = runSuspendCatching { store.load() }.getOrDefault(emptyMap())
         val known = ConcurrentHashMap<String, RememberedSize>()
         val pending = mutableListOf<DerivedDataFolder>()
         folders.forEach { folder ->
@@ -47,7 +48,7 @@ class MeasureDerivedDataUseCase(
                 }
             }
         }
-        runCatching { store.save(known.toMap()) }
+        runSuspendCatching { store.save(known.toMap()) }
     }
 
     private suspend fun measure(size: suspend () -> Long): Long? = try {

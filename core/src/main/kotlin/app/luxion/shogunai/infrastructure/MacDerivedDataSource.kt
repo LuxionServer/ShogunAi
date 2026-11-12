@@ -1,9 +1,11 @@
 package app.luxion.shogunai.infrastructure
 
+import app.luxion.shogunai.domain.executor.CommandTimeouts
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.io.DerivedDataSource
 import app.luxion.shogunai.domain.io.FileManager
 import app.luxion.shogunai.domain.model.DerivedDataFolder
+import app.luxion.shogunai.domain.runSuspendCatching
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.job
@@ -112,16 +114,13 @@ class MacDerivedDataSource(
 
     private suspend fun defaults(key: String): String? {
         val command = listOf("defaults", "read", XCODE_DOMAIN, key)
-        val result = executor.execute(command)
+        val result = executor.executeWithin(command, CommandTimeouts.LISTING)
         if (!result.isSuccess) return null
         return result.stdout.trim().ifBlank { null }
     }
 
-    private fun realPathOrRecorded(workspacePath: String): String = try {
-        Path.of(workspacePath).toRealPath().toString()
-    } catch (error: Exception) {
-        workspacePath
-    }
+    private fun realPathOrRecorded(workspacePath: String): String =
+        runSuspendCatching { Path.of(workspacePath).toRealPath().toString() }.getOrDefault(workspacePath)
 
     private fun expandHome(path: String): String =
         if (path == "~") home else if (path.startsWith("~/")) home + path.drop(1) else path
@@ -151,7 +150,7 @@ class MacDerivedDataSource(
         return PlistEntry(path, lastAccessed)
     }
 
-    private fun parseXml(bytes: ByteArray): Document? = try {
+    private fun parseXml(bytes: ByteArray): Document? = runSuspendCatching {
         val factory = DocumentBuilderFactory.newInstance()
         factory.isXIncludeAware = false
         factory.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true)
@@ -161,9 +160,7 @@ class MacDerivedDataSource(
         factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_DTD, "")
         factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_SCHEMA, "")
         factory.newDocumentBuilder().parse(bytes.inputStream())
-    } catch (error: Exception) {
-        null
-    }
+    }.getOrNull()
 
     private fun parseInstant(text: String): Instant? = try {
         Instant.parse(text)

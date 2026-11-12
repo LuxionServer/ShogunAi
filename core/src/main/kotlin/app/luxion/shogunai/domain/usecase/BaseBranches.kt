@@ -5,14 +5,16 @@ import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.model.MainBranch
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.WorktreeError
+import app.luxion.shogunai.domain.runSuspendCatching
 
 internal const val BASE_BRANCH_KEY = "gh-merge-base"
 
 internal fun baseBranchKey(branch: String): String = "branch.$branch.$BASE_BRANCH_KEY"
 
 internal suspend fun writeBaseBranch(config: ProjectConfig, executor: ShellCommandExecutor, branch: String, baseBranch: String) {
-    val result = executor.execute(
+    val result = executor.executeWithin(
         command = listOf("git", "config", baseBranchKey(branch), baseBranch),
+        timeout = CommandTimeouts.GIT_READ,
         workingDirectory = config.baseRepositoryPath,
     )
     if (!result.isSuccess) throw WorktreeError.GitCommandFailed(result.command, result.exitCode, result.stderr)
@@ -22,9 +24,10 @@ class ReadBaseBranchesUseCase(
     private val config: ProjectConfig,
     private val executor: ShellCommandExecutor,
 ) {
-    suspend operator fun invoke(): Result<Map<String, String>> = runCatching {
-        val result = executor.execute(
+    suspend operator fun invoke(): Result<Map<String, String>> = runSuspendCatching {
+        val result = executor.executeWithin(
             command = listOf("git", "config", "--get-regexp", BASE_BRANCH_PATTERN),
+            timeout = CommandTimeouts.GIT_READ,
             workingDirectory = config.baseRepositoryPath,
         )
         when {
@@ -62,7 +65,7 @@ class SetBaseBranchUseCase(
     private val config: ProjectConfig,
     private val executor: ShellCommandExecutor,
 ) {
-    suspend operator fun invoke(branch: String, baseBranch: String): Result<String> = runCatching {
+    suspend operator fun invoke(branch: String, baseBranch: String): Result<String> = runSuspendCatching {
         val resolved = ResolveBaseBranchUseCase(executor)(config.baseRepositoryPath, baseBranch.trim())
             ?: throw WorktreeError.NotABranch(baseBranch)
         writeBaseBranch(config, executor, branch, resolved)

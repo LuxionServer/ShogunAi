@@ -1,6 +1,7 @@
 package app.luxion.shogunai.domain.usecase
 
 import app.luxion.shogunai.domain.executor.CommandExecutionException
+import app.luxion.shogunai.domain.executor.CommandTimeouts
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.io.FileManager
 import app.luxion.shogunai.domain.io.RepositoryProvisioningSource
@@ -41,7 +42,9 @@ class ResolveFlutterPackagesUseCase(
     private suspend fun pubGet(worktreePath: String): FlutterPubGet {
         val command = flutterCommand(fileManager, worktreePath) + listOf("pub", "get")
         val result = try {
-            executor.execute(command = command, workingDirectory = worktreePath)
+            executor.executeWithin(command = command, timeout = CommandTimeouts.INSTALL, workingDirectory = worktreePath)
+        } catch (error: CommandExecutionException.TimedOut) {
+            return FlutterPubGet.Needed(FlutterPubGetFailure.Unexpected(error.message))
         } catch (error: CommandExecutionException) {
             return FlutterPubGet.Needed(FlutterPubGetFailure.NotFound(command.first()))
         }

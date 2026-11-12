@@ -8,6 +8,7 @@ import app.luxion.shogunai.domain.model.OrcaWorktreeUpdate
 import app.luxion.shogunai.domain.model.RunningAgent
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.WorktreeStatus
+import app.luxion.shogunai.domain.runSuspendCatching
 import kotlinx.coroutines.CancellationException
 import java.util.concurrent.ConcurrentHashMap
 
@@ -80,7 +81,7 @@ class OrcaWorktreeSync(
 
     suspend fun sync(items: List<OrcaSyncItem>, rows: List<OrcaWorktree>, prune: Boolean = false): List<OrcaSyncFailure> {
         val rowsByPath = rows.filter { it.folderId == null }.associateBy { canonical(it.path) }
-        val remembered = runCatching { store.boardStatuses() }.getOrDefault(emptyMap())
+        val remembered = runSuspendCatching { store.boardStatuses() }.getOrDefault(emptyMap())
         val written = remembered.toMutableMap()
         val failures = mutableListOf<OrcaSyncFailure>()
         items.filterNot { it.worktree.isMain }.forEach { item ->
@@ -98,7 +99,7 @@ class OrcaWorktreeSync(
             }
         }
         val kept = if (prune) written.filterKeys { it in rowsByPath } else written
-        if (kept != remembered) runCatching { store.rememberBoardStatuses(kept) }
+        if (kept != remembered) runSuspendCatching { store.rememberBoardStatuses(kept) }
         return failures
     }
 

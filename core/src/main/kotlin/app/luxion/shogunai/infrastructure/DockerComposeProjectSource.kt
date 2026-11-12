@@ -11,6 +11,7 @@ import app.luxion.shogunai.domain.model.ComposeProject
 import app.luxion.shogunai.domain.model.ComposeResource
 import app.luxion.shogunai.domain.model.ComposeResourceKind
 import app.luxion.shogunai.domain.model.WorktreeError
+import app.luxion.shogunai.domain.runSuspendCatching
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -29,7 +30,7 @@ class DockerComposeProjectSource(private val executor: ShellCommandExecutor) : C
         return parseComposeProjects(result.stdout) ?: throw WorktreeError.DockerUnavailable("unexpected output of docker compose ls")
     }
 
-    override suspend fun down(name: String, removeVolumes: Boolean): Result<Unit> = runCatching {
+    override suspend fun down(name: String, removeVolumes: Boolean): Result<Unit> = runSuspendCatching {
         val command = listOf("docker", "compose", "-p", name, "down") + if (removeVolumes) listOf("--volumes") else emptyList()
         val result = executor.executeWithin(command, CommandTimeouts.NETWORK)
         if (!result.isSuccess) {
@@ -43,9 +44,9 @@ class DockerComposeProjectSource(private val executor: ShellCommandExecutor) : C
         workingDirectory: String,
         environment: Map<String, String>,
         onOutput: (OutputLine) -> Unit,
-    ): Result<Unit> = runCatching {
+    ): Result<Unit> = runSuspendCatching {
         val result = try {
-            executor.executeStreaming(composeCommand(action), workingDirectory, environment, onOutput)
+            executor.executeStreaming(composeCommand(action), CommandTimeouts.INSTALL, workingDirectory, environment, onOutput)
         } catch (error: CommandExecutionException) {
             throw WorktreeError.DockerUnavailable(error.message)
         }
@@ -55,7 +56,7 @@ class DockerComposeProjectSource(private val executor: ShellCommandExecutor) : C
     override suspend fun listResources(): List<ComposeResource> =
         listVolumes() + listNetworks() + listImages()
 
-    override suspend fun remove(resource: ComposeResource): Result<Unit> = runCatching {
+    override suspend fun remove(resource: ComposeResource): Result<Unit> = runSuspendCatching {
         val result = executor.executeWithin(listOf("docker", resource.kind.id, "rm", resource.id), CommandTimeouts.NETWORK)
         if (!result.isSuccess) throw IllegalStateException(result.lastErrorLine())
     }

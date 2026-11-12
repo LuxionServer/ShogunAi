@@ -1,5 +1,6 @@
 package app.luxion.shogunai.domain.usecase
 
+import app.luxion.shogunai.domain.executor.CommandTimeouts
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.io.FileManager
 import app.luxion.shogunai.domain.io.RepositoryApproval
@@ -9,6 +10,7 @@ import app.luxion.shogunai.domain.io.RepositoryTrust
 import app.luxion.shogunai.domain.model.BranchType
 import app.luxion.shogunai.domain.model.REMOTE_PREFIX
 import app.luxion.shogunai.domain.model.WorktreeError
+import app.luxion.shogunai.domain.runSuspendCatching
 
 enum class GroupRepositoryOutcome { CREATED, EXISTING, FAILED, SKIPPED }
 
@@ -42,7 +44,7 @@ class CreateGroupUseCase(
         branchType: BranchType,
         fetch: Boolean = false,
         onRepository: (GroupRepositoryResult) -> Unit = {},
-    ): Result<GroupCreation> = runCatching {
+    ): Result<GroupCreation> = runSuspendCatching {
         val id = normalizeTaskId(taskId)
         if (!isValidGitRefSegment(id)) throw WorktreeError.InvalidTaskId(taskId)
         val branch = "${branchType.prefix}/$id"
@@ -116,6 +118,6 @@ class CreateGroupUseCase(
 
     private suspend fun branchExists(repository: String, branch: String): Boolean =
         listOf("refs/heads/$branch", "refs/remotes/$REMOTE_PREFIX$branch").any { ref ->
-            executor.execute(listOf("git", "show-ref", "--verify", "--quiet", ref), repository).isSuccess
+            executor.executeWithin(listOf("git", "show-ref", "--verify", "--quiet", ref), CommandTimeouts.GIT_READ, repository).isSuccess
         }
 }
