@@ -101,7 +101,8 @@ class GradleHeadlessAppLauncherTest {
     @Test
     fun `a process that ignores the stop request is killed after the grace period`() = runTest {
         val launcher = GradleHeadlessAppLauncher(FakeShellCommandExecutor { success(it) }, scripts.toString(), stopGraceSeconds = 0)
-        val process = ProcessBuilder("sh", "-c", "trap '' TERM; while true; do sleep 1; done").start()
+        val process = ProcessBuilder("sh", "-c", "trap '' TERM; echo ready; while true; do sleep 1; done").start()
+        assertEquals("ready", process.inputReader().readLine())
 
         launcher.stop(process.pid())
 
