@@ -4,12 +4,13 @@ import app.luxion.shogunai.domain.executor.CommandTimeouts
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.model.MainBranch
 import app.luxion.shogunai.domain.model.ProjectConfig
+import app.luxion.shogunai.domain.runSuspendCatching
 
 class ResolveMainBranchUseCase(
     private val config: ProjectConfig,
     private val executor: ShellCommandExecutor,
 ) {
-    suspend operator fun invoke(): Result<MainBranch?> = runCatching {
+    suspend operator fun invoke(): Result<MainBranch?> = runSuspendCatching {
         val configured = config.mainBranch
         if (configured != null) {
             resolve(configured)

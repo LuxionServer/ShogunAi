@@ -1,5 +1,6 @@
 package app.luxion.shogunai.infrastructure
 
+import app.luxion.shogunai.domain.executor.CommandTimeouts
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.io.AppWindowService
 import app.luxion.shogunai.domain.model.AppWindow
@@ -34,7 +35,7 @@ class MacAppWindowService(
     override suspend fun capture(window: AppWindow, outputPath: String) {
         withContext(Dispatchers.IO) { Files.createDirectories(Path.of(outputPath).toAbsolutePath().parent) }
         val command = captureCommand(window, outputPath)
-        val result = executor.execute(command)
+        val result = executor.executeWithin(command, CommandTimeouts.LOCAL_TOOL)
         if (!result.isSuccess) throw WorktreeError.MacWindowToolFailed(result.stderr.ifBlank { result.stdout }.trim())
     }
 
@@ -48,7 +49,7 @@ class MacAppWindowService(
     }
 
     private suspend fun helper(action: String, pid: String): String {
-        val result = executor.execute(helperCommand(writeScript(), action, pid))
+        val result = executor.executeWithin(helperCommand(writeScript(), action, pid), CommandTimeouts.LOCAL_TOOL)
         if (!result.isSuccess) throw WorktreeError.MacWindowToolFailed(result.stderr.trim())
         return result.stdout.trim()
     }

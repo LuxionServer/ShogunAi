@@ -14,10 +14,11 @@ internal suspend fun holdsChangesOf(
     val forkPoint = objectId(executor.executeWithin(listOf("git", "merge-base", target, branch), CommandTimeouts.GIT_READ, workingDirectory))
         ?: return false
     val squashed = objectId(
-        executor.executeWithEnvironment(
+        executor.executeWithin(
             listOf("git", "commit-tree", "$branch^{tree}", "-p", forkPoint, "-m", "squash"),
-            SQUASH_COMMIT_ENVIRONMENT,
+            CommandTimeouts.GIT_READ,
             workingDirectory,
+            SQUASH_COMMIT_ENVIRONMENT,
         ),
     ) ?: return false
     return unmatchedCommits(executor, workingDirectory, squashed, target) == 0

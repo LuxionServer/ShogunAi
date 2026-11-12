@@ -1,5 +1,6 @@
 package app.luxion.shogunai.domain.usecase
 
+import app.luxion.shogunai.domain.executor.CommandTimeouts
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.io.FileManager
 import app.luxion.shogunai.domain.io.RepositoryProvisioningSource
@@ -10,6 +11,7 @@ import app.luxion.shogunai.domain.model.MobileSecretKind
 import app.luxion.shogunai.domain.model.MobileSecretsReport
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.WorktreeError
+import app.luxion.shogunai.domain.runSuspendCatching
 
 class DetectMobileSecretsUseCase(
     private val executor: ShellCommandExecutor,
@@ -29,7 +31,7 @@ class DetectMobileSecretsUseCase(
 
     private suspend fun untrackedSecrets(repository: String): List<MobileSecret> {
         val command = listOf("git", "ls-files", "--others", "--ignored", "-z") + SECRET_PATTERNS.flatMap { listOf("-x", it) }
-        val result = executor.execute(command = command, workingDirectory = repository)
+        val result = executor.executeWithin(command = command, timeout = CommandTimeouts.GIT_READ, workingDirectory = repository)
         if (!result.isSuccess) throw WorktreeError.GitCommandFailed(result.command, result.exitCode, result.stderr)
         return result.stdout.split('\u0000')
             .filter { it.isNotEmpty() && it.split('/').dropLast(1).none { folder -> folder in GENERATED_FOLDERS } }
@@ -58,12 +60,12 @@ class DetectMobileSecretsUseCase(
     }
 
     private suspend fun isTracked(repository: String, path: String): Boolean {
-        val result = executor.execute(command = listOf("git", "ls-files", "-z", "--", path), workingDirectory = repository)
+        val result = executor.executeWithin(command = listOf("git", "ls-files", "-z", "--", path), timeout = CommandTimeouts.GIT_READ, workingDirectory = repository)
         return !result.isSuccess || result.stdout.isNotEmpty()
     }
 
     private suspend fun providedFiles(config: ProjectConfig): Set<String> {
-        val provisioned = runCatching { resolveProvisionedFiles(config, executor, fileManager, provisioningSource) }
+        val provisioned = runSuspendCatching { resolveProvisionedFiles(config, executor, fileManager, provisioningSource) }
             .getOrNull() ?: return emptySet()
         val underLinkedFolders = provisioned.linkedFolders.flatMap { (folder, files) -> files.map { "$folder/$it" } }
         return (provisioned.copied + provisioned.linked + underLinkedFolders).toSet()

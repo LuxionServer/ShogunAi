@@ -7,6 +7,7 @@ import app.luxion.shogunai.domain.model.BYTES_PER_GIGABYTE
 import app.luxion.shogunai.domain.model.CapacityProfile
 import app.luxion.shogunai.domain.model.RefreshCadence
 import app.luxion.shogunai.domain.model.ResourceSettings
+import app.luxion.shogunai.domain.runSuspendCatching
 
 class ResolveRefreshCadenceUseCase(
     private val repository: ResourceLimitsRepository,
@@ -18,7 +19,7 @@ class ResolveRefreshCadenceUseCase(
     private var lastPowerRead: PowerRead? = null
 
     suspend operator fun invoke(): RefreshCadence =
-        when (runCatching { repository.load() }.getOrDefault(ResourceSettings()).profile) {
+        when (runSuspendCatching { repository.load() }.getOrDefault(ResourceSettings()).profile) {
             CapacityProfile.LIGHT -> RefreshCadence.LIGHT
             CapacityProfile.BALANCED, CapacityProfile.CUSTOM -> RefreshCadence.BALANCED
             CapacityProfile.PER_WORKTREE -> RefreshCadence.PER_WORKTREE
@@ -34,7 +35,7 @@ class ResolveRefreshCadenceUseCase(
     private suspend fun isOnBattery(): Boolean {
         val cached = lastPowerRead
         if (cached != null && now() - cached.readAt < POWER_READ_INTERVAL_MILLIS) return cached.onBattery
-        val onBattery = runCatching { powerSource.isOnBattery() }.getOrNull() ?: false
+        val onBattery = runSuspendCatching { powerSource.isOnBattery() }.getOrNull() ?: false
         lastPowerRead = PowerRead(onBattery, now())
         return onBattery
     }

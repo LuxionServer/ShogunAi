@@ -2,6 +2,7 @@ package app.luxion.shogunai.domain.usecase
 
 import app.luxion.shogunai.domain.FakePhysicalDeviceInventoryStore
 import app.luxion.shogunai.domain.FakePhysicalDeviceLeaseStore
+import app.luxion.shogunai.domain.executor.CommandTimeouts
 import app.luxion.shogunai.domain.model.DeviceLeases
 import app.luxion.shogunai.domain.model.DevicePlatform
 import app.luxion.shogunai.domain.model.PhysicalDeviceLease
@@ -54,6 +55,7 @@ class RemoveWorktreeUseCaseTest {
 
         assertTrue(result.isSuccess)
         assertEquals(listOf(listOf("git", "worktree", "remove", worktreePath)), executor.executedCommands)
+        assertEquals(CommandTimeouts.LOCAL_WORK, executor.timeouts[listOf("git", "worktree", "remove", worktreePath)])
     }
 
     private fun headlessApp(launcher: FakeHeadlessAppLauncher, files: FakeFileManager): StopHeadlessAppUseCase {

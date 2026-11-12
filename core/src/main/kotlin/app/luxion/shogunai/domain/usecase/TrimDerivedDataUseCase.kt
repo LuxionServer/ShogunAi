@@ -9,8 +9,10 @@ import app.luxion.shogunai.domain.model.DerivedDataOwner
 import app.luxion.shogunai.domain.model.DerivedDataQuotaMode
 import app.luxion.shogunai.domain.model.DerivedDataTrim
 import app.luxion.shogunai.domain.model.Worktree
+import app.luxion.shogunai.domain.runSuspendCatching
 import java.time.Duration
 import java.time.Instant
+import kotlin.coroutines.cancellation.CancellationException
 
 class TrimDerivedDataUseCase(
     private val source: DerivedDataSource,
@@ -24,8 +26,8 @@ class TrimDerivedDataUseCase(
         dryRun: Boolean = false,
         measured: DerivedDataListing? = null,
         quotaMode: DerivedDataQuotaMode = DerivedDataQuotaMode.FIXED,
-    ): Result<DerivedDataTrim> = runCatching {
-        if (quotaBytes == null) return@runCatching DerivedDataTrim(null, 0L, 0L, dryRun = dryRun, quotaMode = quotaMode)
+    ): Result<DerivedDataTrim> = runSuspendCatching {
+        if (quotaBytes == null) return@runSuspendCatching DerivedDataTrim(null, 0L, 0L, dryRun = dryRun, quotaMode = quotaMode)
         val active = activeWorktreePaths.map(::normalizePath).toSet()
         val listing = measured
             ?: list(worktrees, includeCompilationCache = false, measure = DerivedDataMeasure.ALL).getOrThrow()
@@ -46,6 +48,8 @@ class TrimDerivedDataUseCase(
                 if (!dryRun) source.delete(candidate.folder)
                 released += candidate
                 usage -= candidate.folder.sizeBytes ?: 0L
+            } catch (error: CancellationException) {
+                throw error
             } catch (error: Exception) {
                 failures += DerivedDataDeletionFailure(candidate.folder.path, error.message ?: "delete failed")
             }

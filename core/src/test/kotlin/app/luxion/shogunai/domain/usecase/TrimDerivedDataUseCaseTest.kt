@@ -6,6 +6,7 @@ import app.luxion.shogunai.domain.model.BYTES_PER_GIGABYTE
 import app.luxion.shogunai.domain.model.DerivedDataFolder
 import app.luxion.shogunai.domain.model.DerivedDataOwner
 import app.luxion.shogunai.domain.model.Worktree
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.test.runTest
 import java.time.Duration
 import java.time.Instant
@@ -15,6 +16,7 @@ import app.luxion.shogunai.domain.model.DerivedDataDeletionFailure
 import app.luxion.shogunai.domain.model.DerivedDataListing
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -204,6 +206,19 @@ class TrimDerivedDataUseCaseTest {
         trim(source, quotaGb = 25)
 
         assertEquals(listOf("Second"), names(source))
+    }
+
+    @Test
+    fun `a trim cancelled mid-way ends as cancelled and deletes nothing more`() = runTest {
+        val source = source(
+            folder("First", project1, 20, daysAgo(10)),
+            folder("Second", project2, 20, daysAgo(5)),
+        )
+        source.beforeDelete = { throw CancellationException("cancelled") }
+
+        assertFailsWith<CancellationException> { trim(source, quotaGb = 5) }
+
+        assertTrue(source.deleted.isEmpty())
     }
 
     @Test

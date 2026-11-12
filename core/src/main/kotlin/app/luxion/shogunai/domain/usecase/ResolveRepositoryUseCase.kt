@@ -4,18 +4,19 @@ import app.luxion.shogunai.domain.executor.CommandResult
 import app.luxion.shogunai.domain.executor.CommandTimeouts
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.model.WorktreeError
+import app.luxion.shogunai.domain.runSuspendCatching
 import java.nio.file.Path
 
 class ResolveRepositoryUseCase(
     private val executor: ShellCommandExecutor,
 ) {
-    suspend operator fun invoke(directory: String): Result<String> = runCatching {
+    suspend operator fun invoke(directory: String): Result<String> = runSuspendCatching {
         val layout = git(directory, "rev-parse", "--path-format=absolute", "--git-common-dir", "--is-bare-repository")
         val lines = layout.stdout.lines().map { it.trim() }
         val commonDir = normalizePath(lines.first())
         if (!layout.isSuccess || commonDir.isEmpty()) throw WorktreeError.RepositoryNotFound(directory)
         if (lines.getOrNull(1) == "true") throw WorktreeError.BareRepositoryNotSupported(directory)
-        if (commonDir.endsWith("/.git")) return@runCatching commonDir.removeSuffix("/.git")
+        if (commonDir.endsWith("/.git")) return@runSuspendCatching commonDir.removeSuffix("/.git")
         if (isBare(directory)) throw WorktreeError.BareRepositoryNotSupported(directory)
         mainWorktree(directory, commonDir)
     }

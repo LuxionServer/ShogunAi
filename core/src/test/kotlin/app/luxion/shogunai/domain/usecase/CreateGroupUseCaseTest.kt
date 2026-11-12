@@ -93,8 +93,8 @@ class CreateGroupUseCaseTest {
     @Test
     fun `a failing post-creation command fails its repository and keeps the worktree's path`() = runTest {
         val failingInstall = object : ShellCommandExecutor by world.git {
-            override suspend fun execute(command: List<String>, workingDirectory: String?): CommandResult =
-                if (command.first() == "npm") CommandResult(command, 1, "", "npm ERR! missing script") else world.git.execute(command, workingDirectory)
+            override suspend fun executeWithin(command: List<String>, timeout: Duration, workingDirectory: String?, environment: Map<String, String>): CommandResult =
+                if (command.first() == "npm") CommandResult(command, 1, "", "npm ERR! missing script") else world.git.executeWithin(command, timeout, workingDirectory, environment)
         }
         val source = FakeRepositoryProvisioningSource(byRepository = mapOf(world.appBase to RepositoryProvisioning(postCreateCommands = listOf(listOf("npm", "install")))))
         val create = CreateGroupUseCase(failingInstall, world.fileManager, source, trust = FakeRepositoryTrust(approvesEverything = true))
@@ -173,8 +173,8 @@ class CreateGroupUseCaseTest {
     @Test
     fun `a repository whose check can't run is left to its own creation`() = runTest {
         val failingListing = object : ShellCommandExecutor by world.git {
-            override suspend fun execute(command: List<String>, workingDirectory: String?): CommandResult =
-                if (command.take(2) == listOf("git", "ls-files")) CommandResult(command, 128, "", "fatal: bad index") else world.git.execute(command, workingDirectory)
+            override suspend fun executeWithin(command: List<String>, timeout: Duration, workingDirectory: String?, environment: Map<String, String>): CommandResult =
+                if (command.take(2) == listOf("git", "ls-files")) CommandResult(command, 128, "", "fatal: bad index") else world.git.executeWithin(command, timeout, workingDirectory, environment)
         }
         val source = FakeRepositoryProvisioningSource(byRepository = mapOf(world.apiBase to RepositoryProvisioning(copyPatterns = listOf("*.env"))))
         val create = CreateGroupUseCase(failingListing, world.fileManager, source)
@@ -188,9 +188,9 @@ class CreateGroupUseCaseTest {
     @Test
     fun `a repository whose worktrees can't be listed fails alone`() = runTest {
         val failingWorktreeList = object : ShellCommandExecutor by world.git {
-            override suspend fun executeWithin(command: List<String>, timeout: Duration, workingDirectory: String?): CommandResult =
+            override suspend fun executeWithin(command: List<String>, timeout: Duration, workingDirectory: String?, environment: Map<String, String>): CommandResult =
                 if (workingDirectory == world.apiBase) CommandResult(command, 128, "", "fatal: not a git repository")
-                else world.git.executeWithin(command, timeout, workingDirectory)
+                else world.git.executeWithin(command, timeout, workingDirectory, environment)
         }
 
         val creation = CreateGroupUseCase(failingWorktreeList, world.fileManager, FakeRepositoryProvisioningSource())(

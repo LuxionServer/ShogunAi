@@ -269,8 +269,20 @@ Los casos de uso dependen de interfaces, no de implementaciones. Esto es lo que 
 
 ```kotlin
 interface ShellCommandExecutor {
-    suspend fun execute(command: List<String>, workingDirectory: String? = null): CommandResult
-    suspend fun executeWithin(command: List<String>, timeout: Duration, workingDirectory: String? = null): CommandResult
+    suspend fun executeWithin(
+        command: List<String>,
+        timeout: Duration,
+        workingDirectory: String? = null,
+        environment: Map<String, String> = emptyMap(),
+    ): CommandResult
+
+    suspend fun executeStreaming(
+        command: List<String>,
+        timeout: Duration,
+        workingDirectory: String?,
+        environment: Map<String, String>,
+        onOutput: (OutputLine) -> Unit,
+    ): CommandResult
 }
 ```
 
@@ -278,7 +290,9 @@ El comando se pasa como **argv** (lista de strings), nunca como una cadena para 
 
 `CommandResult` guarda `command`, `exitCode`, `stdout` y `stderr` sin interpretar su significado — cada caso de uso decide qué cuenta como éxito con `isSuccess` (`exitCode == 0`). Un proceso que ni siquiera puede arrancar (p. ej. el ejecutable no está en el `PATH`) lanza `CommandExecutionException`.
 
-`executeWithin` acota la ejecución de un comando: si no termina a tiempo se detiene y lanza `CommandExecutionException.TimedOut`. Los comandos de solo lectura pasan un límite de `CommandTimeouts` (`GIT_READ`, 30 s, para las lecturas de Git; `LISTING`, 10 s, para los listados de dispositivos, procesos y herramientas; `NETWORK`, 60 s, para `git fetch`); los comandos que pueden tardar con motivo (crear un worktree, los comandos post-creación, las builds) usan `execute`, sin límite. Su implementación por defecto ignora el límite, así que los dobles de test no tienen que implementarlo. Una corrutina cancelada siempre detiene el comando, y ningún comando espera nunca entrada.
+Todo comando se ejecuta con un límite de tiempo: si no termina a tiempo se detiene junto con sus hijos y lanza `CommandExecutionException.TimedOut`. Los límites vienen de `CommandTimeouts`: `LISTING`, 10 s, para los listados de dispositivos, procesos y herramientas; `GIT_READ`, 30 s, para las lecturas de Git; `NETWORK`, 60 s, para `git fetch`; `LOCAL_TOOL`, 60 s, para herramientas locales rápidas (`kill`, `open`, `simctl create/shutdown/delete`, las CLI de Herdr y Orca); `LOCAL_WORK`, 5 minutos, para las escrituras locales de Git (`worktree add/remove/repair`, `branch -D`), `simctl boot` y clonar `Pods`; e `INSTALL`, 30 minutos, para los comandos post-creación, `flutter pub get`, `docker compose` y el arranque headless con Gradle. `executeStreaming` además entrega cada línea de salida a `onOutput` según llega. Ninguno de los dos métodos tiene cuerpo por defecto, así que ninguna implementación ni doble de test puede perder en silencio el límite o el entorno; los tests extienden `ScriptedShellCommandExecutor` de los test fixtures de `core`, que registra ambos. Una corrutina cancelada siempre detiene el comando, y ningún comando espera nunca entrada.
+
+El código suspendido de `core` nunca se traga una cancelación: usa `runSuspendCatching` (un `runCatching` que relanza `CancellationException`) en vez de `runCatching`, y un `catch` amplio o relanza el error o va detrás de un `catch` de `CancellationException` que lo relanza. `CancellationSourceTest` lo comprueba en cada fichero de `core` que declara una función suspendida.
 
 ### `HostEnvironment`
 
@@ -634,7 +648,7 @@ El agente del multirepo es un ajuste local (`MultirepoSource.agent`/`setAgent`, 
 
 ## Casos de uso
 
-Los casos de uso de worktrees se construyen por proyecto (reciben su `ProjectConfig`) y devuelven `Result<T>` (con `runCatching`), con errores tipados como `WorktreeError`. Todos los comandos de Git se ejecutan desde el repositorio base.
+Los casos de uso de worktrees se construyen por proyecto (reciben su `ProjectConfig`) y devuelven `Result<T>` (con `runSuspendCatching`), con errores tipados como `WorktreeError`. Todos los comandos de Git se ejecutan desde el repositorio base.
 
 ### `CreateWorktreeUseCase`
 

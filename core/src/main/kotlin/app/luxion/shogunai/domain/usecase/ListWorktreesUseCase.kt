@@ -6,13 +6,14 @@ import app.luxion.shogunai.domain.io.FileManager
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.WorktreeError
+import app.luxion.shogunai.domain.runSuspendCatching
 
 class ListWorktreesUseCase(
     private val config: ProjectConfig,
     private val executor: ShellCommandExecutor,
     private val fileManager: FileManager? = null,
 ) {
-    suspend operator fun invoke(): Result<List<Worktree>> = runCatching {
+    suspend operator fun invoke(): Result<List<Worktree>> = runSuspendCatching {
         if (fileManager?.exists(config.baseRepositoryPath) == false) {
             throw WorktreeError.BaseRepositoryNotFound(config.baseRepositoryPath)
         }

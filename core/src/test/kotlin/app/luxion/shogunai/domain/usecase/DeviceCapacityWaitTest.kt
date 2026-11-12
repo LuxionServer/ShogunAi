@@ -5,6 +5,7 @@ import app.luxion.shogunai.domain.FakeEnvironmentStateStore
 import app.luxion.shogunai.domain.FakeFileManager
 import app.luxion.shogunai.domain.FakeRepositoryProvisioningSource
 import app.luxion.shogunai.domain.FakeShellCommandExecutor
+import app.luxion.shogunai.domain.ScriptedShellCommandExecutor
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.model.AgentState
 import app.luxion.shogunai.domain.model.DeviceWait
@@ -23,6 +24,7 @@ import kotlinx.coroutines.test.runTest
 import java.time.Duration
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -38,8 +40,8 @@ class DeviceCapacityWaitTest {
     private val admin2 = "$common/worktrees/TASK-2"
     private val admin3 = "$common/worktrees/TASK-3"
 
-    private val git = object : ShellCommandExecutor {
-        override suspend fun execute(command: List<String>, workingDirectory: String?) = FakeShellCommandExecutor.success(
+    private val git = object : ScriptedShellCommandExecutor() {
+        override suspend fun respond(command: List<String>, workingDirectory: String?) = FakeShellCommandExecutor.success(
             command,
             when (workingDirectory) {
                 task1 -> "$admin1\n$common\n"
@@ -79,6 +81,23 @@ class DeviceCapacityWaitTest {
     private fun waiterTask3(): WaitTicket =
         WaitTicket("ticket-3", admin3, task3, otherProcess, harness.now.toEpochMilli())
             .also { harness.waitQueue.write(ResourceKind.EMULATOR, listOf(it)) }
+
+    @Test
+    fun `an acquisition cancelled while releasing a device ends as cancelled`() = runTest {
+        runningEmulatorOfTask1(leaseSeconds = -60)
+        sdk.stopFailure = CancellationException("cancelled")
+
+        assertFailsWith<CancellationException> { harness.acquire.emulator(repository, task2) }
+    }
+
+    @Test
+    fun `a wait in line that is cancelled ends as cancelled`() = runTest {
+        runningEmulatorOfTask1(leaseSeconds = 25)
+
+        assertFailsWith<CancellationException> {
+            harness.acquire.emulator(repository, task2, DeviceWait(onProgress = { throw CancellationException("cancelled") }))
+        }
+    }
 
     @Test
     fun `by default the wait pauses with a coroutine delay until it times out`() = runTest {
@@ -209,9 +228,7 @@ class DeviceCapacityWaitTest {
         runningEmulatorOfTask1(leaseSeconds = 600)
         harness.onPause = { throw CancellationException("interrupted") }
 
-        val error = harness.acquire.emulator(repository, task2, DeviceWait()).exceptionOrNull()
-
-        assertIs<CancellationException>(error)
+        assertFailsWith<CancellationException> { harness.acquire.emulator(repository, task2, DeviceWait()) }
 
         assertTrue(harness.waitQueue.read(ResourceKind.EMULATOR).isEmpty())
     }

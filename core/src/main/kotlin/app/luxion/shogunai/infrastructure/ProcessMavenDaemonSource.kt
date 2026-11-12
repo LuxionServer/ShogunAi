@@ -6,6 +6,7 @@ import app.luxion.shogunai.domain.io.MavenDaemonSource
 import app.luxion.shogunai.domain.model.DaemonState
 import app.luxion.shogunai.domain.model.MavenDaemonProcess
 import app.luxion.shogunai.domain.model.WorktreeError
+import app.luxion.shogunai.domain.runSuspendCatching
 import app.luxion.shogunai.domain.usecase.parseLsofWorkingDirectories
 import java.io.IOException
 import java.nio.file.Files
@@ -54,7 +55,7 @@ class ProcessMavenDaemonSource(
 
     private suspend fun workingDirectories(pids: List<Long>): Map<Long, String> {
         val command = listOf("lsof", "-a", "-p", pids.joinToString(","), "-d", "cwd", "-Fn")
-        val result = runCatching { executor.executeWithin(command, CommandTimeouts.LISTING) }.getOrNull() ?: return emptyMap()
+        val result = runSuspendCatching { executor.executeWithin(command, CommandTimeouts.LISTING) }.getOrNull() ?: return emptyMap()
         return parseLsofWorkingDirectories(result.stdout).mapNotNull { (pid, directory) -> pid.toLongOrNull()?.let { it to directory } }.toMap()
     }
 

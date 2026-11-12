@@ -8,7 +8,7 @@ Implementation of `ShellCommandExecutor` on top of `ProcessBuilder`. Robustness 
 
 - **Reads stdout and stderr concurrently** (two `async`s). If read sequentially, a process that fills the buffer of the unread stream would block (the classic `ProcessBuilder` deadlock).
 - **Never waits for input**: standard input comes from the null device (`/dev/null`, `NUL` on Windows), so a command that asks a question gets end of input instead of hanging. Git commands also get `GIT_TERMINAL_PROMPT=0`, so missing credentials fail at once.
-- `waitFor()` is wrapped in `runInterruptible` so that coroutine cancellation interrupts waiting for the process; `executeWithin` wraps it in `withTimeoutOrNull` and throws `CommandExecutionException.TimedOut` when the limit passes.
+- `waitFor()` is wrapped in `runInterruptible` so that coroutine cancellation interrupts waiting for the process; every method wraps it in `withTimeoutOrNull` with its limit and throws `CommandExecutionException.TimedOut` when the limit passes.
 - Blocking work is confined to `Dispatchers.IO` (injectable via constructor for tests).
 - In the `finally` block, a process that is still alive (cancelled or timed out) is killed with `destroyForcibly()` together with its descendants, so no orphan processes are left and the stream readers are released.
 - **Git in English**: Git commands run with `LC_ALL=C` (`GitLocale`), so the error classification can match Git's messages.

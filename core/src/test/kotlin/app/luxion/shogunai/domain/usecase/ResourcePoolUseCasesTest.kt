@@ -8,6 +8,7 @@ import app.luxion.shogunai.domain.FakeGradleDaemonSource
 import app.luxion.shogunai.domain.FakePortProbe
 import app.luxion.shogunai.domain.FakeRepositoryProvisioningSource
 import app.luxion.shogunai.domain.FakeShellCommandExecutor
+import app.luxion.shogunai.domain.ScriptedShellCommandExecutor
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.model.EmulatorProvider
 import app.luxion.shogunai.domain.model.EmulatorState
@@ -49,8 +50,8 @@ class ResourcePoolUseCasesTest {
     private val admin3 = "$common/worktrees/TASK-3"
     private val adminApi = "$otherCommon/worktrees/API-1"
 
-    private val git = object : ShellCommandExecutor {
-        override suspend fun execute(command: List<String>, workingDirectory: String?) = FakeShellCommandExecutor.success(
+    private val git = object : ScriptedShellCommandExecutor() {
+        override suspend fun respond(command: List<String>, workingDirectory: String?) = FakeShellCommandExecutor.success(
             command,
             when (workingDirectory) {
                 task1 -> "$admin1\n$common\n"
@@ -268,12 +269,12 @@ class ResourcePoolUseCasesTest {
                 ),
             ),
         )
-        val untracked = object : ShellCommandExecutor {
-            override suspend fun execute(command: List<String>, workingDirectory: String?) =
+        val untracked = object : ScriptedShellCommandExecutor() {
+            override suspend fun respond(command: List<String>, workingDirectory: String?) =
                 if (command.getOrNull(1) == "ls-files") {
                     app.luxion.shogunai.domain.executor.CommandResult(command, 1, "", "")
                 } else {
-                    git.execute(command, workingDirectory)
+                    git.respond(command, workingDirectory)
                 }
         }
         val pool = PoolHarness(untracked, withEnvFile, store, sdk, files = files)
@@ -485,8 +486,8 @@ class ResourcePoolUseCasesTest {
 
     @Test
     fun `the main checkout of a repository at the filesystem root has no worktree path`() = runTest {
-        val rootGit = object : ShellCommandExecutor {
-            override suspend fun execute(command: List<String>, workingDirectory: String?) = FakeShellCommandExecutor.success(command, "/.git\n/.git\n")
+        val rootGit = object : ScriptedShellCommandExecutor() {
+            override suspend fun respond(command: List<String>, workingDirectory: String?) = FakeShellCommandExecutor.success(command, "/.git\n/.git\n")
         }
         store.writePorts("/.git", mapOf("emulator" to 5554))
 

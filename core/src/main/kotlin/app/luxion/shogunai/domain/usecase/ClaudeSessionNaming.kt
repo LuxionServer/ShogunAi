@@ -6,6 +6,7 @@ import app.luxion.shogunai.domain.model.AGENT_START_SECONDS
 import app.luxion.shogunai.domain.model.ClaudeSession
 import app.luxion.shogunai.domain.model.namedClaudeCommand
 import app.luxion.shogunai.domain.model.uniqueSessionName
+import app.luxion.shogunai.domain.runSuspendCatching
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeoutOrNull
@@ -58,8 +59,8 @@ class ClaudeSessionNaming(
 
     private fun liveSessions(): List<ClaudeSession> {
         val source = registry ?: return emptyList()
-        return runCatching { source.list() }.getOrDefault(emptyList())
-            .filter { session -> runCatching { isClaudeProcessAlive(session.pid) }.getOrDefault(true) }
+        return runSuspendCatching { source.list() }.getOrDefault(emptyList())
+            .filter { session -> runSuspendCatching { isClaudeProcessAlive(session.pid) }.getOrDefault(true) }
     }
 
     private companion object {

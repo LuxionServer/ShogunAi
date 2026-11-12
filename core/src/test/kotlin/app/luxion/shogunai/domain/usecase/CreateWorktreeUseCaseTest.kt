@@ -10,6 +10,7 @@ import app.luxion.shogunai.domain.FakeRepositoryTrust
 import app.luxion.shogunai.domain.FakeShellCommandExecutor
 import app.luxion.shogunai.domain.FakeShellCommandExecutor.Companion.failure
 import app.luxion.shogunai.domain.FakeShellCommandExecutor.Companion.success
+import app.luxion.shogunai.domain.executor.CommandTimeouts
 import app.luxion.shogunai.domain.io.ApprovalDecision
 import app.luxion.shogunai.domain.model.BranchType
 import app.luxion.shogunai.domain.model.EnvironmentDeclaration
@@ -512,6 +513,8 @@ class CreateWorktreeUseCaseTest {
 
         assertEquals(emptyList(), created.skippedPostCreateCommands)
         assertTrue(executor.executed("npm", "install"))
+        assertEquals(CommandTimeouts.INSTALL, executor.timeouts[listOf("npm", "install")])
+        assertEquals(CommandTimeouts.LOCAL_WORK, executor.timeouts.entries.single { it.key.take(3) == listOf("git", "worktree", "add") }.value)
         assertTrue(trust.isApproved(config.baseRepositoryPath, RepositoryApprovalSubject(installCommands)))
     }
 

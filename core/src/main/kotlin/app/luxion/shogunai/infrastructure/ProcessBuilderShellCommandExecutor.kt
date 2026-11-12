@@ -25,37 +25,28 @@ class ProcessBuilderShellCommandExecutor(
     private val osName: String = System.getProperty("os.name"),
 ) : ShellCommandExecutor {
 
-    override suspend fun execute(
-        command: List<String>,
-        workingDirectory: String?,
-    ): CommandResult = run(command, workingDirectory, null, emptyMap())
-
     override suspend fun executeWithin(
         command: List<String>,
         timeout: Duration,
         workingDirectory: String?,
-    ): CommandResult = run(command, workingDirectory, timeout, emptyMap())
-
-    override suspend fun executeWithEnvironment(
-        command: List<String>,
         environment: Map<String, String>,
-        workingDirectory: String?,
-    ): CommandResult = run(command, workingDirectory, null, environment)
+    ): CommandResult = run(command, workingDirectory, timeout, environment)
 
     override suspend fun executeStreaming(
         command: List<String>,
+        timeout: Duration,
         workingDirectory: String?,
         environment: Map<String, String>,
         onOutput: (OutputLine) -> Unit,
     ): CommandResult {
         val lock = Any()
-        return run(command, workingDirectory, null, environment) { line -> synchronized(lock) { onOutput(line) } }
+        return run(command, workingDirectory, timeout, environment) { line -> synchronized(lock) { onOutput(line) } }
     }
 
     private suspend fun run(
         command: List<String>,
         workingDirectory: String?,
-        timeout: Duration?,
+        timeout: Duration,
         environment: Map<String, String>,
         onOutput: ((OutputLine) -> Unit)? = null,
     ): CommandResult = withContext(ioDispatcher) {
@@ -75,11 +66,11 @@ class ProcessBuilderShellCommandExecutor(
         val stdout = readers.async { readStream(process.inputStream, OutputChannel.STANDARD, onOutput) }
         val stderr = readers.async { readStream(process.errorStream, OutputChannel.ERROR, onOutput) }
         val exitCode = try {
-            if (timeout == null) waitFor(process) else withTimeoutOrNull(timeout) { waitFor(process) }
+            withTimeoutOrNull(timeout) { waitFor(process) }
         } finally {
             stopIfAlive(process)
         }
-        if (exitCode == null) throw CommandExecutionException.TimedOut(command, timeout!!)
+        if (exitCode == null) throw CommandExecutionException.TimedOut(command, timeout)
         CommandResult(
             command = command,
             exitCode = exitCode,

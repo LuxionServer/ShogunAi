@@ -69,11 +69,15 @@ class GitLongPathsTest {
 
 class ProcessBuilderShellCommandExecutorTest {
 
+    private companion object {
+        val LIMIT = 10.seconds
+    }
+
     private val executor = ProcessBuilderShellCommandExecutor(path = null)
 
     @Test
     fun `captura stdout, stderr y el código de salida de un comando exitoso`() = runTest {
-        val result = executor.execute(listOf("sh", "-c", "echo out; echo err 1>&2"))
+        val result = executor.executeWithin(listOf("sh", "-c", "echo out; echo err 1>&2"), LIMIT)
 
         assertEquals("out", result.stdout)
         assertEquals("err", result.stderr)
@@ -84,21 +88,21 @@ class ProcessBuilderShellCommandExecutorTest {
     fun `fuera de Windows entrega los argumentos con espacios y comillas sin alterarlos`() = runTest {
         val argument = "A=-Dx=\"a b\" -Dy=1\\"
 
-        val result = executor.execute(listOf("printf", "%s", argument))
+        val result = executor.executeWithin(listOf("printf", "%s", argument), LIMIT)
 
         assertEquals(argument, result.stdout)
     }
 
     @Test
     fun `pasa al proceso las variables de entorno indicadas`() = runTest {
-        val result = executor.executeWithEnvironment(listOf("sh", "-c", "printf %s \"\$TOUR_VALUE\""), mapOf("TOUR_VALUE" to "a b"))
+        val result = executor.executeWithin(listOf("sh", "-c", "printf %s \"\$TOUR_VALUE\""), LIMIT, environment = mapOf("TOUR_VALUE" to "a b"))
 
         assertEquals("a b", result.stdout)
     }
 
     @Test
     fun `sin entorno indicado no añade variables`() = runTest {
-        val result = executor.execute(listOf("sh", "-c", "printf %s \"\${TOUR_VALUE:-unset}\""))
+        val result = executor.executeWithin(listOf("sh", "-c", "printf %s \"\${TOUR_VALUE:-unset}\""), LIMIT)
 
         assertEquals("unset", result.stdout)
     }
@@ -108,7 +112,7 @@ class ProcessBuilderShellCommandExecutorTest {
         if (System.getProperty("os.name").startsWith("Windows")) return@runTest
         val withHostPath = ProcessBuilderShellCommandExecutor(path = { listOf("/home/dev/tools/bin", "/usr/bin", "/bin") })
 
-        val result = withHostPath.execute(listOf("/bin/sh", "-c", "printf %s \"\$PATH\""))
+        val result = withHostPath.executeWithin(listOf("/bin/sh", "-c", "printf %s \"\$PATH\""), LIMIT)
 
         assertEquals("/home/dev/tools/bin:/usr/bin:/bin", result.stdout)
     }
@@ -118,7 +122,7 @@ class ProcessBuilderShellCommandExecutorTest {
         if (System.getProperty("os.name").startsWith("Windows")) return@runTest
         val withHostPath = ProcessBuilderShellCommandExecutor(path = { listOf("/home/dev/tools/bin") })
 
-        val result = withHostPath.executeWithEnvironment(listOf("/bin/sh", "-c", "printf %s \"\$PATH\""), mapOf("PATH" to "/usr/bin:/bin"))
+        val result = withHostPath.executeWithin(listOf("/bin/sh", "-c", "printf %s \"\$PATH\""), LIMIT, environment = mapOf("PATH" to "/usr/bin:/bin"))
 
         assertEquals("/usr/bin:/bin", result.stdout)
     }
@@ -127,14 +131,14 @@ class ProcessBuilderShellCommandExecutorTest {
     fun `without a host PATH the child inherits the process PATH`() = runTest {
         if (System.getProperty("os.name").startsWith("Windows")) return@runTest
 
-        val result = executor.execute(listOf("/bin/sh", "-c", "printf %s \"\$PATH\""))
+        val result = executor.executeWithin(listOf("/bin/sh", "-c", "printf %s \"\$PATH\""), LIMIT)
 
         assertEquals(System.getenv("PATH"), result.stdout)
     }
 
     @Test
     fun `refleja un código de salida distinto de cero sin lanzar`() = runTest {
-        val result = executor.execute(listOf("sh", "-c", "exit 3"))
+        val result = executor.executeWithin(listOf("sh", "-c", "exit 3"), LIMIT)
 
         assertEquals(3, result.exitCode)
         assertFalse(result.isSuccess)
@@ -145,7 +149,7 @@ class ProcessBuilderShellCommandExecutorTest {
         val cwd = Files.createTempDirectory("executor-cwd").toFile()
 
         try {
-            executor.execute(listOf("sh", "-c", "echo created > marker.txt"), workingDirectory = cwd.path)
+            executor.executeWithin(listOf("sh", "-c", "echo created > marker.txt"), LIMIT, workingDirectory = cwd.path)
 
             assertTrue(File(cwd, "marker.txt").exists())
         } finally {
@@ -156,20 +160,20 @@ class ProcessBuilderShellCommandExecutorTest {
     @Test
     fun `lanza CommandExecutionException si el ejecutable no existe`() = runTest {
         assertFailsWith<CommandExecutionException> {
-            executor.execute(listOf("comando-que-no-existe-en-ningun-path"))
+            executor.executeWithin(listOf("comando-que-no-existe-en-ningun-path"), LIMIT)
         }
     }
 
     @Test
     fun `un proceso git recibe LC_ALL=C`() = runTest {
-        val result = executor.execute(listOf("git", "-c", "alias.show-locale=!echo \$LC_ALL", "show-locale"))
+        val result = executor.executeWithin(listOf("git", "-c", "alias.show-locale=!echo \$LC_ALL", "show-locale"), LIMIT)
 
         assertEquals("C", result.stdout)
     }
 
     @Test
     fun `un comando que lee de la entrada estándar recibe fin de fichero`() = runTest {
-        val result = executor.execute(listOf("cat"))
+        val result = executor.executeWithin(listOf("cat"), LIMIT)
 
         assertTrue(result.isSuccess)
         assertEquals("", result.stdout)
@@ -178,7 +182,7 @@ class ProcessBuilderShellCommandExecutorTest {
     @Test
     fun `cancelar la operación mata el comando y sus hijos en pocos segundos`() = runBlocking {
         val marker = "98765${System.nanoTime() % 1000}"
-        val job = launch(Dispatchers.Default) { executor.execute(listOf("sh", "-c", "sleep $marker; true")) }
+        val job = launch(Dispatchers.Default) { executor.executeWithin(listOf("sh", "-c", "sleep $marker; true"), LIMIT) }
         awaitProcess(marker, running = true)
 
         val elapsed = measureTimeMillis { job.cancelAndJoin() }
@@ -214,6 +218,7 @@ class ProcessBuilderShellCommandExecutorTest {
 
         val result = executor.executeStreaming(
             listOf("sh", "-c", "echo \"port=${'$'}DB_PORT\"; echo second; echo warn 1>&2"),
+            timeout = LIMIT,
             workingDirectory = null,
             environment = mapOf("DB_PORT" to "20004"),
         ) { lines += it }
@@ -233,9 +238,24 @@ class ProcessBuilderShellCommandExecutorTest {
         if (System.getProperty("os.name").startsWith("Windows")) return@runTest
         val withHostPath = ProcessBuilderShellCommandExecutor(path = { listOf("/home/dev/tools/bin", "/usr/bin", "/bin") })
 
-        val result = withHostPath.executeStreaming(listOf("/bin/sh", "-c", "printf %s \"${'$'}PATH ${'$'}OTHER\""), null, mapOf("OTHER" to "1")) {}
+        val result = withHostPath.executeStreaming(listOf("/bin/sh", "-c", "printf %s \"${'$'}PATH ${'$'}OTHER\""), LIMIT, null, mapOf("OTHER" to "1")) {}
 
         assertEquals("/home/dev/tools/bin:/usr/bin:/bin 1", result.stdout)
+    }
+
+    @Test
+    fun `a streaming command that runs past its limit throws TimedOut and leaves no process`() = runBlocking {
+        val marker = "76543${System.nanoTime() % 1000}"
+        val lines = mutableListOf<OutputLine>()
+
+        val error = assertFailsWith<CommandExecutionException.TimedOut> {
+            executor.executeStreaming(listOf("sh", "-c", "echo started; sleep $marker; true"), 500.milliseconds, null, emptyMap()) { lines += it }
+        }
+
+        assertEquals(500.milliseconds, error.limit)
+        assertEquals(listOf(OutputLine(OutputChannel.STANDARD, "started")), lines)
+        awaitProcess(marker, running = false)
+        assertFalse(isRunning(marker))
     }
 
     private fun isRunning(marker: String): Boolean = ProcessHandle.allProcesses().anyMatch { handle ->

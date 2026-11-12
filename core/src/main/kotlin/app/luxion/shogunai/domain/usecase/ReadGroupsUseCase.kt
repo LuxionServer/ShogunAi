@@ -3,6 +3,7 @@ package app.luxion.shogunai.domain.usecase
 import app.luxion.shogunai.domain.model.MainBranch
 import app.luxion.shogunai.domain.model.RunningAgent
 import app.luxion.shogunai.domain.model.WorktreeStatus
+import app.luxion.shogunai.domain.runSuspendCatching
 
 data class GroupWorktreeState(
     val member: GroupWorktree,
@@ -34,7 +35,7 @@ class ReadGroupsUseCase(
 ) {
     suspend operator fun invoke(members: List<MultirepoMember>, withUngrouped: Boolean = true): MultirepoState {
         val worktrees = detectGroups(members)
-        val bases = members.associate { it.alias to (runCatching { resolveBases(it) }.getOrNull() ?: RepositoryBases(null)) }
+        val bases = members.associate { it.alias to (runSuspendCatching { resolveBases(it) }.getOrNull() ?: RepositoryBases(null)) }
         val relevant = worktrees.groups.flatMap { it.worktrees } + if (withUngrouped) worktrees.ungrouped else emptyList()
         val searches = members.map { member ->
             AgentSearch(member.config.agents.map { it.agentCommand }, relevant.filter { it.alias == member.alias && !it.worktree.isPrunable }.map { it.worktree })

@@ -1,6 +1,7 @@
 package app.luxion.shogunai.domain.usecase
 
 import app.luxion.shogunai.domain.executor.CommandResult
+import app.luxion.shogunai.domain.executor.CommandTimeouts
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.model.BranchType
 import app.luxion.shogunai.domain.model.LocalFileOrigin
@@ -20,6 +21,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
+import kotlin.time.Duration
 
 class LocalFilesPreflightRegressionTest {
 
@@ -62,7 +64,7 @@ class LocalFilesPreflightRegressionTest {
     }
 
     private suspend fun git(vararg args: String): CommandResult {
-        val result = git.execute(listOf("git") + args, repository.toString())
+        val result = git.executeWithin(listOf("git") + args, CommandTimeouts.LOCAL_WORK, repository.toString())
         check(result.isSuccess) { result.stderr }
         return result
     }
@@ -70,9 +72,14 @@ class LocalFilesPreflightRegressionTest {
     private class RecordingExecutor(private val delegate: ShellCommandExecutor) : ShellCommandExecutor by delegate {
         val commands = mutableListOf<List<String>>()
 
-        override suspend fun execute(command: List<String>, workingDirectory: String?): CommandResult {
+        override suspend fun executeWithin(
+            command: List<String>,
+            timeout: Duration,
+            workingDirectory: String?,
+            environment: Map<String, String>,
+        ): CommandResult {
             commands += command
-            return delegate.execute(command, workingDirectory)
+            return delegate.executeWithin(command, timeout, workingDirectory, environment)
         }
     }
 }

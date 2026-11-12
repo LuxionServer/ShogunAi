@@ -16,8 +16,8 @@ import app.luxion.shogunai.domain.FakePortProbe
 import app.luxion.shogunai.domain.FakeProjectRepository
 import app.luxion.shogunai.domain.FakeRepositoryProvisioningSource
 import app.luxion.shogunai.domain.FakeResourceLimitsRepository
+import app.luxion.shogunai.domain.ScriptedShellCommandExecutor
 import app.luxion.shogunai.domain.executor.CommandResult
-import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.model.AppWindow
 import app.luxion.shogunai.domain.model.CapacityProfile
 import app.luxion.shogunai.domain.model.DesktopAppProvider
@@ -58,8 +58,8 @@ class HeadlessCommandsTest {
     private val launcher = FakeHeadlessAppLauncher(files, pidFile)
     private var windows = FakeAppWindowService()
 
-    private val executor = object : ShellCommandExecutor {
-        override suspend fun execute(command: List<String>, workingDirectory: String?): CommandResult {
+    private val executor = object : ScriptedShellCommandExecutor() {
+        override suspend fun respond(command: List<String>, workingDirectory: String?): CommandResult {
             val outside = workingDirectory?.startsWith("/home/dev/projects") != true
             if (outside) return CommandResult(command, 128, "", "not a git repository")
             val stdout = when {
