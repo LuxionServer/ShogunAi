@@ -3,6 +3,8 @@ package app.luxion.shogunai.domain.io
 import app.luxion.shogunai.domain.model.HerdrAgent
 import app.luxion.shogunai.domain.model.HerdrPane
 import app.luxion.shogunai.domain.model.HerdrPaneProcesses
+import app.luxion.shogunai.domain.model.HerdrPlugin
+import app.luxion.shogunai.domain.model.HerdrPluginStep
 import app.luxion.shogunai.domain.model.HerdrWorkspace
 import app.luxion.shogunai.domain.model.HerdrWorktreeOpening
 
@@ -37,4 +39,8 @@ interface HerdrClient {
     suspend fun focusWorkspace(workspaceId: String)
 
     suspend fun paneProcesses(paneId: String): HerdrPaneProcesses?
+
+    suspend fun listPlugins(): List<HerdrPlugin>
+
+    suspend fun changePlugins(step: HerdrPluginStep)
 }

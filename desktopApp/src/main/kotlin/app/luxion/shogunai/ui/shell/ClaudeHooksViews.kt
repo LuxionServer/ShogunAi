@@ -25,7 +25,7 @@ import app.luxion.shogunai.ui.i18n.Strings
 import kotlinx.coroutines.launch
 
 @Composable
-fun ClaudeHooksSection(state: ClaudeHooksState, os: HostOs = HostOs.current()) {
+fun ClaudeHooksSection(state: ClaudeHooksState, os: HostOs = HostOs.current(), herdrPlugin: HerdrPluginSettings? = null) {
     val strings = LocalStrings.current
     Text(
         strings.claudeCodeLabel,
@@ -45,6 +45,7 @@ fun ClaudeHooksSection(state: ClaudeHooksState, os: HostOs = HostOs.current()) {
         Text(strings.claudeHooksNeedsTool, style = MaterialTheme.typography.bodySmall)
     }
     state.pending?.let { ClaudeHooksConfirmDialog(it, state, strings) }
+    herdrPlugin?.let { HerdrPluginPart(it) }
 }
 
 @Composable

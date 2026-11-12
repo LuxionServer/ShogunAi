@@ -182,6 +182,7 @@ Imprime la rama de la que se creó la rama de un worktree, sola en la salida est
 ```text
 shogun hooks install   [--project] [--yes] [--json]
 shogun hooks uninstall [--project] [--yes] [--json]
+shogun hooks install   --herdr [--yes] [--json]
 shogun hooks status    [--json]
 ```
 
@@ -190,8 +191,15 @@ Gestiona los [hooks de Claude Code](../agents.md#claude-code) de ShogunAi en el 
 - `install` añade los hooks `WorktreeCreate`, `WorktreeRemove`, `SessionStart`, `UserPromptSubmit`, `Notification`, `Stop`, `SessionEnd` y `PreToolUse` (este último dos veces: para los comandos `Bash` que mencionan `computer` y para las herramientas de computer use de Claude que actúan sobre el escritorio), conservando todos los demás ajustes y hooks. Un hook es de ShogunAi cuando su comando empieza por `shogun hook `; instalar otra vez añade los que faltan, reemplaza aquellos cuyo comando, filtro de herramienta o filtro `if` difieren y nunca duplica. Imprime lo que va a añadir (`+`), reemplazar (`~`) o quitar (`-`) y pregunta `[y/N]` salvo con `--yes`; si respondes que no, no escribe nada y sale con `0`.
 - `uninstall` quita todos los hooks de ShogunAi, conserva todo lo demás y elimina un evento que se queda vacío.
 - `status` dice si los hooks están `installed`, `outdated` (nombrando los eventos que faltan o difieren) o `missing`, para los ajustes del usuario y, dentro de un repositorio, para los del repositorio.
+- Con Herdr instalado, `status` añade una línea `herdr plugin:` para el [plugin de Herdr](../agents.md#herdr) de ShogunAi: `installed`, `disabled`, `broken`, `missing`, o `unknown` con el mensaje de Herdr cuando `herdr plugin list` falla, seguida de su origen y su carpeta.
+  El plugin está `broken` cuando Herdr informa de avisos sobre él, como `manifest unavailable` cuando está enlazado a una carpeta que ya no existe; Herdr deja entonces de ejecutar sus hooks sin dar ningún error.
+  Los avisos van en sus propias líneas, y un plugin roto o ausente termina con el comando que lo arregla.
+- `install --herdr` reinstala el plugin desde el repositorio cuando está roto o no está instalado: quita la instalación actual (`herdr plugin unlink` para un plugin enlazado, `herdr plugin uninstall` para uno de GitHub) y ejecuta `herdr plugin install LuxionServer/ShogunAi/integrations/herdr --yes`.
+  Imprime los comandos de Herdr y pregunta `[y/N]` salvo con `--yes`.
+  Si el plugin está instalado o desactivado no ejecuta nada; sale con `1` cuando Herdr no está instalado, no se puede comprobar o un comando falla, y se detiene en ese comando.
+  No se puede combinar con `--project`, `uninstall` ni `status`.
 - Un archivo de ajustes que no sea JSON válido nunca se escribe: el comando imprime su ruta y el problema por la salida de error y sale con `1`.
-- Con `--json` no se pregunta nada: `install` y `uninstall` solo escriben con `--yes`, e imprimen `path`, `applied` y los hooks `added`, `replaced` y `removed`. `status --json` imprime `user` y `project` (`null` fuera de un repositorio), cada uno con `path`, `state` y `events`.
+- Con `--json` no se pregunta nada: `install` y `uninstall` solo escriben con `--yes`, e imprimen `path`, `applied` y los hooks `added`, `replaced` y `removed`. `status --json` imprime `user` y `project` (`null` fuera de un repositorio), cada uno con `path`, `state` y `events`, y `herdr` (`null` sin Herdr) con `state`, `source`, `root`, `warnings` y `error`. `install --herdr --json` imprime los `steps` como líneas de comando, `applied` y `herdr` con el estado del plugin después.
 
 ### `guide`
 
@@ -545,7 +553,8 @@ Las reglas son las mismas para todos:
 | `trust` | `repository`, `commands` (listas argv), `env` (una lista de `{ name, template }`), `envFile` (o `null`), `approved` y `changed` (esta ejecución lo aprobó o revocó). Un repositorio que no declara nada es `approved: true` con listas vacías. `--revoke` informa `approved: false` si había algo que aprobar. |
 | `remove` | `path`, `branch` (la del worktree, o `null` si está desacoplado), `branchDeleted` (el nombre, o `null` si se conservó o no se pidió borrar la rama), `branchKeptReason` (por qué no se borró una rama cuya eliminación se pidió, o `null`), `providers` (`emulatorsStopped` con los serial, `simulatorsStopped` con los udid y `gradleDaemonsStopped` con los pid) y `failures` (mensajes de lo que no se pudo detener, código de salida `1`). |
 | `hooks install`, `hooks uninstall` | `path`, `applied` (escrito en esta ejecución) y los hooks `added` y `removed` como `{ event, command }` más `replaced` como `{ event, from, to }`. |
-| `hooks status` | `user` y `project` (`null` fuera de un repositorio): `path`, `state` (`installed`, `outdated`, `missing`) y `events`. |
+| `hooks status` | `user` y `project` (`null` fuera de un repositorio): `path`, `state` (`installed`, `outdated`, `missing`) y `events`; `herdr` (`null` sin Herdr): `state` (`installed`, `disabled`, `broken`, `missing`, `unknown`), `source`, `root`, `warnings` y `error`. |
+| `hooks install --herdr` | `steps` (las líneas de comando de Herdr), `applied` y `herdr` como en `hooks status`. |
 | `guide install`, `guide uninstall` | `path`, `applied` (escrito en esta ejecución), `state` (`installed`, `outdated`, `missing`) y `warnings` (mensajes). |
 | `guide status` | `targets`: `{ target, path, state, duplicates }` con `target` `codex`, `gemini`, `project` o `file` y `duplicates` `true` cuando el fichero menciona `shogun new`, `open` o `clean` fuera del bloque; y `warnings`. |
 | `repair` | `repaired`: las rutas de los worktrees re-enlazados. |

@@ -53,6 +53,7 @@ fun PreferencesWindow(
     tools: ToolsPreferences,
     resources: ResourcePreferences,
     claudeHooks: ClaudeHooksState,
+    herdrPlugin: HerdrPluginSettings,
     updates: UpdateState,
     tray: TrayPreferences,
     inactivity: InactivityPreferences,
@@ -72,8 +73,9 @@ fun PreferencesWindow(
         LaunchedEffect(bringToFrontRequests) { window.toFront() }
         LaunchedEffect(Unit) { tools.refresh() }
         LaunchedEffect(Unit) { claudeHooks.refresh() }
+        LaunchedEffect(Unit) { herdrPlugin.refresh() }
         AppearanceScope(appearance) {
-            PreferencesContent(appearance, tools, resources, claudeHooks, updates, tray, inactivity)
+            PreferencesContent(appearance, tools, resources, claudeHooks, herdrPlugin, updates, tray, inactivity)
         }
     }
 }
@@ -84,6 +86,7 @@ private fun PreferencesContent(
     tools: ToolsPreferences,
     resources: ResourcePreferences,
     claudeHooks: ClaudeHooksState,
+    herdrPlugin: HerdrPluginSettings,
     updates: UpdateState,
     tray: TrayPreferences,
     inactivity: InactivityPreferences,
@@ -116,7 +119,7 @@ private fun PreferencesContent(
         ToolsSection(tools)
         InactivitySection(inactivity)
         ResourcesSection(resources)
-        ClaudeHooksSection(claudeHooks)
+        ClaudeHooksSection(claudeHooks, herdrPlugin = herdrPlugin)
         if (tray.isSupported) TraySection(tray)
         UpdatesPreferences(updates)
     }

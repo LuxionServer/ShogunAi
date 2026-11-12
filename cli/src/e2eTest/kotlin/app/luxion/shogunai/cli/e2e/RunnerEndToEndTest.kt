@@ -55,6 +55,26 @@ class RunnerEndToEndTest {
         assertTrue(terminal.after("--command").contains("claude"), terminal.toString())
     }
 
+    @Test
+    fun `hooks status notices a broken Herdr plugin and install --herdr reinstalls it`() {
+        val before = sandbox.shogunSucceeds(repository, "hooks", "status").output
+
+        sandbox.shogunSucceeds(repository, "hooks", "install", "--herdr", "--yes")
+
+        val after = sandbox.shogunSucceeds(repository, "hooks", "status").output
+        assertTrue(before.lines().any { it.startsWith("herdr plugin: broken  local:") }, before)
+        assertTrue(before.contains("warning: manifest unavailable"), before)
+        val changes = FakeRunners.calls(sandbox, "herdr").filter { it.firstOrNull() == "plugin" && it.getOrNull(1) != "list" }
+        assertEquals(
+            listOf(
+                listOf("plugin", "unlink", "shogunai.worktrees"),
+                listOf("plugin", "install", "LuxionServer/ShogunAi/integrations/herdr", "--yes"),
+            ),
+            changes,
+        )
+        assertTrue(after.lines().any { it.startsWith("herdr plugin: installed  github:") }, after)
+    }
+
     private fun List<String>.after(option: String): String = this[indexOf(option) + 1]
 
     private fun List<String>.pathAfter(option: String): Path = Path.of(after(option)).toRealPath()

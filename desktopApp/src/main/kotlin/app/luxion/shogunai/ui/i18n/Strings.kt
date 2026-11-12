@@ -15,6 +15,7 @@ import app.luxion.shogunai.domain.model.RunnerId
 import app.luxion.shogunai.ui.components.AgentPhase
 import app.luxion.shogunai.domain.usecase.HookEntry
 import app.luxion.shogunai.domain.usecase.HookReplacement
+import app.luxion.shogunai.domain.model.HerdrPluginState
 import app.luxion.shogunai.domain.usecase.HooksInstallState
 import app.luxion.shogunai.domain.model.HostOs
 import app.luxion.shogunai.domain.model.CheckState
@@ -244,6 +245,15 @@ interface Strings {
     val claudeHooksCancel: String
     val claudeHooksConfirm: String
     val claudeHooksNeedsTool: String
+    val herdrPluginLabel: String
+    fun herdrPluginStatus(state: HerdrPluginState): String
+    fun herdrPluginWarning(warning: String): String
+    val herdrPluginBrokenHint: String
+    val herdrPluginReinstall: String
+    val herdrPluginInstall: String
+    fun herdrPluginDialogTitle(state: HerdrPluginState): String
+    val herdrPluginDialogIntro: String
+    val herdrPluginRun: String
     val commandLineToolLabel: String
     fun commandLineToolStatus(status: CommandLineToolStatus): String
     val commandLineToolNeededByHooks: String
