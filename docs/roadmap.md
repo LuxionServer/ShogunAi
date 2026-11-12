@@ -182,9 +182,6 @@ Left out:
   Today ShogunAi rejects them with a specific error.
 - Splitting `ProjectWorktrees.kt` and `ProjectSettingsView.kt` into smaller holders and sections.
 - Checking the guided tour on Windows and Linux with a real installed app: creating the sample with the system's Git, and the tour's agent command, whose prompt is quoted for the shell each terminal runs.
-- A workflow that builds the documentation site with `mkdocs build --strict` and runs the changelog hook's tests (`python3 -m unittest discover -s scripts/mkdocs`) on every pull request that touches `docs/`, `mkdocs.yml`, `scripts/mkdocs/` or `.github/release-notes/`; today the site is only built locally.
-- Getting live reload back in `mkdocs serve`: with recent Click releases MkDocs 1.6.1 starts it with live reload off, so it only reloads with `mkdocs serve --livereload`.
-  Pinning Click in `requirements-docs.txt`, or documenting the flag, fixes it.
 - Removing Cmd/Ctrl+E, kept for one release as an alias of Cmd/Ctrl+O when the shortcut moved to the default runner.
 - Showing the build that holds a busy Gradle daemon in the desktop app's Gradle view; today `shogun gradle` names it, with its client, tasks and the agent session that started it.
 - Writing the remaining state texts of the Machine views in the interface font: the Compose view still writes its leftovers title and a removed worktree as its owner in the data font.
