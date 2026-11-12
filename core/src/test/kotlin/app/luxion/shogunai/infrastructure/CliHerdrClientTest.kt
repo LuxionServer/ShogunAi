@@ -1,8 +1,10 @@
 package app.luxion.shogunai.infrastructure
 
 import app.luxion.shogunai.domain.FakeShellCommandExecutor
+import app.luxion.shogunai.domain.ScriptedShellCommandExecutor
 import app.luxion.shogunai.domain.executor.CommandExecutionException
 import app.luxion.shogunai.domain.executor.CommandResult
+import app.luxion.shogunai.domain.executor.CommandTimeouts
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.model.HerdrAgent
 import app.luxion.shogunai.domain.model.HerdrPane
@@ -64,6 +66,7 @@ class CliHerdrClientTest {
             ),
             executor.executedCommands.single(),
         )
+        assertEquals(CommandTimeouts.LOCAL_TOOL, executor.timeouts.values.single())
     }
 
     @Test
@@ -235,12 +238,21 @@ class CliHerdrClientTest {
 
     @Test
     fun `a missing binary means Herdr isn't installed`() = runTest {
-        val executor = object : ShellCommandExecutor {
-            override suspend fun execute(command: List<String>, workingDirectory: String?): CommandResult =
+        val executor = object : ScriptedShellCommandExecutor() {
+            override suspend fun respond(command: List<String>, workingDirectory: String?): CommandResult =
                 throw CommandExecutionException(command, IOException("No such file"))
         }
 
         assertFailsWith<WorktreeError.HerdrNotInstalled> { client(executor).closePane("w5:p1") }
+    }
+
+    @Test
+    fun `a Herdr command that times out is reported as failed, not as missing`() = runTest {
+        val executor = FakeShellCommandExecutor { throw CommandExecutionException.TimedOut(it, CommandTimeouts.LOCAL_TOOL) }
+
+        val error = assertFailsWith<WorktreeError.HerdrCommandFailed> { client(executor).closePane("w5:p1") }
+
+        assertTrue(error.detail.startsWith("The command did not finish within"), error.detail)
     }
 
     @Test

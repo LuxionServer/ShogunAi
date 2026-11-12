@@ -5,6 +5,7 @@ import app.luxion.shogunai.domain.model.AgentLaunchConfig
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.ShellQuoting
 import app.luxion.shogunai.domain.model.WorktreeError
+import app.luxion.shogunai.domain.model.runSuspendCatching
 
 class CopyWorktreeLaunchCommandUseCase(
     private val config: ProjectConfig,
@@ -13,7 +14,7 @@ class CopyWorktreeLaunchCommandUseCase(
 ) {
     suspend operator fun invoke(worktreePath: String,
         agent: AgentLaunchConfig = config.agentLaunchConfig,
-    ): Result<Unit> = runCatching {
+    ): Result<Unit> = runSuspendCatching {
         val directory = if (windows) ShellQuoting.windows(worktreePath) else ShellQuoting.posix(worktreePath)
         val command = "cd $directory && ${agent.resolvedCommand()}"
         clipboard.write(command).getOrElse { throw WorktreeError.ClipboardWriteFailed(it) }

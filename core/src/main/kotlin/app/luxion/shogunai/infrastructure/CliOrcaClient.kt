@@ -2,6 +2,7 @@ package app.luxion.shogunai.infrastructure
 
 import app.luxion.shogunai.domain.executor.CommandExecutionException
 import app.luxion.shogunai.domain.executor.CommandResult
+import app.luxion.shogunai.domain.executor.CommandTimeouts
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.io.OrcaClient
 import app.luxion.shogunai.domain.model.AgentActivity
@@ -18,6 +19,7 @@ import app.luxion.shogunai.domain.model.OrcaWorkspace
 import app.luxion.shogunai.domain.model.OrcaWorktree
 import app.luxion.shogunai.domain.model.OrcaWorktreeUpdate
 import app.luxion.shogunai.domain.model.WorktreeError
+import app.luxion.shogunai.domain.model.runSuspendCatching
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -235,7 +237,9 @@ class CliOrcaClient(
         val executable = executableOrNull() ?: throw WorktreeError.OrcaNotInstalled
         val command = listOf(executable) + arguments + "--json"
         val result = try {
-            executor.execute(command)
+            executor.executeWithin(command, CommandTimeouts.LOCAL_TOOL)
+        } catch (error: CommandExecutionException.TimedOut) {
+            throw WorktreeError.OrcaCommandFailed(command, error.message)
         } catch (error: CommandExecutionException) {
             throw WorktreeError.OrcaNotInstalled
         }
@@ -253,7 +257,7 @@ class CliOrcaClient(
     }
 
     private fun parse(output: String): JsonObject? =
-        output.takeIf { it.isNotBlank() }?.let { runCatching { Json.parseToJsonElement(it) as? JsonObject }.getOrNull() }
+        output.takeIf { it.isNotBlank() }?.let { runSuspendCatching { Json.parseToJsonElement(it) as? JsonObject }.getOrNull() }
 
     private fun errorMessage(response: JsonObject?): String? =
         (response?.get("error") as? JsonObject)?.string("message")

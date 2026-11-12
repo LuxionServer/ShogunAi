@@ -13,6 +13,7 @@ import app.luxion.shogunai.domain.model.DesktopWaitProgress
 import app.luxion.shogunai.domain.model.WaitQueueName
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.normalizePath
+import app.luxion.shogunai.domain.model.runSuspendCatching
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -45,10 +46,10 @@ class AcquireDesktopTurnUseCase(
     private val ledger: DesktopTurnLedger,
     private val duration: () -> Duration,
 ) {
-    suspend operator fun invoke(worktreePath: String, wait: DesktopWait? = null): Result<DesktopTurnAcquisition> = runCatching {
+    suspend operator fun invoke(worktreePath: String, wait: DesktopWait? = null): Result<DesktopTurnAcquisition> = runSuspendCatching {
         val admin = ledger.adminOf(worktreePath)
         val worktree = normalizePath(worktreePath)
-        if (wait == null) return@runCatching attempt(admin, worktree, ticketId = null).getOrThrow()
+        if (wait == null) return@runSuspendCatching attempt(admin, worktree, ticketId = null).getOrThrow()
         val waited = ledger.inLine.await(
             queue = WaitQueueName.DESKTOP,
             adminDirectory = admin,
@@ -66,7 +67,7 @@ class AcquireDesktopTurnUseCase(
         waited.value.copy(waitedSeconds = waited.waitedSeconds)
     }
 
-    private suspend fun attempt(admin: String, worktree: String, ticketId: String?): Result<DesktopTurnAcquisition> = runCatching {
+    private suspend fun attempt(admin: String, worktree: String, ticketId: String?): Result<DesktopTurnAcquisition> = runSuspendCatching {
         ledger.locked {
             val now = ledger.now()
             val current = ledger.currentTurn(now)
@@ -92,7 +93,7 @@ class AcquireDesktopTurnUseCase(
 
 class ReleaseDesktopTurnUseCase(private val ledger: DesktopTurnLedger) {
 
-    suspend operator fun invoke(worktreePath: String): Result<DesktopTurnRelease> = runCatching {
+    suspend operator fun invoke(worktreePath: String): Result<DesktopTurnRelease> = runSuspendCatching {
         val admin = ledger.adminOf(worktreePath)
         ledger.locked {
             val current = ledger.currentTurn()
@@ -104,12 +105,12 @@ class ReleaseDesktopTurnUseCase(private val ledger: DesktopTurnLedger) {
         }
     }
 
-    suspend fun ifHeldBy(worktreePath: String): Result<DesktopTurnRelease> = runCatching {
+    suspend fun ifHeldBy(worktreePath: String): Result<DesktopTurnRelease> = runSuspendCatching {
         val admin = ledger.adminOf(worktreePath)
         ledger.locked { releaseIfHeldBy(admin) }
     }
 
-    suspend fun force(): Result<DesktopTurnRelease> = runCatching {
+    suspend fun force(): Result<DesktopTurnRelease> = runSuspendCatching {
         ledger.locked {
             val turn = ledger.currentTurn()
             if (turn != null) release(turn) else DesktopTurnRelease.NobodyHolds
@@ -117,8 +118,8 @@ class ReleaseDesktopTurnUseCase(private val ledger: DesktopTurnLedger) {
     }
 
     suspend fun onWorktreeRemoved(worktreePath: String) {
-        val admin = runCatching { ledger.adminOf(worktreePath) }.getOrNull() ?: return
-        runCatching {
+        val admin = runSuspendCatching { ledger.adminOf(worktreePath) }.getOrNull() ?: return
+        runSuspendCatching {
             ledger.locked { releaseIfHeldBy(admin) }
             ledger.inLine.drop(WaitQueueName.DESKTOP, admin)
         }
@@ -137,7 +138,7 @@ class ReleaseDesktopTurnUseCase(private val ledger: DesktopTurnLedger) {
 
 class ReadDesktopTurnUseCase(private val ledger: DesktopTurnLedger) {
 
-    suspend operator fun invoke(): Result<DesktopTurnState> = runCatching {
+    suspend operator fun invoke(): Result<DesktopTurnState> = runSuspendCatching {
         ledger.locked { DesktopTurnState(ledger.currentTurn(), ledger.inLine.liveQueue(WaitQueueName.DESKTOP)) }
     }
 }

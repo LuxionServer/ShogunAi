@@ -1,9 +1,11 @@
 package app.luxion.shogunai.infrastructure
 
+import app.luxion.shogunai.domain.executor.CommandTimeouts
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.io.HeadlessAppLauncher
 import app.luxion.shogunai.domain.model.HeadlessLaunch
 import app.luxion.shogunai.domain.model.HeadlessLaunchResult
+import app.luxion.shogunai.domain.model.runSuspendCatching
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.nio.file.Files
@@ -27,6 +29,7 @@ class GradleHeadlessAppLauncher(
         }
         val result = executor.executeStreaming(
             command = command(launch, script),
+            timeout = CommandTimeouts.INSTALL,
             workingDirectory = launch.worktreePath,
             environment = emptyMap(),
         ) { line -> Files.writeString(log, line.text + "\n", StandardOpenOption.APPEND) }
@@ -40,7 +43,7 @@ class GradleHeadlessAppLauncher(
         val processes = handle.descendants().toList() + handle
         processes.forEach { it.destroy() }
         processes.forEach { process ->
-            runCatching { process.onExit().get(stopGraceSeconds, TimeUnit.SECONDS) }
+            runSuspendCatching { process.onExit().get(stopGraceSeconds, TimeUnit.SECONDS) }
             if (process.isAlive) process.destroyForcibly()
         }
     }

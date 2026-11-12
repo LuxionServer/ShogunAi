@@ -19,6 +19,7 @@ import app.luxion.shogunai.domain.model.isValidMultirepoName
 import app.luxion.shogunai.domain.model.isValidMultirepoPath
 import app.luxion.shogunai.domain.model.normalizePath
 import app.luxion.shogunai.domain.model.sameDirectory
+import app.luxion.shogunai.domain.model.runSuspendCatching
 import java.nio.file.Path
 
 data class MultirepoContext(
@@ -40,17 +41,17 @@ class ResolveMultirepoUseCase(
     private val fileManager: FileManager,
     private val isValidPath: (String) -> Boolean = ::isValidMultirepoPath,
 ) {
-    suspend operator fun invoke(directory: String): Result<MultirepoContext?> = runCatching {
+    suspend operator fun invoke(directory: String): Result<MultirepoContext?> = runSuspendCatching {
         val known = source.knownFolders().map(::normalizePath)
-        if (known.isEmpty()) return@runCatching null
+        if (known.isEmpty()) return@runSuspendCatching null
         val above = approvedAbove(directory, known)
         val repository = ResolveRepositoryUseCase(executor)(directory).getOrNull()
-        val multirepo = above ?: repository?.let(::declaring) ?: return@runCatching null
+        val multirepo = above ?: repository?.let(::declaring) ?: return@runSuspendCatching null
         validate(multirepo)
         MultirepoContext(multirepo, directory, repository)
     }
 
-    suspend fun at(folder: String): Result<Multirepo> = runCatching {
+    suspend fun at(folder: String): Result<Multirepo> = runSuspendCatching {
         val declaration = source.read(folder) ?: throw WorktreeError.MultirepoNotFound(folder)
         build(normalizePath(folder), declaration).also { validate(it) }
     }
@@ -70,9 +71,7 @@ class ResolveMultirepoUseCase(
         val unavailable = mutableListOf<UnavailableMultirepo>()
         source.knownFolders().forEach { folder ->
             val normalized = normalizePath(folder)
-            val declaration = try {
-                source.read(folder)
-            } catch (error: Exception) {
+            val declaration = runSuspendCatching { source.read(folder) }.getOrElse { error ->
                 unavailable += UnavailableMultirepo(normalized, MultirepoUnavailability.InvalidDeclaration(invalidDetailOf(error)))
                 return@forEach
             }
@@ -87,7 +86,7 @@ class ResolveMultirepoUseCase(
 
     fun known(): List<Multirepo> = listing().available
 
-    private fun invalidDetailOf(error: Exception): String = when (error) {
+    private fun invalidDetailOf(error: Throwable): String = when (error) {
         is WorktreeError.InvalidMultirepo -> error.detail
         else -> error.message.orEmpty()
     }

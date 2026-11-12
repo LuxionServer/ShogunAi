@@ -4,12 +4,13 @@ import app.luxion.shogunai.domain.executor.CommandTimeouts
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.WorktreeError
+import app.luxion.shogunai.domain.model.runSuspendCatching
 
 class FetchRemoteUseCase(
     private val config: ProjectConfig,
     private val executor: ShellCommandExecutor,
 ) {
-    suspend operator fun invoke(): Result<Unit> = runCatching {
+    suspend operator fun invoke(): Result<Unit> = runSuspendCatching {
         val fetch = executor.executeWithin(
             command = listOf("git", "fetch", "--prune", "origin"),
             timeout = CommandTimeouts.NETWORK,
@@ -20,7 +21,7 @@ class FetchRemoteUseCase(
         }
     }
 
-    suspend fun hasOrigin(): Boolean = runCatching {
+    suspend fun hasOrigin(): Boolean = runSuspendCatching {
         executor.executeWithin(
             command = listOf("git", "remote", "get-url", "origin"),
             timeout = CommandTimeouts.GIT_READ,

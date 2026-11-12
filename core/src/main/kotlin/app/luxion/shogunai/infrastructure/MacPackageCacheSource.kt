@@ -3,6 +3,7 @@ package app.luxion.shogunai.infrastructure
 import app.luxion.shogunai.domain.io.FileManager
 import app.luxion.shogunai.domain.io.PackageCacheSource
 import app.luxion.shogunai.domain.model.PackageCacheSizes
+import app.luxion.shogunai.domain.model.runSuspendCatching
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
@@ -26,7 +27,7 @@ class MacPackageCacheSource(
 
     private suspend fun measure(relative: String): Long? = withContext(Dispatchers.IO) {
         val path = Path.of(home, relative).toString()
-        if (fileManager.isDirectory(path)) runCatching { fileManager.directorySize(path) }.getOrNull() else null
+        if (fileManager.isDirectory(path)) runSuspendCatching { fileManager.directorySize(path) }.getOrNull() else null
     }
 
     private companion object {

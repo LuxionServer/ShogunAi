@@ -12,6 +12,7 @@ import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.projectDefaultsFor
 import app.luxion.shogunai.domain.model.sameDirectory
 import app.luxion.shogunai.domain.model.worktreeSessionName
+import app.luxion.shogunai.domain.model.runSuspendCatching
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
@@ -35,13 +36,13 @@ class OpenWorktreeInOrcaUseCase(
         worktree: Worktree,
         agent: AgentLaunchConfig = config.agentLaunchConfig,
         sessionName: String = worktreeSessionName(projectDefaultsFor(config.baseRepositoryPath).name, worktree),
-    ): Result<OrcaOpening> = runCatching {
+    ): Result<OrcaOpening> = runSuspendCatching {
         launcher.ensureRunning()
         val repo = launcher.registeredRepo(config.baseRepositoryPath)
         if (orca.worktrees(repo.id).none { samePath(it.path, worktree.path) }) orca.showExternalWorktrees(repo.id)
         val workspace = OrcaWorkspace.Worktree(worktree.path)
         val devices = showRunningDevice(workspace, worktree.path)
-        launcher.focusLiveAgent(workspace, worktree.path, sessionName)?.let { return@runCatching devices.applyTo(it) }
+        launcher.focusLiveAgent(workspace, worktree.path, sessionName)?.let { return@runSuspendCatching devices.applyTo(it) }
 
         val variables = resolveEnvironment(config.baseRepositoryPath, worktree.path).getOrThrow().variables
         launcher.start(workspace, worktree.path, agent.resolvedCommand(), agent.displayName, sessionName) { named ->
@@ -50,9 +51,9 @@ class OpenWorktreeInOrcaUseCase(
     }
 
     private suspend fun showRunningDevice(workspace: OrcaWorkspace, worktreePath: String): ShownDevices {
-        val serial = runCatching { runningEmulator(worktreePath) }.getOrNull()
-        val udid = runCatching { runningSimulator(worktreePath) }.getOrNull()
-        val physical = runCatching { heldPhysicalDevice(worktreePath) }.getOrNull()
+        val serial = runSuspendCatching { runningEmulator(worktreePath) }.getOrNull()
+        val udid = runSuspendCatching { runningSimulator(worktreePath) }.getOrNull()
+        val physical = runSuspendCatching { heldPhysicalDevice(worktreePath) }.getOrNull()
         return when {
             udid != null && (serial != null || physical != null) -> ShownDevices(skipped = true)
             physical != null -> ShownDevices(physicalDevice = attached(workspace, physical))
@@ -63,7 +64,7 @@ class OpenWorktreeInOrcaUseCase(
     }
 
     private suspend fun attached(workspace: OrcaWorkspace, device: String): String? =
-        runCatching { orca.attachEmulator(workspace, device) }.map { device }.getOrNull()
+        runSuspendCatching { orca.attachEmulator(workspace, device) }.map { device }.getOrNull()
 
     private data class ShownDevices(
         val emulator: String? = null,

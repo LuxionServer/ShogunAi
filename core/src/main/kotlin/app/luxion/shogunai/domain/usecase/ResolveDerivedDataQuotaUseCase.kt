@@ -5,6 +5,7 @@ import app.luxion.shogunai.domain.model.BYTES_PER_GIGABYTE
 import app.luxion.shogunai.domain.model.DerivedDataQuota
 import app.luxion.shogunai.domain.model.DerivedDataQuotaMode
 import app.luxion.shogunai.domain.model.ResourceSettings
+import app.luxion.shogunai.domain.model.runSuspendCatching
 
 class ResolveDerivedDataQuotaUseCase(
     private val source: DerivedDataSource,
@@ -12,7 +13,7 @@ class ResolveDerivedDataQuotaUseCase(
     suspend operator fun invoke(settings: ResourceSettings, usageBytes: Long): DerivedDataQuota = when (settings.quotaMode) {
         DerivedDataQuotaMode.NONE -> DerivedDataQuota(DerivedDataQuotaMode.NONE, null)
         DerivedDataQuotaMode.FIXED -> DerivedDataQuota(DerivedDataQuotaMode.FIXED, settings.fixedDerivedDataQuotaBytes)
-        DerivedDataQuotaMode.AUTOMATIC -> DerivedDataQuota(DerivedDataQuotaMode.AUTOMATIC, runCatching { source.freeBytes() }.getOrNull()?.let { automatic(it, usageBytes) })
+        DerivedDataQuotaMode.AUTOMATIC -> DerivedDataQuota(DerivedDataQuotaMode.AUTOMATIC, runSuspendCatching { source.freeBytes() }.getOrNull()?.let { automatic(it, usageBytes) })
     }
 
     private fun automatic(freeBytes: Long, usageBytes: Long): Long =

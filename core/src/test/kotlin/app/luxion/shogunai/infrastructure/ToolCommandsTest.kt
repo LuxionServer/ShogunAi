@@ -3,6 +3,7 @@ package app.luxion.shogunai.infrastructure
 import app.luxion.shogunai.domain.FakeShellCommandExecutor
 import app.luxion.shogunai.domain.executor.CommandExecutionException
 import app.luxion.shogunai.domain.executor.CommandResult
+import app.luxion.shogunai.domain.executor.CommandTimeouts
 import kotlinx.coroutines.test.runTest
 import java.io.IOException
 import kotlin.test.Test
@@ -17,7 +18,7 @@ class ToolCommandsTest {
         val withoutCause = FakeShellCommandExecutor { throw CommandExecutionException(it, IOException()) }
 
         assertEquals("no such file", assertFailsWith<ToolCommandFailed> { withCause.runTool(listOf("tool")) }.detail)
-        assertEquals("Could not start the command: tool", assertFailsWith<ToolCommandFailed> { withoutCause.runTool(listOf("tool"), bounded = false) }.detail)
+        assertEquals("Could not start the command: tool", assertFailsWith<ToolCommandFailed> { withoutCause.runTool(listOf("tool"), CommandTimeouts.LOCAL_TOOL) }.detail)
     }
 
     @Test

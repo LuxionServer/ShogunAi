@@ -6,6 +6,7 @@ import app.luxion.shogunai.domain.FakeShellCommandExecutor
 import app.luxion.shogunai.domain.FakeShellCommandExecutor.Companion.failure
 import app.luxion.shogunai.domain.FakeShellCommandExecutor.Companion.success
 import app.luxion.shogunai.domain.executor.CommandExecutionException
+import app.luxion.shogunai.domain.executor.CommandTimeouts
 import app.luxion.shogunai.domain.model.FlutterProvider
 import app.luxion.shogunai.domain.model.FlutterPubGet
 import app.luxion.shogunai.domain.model.FlutterPubGetFailure
@@ -18,6 +19,7 @@ import app.luxion.shogunai.domain.io.RepositoryProvisioningSource
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -45,6 +47,7 @@ class ResolveFlutterPackagesUseCaseTest {
         assertEquals(FlutterPubGet.Resolved, result)
         assertEquals(listOf(listOf("flutter", "pub", "get")), executor.executedCommands)
         assertEquals(listOf<String?>(worktree), executor.workingDirectories)
+        assertEquals(CommandTimeouts.INSTALL, executor.timeouts[listOf("flutter", "pub", "get")])
     }
 
     @Test
@@ -54,6 +57,15 @@ class ResolveFlutterPackagesUseCaseTest {
         resolve(executor, FakeFileManager(existing = listOf("$worktree/.fvmrc")))
 
         assertEquals(listOf(listOf("fvm", "flutter", "pub", "get")), executor.executedCommands)
+    }
+
+    @Test
+    fun `a pub get that times out is reported with the timeout, not as a missing command`() = runTest {
+        val executor = FakeShellCommandExecutor { throw CommandExecutionException.TimedOut(it, CommandTimeouts.INSTALL) }
+
+        val reason = assertIs<FlutterPubGet.Needed>(resolve(executor)).reason
+
+        assertEquals(FlutterPubGetFailure.Unexpected("The command did not finish within 30m: flutter pub get"), reason)
     }
 
     @Test

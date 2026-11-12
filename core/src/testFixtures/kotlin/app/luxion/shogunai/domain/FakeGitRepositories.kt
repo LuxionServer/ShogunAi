@@ -1,10 +1,8 @@
 package app.luxion.shogunai.domain
 
 import app.luxion.shogunai.domain.executor.CommandResult
-import app.luxion.shogunai.domain.executor.ShellCommandExecutor
-import kotlin.time.Duration
 
-class FakeGitRepositories : ShellCommandExecutor {
+class FakeGitRepositories : ScriptedShellCommandExecutor() {
 
     class Repository(val base: String, var mainBranch: String) {
         val worktrees = linkedMapOf<String, String?>()
@@ -43,10 +41,7 @@ class FakeGitRepositories : ShellCommandExecutor {
 
     fun ranIn(directory: String, vararg args: String): Boolean = calls.any { it.first == args.toList() && it.second == directory }
 
-    override suspend fun executeWithin(command: List<String>, timeout: Duration, workingDirectory: String?): CommandResult =
-        execute(command, workingDirectory)
-
-    override suspend fun execute(command: List<String>, workingDirectory: String?): CommandResult {
+    override suspend fun respond(command: List<String>, workingDirectory: String?): CommandResult {
         calls += command to workingDirectory
         if (command.firstOrNull() == "lsof") return ok(command, lsof)
         if (command.firstOrNull() == "ps") return ok(command, ps)

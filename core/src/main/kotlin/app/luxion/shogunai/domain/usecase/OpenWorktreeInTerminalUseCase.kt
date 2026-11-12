@@ -8,6 +8,7 @@ import app.luxion.shogunai.domain.model.ShellQuoting
 import app.luxion.shogunai.domain.model.TerminalId
 import app.luxion.shogunai.domain.model.TerminalLaunch
 import app.luxion.shogunai.domain.model.WorktreeError
+import app.luxion.shogunai.domain.model.runSuspendCatching
 
 class OpenWorktreeInTerminalUseCase(
     private val config: ProjectConfig,
@@ -18,7 +19,7 @@ class OpenWorktreeInTerminalUseCase(
         worktreePath: String,
         terminal: TerminalId,
         agent: AgentLaunchConfig = config.agentLaunchConfig,
-    ): Result<Unit> = runCatching {
+    ): Result<Unit> = runSuspendCatching {
         val launcher = launchers.firstOrNull { it.terminal == terminal }
             ?: throw WorktreeError.TerminalUnsupported(terminal, "it isn't available on this system")
         val variables = resolveEnvironment(config.baseRepositoryPath, worktreePath).getOrThrow().variables

@@ -1,5 +1,6 @@
 package app.luxion.shogunai.ui.worktree
 
+import app.luxion.shogunai.domain.ScriptedShellCommandExecutor
 import app.luxion.shogunai.ComposeUseCases
 import app.luxion.shogunai.EmulatorUseCases
 import app.luxion.shogunai.GradleUseCases
@@ -18,7 +19,6 @@ import app.luxion.shogunai.domain.FakeRepositoryProvisioningSource
 import app.luxion.shogunai.domain.FakeShellCommandExecutor.Companion.failure
 import app.luxion.shogunai.domain.FakeShellCommandExecutor.Companion.success
 import app.luxion.shogunai.domain.executor.CommandResult
-import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.io.DerivedDataSource
 import app.luxion.shogunai.domain.io.FileManager
 import app.luxion.shogunai.domain.model.DerivedDataFolder
@@ -137,8 +137,8 @@ class ProjectWorktreesStatesTest {
         gate?.await()
     }
 
-    private val executor = object : ShellCommandExecutor {
-        override suspend fun execute(command: List<String>, workingDirectory: String?): CommandResult {
+    private val executor = object : ScriptedShellCommandExecutor() {
+        override suspend fun respond(command: List<String>, workingDirectory: String?): CommandResult {
             respond(command)?.let { return it }
             return when (command) {
                 listCommand -> success(command, porcelain)
@@ -689,8 +689,8 @@ class ProjectWorktreesStatesTest {
         val failure = IOException("git crashed")
         respond = { command -> if (command.take(2) == listOf("git", "merge-base")) failure(command, exitCode = 1, stderr = "") else null }
         gate = CompletableDeferred()
-        val failing = useCases().copy(deleteBranch = DeleteBranchUseCase(config, object : ShellCommandExecutor {
-            override suspend fun execute(command: List<String>, workingDirectory: String?): CommandResult {
+        val failing = useCases().copy(deleteBranch = DeleteBranchUseCase(config, object : ScriptedShellCommandExecutor() {
+            override suspend fun respond(command: List<String>, workingDirectory: String?): CommandResult {
                 pass()
                 throw failure
             }
@@ -735,10 +735,10 @@ class ProjectWorktreesStatesTest {
         assertNull(holder.keptBranchNotice)
     }
 
-    private val gatedExecutor = object : ShellCommandExecutor {
-        override suspend fun execute(command: List<String>, workingDirectory: String?): CommandResult {
+    private val gatedExecutor = object : ScriptedShellCommandExecutor() {
+        override suspend fun respond(command: List<String>, workingDirectory: String?): CommandResult {
             pass()
-            return executor.execute(command, workingDirectory)
+            return executor.respond(command, workingDirectory)
         }
     }
 
@@ -969,8 +969,8 @@ class ProjectWorktreesStatesTest {
     @Test
     fun `a removal failing outside git isn't offered a forced retry`() = runTest(dispatcher) {
         val failure = IOException("disk gone")
-        val throwing = object : ShellCommandExecutor {
-            override suspend fun execute(command: List<String>, workingDirectory: String?): CommandResult = throw failure
+        val throwing = object : ScriptedShellCommandExecutor() {
+            override suspend fun respond(command: List<String>, workingDirectory: String?): CommandResult = throw failure
         }
         val holder = holder(useCases().copy(remove = RemoveWorktreeUseCase(config, throwing)))
         advanceUntilIdle()
@@ -1066,8 +1066,8 @@ class ProjectWorktreesStatesTest {
     fun `a failing cleanup is reported`() = runTest(dispatcher) {
         respond = merged
         val failure = IOException("disk gone")
-        val throwing = object : ShellCommandExecutor {
-            override suspend fun execute(command: List<String>, workingDirectory: String?): CommandResult = throw failure
+        val throwing = object : ScriptedShellCommandExecutor() {
+            override suspend fun respond(command: List<String>, workingDirectory: String?): CommandResult = throw failure
         }
         val holder = holder(useCases().copy(cleanUp = CleanUpWorktreesUseCase(config, throwing)))
         advanceUntilIdle()
@@ -1082,8 +1082,8 @@ class ProjectWorktreesStatesTest {
     @Test
     fun `opening or focusing before the agents could be read opens a new session`() = runTest(dispatcher) {
         val opened = mutableListOf<String>()
-        val throwing = object : ShellCommandExecutor {
-            override suspend fun execute(command: List<String>, workingDirectory: String?): CommandResult = throw IOException("git gone")
+        val throwing = object : ScriptedShellCommandExecutor() {
+            override suspend fun respond(command: List<String>, workingDirectory: String?): CommandResult = throw IOException("git gone")
         }
         val holder = holder(
             useCases().copy(

@@ -1,6 +1,7 @@
 package app.luxion.shogunai.domain.usecase
 
 import app.luxion.shogunai.domain.executor.CommandExecutionException
+import app.luxion.shogunai.domain.executor.CommandTimeouts
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.io.FileManager
 import app.luxion.shogunai.domain.io.ProjectRepository
@@ -11,6 +12,7 @@ import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.joinPath
+import app.luxion.shogunai.domain.model.runSuspendCatching
 import java.util.UUID
 import java.util.concurrent.TimeUnit
 
@@ -29,12 +31,12 @@ class CreateTourUseCase(
     private val now: () -> Long = System::currentTimeMillis,
     private val newId: () -> String = { UUID.randomUUID().toString() },
 ) {
-    suspend operator fun invoke(language: AppLanguage): Result<Project> = runCatching {
+    suspend operator fun invoke(language: AppLanguage): Result<Project> = runSuspendCatching {
         if (fileManager.exists(location.root)) throw WorktreeError.TourAlreadyExists(location.root)
         try {
             SampleBuilder(language).build()
         } catch (error: Throwable) {
-            runCatching { fileManager.deleteRecursively(location.root) }
+            runSuspendCatching { fileManager.deleteRecursively(location.root) }
             throw error
         }
         val project = Project(
@@ -130,7 +132,7 @@ class CreateTourUseCase(
         private suspend fun git(directory: String?, vararg arguments: String, environment: Map<String, String> = emptyMap()) {
             val command = listOf("git") + GIT_OPTIONS + arguments
             val result = try {
-                executor.executeWithEnvironment(command, environment, directory)
+                executor.executeWithin(command, CommandTimeouts.LOCAL_WORK, directory, environment)
             } catch (error: CommandExecutionException) {
                 throw WorktreeError.TourCreationFailed(command, error.cause.message ?: error.message)
             }
@@ -171,7 +173,7 @@ class EndTourUseCase(
     private val projects: ProjectRepository,
     private val location: TourLocation,
 ) {
-    operator fun invoke(): Result<Unit> = runCatching {
+    operator fun invoke(): Result<Unit> = runSuspendCatching {
         projects.list().filter(location::isTour).forEach { projects.delete(it.id) }
         fileManager.deleteRecursively(location.root)
     }

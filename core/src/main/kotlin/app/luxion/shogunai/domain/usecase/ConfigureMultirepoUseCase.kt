@@ -22,6 +22,7 @@ import app.luxion.shogunai.domain.model.isValidMultirepoName
 import app.luxion.shogunai.domain.model.joinPath
 import app.luxion.shogunai.domain.model.relativeMultirepoPath
 import app.luxion.shogunai.domain.model.sameDirectory
+import app.luxion.shogunai.domain.model.runSuspendCatching
 import java.util.UUID
 
 enum class WorktreesFolderProposal { ALREADY_MATCHES, ACCEPTED, DECLINED }
@@ -51,7 +52,7 @@ class ConfigureMultirepoUseCase(
     private val executor: ShellCommandExecutor,
     private val newId: () -> String = { UUID.randomUUID().toString() },
 ) {
-    suspend fun init(folder: String, worktreesRoot: String?, name: String? = null): Result<Multirepo> = runCatching {
+    suspend fun init(folder: String, worktreesRoot: String?, name: String? = null): Result<Multirepo> = runSuspendCatching {
         val normalized = normalizePath(folder)
         if (source.read(normalized) != null) {
             throw WorktreeError.InvalidMultirepo(Multirepo(normalized, MultirepoDeclaration()).declarationPath, "it's already a multirepo")
@@ -68,7 +69,7 @@ class ConfigureMultirepoUseCase(
         approveWritten(normalized, declaration)
     }
 
-    suspend fun register(reviewed: Multirepo, decision: WorktreesFolderDecision): Result<RegisteredMultirepo> = runCatching {
+    suspend fun register(reviewed: Multirepo, decision: WorktreesFolderDecision): Result<RegisteredMultirepo> = runSuspendCatching {
         val folder = reviewed.folder
         val current = source.read(folder) ?: throw WorktreeError.MultirepoNotFound(folder)
         if (current != reviewed.declaration) throw WorktreeError.MultirepoNeedsReview(reviewed.declarationPath)
@@ -94,7 +95,7 @@ class ConfigureMultirepoUseCase(
         alias: String,
         path: String,
         decision: WorktreesFolderDecision,
-    ): Result<AddedRepository> = runCatching {
+    ): Result<AddedRepository> = runSuspendCatching {
         fun reject(detail: String): Nothing = throw WorktreeError.InvalidMultirepo(multirepo.declarationPath, detail)
         requireApproved(multirepo)
         requireRewritableEnv(multirepo)
@@ -155,7 +156,7 @@ class ConfigureMultirepoUseCase(
         declaration.copy(defaultRepos = ordinary, workspace = workspaceSetting)
     }
 
-    fun setAgent(multirepo: Multirepo, agent: AgentLaunchConfig): Result<Multirepo> = runCatching {
+    fun setAgent(multirepo: Multirepo, agent: AgentLaunchConfig): Result<Multirepo> = runSuspendCatching {
         require(agent.agentCommand.isNotBlank()) { "the agent command must not be blank" }
         requireApproved(multirepo)
         source.setAgent(multirepo.folder, agent)
@@ -189,14 +190,14 @@ class ConfigureMultirepoUseCase(
         declaration.copy(workspace = WorkspaceSetting(enabled = false), env = env)
     }
 
-    fun detectWorkspace(multirepo: Multirepo): Result<Multirepo> = runCatching {
+    fun detectWorkspace(multirepo: Multirepo): Result<Multirepo> = runSuspendCatching {
         fun reject(detail: String): Nothing = throw WorktreeError.InvalidMultirepo(multirepo.declarationPath, detail)
         requireApproved(multirepo)
         if (!multirepo.folderIsRepository) reject("there is no workspace repository: ${multirepo.folder} isn't a Git repository")
         multirepo.declaredRepositories.firstOrNull { sameDirectory(it.path, multirepo.folder) }?.let {
             reject("the workspace repository is declared in repos as '${it.alias}'")
         }
-        val current = multirepo.declaration.workspace ?: return@runCatching multirepo
+        val current = multirepo.declaration.workspace ?: return@runSuspendCatching multirepo
         if (DEFAULT_WORKSPACE_ALIAS in multirepo.declaration.repos) {
             reject("alias '$DEFAULT_WORKSPACE_ALIAS' is already taken; keep the workspace repository declared under another alias")
         }
@@ -231,12 +232,12 @@ class ConfigureMultirepoUseCase(
             env.copy(byAlias = byAlias)
         }
 
-    fun delete(multirepo: Multirepo): Result<Unit> = runCatching {
+    fun delete(multirepo: Multirepo): Result<Unit> = runSuspendCatching {
         source.delete(multirepo.folder)
         source.forget(multirepo.folder)
     }
 
-    fun trust(multirepo: Multirepo): Result<Multirepo> = runCatching {
+    fun trust(multirepo: Multirepo): Result<Multirepo> = runSuspendCatching {
         val current = source.read(multirepo.folder) ?: throw WorktreeError.MultirepoNotFound(multirepo.folder)
         if (current != multirepo.declaration) throw WorktreeError.MultirepoNeedsReview(multirepo.declarationPath)
         source.remember(multirepo.folder)
@@ -244,7 +245,7 @@ class ConfigureMultirepoUseCase(
         resolver.build(multirepo.folder, current)
     }
 
-    fun revoke(multirepo: Multirepo): Result<Unit> = runCatching {
+    fun revoke(multirepo: Multirepo): Result<Unit> = runSuspendCatching {
         source.forget(multirepo.folder)
     }
 
@@ -327,7 +328,7 @@ class ConfigureMultirepoUseCase(
         }
     }
 
-    private fun update(multirepo: Multirepo, change: (MultirepoDeclaration) -> MultirepoDeclaration): Result<Multirepo> = runCatching {
+    private fun update(multirepo: Multirepo, change: (MultirepoDeclaration) -> MultirepoDeclaration): Result<Multirepo> = runSuspendCatching {
         requireApproved(multirepo)
         requireRewritableEnv(multirepo)
         val declaration = change(multirepo.declaration).copy(agent = null)

@@ -8,6 +8,7 @@ import app.luxion.shogunai.domain.model.DevicePlatform
 import app.luxion.shogunai.domain.model.DeviceUsability
 import app.luxion.shogunai.domain.model.PhysicalDevice
 import app.luxion.shogunai.domain.model.PhysicalDeviceListing
+import app.luxion.shogunai.domain.model.runSuspendCatching
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
@@ -25,7 +26,7 @@ class DevicectlPhysicalDevices(
 
     override suspend fun list(): PhysicalDeviceListing {
         if (!osName.startsWith("Mac", ignoreCase = true)) return PhysicalDeviceListing()
-        val file = runCatching(tempFile).getOrNull() ?: return PhysicalDeviceListing()
+        val file = runSuspendCatching(tempFile).getOrNull() ?: return PhysicalDeviceListing()
         try {
             val result = executor.executeWithin(
                 listOf("xcrun", "devicectl", "list", "devices", "--json-output", file.toString()),
@@ -42,8 +43,8 @@ class DevicectlPhysicalDevices(
 }
 
 internal fun parseDevicectlDevices(text: String): List<PhysicalDevice> {
-    val root = runCatching { Json.parseToJsonElement(text).jsonObject }.getOrNull() ?: return emptyList()
-    val devices = root.at("result", "devices")?.let { runCatching { it.jsonArray }.getOrNull() }.orEmpty()
+    val root = runSuspendCatching { Json.parseToJsonElement(text).jsonObject }.getOrNull() ?: return emptyList()
+    val devices = root.at("result", "devices")?.let { runSuspendCatching { it.jsonArray }.getOrNull() }.orEmpty()
     return devices.mapNotNull { (it as? JsonObject)?.toPhysicalDevice() }
 }
 

@@ -13,6 +13,7 @@ import app.luxion.shogunai.domain.model.ProvisionedFile
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.normalizePath
+import app.luxion.shogunai.domain.model.runSuspendCatching
 
 class ProvisionWorktreeUseCase(
     private val config: ProjectConfig,
@@ -24,7 +25,7 @@ class ProvisionWorktreeUseCase(
     private val approval: RepositoryApproval = RepositoryApproval.SKIP,
     private val records: ProvisioningRecordStore = ProvisioningRecordStore.NONE,
 ) {
-    suspend operator fun invoke(worktreePath: String): Result<ProvisionResult> = runCatching {
+    suspend operator fun invoke(worktreePath: String): Result<ProvisionResult> = runSuspendCatching {
         val worktree = findLinkedWorktree(config, executor, worktreePath)
         val provisioned = checkLocalFilesAndResolve(config, executor, fileManager, provisioningSource)
         val applied = applyProvisionedFiles(config, fileManager, records, worktree.path, provisioned)

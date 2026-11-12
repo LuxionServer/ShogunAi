@@ -21,6 +21,7 @@ import app.luxion.shogunai.domain.FakeProjectRepository
 import app.luxion.shogunai.domain.FakeRepositoryProvisioningSource
 import app.luxion.shogunai.domain.FakeResourceLimitsRepository
 import app.luxion.shogunai.domain.FakeRepositoryTrust
+import app.luxion.shogunai.domain.ScriptedShellCommandExecutor
 import app.luxion.shogunai.domain.io.RepositoryTrust
 import app.luxion.shogunai.domain.executor.CommandExecutionException
 import app.luxion.shogunai.domain.executor.CommandResult
@@ -1644,9 +1645,9 @@ class MultirepoCommandsTest {
         assertFalse(out.contains("in the group"), out.toString())
     }
 
-    private fun gitWith(respond: (List<String>, String?) -> CommandResult?) = object : ShellCommandExecutor {
-        override suspend fun execute(command: List<String>, workingDirectory: String?): CommandResult =
-            respond(command, workingDirectory) ?: git.execute(command, workingDirectory)
+    private fun gitWith(responder: (List<String>, String?) -> CommandResult?) = object : ScriptedShellCommandExecutor() {
+        override suspend fun respond(command: List<String>, workingDirectory: String?): CommandResult =
+            responder(command, workingDirectory) ?: git.respond(command, workingDirectory)
     }
 
     private fun mainBranchUnreadableIn(directory: String) = gitWith { command, workingDirectory ->

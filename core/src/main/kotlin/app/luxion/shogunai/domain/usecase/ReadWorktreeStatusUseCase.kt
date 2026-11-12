@@ -9,6 +9,7 @@ import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.WorktreeStatus
 import app.luxion.shogunai.domain.model.readsAsMerged
+import app.luxion.shogunai.domain.model.runSuspendCatching
 import java.time.Instant
 
 class ReadWorktreeStatusUseCase(
@@ -19,7 +20,7 @@ class ReadWorktreeStatusUseCase(
         worktree: Worktree,
         mainBranch: MainBranch?,
         base: MainBranch? = mainBranch,
-    ): Result<WorktreeStatus> = runCatching {
+    ): Result<WorktreeStatus> = runSuspendCatching {
         val uncommittedChanges = uncommittedChanges(worktree)
         val upstream = if (worktree.branch != null) divergenceFrom(worktree, "@{upstream}") else null
         val mainBranchDivergence = mainBranch

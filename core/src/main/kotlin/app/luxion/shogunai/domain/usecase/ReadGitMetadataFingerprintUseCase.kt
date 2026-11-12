@@ -3,6 +3,7 @@ package app.luxion.shogunai.domain.usecase
 import app.luxion.shogunai.domain.io.FileManager
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.normalizePath
+import app.luxion.shogunai.domain.model.runSuspendCatching
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -12,7 +13,7 @@ class ReadGitMetadataFingerprintUseCase(
     private val fileManager: FileManager,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) {
-    suspend operator fun invoke(): Result<List<Pair<String, Long>>> = runCatching {
+    suspend operator fun invoke(): Result<List<Pair<String, Long>>> = runSuspendCatching {
         withContext(ioDispatcher) {
             val gitDir = "${normalizePath(config.baseRepositoryPath)}/.git"
             if (!fileManager.isDirectory(gitDir)) return@withContext emptyList()

@@ -1,5 +1,6 @@
 package app.luxion.shogunai.ui.worktree
 
+import app.luxion.shogunai.domain.ScriptedShellCommandExecutor
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.MaterialTheme
@@ -114,10 +115,10 @@ class CleanupDialogUiTest {
                 orca = OrcaUseCases.NONE.copy(withTerminals = { paths -> paths.toSet() }),
                 cleanUp = CleanUpWorktreesUseCase(
                     repository.config,
-                    object : ShellCommandExecutor {
-                        override suspend fun execute(command: List<String>, workingDirectory: String?): CommandResult {
+                    object : ScriptedShellCommandExecutor() {
+                        override suspend fun respond(command: List<String>, workingDirectory: String?): CommandResult {
                             gate.await()
-                            return repository.executor.execute(command, workingDirectory)
+                            return repository.executor.respond(command, workingDirectory)
                         }
                     },
                 ),

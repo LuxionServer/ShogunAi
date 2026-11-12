@@ -5,6 +5,7 @@ import app.luxion.shogunai.domain.model.EMULATOR_PORT_KEY
 import app.luxion.shogunai.domain.model.IOS_SIMULATOR_KEY
 import app.luxion.shogunai.domain.io.PhysicalDeviceLeaseStore
 import app.luxion.shogunai.domain.model.normalizePath
+import app.luxion.shogunai.domain.model.runSuspendCatching
 import java.time.Instant
 
 class RenewWorktreeLeasesUseCase(
@@ -13,7 +14,7 @@ class RenewWorktreeLeasesUseCase(
     private val clock: () -> Instant = Instant::now,
     private val deviceLeases: PhysicalDeviceLeaseStore? = null,
 ) {
-    suspend operator fun invoke(worktreePath: String): Result<Unit> = runCatching {
+    suspend operator fun invoke(worktreePath: String): Result<Unit> = runSuspendCatching {
         val admin = resolveEnvironment.directoriesOf(worktreePath).admin
         stateStore.withLock {
             val held = buildSet {

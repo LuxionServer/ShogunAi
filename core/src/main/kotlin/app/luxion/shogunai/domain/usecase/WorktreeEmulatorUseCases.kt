@@ -12,6 +12,7 @@ import app.luxion.shogunai.domain.model.WorktreeEmulator
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.chooseAvd
 import app.luxion.shogunai.domain.model.emulatorSerial
+import app.luxion.shogunai.domain.model.runSuspendCatching
 import kotlinx.coroutines.delay
 
 class StartWorktreeEmulatorUseCase(
@@ -29,7 +30,7 @@ class StartWorktreeEmulatorUseCase(
         avd: String? = null,
         noWindow: Boolean? = null,
         wait: DeviceWait? = null,
-    ): Result<DeviceStart<WorktreeEmulator>> = runCatching {
+    ): Result<DeviceStart<WorktreeEmulator>> = runSuspendCatching {
         val provider = emulatorProvider(provisioningSource, config)
         val location = sdk.locate(config.baseRepositoryPath)
         val acquisition = acquire.emulator(config.baseRepositoryPath, worktreePath, wait).getOrThrow()
@@ -38,7 +39,7 @@ class StartWorktreeEmulatorUseCase(
         val serial = emulatorSerial(port)
         val current = sdk.deviceStates(location)[serial]
         if (current == EmulatorState.RUNNING) {
-            return@runCatching DeviceStart(WorktreeEmulator(serial, EmulatorState.RUNNING), acquisition)
+            return@runSuspendCatching DeviceStart(WorktreeEmulator(serial, EmulatorState.RUNNING), acquisition)
         }
         val process = if (current == null) {
             val chosen = chooseAvd(avd, config.emulator, provider.preferredAvd, sdk.listAvds(location))
@@ -71,10 +72,10 @@ class StopWorktreeEmulatorUseCase(
     private val resolveEnvironment: ResolveWorktreeEnvironmentUseCase,
     private val sdk: AndroidSdk,
 ) {
-    suspend operator fun invoke(config: ProjectConfig, worktreePath: String): Result<WorktreeEmulator?> = runCatching {
+    suspend operator fun invoke(config: ProjectConfig, worktreePath: String): Result<WorktreeEmulator?> = runSuspendCatching {
         emulatorProvider(provisioningSource, config)
         val port = resolveEnvironment(config.baseRepositoryPath, worktreePath, reserve = false).getOrThrow()
-            .ports[EMULATOR_PORT_KEY] ?: return@runCatching null
+            .ports[EMULATOR_PORT_KEY] ?: return@runSuspendCatching null
         stopSerials(config, listOf(emulatorSerial(port))).single()
     }
 
@@ -95,14 +96,14 @@ class ReadEmulatorStatesUseCase(
     private val sdk: AndroidSdk,
 ) {
     suspend operator fun invoke(config: ProjectConfig, worktrees: List<Worktree>): Result<Map<String, WorktreeEmulator>> =
-        runCatching {
-            if (provisioningSource.read(config.baseRepositoryPath).providers.emulator == null) return@runCatching emptyMap()
+        runSuspendCatching {
+            if (provisioningSource.read(config.baseRepositoryPath).providers.emulator == null) return@runSuspendCatching emptyMap()
             val serials = worktrees.filterNot { it.isPrunable }.mapNotNull { worktree ->
                 resolveEnvironment(config.baseRepositoryPath, worktree.path, reserve = false).getOrNull()
                     ?.let { it.ports[EMULATOR_PORT_KEY] }
                     ?.let { worktree.path to emulatorSerial(it) }
             }.toMap()
-            if (serials.isEmpty()) return@runCatching emptyMap()
+            if (serials.isEmpty()) return@runSuspendCatching emptyMap()
             val states = sdk.deviceStates(sdk.locate(config.baseRepositoryPath))
             serials.mapValues { (_, serial) -> WorktreeEmulator(serial, states[serial] ?: EmulatorState.STOPPED) }
         }

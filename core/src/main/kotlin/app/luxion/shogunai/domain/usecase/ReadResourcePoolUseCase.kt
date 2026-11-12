@@ -23,6 +23,7 @@ import app.luxion.shogunai.domain.model.effectiveLimit
 import app.luxion.shogunai.domain.model.normalizePath
 import app.luxion.shogunai.domain.model.releaseRank
 import app.luxion.shogunai.domain.model.emulatorSerial
+import app.luxion.shogunai.domain.model.runSuspendCatching
 import java.time.Duration
 import java.time.Instant
 
@@ -42,7 +43,7 @@ class ReadResourcePoolUseCase(
 
     suspend fun emulators(repositoryPath: String): PoolUsage {
         val common = resolveEnvironment.directoriesOf(repositoryPath).common
-        val states = runCatching { sdk.deviceStates(sdk.locate(repositoryPath)) }.getOrDefault(emptyMap())
+        val states = runSuspendCatching { sdk.deviceStates(sdk.locate(repositoryPath)) }.getOrDefault(emptyMap())
         val holders = stateStore.reservationsOnMachine(common).mapNotNull { reservation ->
             val port = reservation.ports[EMULATOR_PORT_KEY] ?: return@mapNotNull null
             val serial = emulatorSerial(port)
@@ -66,7 +67,7 @@ class ReadResourcePoolUseCase(
 
     suspend fun simulators(repositoryPath: String): PoolUsage {
         val common = resolveEnvironment.directoriesOf(repositoryPath).common
-        val devices = if (simulators.isSupported()) runCatching { simulators.devices() }.getOrDefault(emptyList()).associateBy { it.udid } else emptyMap()
+        val devices = if (simulators.isSupported()) runSuspendCatching { simulators.devices() }.getOrDefault(emptyList()).associateBy { it.udid } else emptyMap()
         val holders = stateStore.reservationsOnMachine(common).mapNotNull { reservation ->
             val udid = reservation.resources[IOS_SIMULATOR_KEY] ?: return@mapNotNull null
             val state = devices[udid]?.state ?: SimulatorState.SHUTDOWN

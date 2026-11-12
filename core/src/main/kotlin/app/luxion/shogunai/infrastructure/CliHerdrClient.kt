@@ -1,6 +1,7 @@
 package app.luxion.shogunai.infrastructure
 
 import app.luxion.shogunai.domain.executor.CommandExecutionException
+import app.luxion.shogunai.domain.executor.CommandTimeouts
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.io.HerdrClient
 import app.luxion.shogunai.domain.model.HerdrAgent
@@ -12,6 +13,7 @@ import app.luxion.shogunai.domain.model.HerdrWorkspace
 import app.luxion.shogunai.domain.model.AgentState
 import app.luxion.shogunai.domain.model.HerdrWorktreeOpening
 import app.luxion.shogunai.domain.model.WorktreeError
+import app.luxion.shogunai.domain.model.runSuspendCatching
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -175,7 +177,9 @@ class CliHerdrClient(
     private suspend fun run(arguments: List<String>): JsonObject? {
         val command = command(arguments)
         val result = try {
-            executor.execute(command)
+            executor.executeWithin(command, CommandTimeouts.LOCAL_TOOL)
+        } catch (error: CommandExecutionException.TimedOut) {
+            throw WorktreeError.HerdrCommandFailed(command, error.message)
         } catch (error: CommandExecutionException) {
             throw WorktreeError.HerdrNotInstalled
         }
@@ -188,7 +192,7 @@ class CliHerdrClient(
     }
 
     private fun parse(stdout: String): JsonObject? =
-        stdout.takeIf { it.isNotBlank() }?.let { runCatching { Json.parseToJsonElement(it) as? JsonObject }.getOrNull() }
+        stdout.takeIf { it.isNotBlank() }?.let { runSuspendCatching { Json.parseToJsonElement(it) as? JsonObject }.getOrNull() }
 
     private fun errorMessage(response: JsonObject?): String? =
         (response?.get("error") as? JsonObject)?.string("message")

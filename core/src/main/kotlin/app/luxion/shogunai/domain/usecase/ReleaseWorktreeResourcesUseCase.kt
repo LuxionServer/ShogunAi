@@ -5,6 +5,7 @@ import app.luxion.shogunai.domain.model.EmulatorState
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.SimulatorState
 import app.luxion.shogunai.domain.model.Worktree
+import app.luxion.shogunai.domain.model.runSuspendCatching
 
 data class WorktreeResourcePlan(
     val emulatorSerial: String? = null,
@@ -31,7 +32,7 @@ class ReleaseWorktreeResourcesUseCase(
 ) {
     suspend fun plan(config: ProjectConfig, worktree: Worktree, allWorktrees: List<Worktree>): WorktreeResourcePlan {
         if (worktree.isPrunable) return WorktreeResourcePlan()
-        val providers = runCatching { provisioningSource.read(config.baseRepositoryPath).providers }
+        val providers = runSuspendCatching { provisioningSource.read(config.baseRepositoryPath).providers }
             .getOrElse { return WorktreeResourcePlan(failures = listOf("couldn't read the repository's providers: ${it.message}")) }
         val failures = mutableListOf<String>()
 
@@ -68,13 +69,13 @@ class ReleaseWorktreeResourcesUseCase(
         val failures = plan.failures.toMutableList()
 
         val emulators = plan.emulatorSerial?.let { serial ->
-            runCatching { stopEmulator.stopSerials(config, listOf(serial)).map { it.serial } }
+            runSuspendCatching { stopEmulator.stopSerials(config, listOf(serial)).map { it.serial } }
                 .onFailure { failures += "couldn't stop the emulator $serial: ${it.message}" }
                 .getOrDefault(emptyList())
         }.orEmpty()
 
         val simulators = plan.simulatorUdid?.let { udid ->
-            runCatching { stopSimulator.shutDown(udid) }.map { listOf(udid) }
+            runSuspendCatching { stopSimulator.shutDown(udid) }.map { listOf(udid) }
                 .onFailure { failures += "couldn't stop the simulator $udid: ${it.message}" }
                 .getOrDefault(emptyList())
         }.orEmpty()

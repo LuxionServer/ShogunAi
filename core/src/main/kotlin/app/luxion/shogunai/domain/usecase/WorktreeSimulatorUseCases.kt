@@ -12,6 +12,7 @@ import app.luxion.shogunai.domain.model.SimulatorState
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.WorktreeSimulator
+import app.luxion.shogunai.domain.model.runSuspendCatching
 import kotlinx.coroutines.delay
 
 class StartWorktreeSimulatorUseCase(
@@ -28,7 +29,7 @@ class StartWorktreeSimulatorUseCase(
         worktreePath: String,
         requested: SimulatorSettings = SimulatorSettings(),
         wait: DeviceWait? = null,
-    ): Result<DeviceStart<WorktreeSimulator>> = runCatching {
+    ): Result<DeviceStart<WorktreeSimulator>> = runSuspendCatching {
         requireIosSimulatorProvider(provisioningSource, simulators, config)
         val acquisition = acquire.simulator(config.baseRepositoryPath, worktreePath, requested, wait).getOrThrow()
         val udid = resolveEnvironment(config.baseRepositoryPath, worktreePath, reserve = false).getOrThrow()
@@ -41,7 +42,7 @@ class StartWorktreeSimulatorUseCase(
             pause(pollIntervalMs)
             waited += pollIntervalMs
         }
-        runCatching { simulators.show(udid) }
+        runSuspendCatching { simulators.show(udid) }
         DeviceStart(WorktreeSimulator(udid, device.name, SimulatorState.BOOTED), acquisition)
     }
 
@@ -56,11 +57,11 @@ class StopWorktreeSimulatorUseCase(
     private val simulators: AppleSimulators,
     private val resolveEnvironment: ResolveWorktreeEnvironmentUseCase,
 ) {
-    suspend operator fun invoke(config: ProjectConfig, worktreePath: String): Result<WorktreeSimulator?> = runCatching {
+    suspend operator fun invoke(config: ProjectConfig, worktreePath: String): Result<WorktreeSimulator?> = runSuspendCatching {
         requireIosSimulatorProvider(provisioningSource, simulators, config)
         val udid = resolveEnvironment(config.baseRepositoryPath, worktreePath, reserve = false).getOrThrow()
-            .resources[IOS_SIMULATOR_KEY] ?: return@runCatching null
-        val device = simulators.devices().firstOrNull { it.udid == udid } ?: return@runCatching null
+            .resources[IOS_SIMULATOR_KEY] ?: return@runSuspendCatching null
+        val device = simulators.devices().firstOrNull { it.udid == udid } ?: return@runSuspendCatching null
         if (device.state != SimulatorState.SHUTDOWN) simulators.shutdown(udid)
         WorktreeSimulator(udid, device.name, SimulatorState.SHUTDOWN)
     }
@@ -76,14 +77,14 @@ class ReadSimulatorStatesUseCase(
     private val resolveEnvironment: ResolveWorktreeEnvironmentUseCase,
 ) {
     suspend operator fun invoke(config: ProjectConfig, worktrees: List<Worktree>): Result<Map<String, WorktreeSimulator>> =
-        runCatching {
-            if (!declaresIosSimulator(provisioningSource, simulators, config)) return@runCatching emptyMap()
+        runSuspendCatching {
+            if (!declaresIosSimulator(provisioningSource, simulators, config)) return@runSuspendCatching emptyMap()
             val udids = worktrees.filterNot { it.isPrunable }.mapNotNull { worktree ->
                 resolveEnvironment(config.baseRepositoryPath, worktree.path, reserve = false).getOrNull()
                     ?.let { it.resources[IOS_SIMULATOR_KEY] }
                     ?.let { worktree.path to it }
             }.toMap()
-            if (udids.isEmpty()) return@runCatching emptyMap()
+            if (udids.isEmpty()) return@runSuspendCatching emptyMap()
             val devices = simulators.devices().associateBy { it.udid }
             udids.mapNotNull { (path, udid) ->
                 devices[udid]?.let { path to WorktreeSimulator(udid, it.name, it.state) }
@@ -102,14 +103,14 @@ class DeleteSimulatorsUseCase(
     private val simulators: AppleSimulators,
     private val resolveEnvironment: ResolveWorktreeEnvironmentUseCase,
 ) {
-    suspend fun orphans(config: ProjectConfig): Result<List<SimulatorDevice>> = runCatching {
-        if (!declaresIosSimulator(provisioningSource, simulators, config)) return@runCatching emptyList()
+    suspend fun orphans(config: ProjectConfig): Result<List<SimulatorDevice>> = runSuspendCatching {
+        if (!declaresIosSimulator(provisioningSource, simulators, config)) return@runSuspendCatching emptyList()
         val recorded = resolveEnvironment.recordedOnMachine(config.baseRepositoryPath, IOS_SIMULATOR_KEY).getOrThrow()
         simulators.devices().filter { it.name.startsWith(SIMULATOR_NAME_PREFIX) && it.udid !in recorded }
     }
 
-    suspend operator fun invoke(udids: List<String>): Result<List<String>> = runCatching {
-        if (udids.isEmpty()) return@runCatching emptyList()
+    suspend operator fun invoke(udids: List<String>): Result<List<String>> = runSuspendCatching {
+        if (udids.isEmpty()) return@runSuspendCatching emptyList()
         val existing = simulators.devices().map { it.udid }.toSet()
         udids.distinct().filter { it in existing }.onEach { udid ->
             simulators.shutdown(udid)

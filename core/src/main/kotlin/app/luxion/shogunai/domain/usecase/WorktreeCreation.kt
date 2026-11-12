@@ -1,5 +1,6 @@
 package app.luxion.shogunai.domain.usecase
 
+import app.luxion.shogunai.domain.executor.CommandTimeouts
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.executor.CommandExecutionException
 import app.luxion.shogunai.domain.io.FileManager
@@ -21,6 +22,7 @@ import app.luxion.shogunai.domain.model.LocalFileOrigin
 import app.luxion.shogunai.domain.model.UnavailableLocalFile
 import app.luxion.shogunai.domain.model.UnavailableReason
 import app.luxion.shogunai.domain.model.joinPath
+import app.luxion.shogunai.domain.model.runSuspendCatching
 import java.io.IOException
 
 internal data class ProvisionedFiles(
@@ -154,7 +156,7 @@ internal suspend fun listUntrackedFiles(
 ): List<String> {
     if (patterns.isEmpty()) return emptyList()
     val command = listOf("git", "ls-files", "--others", "--ignored", "-z") + patterns.flatMap { listOf("-x", it) }
-    val result = executor.execute(command = command, workingDirectory = config.baseRepositoryPath)
+    val result = executor.executeWithin(command = command, timeout = CommandTimeouts.GIT_READ, workingDirectory = config.baseRepositoryPath)
     if (!result.isSuccess) throw WorktreeError.GitCommandFailed(result.command, result.exitCode, result.stderr)
     return result.stdout.split('\u0000').filter { it.isNotEmpty() }
 }
@@ -174,7 +176,7 @@ internal suspend fun addWorktreeAndCopySecrets(
     records: ProvisioningRecordStore,
     baseBranch: String? = null,
 ): Worktree {
-    val add = executor.execute(command = addArgs, workingDirectory = config.baseRepositoryPath)
+    val add = executor.executeWithin(command = addArgs, timeout = CommandTimeouts.LOCAL_WORK, workingDirectory = config.baseRepositoryPath)
     if (!add.isSuccess) {
         val alreadyCheckedOutPath = BRANCH_ALREADY_CHECKED_OUT.find(add.stderr)?.let { it.groupValues[1] }
         if (alreadyCheckedOutPath != null || add.stderr.contains("is already checked out")) {
@@ -258,8 +260,8 @@ internal fun applyProvisionedFiles(
     records: ProvisioningRecordStore,
     worktreePath: String,
     provisioned: ProvisionedFiles,
-): AppliedProvisioning {
-    try {
+): AppliedProvisioning =
+    runSuspendCatching {
         val previous = records.read(worktreePath)
         unlinkCopiedFolders(config, fileManager, worktreePath, provisioned)
         val removed = removeDeletedFolderFiles(fileManager, worktreePath, provisioned, previous)
@@ -293,13 +295,8 @@ internal fun applyProvisionedFiles(
             }
         }
         records.write(worktreePath, provisioned.copiedFolders + fallbackFolders)
-        return AppliedProvisioning(copied + linked + linkedFolders, removed)
-    } catch (occupied: WorktreeError.LinkedFolderOccupied) {
-        throw occupied
-    } catch (copyError: Exception) {
-        throw WorktreeError.SecretCopyFailed(copyError)
-    }
-}
+        AppliedProvisioning(copied + linked + linkedFolders, removed)
+    }.getOrElse { error -> throw error as? WorktreeError.LinkedFolderOccupied ?: WorktreeError.SecretCopyFailed(error) }
 
 private fun unlinkCopiedFolders(
     config: ProjectConfig,
@@ -404,7 +401,7 @@ private suspend fun runPostCreateCommands(
 ) {
     commands.forEach { command ->
         val result = try {
-            executor.execute(command = command, workingDirectory = worktreePath)
+            executor.executeWithin(command = command, timeout = CommandTimeouts.INSTALL, workingDirectory = worktreePath)
         } catch (error: CommandExecutionException) {
             throw WorktreeError.PostCreateCommandFailed(worktreePath, command, null, error.cause.message ?: error.message)
         }
@@ -420,13 +417,15 @@ private suspend fun rollBack(
     worktreePath: String,
     createdBranch: String?,
 ) {
-    executor.execute(
+    executor.executeWithin(
         command = listOf("git", "worktree", "remove", "--force", worktreePath),
+        timeout = CommandTimeouts.LOCAL_WORK,
         workingDirectory = config.baseRepositoryPath,
     )
     createdBranch?.let {
-        executor.execute(
+        executor.executeWithin(
             command = listOf("git", "branch", "-D", "--", it),
+            timeout = CommandTimeouts.LOCAL_WORK,
             workingDirectory = config.baseRepositoryPath,
         )
     }

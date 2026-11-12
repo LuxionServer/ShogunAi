@@ -5,6 +5,7 @@ import app.luxion.shogunai.domain.model.EMULATOR_PORT_KEY
 import app.luxion.shogunai.domain.model.IOS_SIMULATOR_KEY
 import app.luxion.shogunai.domain.model.ReleaseRecord
 import app.luxion.shogunai.domain.model.ResourceKind
+import app.luxion.shogunai.domain.model.runSuspendCatching
 
 class ReadReleaseRecordUseCase(
     private val resolveEnvironment: ResolveWorktreeEnvironmentUseCase,
@@ -16,7 +17,7 @@ class ReadReleaseRecordUseCase(
             ResourceKind.IOS_SIMULATOR -> IOS_SIMULATOR_KEY
             ResourceKind.GRADLE_DAEMON -> return null
         }
-        val admin = runCatching { resolveEnvironment.directoriesOf(worktreePath).admin }.getOrNull() ?: return null
+        val admin = runSuspendCatching { resolveEnvironment.directoriesOf(worktreePath).admin }.getOrNull() ?: return null
         return stateStore.readReleases(admin)[key]
     }
 }

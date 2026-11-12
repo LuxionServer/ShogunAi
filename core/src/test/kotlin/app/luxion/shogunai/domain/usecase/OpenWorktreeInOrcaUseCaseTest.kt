@@ -8,6 +8,7 @@ import app.luxion.shogunai.domain.FakeProcessEnvironmentReader
 import app.luxion.shogunai.domain.FakeRepositoryProvisioningSource
 import app.luxion.shogunai.domain.FakeRepositoryTrust
 import app.luxion.shogunai.domain.FakeShellCommandExecutor
+import app.luxion.shogunai.domain.ScriptedShellCommandExecutor
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.io.OrcaClient
 import app.luxion.shogunai.domain.model.AgentLaunchConfig
@@ -45,8 +46,8 @@ class OpenWorktreeInOrcaUseCaseTest {
     private val known = OrcaRepo("r1", repository)
     private val visible = mapOf("r1" to listOf(OrcaWorktree(task.path, createdByOrca = false)))
 
-    private val gitExecutor = object : ShellCommandExecutor {
-        override suspend fun execute(command: List<String>, workingDirectory: String?) =
+    private val gitExecutor = object : ScriptedShellCommandExecutor() {
+        override suspend fun respond(command: List<String>, workingDirectory: String?) =
             FakeShellCommandExecutor.success(command, "$common/worktrees/TASK-8\n$common\n")
     }
 

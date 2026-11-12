@@ -7,6 +7,7 @@ import app.luxion.shogunai.domain.FakeHerdrClient
 import app.luxion.shogunai.domain.FakePortProbe
 import app.luxion.shogunai.domain.FakeRepositoryProvisioningSource
 import app.luxion.shogunai.domain.FakeShellCommandExecutor
+import app.luxion.shogunai.domain.ScriptedShellCommandExecutor
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.model.ANDROID_SERIAL
 import app.luxion.shogunai.domain.model.AgentLaunchConfig
@@ -40,8 +41,8 @@ class OpenWorktreeInHerdrUseCaseTest {
         agentLaunchConfig = AgentLaunchConfig(agentCommand = "claude", useHeadroom = true),
     )
 
-    private val gitExecutor = object : ShellCommandExecutor {
-        override suspend fun execute(command: List<String>, workingDirectory: String?) =
+    private val gitExecutor = object : ScriptedShellCommandExecutor() {
+        override suspend fun respond(command: List<String>, workingDirectory: String?) =
             FakeShellCommandExecutor.success(command, "$common/worktrees/TASK-8\n$common\n")
     }
 

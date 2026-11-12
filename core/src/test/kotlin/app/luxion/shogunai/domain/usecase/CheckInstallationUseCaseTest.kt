@@ -8,6 +8,7 @@ import app.luxion.shogunai.domain.FakeProjectRepository
 import app.luxion.shogunai.domain.FakeRepositoryProvisioningSource
 import app.luxion.shogunai.domain.FakeShellCommandExecutor
 import app.luxion.shogunai.domain.executor.CommandExecutionException
+import app.luxion.shogunai.domain.executor.CommandTimeouts
 import app.luxion.shogunai.domain.io.FileManager
 import app.luxion.shogunai.domain.io.HostPath
 import app.luxion.shogunai.domain.model.HostPathSource
@@ -373,7 +374,7 @@ class CheckInstallationUseCaseTest {
             val repository = root.resolve("main-repo")
             Files.createDirectories(repository)
             val git = ProcessBuilderShellCommandExecutor(path = null)
-            git.execute(listOf("git", "init", "-q", "-b", "main"), repository.toString())
+            git.executeWithin(listOf("git", "init", "-q", "-b", "main"), CommandTimeouts.LOCAL_WORK, repository.toString())
             repository.resolve(".gitignore").writeText("*.properties\n")
             repository.resolve(".shogunai.json").writeText("""{ "copy": ["*.properties"] }""")
             Files.createSymbolicLink(repository.resolve("keys.properties"), root.resolve("missing/keys.properties"))

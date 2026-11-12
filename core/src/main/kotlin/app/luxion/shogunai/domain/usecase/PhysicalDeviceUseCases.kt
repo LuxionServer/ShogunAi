@@ -31,6 +31,7 @@ import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.normalizePath
 import app.luxion.shogunai.domain.model.poolDisplayName
 import app.luxion.shogunai.domain.model.releaseRank
+import app.luxion.shogunai.domain.model.runSuspendCatching
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.time.Duration
@@ -60,7 +61,7 @@ class PhysicalDeviceLedger(
     internal suspend fun adminOf(worktreePath: String): String = normalizePath(adminDirectoryOf(worktreePath))
 
     internal suspend fun listing(): PhysicalDeviceListing =
-        sources.fold(PhysicalDeviceListing()) { all, source -> all + runCatching { source.list() }.getOrDefault(PhysicalDeviceListing()) }
+        sources.fold(PhysicalDeviceListing()) { all, source -> all + runSuspendCatching { source.list() }.getOrDefault(PhysicalDeviceListing()) }
 
     internal fun record(listing: PhysicalDeviceListing): DeviceSnapshot {
         val now = clock().toEpochMilli()
@@ -105,7 +106,7 @@ class PhysicalDeviceLedger(
 
     suspend fun variablesFor(worktreePath: String): List<Pair<String, String>> {
         if (leases.read().leases.isEmpty()) return emptyList()
-        val admin = runCatching { adminOf(worktreePath) }.getOrNull() ?: return emptyList()
+        val admin = runSuspendCatching { adminOf(worktreePath) }.getOrNull() ?: return emptyList()
         val mine = leases.read().leases.filter { normalizePath(it.adminDirectory) == admin }
         if (mine.isEmpty()) return emptyList()
         val connected = if (mine.any { it.platform == DevicePlatform.ANDROID }) listing().devices.associateBy { it.id } else emptyMap()
@@ -134,7 +135,7 @@ private fun PhysicalDevice.recordedAt(now: Long) =
 
 class ReadPhysicalDevicesUseCase(private val ledger: PhysicalDeviceLedger) {
 
-    suspend operator fun invoke(): Result<PhysicalDevicesState> = runCatching {
+    suspend operator fun invoke(): Result<PhysicalDevicesState> = runSuspendCatching {
         val listing = ledger.listing()
         ledger.locked { ledger.state(ledger.record(listing), ledger.readLeases()) }
     }
@@ -142,7 +143,7 @@ class ReadPhysicalDevicesUseCase(private val ledger: PhysicalDeviceLedger) {
     fun hasRecorded(): Boolean = ledger.readInventory().isNotEmpty()
 
     suspend fun ifAnyHeld(): PhysicalDevicesState? {
-        val busy = runCatching {
+        val busy = runSuspendCatching {
             ledger.locked { ledger.readLeases().leases.isNotEmpty() || DevicePlatform.entries.any { ledger.inLine.liveQueue(it.queueName).isNotEmpty() } }
         }.getOrDefault(false)
         return if (busy) invoke().getOrNull() else null
@@ -155,12 +156,12 @@ class AcquirePhysicalDeviceUseCase(private val ledger: PhysicalDeviceLedger) {
         worktreePath: String,
         request: DeviceRequest,
         wait: PhysicalDeviceWait? = null,
-    ): Result<DeviceAcquisition> = runCatching {
+    ): Result<DeviceAcquisition> = runSuspendCatching {
         val admin = ledger.adminOf(worktreePath)
         val worktree = normalizePath(worktreePath)
         val listing = ledger.listing()
         val platformRequest = request.forPlatform(ledger.locked { platformFor(request, ledger.record(listing)) })
-        if (wait == null) return@runCatching attempt(admin, worktree, platformRequest, ticketId = null, listing = listing).getOrThrow()
+        if (wait == null) return@runSuspendCatching attempt(admin, worktree, platformRequest, ticketId = null, listing = listing).getOrThrow()
         val platform = platformRequest.platform!!
         var first: PhysicalDeviceListing? = listing
         val waited = ledger.inLine.await(
@@ -198,7 +199,7 @@ class AcquirePhysicalDeviceUseCase(private val ledger: PhysicalDeviceLedger) {
         request: DeviceRequest,
         ticketId: String?,
         listing: PhysicalDeviceListing,
-    ): Result<DeviceAcquisition> = runCatching {
+    ): Result<DeviceAcquisition> = runSuspendCatching {
         ledger.locked {
             val snapshot = ledger.record(listing)
             val current = ledger.readLeases()
@@ -276,18 +277,18 @@ class AcquirePhysicalDeviceUseCase(private val ledger: PhysicalDeviceLedger) {
 
 class ReleasePhysicalDeviceUseCase(private val ledger: PhysicalDeviceLedger) {
 
-    suspend operator fun invoke(worktreePath: String, platform: DevicePlatform? = null): Result<DeviceRelease> = runCatching {
+    suspend operator fun invoke(worktreePath: String, platform: DevicePlatform? = null): Result<DeviceRelease> = runSuspendCatching {
         val admin = ledger.adminOf(worktreePath)
         ledger.locked { release { it.platform.matches(platform) && normalizePath(it.adminDirectory) == admin } }
     }
 
-    suspend fun force(deviceId: String): Result<DeviceRelease> = runCatching {
+    suspend fun force(deviceId: String): Result<DeviceRelease> = runSuspendCatching {
         ledger.locked { release { it.deviceId == deviceId } }
     }
 
     suspend fun onWorktreeRemoved(worktreePath: String) {
-        val admin = runCatching { ledger.adminOf(worktreePath) }.getOrNull() ?: return
-        runCatching {
+        val admin = runSuspendCatching { ledger.adminOf(worktreePath) }.getOrNull() ?: return
+        runSuspendCatching {
             ledger.locked {
                 release { normalizePath(it.adminDirectory) == admin }
                 val current = ledger.readLeases()
@@ -316,7 +317,7 @@ class ManagePhysicalDevicesUseCase(private val ledger: PhysicalDeviceLedger) {
 
     suspend fun lend(query: String): Result<RecordedDevice> = update(query) { it.copy(lent = true) }
 
-    suspend fun withdraw(query: String): Result<RecordedDevice> = runCatching {
+    suspend fun withdraw(query: String): Result<RecordedDevice> = runSuspendCatching {
         ledger.locked {
             val device = find(query)
             val withdrawn = device.copy(lent = false)
@@ -331,7 +332,7 @@ class ManagePhysicalDevicesUseCase(private val ledger: PhysicalDeviceLedger) {
         }
     }
 
-    suspend fun rename(query: String, alias: String): Result<RecordedDevice> = runCatching {
+    suspend fun rename(query: String, alias: String): Result<RecordedDevice> = runSuspendCatching {
         val trimmed = alias.trim()
         ledger.locked {
             val device = find(query)
@@ -341,7 +342,7 @@ class ManagePhysicalDevicesUseCase(private val ledger: PhysicalDeviceLedger) {
         }
     }
 
-    suspend fun forget(query: String): Result<RecordedDevice> = runCatching {
+    suspend fun forget(query: String): Result<RecordedDevice> = runSuspendCatching {
         ledger.locked {
             val device = find(query)
             ledger.writeInventory(ledger.readInventory().filterNot { it.id == device.id })
@@ -352,7 +353,7 @@ class ManagePhysicalDevicesUseCase(private val ledger: PhysicalDeviceLedger) {
         }
     }
 
-    private suspend fun update(query: String, change: (RecordedDevice) -> RecordedDevice): Result<RecordedDevice> = runCatching {
+    private suspend fun update(query: String, change: (RecordedDevice) -> RecordedDevice): Result<RecordedDevice> = runSuspendCatching {
         ledger.locked {
             val device = find(query)
             change(device).also { replace(device, it) }

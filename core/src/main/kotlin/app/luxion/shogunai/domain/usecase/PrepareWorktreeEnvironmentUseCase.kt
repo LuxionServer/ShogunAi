@@ -1,5 +1,6 @@
 package app.luxion.shogunai.domain.usecase
 
+import app.luxion.shogunai.domain.executor.CommandTimeouts
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.io.FileManager
 import app.luxion.shogunai.domain.io.RepositoryProvisioningSource
@@ -8,6 +9,7 @@ import app.luxion.shogunai.domain.model.PodsPreparation
 import app.luxion.shogunai.domain.model.WorktreeEnvironment
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.joinPath
+import app.luxion.shogunai.domain.model.runSuspendCatching
 
 data class PreparedWorktree(val pods: PodsPreparation = PodsPreparation(), val flutter: FlutterPubGet? = null)
 
@@ -45,21 +47,19 @@ class WriteEnvironmentFileUseCase(
         repositoryPath: String,
         worktreePath: String,
         environment: WorktreeEnvironment,
-    ): Result<String?> = runCatching {
-        if (!environment.declarationApproved) return@runCatching null
-        val envFile = provisioningSource.read(repositoryPath).environment.envFile ?: return@runCatching null
-        val tracked = executor.execute(
+    ): Result<String?> = runSuspendCatching {
+        if (!environment.declarationApproved) return@runSuspendCatching null
+        val envFile = provisioningSource.read(repositoryPath).environment.envFile ?: return@runSuspendCatching null
+        val tracked = executor.executeWithin(
             command = listOf("git", "ls-files", "--error-unmatch", "--", envFile),
+            timeout = CommandTimeouts.GIT_READ,
             workingDirectory = worktreePath,
         )
         if (tracked.isSuccess) throw WorktreeError.EnvironmentFileTracked(envFile)
         val path = joinPath(worktreePath, envFile)
         if (!fileManager.isInside(worktreePath, path)) throw WorktreeError.EnvironmentFileOutsideWorktree(envFile)
-        try {
-            fileManager.writeText(path, formatEnvironment(environment, EnvironmentFormat.DOTENV))
-        } catch (error: Exception) {
-            throw WorktreeError.EnvironmentFileWriteFailed(path, error)
-        }
+        runSuspendCatching { fileManager.writeText(path, formatEnvironment(environment, EnvironmentFormat.DOTENV)) }
+            .getOrElse { throw WorktreeError.EnvironmentFileWriteFailed(path, it) }
         path
     }
 }

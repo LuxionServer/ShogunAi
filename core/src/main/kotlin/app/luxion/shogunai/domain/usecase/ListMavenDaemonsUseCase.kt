@@ -8,12 +8,13 @@ import app.luxion.shogunai.domain.model.MavenDaemon
 import app.luxion.shogunai.domain.model.MavenDaemonProcess
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.normalizePath
+import app.luxion.shogunai.domain.model.runSuspendCatching
 
 class ListMavenDaemonsUseCase(
     private val source: MavenDaemonSource,
     private val fileManager: FileManager,
 ) {
-    suspend operator fun invoke(worktrees: List<Worktree>?, worktreesRoot: String? = null): Result<List<MavenDaemon>> = runCatching {
+    suspend operator fun invoke(worktrees: List<Worktree>?, worktreesRoot: String? = null): Result<List<MavenDaemon>> = runSuspendCatching {
         source.list().map { process -> MavenDaemon(process, worktrees?.let { ownerOf(process, it, worktreesRoot) }) }
     }
 

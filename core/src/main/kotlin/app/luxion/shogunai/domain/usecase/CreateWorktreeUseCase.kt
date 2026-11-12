@@ -10,6 +10,7 @@ import app.luxion.shogunai.domain.model.BranchType
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.WorktreeError
+import app.luxion.shogunai.domain.model.runSuspendCatching
 
 class CreateWorktreeUseCase(
     private val config: ProjectConfig,
@@ -27,7 +28,7 @@ class CreateWorktreeUseCase(
         startPoint: String? = null,
         baseBranch: String? = null,
     ): Result<Worktree> =
-        runCatching {
+        runSuspendCatching {
             if (startPoint != null && isOptionLikeRef(startPoint)) throw WorktreeError.InvalidRef(startPoint)
             val id = normalizeTaskId(taskId)
             if (!isValidGitRefSegment(id)) {

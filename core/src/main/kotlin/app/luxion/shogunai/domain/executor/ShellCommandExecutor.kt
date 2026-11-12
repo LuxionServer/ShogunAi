@@ -2,37 +2,24 @@ package app.luxion.shogunai.domain.executor
 
 import java.util.concurrent.TimeoutException
 import kotlin.time.Duration
+import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 
 interface ShellCommandExecutor {
-    suspend fun execute(
-        command: List<String>,
-        workingDirectory: String? = null,
-    ): CommandResult
-
     suspend fun executeWithin(
         command: List<String>,
         timeout: Duration,
         workingDirectory: String? = null,
-    ): CommandResult = execute(command, workingDirectory)
+        environment: Map<String, String> = emptyMap(),
+    ): CommandResult
 
     suspend fun executeStreaming(
         command: List<String>,
+        timeout: Duration,
         workingDirectory: String?,
         environment: Map<String, String>,
         onOutput: (OutputLine) -> Unit,
-    ): CommandResult {
-        val result = execute(command, workingDirectory)
-        result.stdout.lineSequence().filter { it.isNotEmpty() }.forEach { onOutput(OutputLine(OutputChannel.STANDARD, it)) }
-        result.stderr.lineSequence().filter { it.isNotEmpty() }.forEach { onOutput(OutputLine(OutputChannel.ERROR, it)) }
-        return result
-    }
-
-    suspend fun executeWithEnvironment(
-        command: List<String>,
-        environment: Map<String, String>,
-        workingDirectory: String? = null,
-    ): CommandResult = execute(command, workingDirectory)
+    ): CommandResult
 }
 
 enum class OutputChannel { STANDARD, ERROR }
@@ -43,6 +30,9 @@ object CommandTimeouts {
     val GIT_READ: Duration = 30.seconds
     val LISTING: Duration = 10.seconds
     val NETWORK: Duration = 60.seconds
+    val LOCAL_TOOL: Duration = 60.seconds
+    val LOCAL_WORK: Duration = 5.minutes
+    val INSTALL: Duration = 30.minutes
 }
 
 open class CommandExecutionException(

@@ -189,6 +189,10 @@ Left out:
 - Showing the build that holds a busy Gradle daemon in the desktop app's Gradle view; today `shogun gradle` names it, with its client, tasks and the agent session that started it.
 - Writing the remaining state texts of the Machine views in the interface font: the Compose view still writes its leftovers title and a removed worktree as its owner in the data font.
 - Taking the system out of the domain: the 13 domain files on the architecture tests' exception list still use `java.io.File`, `java.nio.file` or `System.getProperty` directly, instead of a port or an `osName` parameter.
+- Doing less while the machine-wide state lock is held when acquiring an emulator or simulator: read devices before taking it, keep only the reservation under it, and stop, delete or create devices after releasing it.
+  Every command run under the lock now has a time limit, but other processes still wait for those commands.
+- A machine-wide state lock that can be awaited without pinning a thread, so cancelling a device acquisition reaches the work done under the lock.
+- Letting cancellations through in the command-line tool and the desktop app as `core` now does, where `runCatching` still turns one into an ordinary failure.
 
 ## Later
 

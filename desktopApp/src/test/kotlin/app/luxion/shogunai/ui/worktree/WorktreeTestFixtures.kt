@@ -1,5 +1,6 @@
 package app.luxion.shogunai.ui.worktree
 
+import app.luxion.shogunai.domain.ScriptedShellCommandExecutor
 import app.luxion.shogunai.EmulatorUseCases
 import app.luxion.shogunai.GradleUseCases
 import app.luxion.shogunai.SimulatorUseCases
@@ -13,7 +14,6 @@ import app.luxion.shogunai.domain.FakeRepositoryProvisioningSource
 import app.luxion.shogunai.domain.FakeShellCommandExecutor.Companion.success
 import app.luxion.shogunai.domain.FakeShellPreferenceRepository
 import app.luxion.shogunai.domain.executor.CommandResult
-import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.RunningAgent
@@ -56,8 +56,8 @@ internal class FakeWorktreeRepository(
             if (branch.isEmpty()) "worktree $path\nHEAD abc\ndetached" else "worktree $path\nHEAD abc\nbranch refs/heads/$branch"
         }
 
-    val executor = object : ShellCommandExecutor {
-        override suspend fun execute(command: List<String>, workingDirectory: String?): CommandResult {
+    val executor = object : ScriptedShellCommandExecutor() {
+        override suspend fun respond(command: List<String>, workingDirectory: String?): CommandResult {
             respond(command)?.let { return it }
             return when {
                 command == listCommand -> success(command, porcelain)

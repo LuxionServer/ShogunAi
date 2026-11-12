@@ -5,12 +5,13 @@ import app.luxion.shogunai.domain.io.TerminalLauncher
 import app.luxion.shogunai.domain.model.TerminalId
 import app.luxion.shogunai.domain.model.TerminalLaunch
 import app.luxion.shogunai.domain.model.WorktreeError
+import app.luxion.shogunai.domain.model.runSuspendCatching
 
 class TmuxTerminalLauncher(private val executor: ShellCommandExecutor) : TerminalLauncher {
 
     override val terminal = TerminalId.TMUX
 
-    override suspend fun open(launch: TerminalLaunch): Result<Unit> = runCatching {
+    override suspend fun open(launch: TerminalLaunch): Result<Unit> = runSuspendCatching {
         try {
             requireEnvironmentSupport()
             val session = mostRecentSession()
@@ -55,7 +56,7 @@ class ZellijTerminalLauncher(private val executor: ShellCommandExecutor) : Termi
 
     override val terminal = TerminalId.ZELLIJ
 
-    override suspend fun open(launch: TerminalLaunch): Result<Unit> = runCatching {
+    override suspend fun open(launch: TerminalLaunch): Result<Unit> = runSuspendCatching {
         try {
             val session = executor.runTool(listOf("zellij", "list-sessions", "--short")).stdout
                 .lines().map { it.trim() }.lastOrNull { it.isNotEmpty() }

@@ -12,6 +12,7 @@ import app.luxion.shogunai.domain.model.WorktreeGroup
 import app.luxion.shogunai.domain.model.groupMemberSessionName
 import app.luxion.shogunai.domain.model.multirepoSessionName
 import app.luxion.shogunai.domain.model.sameDirectory
+import app.luxion.shogunai.domain.model.runSuspendCatching
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
@@ -61,7 +62,7 @@ class OpenMultirepoAgentInOrcaUseCase(
 ) {
     private val launcher = OrcaAgentLauncher(orca, naming, samePath, timeout, pollInterval)
 
-    suspend operator fun invoke(multirepo: Multirepo): Result<OrcaOpening> = runCatching {
+    suspend operator fun invoke(multirepo: Multirepo): Result<OrcaOpening> = runSuspendCatching {
         launcher.ensureRunning()
         val folder = multirepo.folder
         val workspace = folderWorkspace(multirepo)

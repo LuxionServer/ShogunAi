@@ -1,5 +1,6 @@
 package app.luxion.shogunai.domain.usecase
 
+import app.luxion.shogunai.domain.executor.CommandTimeouts
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.io.FileManager
 import app.luxion.shogunai.domain.io.RepositoryProvisioningSource
@@ -34,7 +35,7 @@ class ListLocalFileCandidatesUseCase(
     private suspend fun untrackedEntries(config: ProjectConfig, ignored: Boolean): List<String> {
         val command = listOf("git", "ls-files", "-z", "--others", "--exclude-standard", "--directory", "--no-empty-directory") +
             listOfNotNull("--ignored".takeIf { ignored })
-        val result = executor.execute(command = command, workingDirectory = config.baseRepositoryPath)
+        val result = executor.executeWithin(command = command, timeout = CommandTimeouts.GIT_READ, workingDirectory = config.baseRepositoryPath)
         if (!result.isSuccess) throw WorktreeError.GitCommandFailed(result.command, result.exitCode, result.stderr)
         return result.stdout.split('\u0000').filter { it.isNotEmpty() }
     }

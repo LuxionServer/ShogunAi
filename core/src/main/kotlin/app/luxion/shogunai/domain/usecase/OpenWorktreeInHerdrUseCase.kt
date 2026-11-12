@@ -9,6 +9,7 @@ import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.normalizePath
 import app.luxion.shogunai.domain.model.projectDefaultsFor
 import app.luxion.shogunai.domain.model.worktreeSessionName
+import app.luxion.shogunai.domain.model.runSuspendCatching
 
 class OpenWorktreeInHerdrUseCase(
     private val config: ProjectConfig,
@@ -20,13 +21,13 @@ class OpenWorktreeInHerdrUseCase(
         worktree: Worktree,
         agent: AgentLaunchConfig = config.agentLaunchConfig,
         sessionName: String = worktreeSessionName(projectDefaultsFor(config.baseRepositoryPath).name, worktree),
-    ): Result<HerdrOpening> = runCatching {
+    ): Result<HerdrOpening> = runSuspendCatching {
         val label = normalizePath(worktree.path).substringAfterLast('/')
         val opening = herdr.openWorktree(config.baseRepositoryPath, worktree.path, label)
         if (opening.alreadyOpen) {
-            launcher.focusLiveAgent(opening.workspaceId, worktree.path, sessionName)?.let { return@runCatching it }
+            launcher.focusLiveAgent(opening.workspaceId, worktree.path, sessionName)?.let { return@runSuspendCatching it }
             launcher.reusablePane(opening.workspaceId, worktree.path)?.let { pane ->
-                return@runCatching launcher.launch(
+                return@runSuspendCatching launcher.launch(
                     opening.workspaceId, pane, agent.resolvedCommand(), agent.displayName, HerdrOutcome.STARTED_AGENT, sessionName, worktree.path,
                 )
             }
