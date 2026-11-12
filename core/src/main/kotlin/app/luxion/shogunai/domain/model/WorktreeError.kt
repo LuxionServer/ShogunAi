@@ -38,6 +38,11 @@ sealed class WorktreeError(override val message: String, cause: Throwable? = nul
     class LocalFileUnreadable(val path: String, val reason: String?) :
         WorktreeError("Can't read $path" + if (reason.isNullOrBlank()) "" else ": $reason")
 
+    class LocalFileFromNewerVersion(val path: String, val version: Int, val supportedVersion: Int) : WorktreeError(
+        "$path was written by a newer version of ShogunAi (schema $version; this version supports up to $supportedVersion); " +
+            "update ShogunAi to change it",
+    )
+
     class ProjectNotRegistered(val path: String) :
         WorktreeError("No project is registered for $path")
 

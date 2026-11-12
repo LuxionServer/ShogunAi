@@ -183,6 +183,8 @@ Left out:
 - Splitting `ProjectWorktrees.kt` and `ProjectSettingsView.kt` into smaller holders and sections.
 - Splitting `ShogunCli.kt` by command family, each family taking the shared `ShogunEngine`, and reviewing the few calls it still wires differently from the engine (agent detection in `remove` and `clean`, Gradle daemons with sessions, the clock of `xcode trim`).
 - Moving the UI states and the logic that still live in `AppContainer` (`readComposeStates`, `startEmulatorShownInOrca`…) into their own holders, built on the shared `ShogunEngine`.
+- Moving the other files in `~/.shogunai` (`compose-projects.json`, `orca.json`, `derived-data-sizes.json`, environment state, device queue, desktop turn, agent sessions, provisioning records and physical devices) to the versioned machine file that `projects.json`, `settings.json`, `trust.json` and `multirepos.json` use.
+- Showing in the desktop app a settings change refused because `settings.json` was written by a newer version, before any change first raises that file's schema version.
 - Checking the guided tour on Windows and Linux with a real installed app: creating the sample with the system's Git, and the tour's agent command, whose prompt is quoted for the shell each terminal runs.
 - Removing Cmd/Ctrl+E, kept for one release as an alias of Cmd/Ctrl+O when the shortcut moved to the default runner.
 - Showing the build that holds a busy Gradle daemon in the desktop app's Gradle view; today `shogun gradle` names it, with its client, tasks and the agent session that started it.

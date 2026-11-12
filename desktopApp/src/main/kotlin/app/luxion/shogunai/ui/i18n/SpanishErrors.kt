@@ -90,6 +90,10 @@ private fun spanishWorktreeTexts(error: WorktreeError, gitCause: GitFailureCause
                 "Corrige el archivo. Si añades o quitas un proyecto, el archivo ilegible se conserva antes a su lado.",
             )
         }
+    is WorktreeError.LocalFileFromNewerVersion -> ErrorTexts(
+        "El archivo ${error.path} lo escribió una versión más nueva de ShogunAi, así que esta versión no lo modifica.",
+        "Actualiza ShogunAi para hacer este cambio.",
+    )
     is WorktreeError.WorktreeAlreadyExists -> ErrorTexts(
         "La carpeta ${error.path} ya existe.",
         "Usa otro id de tarea, o elimina la carpeta existente.",
