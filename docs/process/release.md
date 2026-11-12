@@ -71,6 +71,8 @@ Every release has notes written by hand for its users, in English and Spanish, i
 
 The same files build the documentation site's [Changelog](../changelog.md), newest release first, in each reader's language (English when a release has no Spanish file). It is regenerated on every `mkdocs build` and `mkdocs serve` by the hook in `scripts/mkdocs/changelog_hook.py`, so there is no page to update by hand: `docs/changelog.md` and `docs/changelog.es.md` are generated and ignored by Git. Its tests run with `python3 -m unittest discover -s scripts/mkdocs`.
 
+The `Docs` workflow (`.github/workflows/docs.yml`) runs those tests and `mkdocs build --strict` on every pull request that touches `docs/`, `mkdocs.yml`, `requirements-docs.txt`, `scripts/mkdocs/` or `.github/release-notes/`, release pull requests included, so a broken hook or a broken link fails the check.
+
 How to write them:
 
 - Describe what changes for the person using ShogunAi, in plain language: what they can do now, what works better, what was fixed.
