@@ -14,18 +14,24 @@ import kotlinx.serialization.json.jsonObject
 import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.Path
-import java.nio.file.StandardCopyOption
-import java.nio.file.attribute.PosixFilePermissions
 import java.security.MessageDigest
-import kotlin.io.path.exists
 import kotlin.io.path.isRegularFile
 import kotlin.io.path.readText
 
 class JsonMultirepoSource(
-    private val registryPath: Path,
+    registryPath: Path,
 ) : MultirepoSource {
 
     private val json = Json { prettyPrint = true; ignoreUnknownKeys = true; encodeDefaults = false }
+
+    private val registryFile = VersionedJsonFile(
+        path = registryPath,
+        serializer = Registry.serializer(),
+        json = json,
+        empty = Registry(),
+        privateFile = true,
+        decode = ::registryOf,
+    )
 
     override fun read(folder: String): MultirepoDeclaration? {
         if (folder.isBlank() || !Path.of(folder).isAbsolute) return null
@@ -44,7 +50,7 @@ class JsonMultirepoSource(
     }
 
     override fun write(folder: String, declaration: MultirepoDeclaration) {
-        replace(declarationFile(folder), json.encodeToString(MultirepoDeclaration.serializer(), declaration) + "\n")
+        writeAtomically(declarationFile(folder), json.encodeToString(MultirepoDeclaration.serializer(), declaration))
     }
 
     override fun delete(folder: String) {
@@ -52,7 +58,7 @@ class JsonMultirepoSource(
     }
 
     override fun knownFolders(): List<String> =
-        LocalFileLock.withLock(registryPath) { readRegistry() }.multirepos.map(::folderOf)
+        readRegistry().multirepos.map(::folderOf)
 
     override fun remember(folder: String) = updateRegistry { registry ->
         val path = declarationKey(folder)
@@ -79,23 +85,25 @@ class JsonMultirepoSource(
     override fun setAgent(folder: String, agent: AgentLaunchConfig) = updateLocal(folder) { it.copy(agent = agent) }
 
     private fun localOf(folder: String): LocalSettings? =
-        LocalFileLock.withLock(registryPath) { readRegistry() }.local[declarationKey(folder)]
+        readRegistry().local[declarationKey(folder)]
 
     private fun updateLocal(folder: String, change: (LocalSettings) -> LocalSettings) = updateRegistry { registry ->
         val path = declarationKey(folder)
         registry.copy(local = registry.local + (path to change(registry.local[path] ?: LocalSettings())))
     }
 
-    private fun updateRegistry(change: (Registry) -> Registry) = LocalFileLock.withLock(registryPath) {
-        val current = readRegistry()
-        val updated = change(current)
-        if (updated != current) writeRegistry(updated)
+    private fun updateRegistry(change: (Registry) -> Registry) {
+        registryFile.update(change)
     }
 
-    private fun readRegistry(): Registry {
-        if (!registryPath.exists()) return Registry()
-        val text = runCatching { registryPath.readText() }.getOrNull()?.takeIf { it.isNotBlank() } ?: return Registry()
-        val root = runCatching { json.parseToJsonElement(text).jsonObject }.getOrNull() ?: return Registry()
+    private fun readRegistry(): Registry = try {
+        registryFile.read()
+    } catch (_: WorktreeError.LocalFileUnreadable) {
+        Registry()
+    }
+
+    private fun registryOf(element: JsonElement): Registry {
+        val root = element.jsonObject
         return Registry(
             multirepos = decodeOrNull<List<String>>(root["multirepos"]).orEmpty(),
             local = (root["local"] as? JsonObject).orEmpty().mapNotNull { (path, entry) ->
@@ -106,17 +114,6 @@ class JsonMultirepoSource(
 
     private inline fun <reified T> decodeOrNull(element: JsonElement?): T? =
         element?.let { runCatching { json.decodeFromJsonElement<T>(it) }.getOrNull() }
-
-    private fun writeRegistry(registry: Registry) =
-        replace(registryPath, json.encodeToString(Registry.serializer(), registry) + "\n", privateFile = true)
-
-    private fun replace(target: Path, text: String, privateFile: Boolean = false) {
-        Files.createDirectories(target.parent)
-        val tempFile = Files.createTempFile(target.parent, target.fileName.toString(), ".tmp")
-        if (privateFile) runCatching { Files.setPosixFilePermissions(tempFile, PosixFilePermissions.fromString("rw-------")) }
-        Files.writeString(tempFile, text)
-        Files.move(tempFile, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
-    }
 
     private fun declarationFile(folder: String): Path = Path.of(folder).resolve(MULTIREPO_FILE_NAME).normalize()
 

@@ -203,6 +203,7 @@ class StringsTest {
         WorktreeError.NotAWorktree("~/projects/TASK-123"),
         WorktreeError.LocalFileUnreadable("~/.shogunai/projects.json", "unexpected token"),
         WorktreeError.LocalFileUnreadable("~/.shogunai/settings.json", null),
+        WorktreeError.LocalFileFromNewerVersion("~/.shogunai/projects.json", 2, 1),
         WorktreeError.BareRepositoryNotSupported("~/projects/main-repo.git"),
         WorktreeError.RepositoryHasNoCommits,
         WorktreeError.RepositoryConfigChanged("~/projects/main-repo/.shogunai.json"),

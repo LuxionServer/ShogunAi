@@ -1,5 +1,6 @@
 package app.luxion.shogunai.infrastructure
 
+import app.luxion.shogunai.domain.model.WorktreeError
 import java.io.IOException
 import java.nio.channels.FileChannel
 import java.nio.channels.FileLock
@@ -26,27 +27,24 @@ internal object LocalFileLock {
     }
 
     private fun <T> withProcessLock(target: Path, lock: (FileChannel) -> FileLock, block: () -> T): T {
-        val channel = try {
+        val lockFile = target.resolveSibling(target.fileName.toString() + ".lock")
+        val channel = lockingFailure(target, lockFile) {
             Files.createDirectories(target.parent)
-            FileChannel.open(
-                target.resolveSibling(target.fileName.toString() + ".lock"),
-                StandardOpenOption.CREATE,
-                StandardOpenOption.WRITE,
-            )
-        } catch (_: IOException) {
-            return block()
+            FileChannel.open(lockFile, StandardOpenOption.CREATE, StandardOpenOption.WRITE)
         }
         return channel.use {
-            val held = try {
-                lock(it)
-            } catch (_: IOException) {
-                null
-            }
+            val held = lockingFailure(target, lockFile) { lock(it) }
             try {
                 block()
             } finally {
-                held?.release()
+                held.release()
             }
         }
+    }
+
+    private fun <T> lockingFailure(target: Path, lockFile: Path, action: () -> T): T = try {
+        action()
+    } catch (error: IOException) {
+        throw WorktreeError.LocalFileUnreadable(target.toString(), "can't lock $lockFile: ${error.message}")
     }
 }
