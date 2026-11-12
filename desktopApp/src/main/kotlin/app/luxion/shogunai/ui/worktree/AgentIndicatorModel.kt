@@ -11,12 +11,13 @@ import java.time.Instant
 
 data class AgentFocusTarget(val agent: String, val runner: RunnerId, val herdrPaneId: String? = null)
 
-fun AgentState?.phase(): AgentPhase = when (this) {
+fun AgentState?.phase(): AgentPhase = if (this == null) AgentPhase.RUNNING else knownPhase(this)
+
+private fun knownPhase(state: AgentState): AgentPhase = when (state) {
     AgentState.BLOCKED -> AgentPhase.NEEDS_YOU
     AgentState.DONE -> AgentPhase.DONE
     AgentState.WORKING -> AgentPhase.WORKING
     AgentState.IDLE -> AgentPhase.IDLE
-    null -> AgentPhase.RUNNING
 }
 
 fun RunningAgent.runner(): RunnerId? = when {
@@ -56,8 +57,9 @@ private fun byUrgency(agents: List<RunningAgent>): List<RunningAgent> = agents.s
 
 private fun agentLine(agent: RunningAgent, focusTarget: Boolean, strings: Strings): String {
     val label = strings.agentLabel(displayName(agent.name), agent.state.phase())
-    val located = agent.runner()?.let { "$label · ${strings.agentInRunner(it)}" } ?: label
+    val runner = agent.runner()
+    val located = if (runner == null) label else "$label · ${strings.agentInRunner(runner)}"
     return if (focusTarget) "$located — ${strings.clickToFocus}" else located
 }
 
-private fun displayName(name: String): String = name.replaceFirstChar { it.uppercase() }
+private fun displayName(name: String): String = name.take(1).uppercase() + name.drop(1)

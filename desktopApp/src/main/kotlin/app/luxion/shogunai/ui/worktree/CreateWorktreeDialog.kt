@@ -19,6 +19,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import app.luxion.shogunai.domain.io.ApprovalDecision
 import app.luxion.shogunai.domain.model.RepositoryApprovalSubject
+import app.luxion.shogunai.domain.model.BranchOption
 import app.luxion.shogunai.domain.model.BranchType
 import app.luxion.shogunai.domain.model.ShellQuoting
 import app.luxion.shogunai.domain.model.withoutLocalTwins
@@ -86,10 +87,7 @@ fun CreateWorktreeDialog(board: WorktreeBoard) {
             label = { it.label(strings) },
             enabled = !isCreating,
         )
-        when (board.createMode) {
-            CreateMode.NEW_BRANCH -> NewBranchFields(board, holder)
-            CreateMode.EXISTING_BRANCH -> ExistingBranchField(board, holder)
-        }
+        CreateModeFields(board, holder)
         if (board.canFetchFirst) {
             FetchFirstOption(board, isCreating)
         }
@@ -106,6 +104,14 @@ fun CreateWorktreeDialog(board: WorktreeBoard) {
         holder.createError?.let { error ->
             ErrorNotice(error = error, onDismiss = { holder.dismissCreateError() })
         }
+    }
+}
+
+@Composable
+private fun CreateModeFields(board: WorktreeBoard, holder: ProjectWorktrees) {
+    when (board.createMode) {
+        CreateMode.NEW_BRANCH -> NewBranchFields(board, holder)
+        CreateMode.EXISTING_BRANCH -> ExistingBranchField(board, holder)
     }
 }
 
@@ -165,22 +171,30 @@ private fun StartFromField(board: WorktreeBoard, holder: ProjectWorktrees) {
         options = board.startOptions,
         selected = board.effectiveStartFrom,
         onSelect = { board.startFrom = it },
-        label = { option ->
-            when {
-                option == StartOption.Current -> strings.startFromCurrentBranch(board.currentBranchName)
-                option.ref == holder.defaultStartRef -> strings.startFromMainBranch(option.ref.orEmpty())
-                else -> option.ref.orEmpty()
-            }
-        },
+        label = { startOptionLabel(it, board.currentBranchName, holder.defaultStartRef, strings) },
         placeholder = strings.startFromLabel,
         fieldLabel = strings.startFromLabel,
-        groupBy = { option ->
-            option.ref?.takeIf { it != holder.defaultStartRef }?.substringBefore('/', strings.otherBranchesGroup)
-        },
+        groupBy = { startOptionGroup(it, holder.defaultStartRef, strings) },
         expandedGroups = groupExpansion,
         fieldEnabled = !holder.isCreating,
         modifier = Modifier.fillMaxWidth(),
     )
+}
+
+internal fun startOptionLabel(option: StartOption, currentBranch: String?, defaultRef: String?, strings: Strings): String = when (option) {
+    StartOption.Current -> strings.startFromCurrentBranch(currentBranch)
+    is StartOption.Branch -> if (option.ref == defaultRef) strings.startFromMainBranch(option.ref) else option.ref
+}
+
+internal fun startOptionGroup(option: StartOption, defaultRef: String?, strings: Strings): String? = when (option) {
+    StartOption.Current -> null
+    is StartOption.Branch -> option.ref.takeIf { it != defaultRef }?.substringBefore('/', strings.otherBranchesGroup)
+}
+
+internal fun branchOptionLabel(branch: BranchOption, strings: Strings): String = when {
+    branch.isCheckedOut -> strings.branchAlreadyHasWorktree(branch.name)
+    branch.isRemote -> strings.remoteBranchLabel(branch.name)
+    else -> branch.name
 }
 
 @Composable
@@ -248,13 +262,7 @@ private fun ExistingBranchField(board: WorktreeBoard, holder: ProjectWorktrees) 
             selected = existing.find { it.name == board.selectedBranch },
             onSelect = { board.selectedBranch = it.name },
             enabled = { !it.isCheckedOut },
-            label = {
-                when {
-                    it.isCheckedOut -> strings.branchAlreadyHasWorktree(it.name)
-                    it.isRemote -> strings.remoteBranchLabel(it.name)
-                    else -> it.name
-                }
-            },
+            label = { branchOptionLabel(it, strings) },
             placeholder = strings.selectBranchPlaceholder,
             groupBy = { it.name.substringBefore('/', strings.otherBranchesGroup) },
             expandedGroups = branchGroupExpansion,

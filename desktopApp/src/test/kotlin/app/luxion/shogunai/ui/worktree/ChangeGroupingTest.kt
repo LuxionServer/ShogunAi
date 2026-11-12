@@ -6,7 +6,9 @@ import app.luxion.shogunai.ui.multirepo.branchTypeOf
 import app.luxion.shogunai.ui.multirepo.proposedAlias
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class ChangeGroupingTest {
 
@@ -57,5 +59,12 @@ class ChangeGroupingTest {
         assertEquals("docs", proposedAlias("Product-Docs", "product"))
         assertEquals("web-site", proposedAlias("web_site", "product"))
         assertEquals("product", proposedAlias("product", "product"))
+    }
+
+    @Test
+    fun `a tag without other repositories is just the title and a view with a group is not empty`() {
+        assertEquals("TASK-12", GroupTag("/home/dev/projects/product", "feature/TASK-12", emptyList()).label)
+        assertTrue(ChangeView(emptyList(), emptyList()).isEmpty)
+        assertFalse(ChangeView(listOf(ChangeGroup("feature/TASK-12", emptyList(), Activity.Unknown)), emptyList()).isEmpty)
     }
 }

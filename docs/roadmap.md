@@ -99,9 +99,10 @@ Neither showed up on the developer's machine, whose own setup hides them.
 In order:
 
 - Tests that hold the product to it:
-  - Raising the coverage floors that CI enforces up to 100%: the lines (91% today) and branches (78%) of the desktop app outside its composables, which the end-to-end tests cover.
+  - Raising the coverage floors that CI enforces up to 100%: the lines (93% today) and branches (87%) of the desktop app outside its composables, which the end-to-end tests cover.
     Lines of `core` and `cli`, branches of `cli`, every branch of `core` that some input can reach, and the desktop app's texts and project settings are already covered.
-    The desktop app goes up one package per change, in this order: worktrees and their inspector, the shell and the menu bar icon, the machine views and multirepos, shared components, and last the app's wiring.
+    The worktrees and their inspector are covered but for 41 branches of their list, rows and action bars, left for the shared components' change.
+    The desktop app goes up one package per change, in this order: the shell and the menu bar icon, the machine views and multirepos, shared components, and last the app's wiring.
 - The Java that `shogun doctor` and "Check Installation" don't check yet: the one Gradle's daemon runs when the build chooses it (`org.gradle.java.home`, toolchains or Gradle's daemon JVM criteria), and the one the Android Gradle Plugin needs (Java 17 for AGP 8); today they check the Java the wrappers run against the Gradle and Maven versions.
 
 ### Orca, a second first-class runner

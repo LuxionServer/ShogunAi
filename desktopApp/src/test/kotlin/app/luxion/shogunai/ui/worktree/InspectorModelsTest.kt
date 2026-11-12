@@ -2,6 +2,7 @@ package app.luxion.shogunai.ui.worktree
 
 import app.luxion.shogunai.domain.model.Divergence
 import app.luxion.shogunai.domain.model.EMULATOR_PORT_KEY
+import app.luxion.shogunai.domain.model.ObservedPort
 import app.luxion.shogunai.domain.model.ProvisionDrift
 import app.luxion.shogunai.domain.model.ProvisionDriftState
 import app.luxion.shogunai.domain.model.RunningAgent
@@ -162,5 +163,44 @@ class InspectorModelsTest {
         )
         assertEquals(true, environmentProperties(environment, ports).all { it.copyable })
         assertEquals("2 ports · 2 vars", environmentSummary(environment, ports, EnglishStrings))
+    }
+
+    @Test
+    fun `a branch never committed to reads as not started and a creation date is listed`() {
+        val created = now.minus(Duration.ofHours(1))
+        val notStarted = status.copy(neverCommitted = true, lastCommitAt = null, createdAt = created)
+
+        val properties = statusProperties(notStarted, "develop", now, EnglishStrings)
+
+        assertEquals(Property("Last commit", "not started", isData = false), properties.first { it.key == "Last commit" })
+        assertEquals(Property(EnglishStrings.createdTitle, "1 hour ago", isData = false), properties.last())
+    }
+
+    @Test
+    fun `no last commit and no base leave their properties out`() {
+        val bare = WorktreeStatus(uncommittedChanges = 0, upstream = null, mainBranch = null, lastCommitAt = null)
+
+        val expected = listOf(Property("Changes", "0"), Property("Upstream", "not pushed", isData = false))
+
+        assertEquals(expected, statusProperties(bare, null, now, EnglishStrings))
+        assertEquals(expected, statusProperties(bare, "develop", now, EnglishStrings))
+        assertEquals(expected, statusProperties(bare.copy(base = Divergence(1, 0)), null, now, EnglishStrings))
+    }
+
+    @Test
+    fun `a status not read yet is loading`() {
+        assertEquals(SectionState.Loading, statusSectionState(null, EnglishStrings))
+        assertEquals(SectionState.Loading, statusSectionState(WorktreeStatusState.Loading, EnglishStrings))
+    }
+
+    @Test
+    fun `the environment section applies when anything about the environment is known`() {
+        val empty = WorktreeEnvironment()
+
+        assertEquals(SectionState.NotApplicable, environmentSectionState(empty, emptyMap()))
+        assertEquals(SectionState.Content, environmentSectionState(WorktreeEnvironment(variables = listOf("PORT" to "1")), emptyMap()))
+        assertEquals(SectionState.Content, environmentSectionState(empty, mapOf("PORT" to 4123)))
+        assertEquals(SectionState.Content, environmentSectionState(WorktreeEnvironment(awaitingApproval = listOf("PORT")), emptyMap()))
+        assertEquals(SectionState.Content, environmentSectionState(null, emptyMap(), listOf(ObservedPort(4123))))
     }
 }
