@@ -1,5 +1,6 @@
 package app.luxion.shogunai.ui.worktree
 
+import app.luxion.shogunai.domain.ScriptedShellCommandExecutor
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.MaterialTheme
@@ -24,7 +25,6 @@ import app.luxion.shogunai.domain.FakeRepositoryTrust
 import app.luxion.shogunai.domain.FakeShellCommandExecutor.Companion.failure
 import app.luxion.shogunai.domain.FakeShellCommandExecutor.Companion.success
 import app.luxion.shogunai.domain.executor.CommandResult
-import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.model.RepositoryApprovalSubject
 import app.luxion.shogunai.domain.model.RepositoryProvisioning
 import app.luxion.shogunai.domain.usecase.CopyWorktreeLaunchCommandUseCase
@@ -66,10 +66,10 @@ class CreateWorktreeDialogUiTest {
         waitUntil(timeoutMillis = 5_000) { onAllNodesWithText(text, substring = true).fetchSemanticsNodes().isNotEmpty() }
     }
 
-    private fun gated(gate: CompletableDeferred<Unit>, delegate: ShellCommandExecutor) = object : ShellCommandExecutor {
-        override suspend fun execute(command: List<String>, workingDirectory: String?): CommandResult {
+    private fun gated(gate: CompletableDeferred<Unit>, delegate: ScriptedShellCommandExecutor) = object : ScriptedShellCommandExecutor() {
+        override suspend fun respond(command: List<String>, workingDirectory: String?): CommandResult {
             if (command.take(3) == listOf("git", "worktree", "add")) gate.await()
-            return delegate.execute(command, workingDirectory)
+            return delegate.respond(command, workingDirectory)
         }
     }
 

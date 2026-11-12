@@ -1,5 +1,6 @@
 package app.luxion.shogunai.cli
 
+import app.luxion.shogunai.engine.ShogunEngine
 import app.luxion.shogunai.domain.FakeAgentSessionStore
 import app.luxion.shogunai.domain.FakeClaudeSessionRegistry
 import app.luxion.shogunai.domain.FakeAndroidSdk
@@ -87,7 +88,7 @@ class MultirepoCommandsTest {
             Project("docs", "product-docs", ProjectConfig(docsBase, "$worktreesRoot/docs", emptyList())),
         ),
     )
-    private val fileManager = FakeFileManager(existing = listOf(folder, appBase, apiBase, docsBase, "/src/web"))
+    private val fileManager = FakeFileManager(existing = listOf(folder, appBase, apiBase, docsBase, "/src/web", "$folder/stray"))
     private val herdr = FakeHerdrClient()
     private val out = StringBuilder()
     private val err = StringBuilder()
@@ -114,37 +115,43 @@ class MultirepoCommandsTest {
         executor: ShellCommandExecutor = git,
         files: app.luxion.shogunai.domain.io.FileManager = fileManager,
     ) = ShogunCli(
-        executor = executor,
-        fileManager = files,
-        projectRepository = projects,
-        provisioningSource = provisioning,
-        daemonSource = FakeGradleDaemonSource(),
-        gradleUserHome = "/home/dev/.gradle",
-        environmentStateStore = environmentStore,
-        portProbe = FakePortProbe(),
-        androidSdk = FakeAndroidSdk(),
-        appleSimulators = FakeAppleSimulators(),
-        kmpTestWiring = FakeKmpTestWiring(),
-        resourceLimits = FakeResourceLimitsRepository(ResourceSettings(CapacityProfile.PER_WORKTREE)),
-        machineCapacity = FakeMachineCapacity(),
-        derivedDataSource = FakeDerivedDataSource(),
-        herdrConfig = FakeHerdrConfigSource(),
-        orca = orca,
+        engine = ShogunEngine(
+            cliEnginePorts(
+                executor = executor,
+                fileManager = files,
+                projectRepository = projects,
+                provisioningSource = provisioning,
+                gradleDaemons = FakeGradleDaemonSource(),
+                gradleUserHome = "/home/dev/.gradle",
+                environmentStateStore = environmentStore,
+                portProbe = FakePortProbe(),
+                androidSdk = FakeAndroidSdk(),
+                appleSimulators = FakeAppleSimulators(),
+                kmpTestWiring = FakeKmpTestWiring(),
+                resourceLimits = FakeResourceLimitsRepository(ResourceSettings(CapacityProfile.PER_WORKTREE)),
+                machineCapacity = FakeMachineCapacity(),
+                derivedData = FakeDerivedDataSource(),
+                herdrConfig = FakeHerdrConfigSource(),
+                orca = orca,
+                workingDirectory = workingDirectory,
+                environment = hostEnvironment(variables = mapOf("CLAUDE_ENV_FILE" to envFile.toString())),
+                herdr = herdrClient,
+                agentSessions = sessionStore,
+                multirepos = multirepos,
+                claudeSessions = claudeSessions,
+                trust = trust,
+            ),
+        ),
         workingDirectory = workingDirectory,
         out = out,
         err = err,
         readInput = { input },
         canonicalPath = { it.trimEnd('/') },
         environment = hostEnvironment(variables = mapOf("CLAUDE_ENV_FILE" to envFile.toString())),
-        herdr = herdrClient,
         toolPreferences = runner,
         herdrAgentStartTimeout = 100.milliseconds,
         readAnswer = { answer },
-        sessionStore = sessionStore,
-        multirepoSource = multirepos,
-        claudeSessions = claudeSessions,
         isClaudeProcessAlive = { true },
-        trust = trust,
     )
 
     private fun json(): JsonObject = Json.parseToJsonElement(out.toString().trim()).jsonObject

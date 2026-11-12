@@ -182,6 +182,8 @@ Left out:
 - Support for bare repositories with worktrees (the "bare clone" layout), which changes what the base repository and copying from it mean.
   Today ShogunAi rejects them with a specific error.
 - Splitting `ProjectWorktrees.kt` and `ProjectSettingsView.kt` into smaller holders and sections.
+- Splitting `ShogunCli.kt` by command family, each family taking the shared `ShogunEngine`, and reviewing the few calls it still wires differently from the engine (agent detection in `remove` and `clean`, Gradle daemons with sessions, the clock of `xcode trim`).
+- Moving the UI states and the logic that still live in `AppContainer` (`readComposeStates`, `startEmulatorShownInOrca`…) into their own holders, built on the shared `ShogunEngine`.
 - Moving the other files in `~/.shogunai` (`compose-projects.json`, `orca.json`, `derived-data-sizes.json`, environment state, device queue, desktop turn, agent sessions, provisioning records and physical devices) to the versioned machine file that `projects.json`, `settings.json`, `trust.json` and `multirepos.json` use.
 - Showing in the desktop app a settings change refused because `settings.json` was written by a newer version, before any change first raises that file's schema version.
 - Checking the guided tour on Windows and Linux with a real installed app: creating the sample with the system's Git, and the tour's agent command, whose prompt is quoted for the shell each terminal runs.

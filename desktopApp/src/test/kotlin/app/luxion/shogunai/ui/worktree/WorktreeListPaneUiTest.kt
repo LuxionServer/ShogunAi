@@ -1,5 +1,6 @@
 package app.luxion.shogunai.ui.worktree
 
+import app.luxion.shogunai.domain.ScriptedShellCommandExecutor
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.MaterialTheme
@@ -38,7 +39,6 @@ import app.luxion.shogunai.ui.multirepo.multirepoMemberships
 import app.luxion.shogunai.ui.shell.LocalAppMessages
 import app.luxion.shogunai.ui.shell.rememberAppMessages
 import app.luxion.shogunai.domain.executor.CommandResult
-import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.usecase.ListWorktreesUseCase
 import app.luxion.shogunai.domain.model.RunningAgent
 import app.luxion.shogunai.domain.model.AgentState
@@ -253,10 +253,10 @@ class WorktreeListPaneUiTest {
                 useCases.copy(
                     list = ListWorktreesUseCase(
                         repository.config,
-                        object : ShellCommandExecutor {
-                            override suspend fun execute(command: List<String>, workingDirectory: String?): CommandResult {
+                        object : ScriptedShellCommandExecutor() {
+                            override suspend fun respond(command: List<String>, workingDirectory: String?): CommandResult {
                                 gate.await()
-                                return repository.executor.execute(command, workingDirectory)
+                                return repository.executor.respond(command, workingDirectory)
                             }
                         },
                     ),

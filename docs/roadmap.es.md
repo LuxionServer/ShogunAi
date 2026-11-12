@@ -182,6 +182,8 @@ Quedaron fuera:
 - Soporte de repositorios bare con worktrees (el esquema «bare clone»), que cambia lo que significan el repositorio base y copiar desde él.
   Hoy ShogunAi los rechaza con un error específico.
 - Dividir `ProjectWorktrees.kt` y `ProjectSettingsView.kt` en holders y secciones más pequeños.
+- Dividir `ShogunCli.kt` por familias de comandos, cada una sobre el `ShogunEngine` compartido, y revisar las pocas llamadas que aún cablea distinto del motor (detección de agentes en `remove` y `clean`, daemons de Gradle con sesiones, el reloj de `xcode trim`).
+- Sacar de `AppContainer` los estados de UI y la lógica que aún viven en él (`readComposeStates`, `startEmulatorShownInOrca`…) a holders propios, construidos sobre el `ShogunEngine` compartido.
 - Pasar el resto de ficheros de `~/.shogunai` (`compose-projects.json`, `orca.json`, `derived-data-sizes.json`, estado del entorno, cola de dispositivos, turno de escritorio, sesiones de agentes, registros de aprovisionamiento y dispositivos físicos) al fichero versionado de la máquina que usan `projects.json`, `settings.json`, `trust.json` y `multirepos.json`.
 - Mostrar en la app de escritorio un cambio de ajustes rechazado porque `settings.json` lo escribió una versión más nueva, antes de que algún cambio suba por primera vez la versión de esquema de ese fichero.
 - Comprobar el recorrido guiado en Windows y Linux con una app instalada real: la creación del ejemplo con el Git del sistema, y el comando del agente del recorrido, cuyo prompt se entrecomilla para la shell que ejecuta cada terminal.

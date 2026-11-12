@@ -1,5 +1,7 @@
 package app.luxion.shogunai.cli
 
+import app.luxion.shogunai.engine.EngineOptions
+import app.luxion.shogunai.engine.ShogunEngine
 import app.luxion.shogunai.domain.ScriptedShellCommandExecutor
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.OrcaWorktree
@@ -123,36 +125,44 @@ class EnvironmentCommandsTest {
         trust: RepositoryTrust = FakeRepositoryTrust(approvesEverything = true),
         orca: FakeOrcaClient = FakeOrcaClient(installed = false),
     ) = ShogunCli(
-        executor = executor,
-        fileManager = FakeFileManager(existing = listOf(base, linked)),
-        projectRepository = FakeProjectRepository(if (registered) listOf(project) else emptyList()),
-        provisioningSource = provisioning,
-        daemonSource = daemons,
-        gradleUserHome = "/home/dev/.gradle",
-        environmentStateStore = store,
-        portProbe = FakePortProbe(),
-        androidSdk = androidSdk,
-        appleSimulators = appleSimulators,
-        kmpTestWiring = kmpTestWiring,
-        resourceLimits = resourceLimits,
-        machineCapacity = FakeMachineCapacity(),
-        derivedDataSource = FakeDerivedDataSource(),
-        herdrConfig = FakeHerdrConfigSource(),
-        orca = orca,
+        engine = ShogunEngine(
+            cliEnginePorts(
+                executor = executor,
+                fileManager = FakeFileManager(existing = listOf(base, linked)),
+                projectRepository = FakeProjectRepository(if (registered) listOf(project) else emptyList()),
+                provisioningSource = provisioning,
+                gradleDaemons = daemons,
+                gradleUserHome = "/home/dev/.gradle",
+                environmentStateStore = store,
+                portProbe = FakePortProbe(),
+                androidSdk = androidSdk,
+                appleSimulators = appleSimulators,
+                kmpTestWiring = kmpTestWiring,
+                resourceLimits = resourceLimits,
+                machineCapacity = FakeMachineCapacity(),
+                derivedData = FakeDerivedDataSource(),
+                herdrConfig = FakeHerdrConfigSource(),
+                orca = orca,
+                workingDirectory = workingDirectory,
+                environment = hostEnvironment(variables = environment),
+                trust = trust,
+                deviceWaitQueue = waitQueue,
+                processLiveness = FakeProcessLiveness(),
+            ),
+            EngineOptions(
+                clock = { clock },
+                pauseWhileWaiting = { pause ->
+            clock = clock.plus(pause)
+            onPause()
+        },
+            ),
+        ),
         workingDirectory = workingDirectory,
         out = out,
         err = err,
         readInput = { input },
         canonicalPath = { it.trimEnd('/') },
         environment = hostEnvironment(variables = environment),
-        trust = trust,
-        deviceWaitQueue = waitQueue,
-        processLiveness = FakeProcessLiveness(),
-        deviceClock = { clock },
-        pauseWhileWaiting = { pause ->
-            clock = clock.plus(pause)
-            onPause()
-        },
     )
 
     private fun withEmulator() = FakeRepositoryProvisioningSource(
