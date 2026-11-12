@@ -1310,3 +1310,10 @@ When the repository declares the desktop app provider on macOS, `shogun guide re
 #### Scenario: Full rule printed
 - **WHEN** the user runs `shogun guide resources` on macOS in a worktree of a repository that declares the provider
 - **THEN** the output mentions `shogun headless capture`, not to use the MCP's `take_screenshot`, hiding again after `restart`, what still needs the desktop and `shogun desktop acquire --wait` for it
+
+### Requirement: Report a missing base repository
+A command that lists a project's worktrees SHALL check that the project's base repository folder exists first and, when it doesn't, fail with exit code 1 and a message naming that folder, instead of a Git failure.
+
+#### Scenario: Base repository folder removed
+- **WHEN** a command lists the worktrees of a project whose base repository folder no longer exists
+- **THEN** it prints that the base repository doesn't exist at its path and exits with code 1

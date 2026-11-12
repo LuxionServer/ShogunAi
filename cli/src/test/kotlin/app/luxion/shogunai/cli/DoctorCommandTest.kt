@@ -1,5 +1,6 @@
 package app.luxion.shogunai.cli
 
+import app.luxion.shogunai.engine.ShogunEngine
 import app.luxion.shogunai.domain.FakeAndroidSdk
 import app.luxion.shogunai.domain.FakeAppleSimulators
 import app.luxion.shogunai.domain.FakeDerivedDataSource
@@ -82,29 +83,36 @@ class DoctorCommandTest {
         val environment = SystemHostEnvironment(HostOs.LINUX, mapOf("PATH" to "/usr/bin", "SHELL" to "/bin/bash") + variables, home, loginShell = null)
         val locator = ExecutableLocator(HostOs.LINUX, home, { listOf("/usr/bin") }, isFile = { it in executables })
         return ShogunCli(
-            executor = executor,
-            fileManager = fileManager,
-            projectRepository = FakeProjectRepository(projects),
-            provisioningSource = provisioning,
-            multirepoSource = multirepos,
-            daemonSource = FakeGradleDaemonSource(),
-            gradleUserHome = "$home/.gradle",
-            environmentStateStore = FakeEnvironmentStateStore(),
-            portProbe = FakePortProbe(),
-            androidSdk = FakeAndroidSdk(),
-            appleSimulators = FakeAppleSimulators(),
-            kmpTestWiring = FakeKmpTestWiring(),
-            resourceLimits = FakeResourceLimitsRepository(ResourceSettings(CapacityProfile.PER_WORKTREE)),
-            machineCapacity = FakeMachineCapacity(),
-            derivedDataSource = FakeDerivedDataSource(),
-            herdrConfig = FakeHerdrConfigSource(),
+            engine = ShogunEngine(
+                cliEnginePorts(
+                    executor = executor,
+                    fileManager = fileManager,
+                    projectRepository = FakeProjectRepository(projects),
+                    provisioningSource = provisioning,
+                    multirepos = multirepos,
+                    gradleDaemons = FakeGradleDaemonSource(),
+                    gradleUserHome = "$home/.gradle",
+                    environmentStateStore = FakeEnvironmentStateStore(),
+                    portProbe = FakePortProbe(),
+                    androidSdk = FakeAndroidSdk(),
+                    appleSimulators = FakeAppleSimulators(),
+                    kmpTestWiring = FakeKmpTestWiring(),
+                    resourceLimits = FakeResourceLimitsRepository(ResourceSettings(CapacityProfile.PER_WORKTREE)),
+                    machineCapacity = FakeMachineCapacity(),
+                    derivedData = FakeDerivedDataSource(),
+                    herdrConfig = FakeHerdrConfigSource(),
+                    workingDirectory = "/",
+                    environment = environment,
+                    findExecutable = locator::find,
+                    herdr = FakeHerdrClient(),
+                    orca = FakeOrcaClient(installed = false),
+                ),
+            ),
             workingDirectory = "/",
             out = out,
             err = err,
             environment = environment,
             findExecutable = locator::find,
-            herdr = FakeHerdrClient(),
-            orca = FakeOrcaClient(installed = false),
             commandLineTool = CommandLineTool(
                 os = HostOs.LINUX,
                 appLauncher = null,

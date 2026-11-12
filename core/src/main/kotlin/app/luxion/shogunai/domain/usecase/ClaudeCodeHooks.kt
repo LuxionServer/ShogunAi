@@ -1,6 +1,7 @@
 package app.luxion.shogunai.domain.usecase
 
 import app.luxion.shogunai.domain.io.FileManager
+import app.luxion.shogunai.domain.model.claudeConfigDirectory
 import app.luxion.shogunai.domain.model.ClaudeComputerUse
 import app.luxion.shogunai.domain.model.HooksInstallState
 import app.luxion.shogunai.domain.model.WorktreeError
@@ -207,12 +208,6 @@ class ClaudeCodeHooks(private val fileManager: FileManager) {
 
         fun userSettingsPath(configDirectory: String?, userHome: String): String =
             claudeConfigDirectory(configDirectory, userHome) + "/settings.json"
-
-        fun claudeSessionsDirectory(configDirectory: String?, userHome: String): String =
-            claudeConfigDirectory(configDirectory, userHome) + "/sessions"
-
-        private fun claudeConfigDirectory(configDirectory: String?, userHome: String): String =
-            (configDirectory?.takeIf { it.isNotBlank() } ?: "$userHome/.claude").trimEnd('/')
 
         fun projectSettingsPath(repository: String): String = repository.trimEnd('/') + "/.claude/settings.json"
     }

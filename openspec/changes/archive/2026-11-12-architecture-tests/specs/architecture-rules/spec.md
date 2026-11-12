@@ -25,7 +25,7 @@ No file of `core`'s domain SHALL import a declaration from the infrastructure pa
 - **THEN** the tests fail naming that import
 
 ### Requirement: Domain packages have no cycles
-Inside the domain, models SHALL import no other project package, executor ports SHALL import none, the other ports SHALL import only models and executor ports, and use cases and infrastructure SHALL never import each other.
+Inside the domain, models SHALL import no other project package, executor ports SHALL import none, the other ports SHALL import only models and executor ports, and use cases and infrastructure SHALL never import each other. The engine package SHALL import only models, ports and use cases, and no other package of `core` SHALL import it.
 
 #### Scenario: Model importing a use case
 - **WHEN** a file of the domain's model package imports a declaration from the use case package
@@ -37,6 +37,10 @@ Inside the domain, models SHALL import no other project package, executor ports 
 
 #### Scenario: Infrastructure importing a use case
 - **WHEN** a file of `core`'s infrastructure imports a declaration from the use case package
+- **THEN** the tests fail naming that import
+
+#### Scenario: Infrastructure importing the engine
+- **WHEN** a file of `core`'s infrastructure imports a declaration from the engine package
 - **THEN** the tests fail naming that import
 
 #### Scenario: Current sources

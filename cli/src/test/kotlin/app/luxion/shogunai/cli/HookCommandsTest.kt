@@ -1,5 +1,6 @@
 package app.luxion.shogunai.cli
 
+import app.luxion.shogunai.engine.ShogunEngine
 import app.luxion.shogunai.domain.ScriptedShellCommandExecutor
 import app.luxion.shogunai.domain.model.FlutterProvider
 import app.luxion.shogunai.domain.FakeAgentSessionStore
@@ -111,37 +112,43 @@ class HookCommandsTest {
         orca: FakeOrcaClient = FakeOrcaClient(installed = false),
         gitHub: FakeGitHubClient = FakeGitHubClient(),
     ) = ShogunCli(
-        executor = executor,
-        fileManager = FakeFileManager(existing = existing),
-        projectRepository = FakeProjectRepository(projects),
-        provisioningSource = FakeRepositoryProvisioningSource(
+        engine = ShogunEngine(
+            cliEnginePorts(
+                executor = executor,
+                fileManager = FakeFileManager(existing = existing),
+                projectRepository = FakeProjectRepository(projects),
+                provisioningSource = FakeRepositoryProvisioningSource(
             byRepository = mapOf(base to provisioning),
         ),
-        daemonSource = FakeGradleDaemonSource(),
-        gradleUserHome = "/home/dev/.gradle",
-        environmentStateStore = environmentStore,
-        portProbe = FakePortProbe(),
-        androidSdk = androidSdk,
-        appleSimulators = appleSimulators,
-        kmpTestWiring = kmpTestWiring,
-        resourceLimits = resourceLimits,
-        machineCapacity = FakeMachineCapacity(),
-        derivedDataSource = FakeDerivedDataSource(),
-        herdrConfig = FakeHerdrConfigSource(),
-        orca = orca,
-        gitHub = gitHub,
+                gradleDaemons = FakeGradleDaemonSource(),
+                gradleUserHome = "/home/dev/.gradle",
+                environmentStateStore = environmentStore,
+                portProbe = FakePortProbe(),
+                androidSdk = androidSdk,
+                appleSimulators = appleSimulators,
+                kmpTestWiring = kmpTestWiring,
+                resourceLimits = resourceLimits,
+                machineCapacity = FakeMachineCapacity(),
+                derivedData = FakeDerivedDataSource(),
+                herdrConfig = FakeHerdrConfigSource(),
+                orca = orca,
+                gitHub = gitHub,
+                workingDirectory = "/",
+                environment = hostEnvironment("/home/dev", environment),
+                herdr = herdr,
+                trust = trust,
+                agentSessions = sessionStore,
+                desktopTurns = desktopTurnStore,
+            ),
+        ),
         workingDirectory = "/",
         out = out,
         err = err,
         readInput = { input },
         canonicalPath = { it.trimEnd('/') },
         environment = hostEnvironment("/home/dev", environment),
-        herdr = herdr,
-        trust = trust,
         readAnswer = { "y" },
-        sessionStore = sessionStore,
         agentProcessId = { 4242L },
-        desktopTurnStore = desktopTurnStore,
     )
 
     private fun createInput(name: String, cwd: String = base) =

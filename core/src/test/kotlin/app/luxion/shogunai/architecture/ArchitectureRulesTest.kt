@@ -34,6 +34,21 @@ class ArchitectureRulesTest {
     }
 
     @Test
+    fun `the engine wires use cases, and nothing in core imports it`() {
+        val engine = core("engine/E.kt", "app.luxion.shogunai.engine", "import app.luxion.shogunai.domain.usecase.ListWorktreesUseCase", "import app.luxion.shogunai.infrastructure.NioFileManager")
+        val adapter = core("infrastructure/I.kt", "app.luxion.shogunai.infrastructure", "import app.luxion.shogunai.engine.ShogunEngine")
+        val useCase = core("domain/usecase/U.kt", "app.luxion.shogunai.domain.usecase", "import app.luxion.shogunai.engine.ShogunEngine")
+        assertEquals(
+            listOf(
+                "core/src/main/kotlin/app/luxion/shogunai/engine/E.kt:4: app.luxion.shogunai.engine must not depend on app.luxion.shogunai.infrastructure (app.luxion.shogunai.infrastructure.NioFileManager)",
+                "core/src/main/kotlin/app/luxion/shogunai/infrastructure/I.kt:3: app.luxion.shogunai.infrastructure must not depend on app.luxion.shogunai.engine (app.luxion.shogunai.engine.ShogunEngine)",
+                "$domain/usecase/U.kt:3: app.luxion.shogunai.domain.usecase must not depend on app.luxion.shogunai.engine (app.luxion.shogunai.engine.ShogunEngine)",
+            ),
+            CoreLayers.violations(tree(engine, adapter, useCase)),
+        )
+    }
+
+    @Test
     fun `system access outside the list fails, and a stale entry fails too`() {
         val useCase = core("domain/usecase/U.kt", "app.luxion.shogunai.domain.usecase", "import java.io.File", "val p = System.getProperty(\"os.name\")")
         val listed = core("domain/model/M.kt", "app.luxion.shogunai.domain.model", "import java.nio.file.Path")

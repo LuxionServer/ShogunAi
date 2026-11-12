@@ -32,22 +32,29 @@ core/src/main/kotlin/app/luxion/shogunai/
 │   │                 #   GradleDaemonSource, DerivedDataSource
 │   └── usecase/      # worktrees (create, list, provision, remove, repair, clean up, status, overview),
 │                     #   environment and ports, providers (Gradle, emulator, simulator, Xcode), Herdr, Orca
-└── infrastructure/   # concrete implementations of the domain ports
+├── engine/           # ShogunEngine: the one wiring of the use cases, shared by the app and the CLI
+└── infrastructure/   # concrete implementations of the domain ports, and hostEnginePorts
 core/build/generated/buildInfo/  # BuildInfo.VERSION, shared by the app and the CLI
 
 desktopApp/src/main/kotlin/app/luxion/shogunai/
 ├── infrastructure/   # AwtClipboardWriter
 ├── ui/               # Compose screens, ViewModels, and navigation
-├── AppContainer.kt   # wires domain + infrastructure for the UI, no DI framework
+├── AppContainer.kt   # builds the engine for the UI and holds the UI's states, no DI framework
 └── main.kt           # entry point: runs the CLI with arguments, opens the window without
 
 cli/src/main/kotlin/app/luxion/shogunai/cli/
 ├── CliCommand.kt     # argument parsing into a sealed CliCommand
-├── ShogunCli.kt      # runs each command on top of core's use cases
+├── ShogunCli.kt      # runs each command on top of the engine's use cases
 └── Main.kt           # standalone entry point (runShogun)
 ```
 
-The domain is defined in terms of **ports** (interfaces), so each port can be swapped for a test double (`FakeShellCommandExecutor`, `FakeFileManager`) in use case tests, without touching disk or launching real processes.
+### One composition graph
+
+`ShogunEngine` (`core`, package `engine`) is the only place where use cases are wired to each other. It receives `EnginePorts`, a data class with every port the shared use cases need and no defaults, so a forgotten port is a compile error rather than a silently disabled feature, and `EngineOptions` (clock, pauses, the optional `WorktreeEnvironmentCache`). It exposes the machine-wide use cases already wired (environment resolution, resource pools, devices, simulators, emulators, the headless app, the desktop turn, physical devices, Gradle, Maven, Compose, DerivedData, multirepos, agent detection) and, through `project(config)`, a `ProjectEngine` with the use cases that take a `ProjectConfig` (list, create, provision, remove, clean up, branches); the ones that ask for a repository approval take it per call.
+
+`hostEnginePorts` (`infrastructure`) chooses the real implementation of every port for a host environment, once for both surfaces. The two choices that differ between them are its parameters: the desktop app shares emulator-state reads between its panels (`SharedDeviceStatesAndroidSdk`) and the command line doesn't, and each tells physical devices which folder to locate the Android SDK from (the CLI's working directory, the app's home). The app also passes a `WorktreeEnvironmentCache`, which the CLI, one command per process, doesn't need. Tests build the engine from `fakeEnginePorts(...)` in `core`'s test fixtures.
+
+The domain is defined in terms of **ports** (interfaces) and doesn't know about `ProcessBuilder` or `java.nio.file` directly; that lets each port be swapped for a test double (`FakeShellCommandExecutor`, `FakeFileManager`) in use case tests, without touching disk or launching real processes.
 
 ## Rules checked by the build
 
@@ -60,6 +67,7 @@ The tests in `core/src/test/kotlin/app/luxion/shogunai/architecture/` read the s
 | `domain.io` | `domain.model`, `domain.executor` |
 | `domain.usecase` | `domain.model`, `domain.executor`, `domain.io` |
 | `infrastructure` | `domain.model`, `domain.executor`, `domain.io` |
+| `engine` | `domain.model`, `domain.executor`, `domain.io`, `domain.usecase` |
 
 - **The domain doesn't touch the system**: no `java.io.File`, `java.nio.file`, `kotlin.io.path`, `System.getProperty`, `ProcessBuilder` or `Runtime` in `domain/`.
 - **Composition roots**: in the desktop app, only `main.kt` and `AppContainer.kt` use infrastructure, and `runShogun` is the only thing it uses from the CLI; in the CLI, only `Main.kt` and `ShogunCli.kt` use infrastructure.

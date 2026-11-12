@@ -1,5 +1,6 @@
 package app.luxion.shogunai.cli
 
+import app.luxion.shogunai.engine.ShogunEngine
 import app.luxion.shogunai.domain.ScriptedShellCommandExecutor
 import app.luxion.shogunai.domain.executor.CommandExecutionException
 import app.luxion.shogunai.domain.model.FlutterProvider
@@ -202,47 +203,53 @@ class ShogunCliTest {
         runner: app.luxion.shogunai.domain.io.ToolPreferenceRepository = FakeToolPreferenceRepository(),
         onShutdown: (Thread) -> () -> Unit = { hook -> Runtime.getRuntime().addShutdownHook(hook); { Runtime.getRuntime().removeShutdownHook(hook) } },
     ) = ShogunCli(
-        executor = executor,
-        fileManager = fileManager,
-        projectRepository = projectRepository,
-        provisioningSource = provisioning,
-        daemonSource = daemons,
-        gradleUserHome = gradleUserHome,
-        environmentStateStore = environmentStore,
-        portProbe = FakePortProbe(),
-        androidSdk = androidSdk,
-        appleSimulators = appleSimulators,
-        kmpTestWiring = kmpTestWiring,
-        resourceLimits = resourceLimits,
-        machineCapacity = FakeMachineCapacity(),
-        derivedDataSource = derivedDataSource,
-        herdrConfig = FakeHerdrConfigSource(herdrWorktreesRoot),
-        orca = orca,
-        gitHub = gitHub,
-        orcaWorkspaces = orcaWorkspaces,
+        engine = ShogunEngine(
+            cliEnginePorts(
+                executor = executor,
+                fileManager = fileManager,
+                projectRepository = projectRepository,
+                provisioningSource = provisioning,
+                gradleDaemons = daemons,
+                gradleUserHome = gradleUserHome,
+                environmentStateStore = environmentStore,
+                portProbe = FakePortProbe(),
+                androidSdk = androidSdk,
+                appleSimulators = appleSimulators,
+                kmpTestWiring = kmpTestWiring,
+                resourceLimits = resourceLimits,
+                machineCapacity = FakeMachineCapacity(),
+                derivedData = derivedDataSource,
+                herdrConfig = FakeHerdrConfigSource(herdrWorktreesRoot),
+                orca = orca,
+                gitHub = gitHub,
+                orcaWorkspaces = orcaWorkspaces,
+                workingDirectory = workingDirectory,
+                herdr = herdr,
+                trust = trust,
+                environment = hostEnvironment("/home/dev", environment),
+                agentSessions = sessionStore,
+                mavenDaemons = mavenDaemons,
+                composeProjects = composeProjects,
+                composeRegistry = composeRegistry,
+                provisioningRecords = records,
+                claudeSessions = claudeSessions,
+                packageCaches = { packageCaches },
+                physicalDevices = listOf(physicalDevices),
+                deviceInventory = deviceInventory,
+                deviceLeases = deviceLeases,
+            ),
+        ),
         workingDirectory = workingDirectory,
         out = out,
         err = err,
         canonicalPath = canonicalPath,
         now = { now },
-        herdr = herdr,
         toolPreferences = runner,
         herdrAgentStartTimeout = 100.milliseconds,
-        trust = trust,
         readAnswer = { answer },
         environment = hostEnvironment("/home/dev", environment),
-        sessionStore = sessionStore,
-        mavenDaemonSource = mavenDaemons,
-        composeSource = composeProjects,
-        composeRegistry = composeRegistry,
-        provisioningRecords = records,
-        claudeSessions = claudeSessions,
-        packageCacheSource = { packageCaches },
         isClaudeProcessAlive = { true },
         onShutdown = onShutdown,
-        physicalDeviceSources = listOf(physicalDevices),
-        deviceInventory = deviceInventory,
-        deviceLeases = deviceLeases,
     )
 
     private val gradleUserHome = "/home/dev/.gradle"
@@ -964,7 +971,7 @@ class ShogunCliTest {
     @Test
     fun `gradle names the build holding a busy daemon and the session that started it`() {
         val daemons = heldDaemons(GradleClient(81234, listOf("benchRun"), listOf(81200, 700, 500)))
-        val fileManager = FakeFileManager(existing = listOf(base, merged))
+        val fileManager = FakeFileManager(existing = listOf(base, merged, appsProject.config.baseRepositoryPath))
 
         val exitCode = cli(appsExecutor(), projects = listOf(project, appsProject), fileManager = fileManager, daemons = daemons, sessionStore = heldSessions)
             .run(listOf("gradle"))
@@ -1698,6 +1705,21 @@ class ShogunCliTest {
             ),
             out.lines().filter { it.isNotEmpty() },
         )
+    }
+
+    @Test
+    fun `doctor looks tools up on the host's PATH by default`() {
+        cli(repositoryExecutor()).run(listOf("doctor"))
+
+        assertTrue("--    Herdr not found" in out.lines(), out.toString())
+    }
+
+    @Test
+    fun `status names a base repository folder that no longer exists`() {
+        val exitCode = cli(repositoryExecutor(), fileManager = FakeFileManager()).run(listOf("status"))
+
+        assertEquals(1, exitCode)
+        assertEquals("shogun: Base repository doesn't exist: $base\n", err.toString())
     }
 
     private class ConcurrencyRecordingExecutor(private val delegate: ScriptedShellCommandExecutor) : ScriptedShellCommandExecutor() {
@@ -4469,7 +4491,7 @@ class ShogunCliTest {
     fun `gradle json adds the holding build of a busy daemon and null for an idle one`() {
         val daemons = heldDaemons(GradleClient(81234, listOf("benchRun"), listOf(81200, 700, 500)))
 
-        val exitCode = cli(appsExecutor(), projects = listOf(project, appsProject), fileManager = FakeFileManager(existing = listOf(base, merged)), daemons = daemons, sessionStore = heldSessions)
+        val exitCode = cli(appsExecutor(), projects = listOf(project, appsProject), fileManager = FakeFileManager(existing = listOf(base, merged, appsProject.config.baseRepositoryPath)), daemons = daemons, sessionStore = heldSessions)
             .run(listOf("gradle", "--json"))
 
         assertEquals(0, exitCode, err.toString())

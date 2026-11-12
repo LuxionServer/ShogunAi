@@ -32,22 +32,29 @@ core/src/main/kotlin/app/luxion/shogunai/
 │   │                 #   GradleDaemonSource, DerivedDataSource
 │   └── usecase/      # worktrees (crear, listar, provisionar, eliminar, reparar, limpiar, estado, vista general),
 │                     #   entorno y puertos, providers (Gradle, emulador, simulador, Xcode), Herdr, Orca
-└── infrastructure/   # implementaciones concretas de los puertos de dominio
+├── engine/           # ShogunEngine: el único cableado de los casos de uso, compartido por la app y la CLI
+└── infrastructure/   # implementaciones concretas de los puertos de dominio, y hostEnginePorts
 core/build/generated/buildInfo/  # BuildInfo.VERSION, compartido por la app y el CLI
 
 desktopApp/src/main/kotlin/app/luxion/shogunai/
 ├── infrastructure/   # AwtClipboardWriter
 ├── ui/               # pantallas Compose, ViewModels y navegación
-├── AppContainer.kt   # cablea dominio + infraestructura para la UI, sin DI framework
+├── AppContainer.kt   # construye el motor para la UI y guarda los estados de la UI, sin DI framework
 └── main.kt           # punto de entrada: ejecuta el CLI con argumentos, abre la ventana sin ellos
 
 cli/src/main/kotlin/app/luxion/shogunai/cli/
 ├── CliCommand.kt     # parsing de argumentos a un CliCommand sellado
-├── ShogunCli.kt      # ejecuta cada comando sobre los casos de uso de core
+├── ShogunCli.kt      # ejecuta cada comando sobre los casos de uso del motor
 └── Main.kt           # punto de entrada independiente (runShogun)
 ```
 
-El dominio se define en términos de **puertos** (interfaces), así que cada puerto se puede sustituir por un doble de prueba (`FakeShellCommandExecutor`, `FakeFileManager`) en los tests de casos de uso, sin tocar disco ni lanzar procesos reales.
+### Un único grafo de composición
+
+`ShogunEngine` (`core`, paquete `engine`) es el único sitio donde se cablean los casos de uso entre sí. Recibe `EnginePorts`, una data class con cada puerto que necesitan los casos de uso compartidos y sin valores por defecto, así que un puerto olvidado es un error de compilación y no una función desactivada en silencio, y `EngineOptions` (reloj, pausas y la `WorktreeEnvironmentCache` opcional). Expone ya cableados los casos de uso de la máquina (resolución del entorno, pools de recursos, dispositivos, simuladores, emuladores, la app headless, el turno de escritorio, dispositivos físicos, Gradle, Maven, Compose, DerivedData, multirepos, detección de agentes) y, mediante `project(config)`, un `ProjectEngine` con los que reciben un `ProjectConfig` (listar, crear, provisionar, eliminar, limpiar, ramas); los que piden la aprobación de un repositorio la reciben en cada llamada.
+
+`hostEnginePorts` (`infrastructure`) elige la implementación real de cada puerto para un entorno de host, una sola vez para las dos superficies. Las dos elecciones que difieren entre ellas son sus parámetros: la app de escritorio comparte las lecturas del estado de los emuladores entre sus paneles (`SharedDeviceStatesAndroidSdk`) y la línea de comandos no, y cada una indica a los dispositivos físicos desde qué carpeta localizar el SDK de Android (el directorio de trabajo de la CLI, el home de la app). La app además pasa una `WorktreeEnvironmentCache`, que la CLI, un comando por proceso, no necesita. Los tests construyen el motor con `fakeEnginePorts(...)` de los test fixtures de `core`.
+
+El dominio se define en términos de **puertos** (interfaces) y no conoce `ProcessBuilder` ni `java.nio.file` directamente; eso permite sustituir cada puerto por un doble de prueba (`FakeShellCommandExecutor`, `FakeFileManager`) en los tests de casos de uso, sin tocar disco ni lanzar procesos reales.
 
 ## Reglas que comprueba el build
 
@@ -60,6 +67,7 @@ Los tests de `core/src/test/kotlin/app/luxion/shogunai/architecture/` leen los f
 | `domain.io` | `domain.model`, `domain.executor` |
 | `domain.usecase` | `domain.model`, `domain.executor`, `domain.io` |
 | `infrastructure` | `domain.model`, `domain.executor`, `domain.io` |
+| `engine` | `domain.model`, `domain.executor`, `domain.io`, `domain.usecase` |
 
 - **El dominio no toca el sistema**: nada de `java.io.File`, `java.nio.file`, `kotlin.io.path`, `System.getProperty`, `ProcessBuilder` ni `Runtime` en `domain/`.
 - **Raíces de composición**: en la app de escritorio, solo `main.kt` y `AppContainer.kt` usan infraestructura, y `runShogun` es lo único que usa de la CLI; en la CLI, solo `Main.kt` y `ShogunCli.kt` usan infraestructura.

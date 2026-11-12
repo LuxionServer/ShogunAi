@@ -63,6 +63,7 @@ Packages are compared by prefix:
 | `domain.io` | `domain.model`, `domain.executor` |
 | `domain.usecase` | `domain.model`, `domain.executor`, `domain.io` |
 | `infrastructure` (`core`) | `domain.model`, `domain.executor`, `domain.io` |
+| `engine` (`core`) | `domain.model`, `domain.executor`, `domain.io`, `domain.usecase` |
 
 `app.luxion.shogunai.BuildInfo` (generated, root package) is allowed everywhere. The table is the rule; there's no exception list for it.
 
@@ -73,6 +74,7 @@ Each one goes to the lowest package every user can import, keeping its file name
 - `usecase/SameDirectory.kt` → `model/SameDirectory.kt`, and `normalizePath` (from `usecase/WorktreeOverview.kt`, which it needs) into it. `Multirepo.kt` already lives in `model`; the use cases that used them from the same package gain an import. `isInside` stays in `WorktreeOverview.kt`.
 - `CommandLineToolState` (`usecase/CommandLineTool.kt`) and `HooksInstallState` (`usecase/ClaudeCodeHooks.kt`) → `model/InstallationCheck.kt`, which already describes the installation report built from them. `HostPathSource` (`io/HostEnvironment.kt`) → the same file: it is a value of the report too.
 - `WorktreeGroup` and `GroupWorktree` (`usecase/DetectGroupsUseCase.kt`) → new `model/WorktreeGroup.kt`. `MultirepoWorktrees` and `MultirepoMember` stay, since only use cases use them.
+- Brought in from `develop` while this change was open: `runSuspendCatching` (`domain/Cancellation.kt`, root `domain` package, used by use cases and infrastructure) → `model/Cancellation.kt`; `claudeSessionsDirectory` and the config directory it derives from (companion of `usecase/ClaudeCodeHooks.kt`, used by `infrastructure/HostEnginePorts.kt`) → new `model/ClaudePaths.kt`; `EnginePorts` (`engine/EnginePorts.kt`, a bundle of ports built by `infrastructure/HostEnginePorts.kt`) → `io/EnginePorts.kt`.
 - `parseLsofWorkingDirectories` (`usecase/DetectRunningAgentsUseCase.kt`) → new `model/LsofOutput.kt`: a pure parser that both a use case and an adapter need.
 - `usecase/GradleBuilds.kt` → `io/GradleBuilds.kt`: its functions are helpers over the `FileManager` port, so they sit next to it; `model` can't hold them because it can't import `io`. Its test moves along.
 

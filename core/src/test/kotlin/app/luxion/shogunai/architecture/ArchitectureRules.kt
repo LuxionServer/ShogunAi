@@ -5,6 +5,7 @@ private const val MODEL = "$DOMAIN.model"
 private const val EXECUTOR = "$DOMAIN.executor"
 private const val IO = "$DOMAIN.io"
 private const val USECASE = "$DOMAIN.usecase"
+private const val ENGINE = "$PROJECT_PACKAGE.engine"
 const val INFRASTRUCTURE = "$PROJECT_PACKAGE.infrastructure"
 const val DOMAIN_SOURCES = "core/src/main/kotlin/app/luxion/shogunai/domain"
 
@@ -22,6 +23,7 @@ object CoreLayers {
         IO to setOf(MODEL, EXECUTOR),
         USECASE to setOf(MODEL, EXECUTOR, IO),
         INFRASTRUCTURE to setOf(MODEL, EXECUTOR, IO),
+        ENGINE to setOf(MODEL, EXECUTOR, IO, USECASE),
     )
 
     private fun layerOf(name: String): String? = allowed.keys.firstOrNull { name.isIn(it) }
