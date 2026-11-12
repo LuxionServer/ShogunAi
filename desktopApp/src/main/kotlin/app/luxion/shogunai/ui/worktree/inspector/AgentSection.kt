@@ -19,14 +19,14 @@ import java.time.Instant
 @Composable
 fun AgentSection(worktree: Worktree, agents: Map<String, List<RunningAgent>>?, readAt: Instant?, runsWith: String) {
     val strings = LocalStrings.current
-    val running = agents?.get(worktree.path).orEmpty()
+    val running = agents?.get(worktree.path).orEmpty().mapNotNull { agent -> agentIndicator(listOf(agent), readAt, Instant.now(), strings)?.let { agent to it } }
     InspectorSection(
         id = InspectorSectionId.AGENT,
         title = strings.agentSectionTitle,
         state = agentSectionState(agents, worktree, runsWith, strings),
     ) {
-        running.forEach { agent ->
-            agentIndicator(listOf(agent), readAt, Instant.now(), strings)?.let { AgentIndicator(it, size = AgentIndicatorSize.LARGE) }
+        running.forEach { (agent, indicator) ->
+            AgentIndicator(indicator, size = AgentIndicatorSize.LARGE)
             agent.activity?.let { activity ->
                 agentActivityLines(activity, strings).forEach { line ->
                     Text(

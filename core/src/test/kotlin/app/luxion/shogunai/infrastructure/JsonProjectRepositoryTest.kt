@@ -6,6 +6,8 @@ import app.luxion.shogunai.domain.model.EmulatorSettings
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.newProject
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
@@ -366,5 +368,19 @@ class JsonProjectRepositoryTest {
         storagePath.writeText(" ")
 
         assertEquals(emptyList(), repository.list())
+    }
+
+    @Test
+    fun `a project field this version doesn't know survives saving another project and the file stays a list`() {
+        repository.save(newProject("existing", "/home/dev/projects/main-repo"))
+        val stored = Json.parseToJsonElement(Files.readString(storagePath)).jsonArray
+        val withFuture = JsonObject(stored.single().jsonObject + ("future" to JsonPrimitive("kept")))
+        storagePath.writeText(JsonArray(listOf(withFuture)).toString())
+
+        repository.save(newProject("added", "/home/dev/projects/other-repo"))
+
+        val written = Json.parseToJsonElement(Files.readString(storagePath)).jsonArray
+        assertEquals(JsonPrimitive("kept"), written.first().jsonObject["future"])
+        assertEquals(listOf("existing", "added"), repository.list().map { it.id })
     }
 }

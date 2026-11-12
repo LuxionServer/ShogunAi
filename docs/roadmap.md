@@ -99,9 +99,10 @@ Neither showed up on the developer's machine, whose own setup hides them.
 In order:
 
 - Tests that hold the product to it:
-  - Raising the coverage floors that CI enforces up to 100%: the lines (91% today) and branches (78%) of the desktop app outside its composables, which the end-to-end tests cover.
+  - Raising the coverage floors that CI enforces up to 100%: the lines (93% today) and branches (87%) of the desktop app outside its composables, which the end-to-end tests cover.
     Lines of `core` and `cli`, branches of `cli`, every branch of `core` that some input can reach, and the desktop app's texts and project settings are already covered.
-    The desktop app goes up one package per change, in this order: worktrees and their inspector, the shell and the menu bar icon, the machine views and multirepos, shared components, and last the app's wiring.
+    The worktrees and their inspector are covered but for 41 branches of their list, rows and action bars, left for the shared components' change.
+    The desktop app goes up one package per change, in this order: the shell and the menu bar icon, the machine views and multirepos, shared components, and last the app's wiring.
 - The Gradle checks of `shogun doctor` and "Check Installation" for a Gradle build in a subfolder, such as `android/` in a Flutter repository: today they only read the repository's root.
 
 ### Orca, a second first-class runner
@@ -181,6 +182,8 @@ Left out:
 - Support for bare repositories with worktrees (the "bare clone" layout), which changes what the base repository and copying from it mean.
   Today ShogunAi rejects them with a specific error.
 - Splitting `ProjectWorktrees.kt` and `ProjectSettingsView.kt` into smaller holders and sections.
+- Moving the other files in `~/.shogunai` (`compose-projects.json`, `orca.json`, `derived-data-sizes.json`, environment state, device queue, desktop turn, agent sessions, provisioning records and physical devices) to the versioned machine file that `projects.json`, `settings.json`, `trust.json` and `multirepos.json` use.
+- Showing in the desktop app a settings change refused because `settings.json` was written by a newer version, before any change first raises that file's schema version.
 - Checking the guided tour on Windows and Linux with a real installed app: creating the sample with the system's Git, and the tour's agent command, whose prompt is quoted for the shell each terminal runs.
 - Removing Cmd/Ctrl+E, kept for one release as an alias of Cmd/Ctrl+O when the shortcut moved to the default runner.
 - Showing the build that holds a busy Gradle daemon in the desktop app's Gradle view; today `shogun gradle` names it, with its client, tasks and the agent session that started it.

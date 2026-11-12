@@ -1,5 +1,6 @@
 package app.luxion.shogunai.infrastructure
 
+import app.luxion.shogunai.domain.model.WorktreeError
 import java.io.IOException
 import java.nio.file.Files
 import kotlin.io.path.createTempDirectory
@@ -8,6 +9,8 @@ import kotlin.test.AfterTest
 import kotlin.test.assertFailsWith
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 class LocalFileLockTest {
 
@@ -27,11 +30,21 @@ class LocalFileLockTest {
     }
 
     @Test
-    fun `runs the block unlocked when the lock file can't be created or locked`() {
+    fun `fails naming the file instead of running unlocked when the lock file can't be created or locked`() {
         val blocker = root.resolve("file").also { it.writeText("not a folder") }
+        var ran = false
 
-        assertEquals("unlocked", LocalFileLock.withLock(blocker.resolve("settings.json")) { "unlocked" })
-        assertEquals("unlocked", LocalFileLock.withLock(root.resolve("projects.json"), { throw IOException("locks unsupported") }) { "unlocked" })
+        val uncreatable = assertFailsWith<WorktreeError.LocalFileUnreadable> {
+            LocalFileLock.withLock(blocker.resolve("settings.json")) { ran = true }
+        }
+        val unsupported = assertFailsWith<WorktreeError.LocalFileUnreadable> {
+            LocalFileLock.withLock(root.resolve("projects.json"), { throw IOException("locks unsupported") }) { ran = true }
+        }
+
+        assertFalse(ran)
+        assertEquals(blocker.resolve("settings.json").toString(), uncreatable.path)
+        assertTrue(uncreatable.reason!!.startsWith("can't lock ${blocker.resolve("settings.json.lock")}"))
+        assertEquals("can't lock ${root.resolve("projects.json.lock")}: locks unsupported", unsupported.reason)
     }
 
     @Test
@@ -40,7 +53,6 @@ class LocalFileLockTest {
 
         assertEquals("inner", LocalFileLock.withLock(target) { LocalFileLock.withLock(target) { "inner" } })
         assertFailsWith<IllegalStateException> { LocalFileLock.withLock(target) { error("boom") } }
-        assertFailsWith<IllegalStateException> { LocalFileLock.withLock(root.resolve("other.json"), { throw IOException("locks unsupported") }) { error("boom") } }
         assertEquals("again", LocalFileLock.withLock(target) { "again" })
     }
 }
