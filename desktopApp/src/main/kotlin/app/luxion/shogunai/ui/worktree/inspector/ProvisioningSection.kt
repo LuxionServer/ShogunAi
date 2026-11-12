@@ -19,12 +19,12 @@ import app.luxion.shogunai.ui.worktree.ProvisioningState
 @Composable
 fun ProvisioningSection(worktree: Worktree, state: ProvisioningState?, isProvisioning: Boolean, onProvision: () -> Unit) {
     val strings = LocalStrings.current
+    val drift = (state as? ProvisioningState.Checked)?.drift.orEmpty()
     InspectorSection(
         id = InspectorSectionId.PROVISIONING,
         title = strings.provisioningTitle,
         state = provisioningSectionState(worktree, state, strings),
     ) {
-        val drift = (state as? ProvisioningState.Checked)?.drift.orEmpty()
         PropertyList(drift.map { Property(it.path, strings.provisionDriftState(it.state), isData = false) })
         Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm), verticalAlignment = Alignment.CenterVertically) {
             SecondaryButton(onClick = onProvision, enabled = !isProvisioning) { Text(strings.provisionAction) }

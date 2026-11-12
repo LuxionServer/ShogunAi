@@ -200,10 +200,10 @@ kover {
         }
         verify {
             rule("desktop app lines") {
-                minBound(91, CoverageUnit.LINE)
+                minBound(94, CoverageUnit.LINE)
             }
             rule("desktop app branches") {
-                minBound(79, CoverageUnit.BRANCH)
+                minBound(87, CoverageUnit.BRANCH)
             }
         }
     }

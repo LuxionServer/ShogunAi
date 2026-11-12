@@ -50,8 +50,6 @@ import app.luxion.shogunai.ui.components.Spacing
 import app.luxion.shogunai.ui.components.StateAction
 import app.luxion.shogunai.ui.components.handPointer
 import app.luxion.shogunai.ui.components.onNewItemShortcut
-import app.luxion.shogunai.ui.actions.ActionId
-import app.luxion.shogunai.ui.actions.OpenTarget
 import app.luxion.shogunai.ui.actions.PerformAction
 import app.luxion.shogunai.ui.actions.ViewActionContext
 import app.luxion.shogunai.ui.actions.toMenu
@@ -150,7 +148,7 @@ private fun ViewHeader(board: WorktreeBoard, onOpenProjectSettings: (Project) ->
     val multirepo = board.shownMultirepo
     val reviewReason = CleanupBlock.NeedsReview.describe(strings).takeIf { multirepo?.multirepo?.approved == false }
     val cleanUpBlock = board.cleanUpBlock()
-    val shownHolders = board.shownProjects.mapNotNull { board.holder(it.id) }
+    val shownHolders = board.shownHolders.map { it.holder }
     val catalog = viewCatalog(
         ViewActionContext(
             isMultirepo = multirepo != null,
@@ -170,16 +168,7 @@ private fun ViewHeader(board: WorktreeBoard, onOpenProjectSettings: (Project) ->
         ),
         strings,
     )
-    val performView: PerformAction = { spec, _ ->
-        when (spec.id) {
-            ActionId.OpenMultirepoAgent(OpenTarget.HERDR) -> board.openMultirepoAgent()
-            ActionId.OpenMultirepoAgent(OpenTarget.ORCA) -> board.openMultirepoAgentInOrca()
-            ActionId.CleanUp -> board.openCleanup()
-            ActionId.NewChange -> board.openNewChange()
-            ActionId.NewWorktree -> board.openCreateDialog()
-            else -> Unit
-        }
-    }
+    val performView: PerformAction = { spec, _ -> board.performViewAction(spec.id) }
     val viewOptions = ViewOptions(
         projects = board.projects.takeIf { !board.isProjectView && !board.isMultirepoView },
         selectedProjectId = board.viewProjectFilter,
@@ -195,7 +184,7 @@ private fun ViewHeader(board: WorktreeBoard, onOpenProjectSettings: (Project) ->
     )
     ViewHeaderRow(
         title = multirepo?.name ?: filteredProject?.name ?: if (board.isActiveView) strings.activeWorktrees else strings.allWorktrees,
-        isBusy = board.shownProjects.any { it.id.let(board::holder)?.isLoading == true } || (board.isActiveView && board.isReadingActivity),
+        isBusy = shownHolders.any { it.isLoading } || (board.isActiveView && board.isReadingActivity),
         filter = HeaderFilterState(board.textFilter, board::updateTextFilter, board::clearTextFilter, board.findRequests),
         viewMenu = viewOptionsMenu(viewOptions, handlers, strings),
         cleanUp = catalog.cleanUp,
@@ -447,7 +436,7 @@ private val WorktreeDetailWidth = ShogunLayout.inspectorWidth
 
 internal fun isInspectorDocked(contentWidth: Dp): Boolean = contentWidth >= ShogunLayout.inspectorDockMinWidth
 
-private fun Strings.successMessage(success: WorktreeSuccess): String = when (success) {
+internal fun Strings.successMessage(success: WorktreeSuccess): String = when (success) {
     is WorktreeSuccess.Created ->
         if (success.commandsSkipped) worktreeCreatedCommandsSkipped(File(success.path).name) else worktreeCreated(File(success.path).name)
     WorktreeSuccess.RepairedAfterMove -> worktreesRepairedAfterMove
@@ -484,7 +473,7 @@ private fun Strings.successMessage(success: WorktreeSuccess): String = when (suc
     ).joinToString(" · ")
 }
 
-private fun PendingSuccess.action(strings: Strings, board: WorktreeBoard): MessageAction? = when (success) {
+internal fun PendingSuccess.action(strings: Strings, board: WorktreeBoard): MessageAction? = when (success) {
     is WorktreeSuccess.Created -> projectId?.let(board::holder)?.let { holder ->
         MessageAction(strings.copyLaunchCommand) { holder.copyLastCreatedLaunchCommand() }
     }

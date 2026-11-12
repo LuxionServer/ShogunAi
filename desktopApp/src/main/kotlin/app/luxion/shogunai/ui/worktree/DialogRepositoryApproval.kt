@@ -28,6 +28,6 @@ class DialogRepositoryApproval : RepositoryApproval {
     }
 
     fun resolve(decision: ApprovalDecision) {
-        pending?.decision?.complete(decision)
+        pending?.let { it.decision.complete(decision) }
     }
 }

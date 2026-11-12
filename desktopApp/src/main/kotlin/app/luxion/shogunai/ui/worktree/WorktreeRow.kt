@@ -336,7 +336,8 @@ private fun GitCellView(git: GitCell) {
                     val dash: @Composable () -> Unit = {
                         Text("—", style = ShogunTheme.typography.dataSmall, color = secondary)
                     }
-                    git.unavailableTooltip?.let { WithTooltip(label = it, content = dash) } ?: dash()
+                    val tooltip = git.unavailableTooltip
+                    if (tooltip != null) WithTooltip(label = tooltip, content = dash) else dash()
                 }
                 CellLine {}
             }

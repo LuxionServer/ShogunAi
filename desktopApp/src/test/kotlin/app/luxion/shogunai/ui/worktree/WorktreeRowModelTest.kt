@@ -423,4 +423,33 @@ class WorktreeRowModelTest {
 
         assertEquals(StateBadgeKind.STOPPED, model(status = loaded, inactiveAfter = Duration.ofDays(7)).badge.kind)
     }
+
+    @Test
+    fun `every origin has its own label`() {
+        assertEquals(
+            listOf(
+                EnglishStrings.originShogunAi,
+                EnglishStrings.originClaudeCode,
+                EnglishStrings.originHerdr,
+                EnglishStrings.originOrca,
+                EnglishStrings.originOther,
+            ),
+            WorktreeOrigin.entries.map { originLabel(it, EnglishStrings) },
+        )
+    }
+
+    @Test
+    fun `a booting simulator is active and an emulator line isn't a simulator line`() {
+        val booting = model(simulator = WorktreeSimulator("ABCD-EFGH", "iPhone 16", SimulatorState.BOOTING))
+        val emulator = model(emulator = WorktreeEmulator("emulator-5554", EmulatorState.RUNNING))
+
+        assertTrue(booting.execution.device!!.isSimulator)
+        assertFalse(emulator.execution.device!!.isSimulator)
+    }
+
+    @Test
+    fun `a status not read yet has no unavailable tooltip`() {
+        assertNull(model(status = null).git.unavailableTooltip)
+        assertEquals(EnglishStrings.statusUnavailable, model(status = WorktreeStatusState.Unavailable).git.unavailableTooltip)
+    }
 }
