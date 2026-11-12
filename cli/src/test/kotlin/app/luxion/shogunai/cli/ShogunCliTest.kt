@@ -1,6 +1,7 @@
 package app.luxion.shogunai.cli
 
 import app.luxion.shogunai.engine.ShogunEngine
+import app.luxion.shogunai.domain.ScriptedShellCommandExecutor
 import app.luxion.shogunai.domain.executor.CommandExecutionException
 import app.luxion.shogunai.domain.model.FlutterProvider
 import app.luxion.shogunai.domain.FakeMachineCapacity
@@ -129,12 +130,12 @@ class ShogunCliTest {
         locked claude session
     """.trimIndent()
 
-    private class Executor(private val respond: (List<String>, String?) -> CommandResult?) : ShellCommandExecutor {
+    private class Executor(private val responder: (List<String>, String?) -> CommandResult?) : ScriptedShellCommandExecutor() {
         val calls = mutableListOf<Pair<List<String>, String?>>()
 
-        override suspend fun execute(command: List<String>, workingDirectory: String?): CommandResult {
+        override suspend fun respond(command: List<String>, workingDirectory: String?): CommandResult {
             calls += command to workingDirectory
-            return respond(command, workingDirectory) ?: ok(command)
+            return responder(command, workingDirectory) ?: ok(command)
         }
 
         fun ran(vararg args: String) = calls.any { it.first == args.toList() }
@@ -285,8 +286,8 @@ class ShogunCliTest {
 
     @Test
     fun `a shutdown while a command waits cancels it and exits with 130`() {
-        val slowGit = object : ShellCommandExecutor {
-            override suspend fun execute(command: List<String>, workingDirectory: String?): CommandResult {
+        val slowGit = object : ScriptedShellCommandExecutor() {
+            override suspend fun respond(command: List<String>, workingDirectory: String?): CommandResult {
                 delay(60_000)
                 return Executor.ok(command)
             }
@@ -1721,17 +1722,17 @@ class ShogunCliTest {
         assertEquals("shogun: Base repository doesn't exist: $base\n", err.toString())
     }
 
-    private class ConcurrencyRecordingExecutor(private val delegate: ShellCommandExecutor) : ShellCommandExecutor {
+    private class ConcurrencyRecordingExecutor(private val delegate: ScriptedShellCommandExecutor) : ScriptedShellCommandExecutor() {
         private var inFlight = 0
         var maxInFlight = 0
 
-        override suspend fun execute(command: List<String>, workingDirectory: String?): CommandResult {
-            if ("status" !in command) return delegate.execute(command, workingDirectory)
+        override suspend fun respond(command: List<String>, workingDirectory: String?): CommandResult {
+            if ("status" !in command) return delegate.respond(command, workingDirectory)
             inFlight++
             maxInFlight = maxOf(maxInFlight, inFlight)
             delay(10)
             inFlight--
-            return delegate.execute(command, workingDirectory)
+            return delegate.respond(command, workingDirectory)
         }
     }
 
@@ -2278,7 +2279,7 @@ class ShogunCliTest {
                     """.trimIndent(),
                 )
             } else {
-                runBlocking { repositoryExecutor().execute(command, directory) }
+                runBlocking { repositoryExecutor().respond(command, directory) }
             }
         }
 
@@ -5473,7 +5474,7 @@ class ShogunCliTest {
             Executor.fail(command, stderr = "ENOTFOUND", exitCode = 2)
         }.let { linking ->
             Executor { command, directory ->
-                if (installed && command.take(3) == listOf("git", "worktree", "list")) listing(command) else runBlocking { linking.execute(command, directory) }
+                if (installed && command.take(3) == listOf("git", "worktree", "list")) listing(command) else runBlocking { linking.respond(command, directory) }
             }
         }
     }

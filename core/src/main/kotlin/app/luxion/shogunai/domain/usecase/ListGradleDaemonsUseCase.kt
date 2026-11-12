@@ -10,6 +10,7 @@ import app.luxion.shogunai.domain.model.DaemonProcess
 import app.luxion.shogunai.domain.model.DaemonState
 import app.luxion.shogunai.domain.model.GradleDaemon
 import app.luxion.shogunai.domain.model.Worktree
+import app.luxion.shogunai.domain.runSuspendCatching
 
 class ListGradleDaemonsUseCase(
     private val source: GradleDaemonSource,
@@ -20,7 +21,7 @@ class ListGradleDaemonsUseCase(
         worktrees: List<Worktree>?,
         listed: List<DaemonProcess>? = null,
         sessionWorktrees: suspend () -> List<String> = { worktrees.orEmpty().map { it.path } },
-    ): Result<List<GradleDaemon>> = runCatching {
+    ): Result<List<GradleDaemon>> = runSuspendCatching {
         val processes = listed ?: source.list()
         val sessions = if (processes.any { it.holder?.client?.ancestors.orEmpty().isNotEmpty() }) sessionsByPid(sessionWorktrees()) else emptyMap()
         processes.map { process ->
@@ -31,7 +32,7 @@ class ListGradleDaemonsUseCase(
     private fun sessionsByPid(worktreePaths: List<String>): Map<Long, AgentSessionRef> {
         val store = sessionStore ?: return emptyMap()
         return worktreePaths.distinct().flatMap { path ->
-            runCatching { store.list(path) }.getOrDefault(emptyList())
+            runSuspendCatching { store.list(path) }.getOrDefault(emptyList())
                 .mapNotNull { record -> record.pid?.let { it to AgentSessionRef(record.sessionId, record.agent, path) } }
         }.toMap()
     }

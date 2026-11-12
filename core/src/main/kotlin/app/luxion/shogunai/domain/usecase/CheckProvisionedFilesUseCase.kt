@@ -8,6 +8,7 @@ import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.ProvisionDrift
 import app.luxion.shogunai.domain.model.ProvisionDriftState
 import app.luxion.shogunai.domain.model.joinPath
+import app.luxion.shogunai.domain.runSuspendCatching
 
 class CheckProvisionedFilesUseCase(
     private val config: ProjectConfig,
@@ -16,7 +17,7 @@ class CheckProvisionedFilesUseCase(
     private val provisioningSource: RepositoryProvisioningSource,
     private val records: ProvisioningRecordStore = ProvisioningRecordStore.NONE,
 ) {
-    suspend operator fun invoke(worktreePath: String): Result<List<ProvisionDrift>> = runCatching {
+    suspend operator fun invoke(worktreePath: String): Result<List<ProvisionDrift>> = runSuspendCatching {
         val worktree = findLinkedWorktree(config, executor, worktreePath)
         val provisioned = checkProvisioningAndResolveFiles(config, executor, fileManager, provisioningSource)
         val copiedDrift = provisioned.copied.mapNotNull { fileName ->

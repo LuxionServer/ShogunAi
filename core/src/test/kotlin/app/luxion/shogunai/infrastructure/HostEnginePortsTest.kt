@@ -1,5 +1,6 @@
 package app.luxion.shogunai.infrastructure
 
+import app.luxion.shogunai.domain.executor.CommandTimeouts
 import app.luxion.shogunai.domain.model.HostOs
 import kotlinx.coroutines.test.runTest
 import kotlin.io.path.createTempDirectory
@@ -48,7 +49,7 @@ class HostEnginePortsTest {
     fun `commands run with the host's PATH`() = runTest {
         val java = ProcessHandle.current().info().command().get()
 
-        val result = ports(shareDeviceStates = false).executor.execute(listOf(java, "-version"))
+        val result = ports(shareDeviceStates = false).executor.executeWithin(listOf(java, "-version"), CommandTimeouts.LOCAL_TOOL)
 
         assertTrue(result.isSuccess, result.stderr)
     }

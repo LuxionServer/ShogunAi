@@ -5,6 +5,7 @@ import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.model.HostOs
 import app.luxion.shogunai.domain.model.InstallChannel
 import app.luxion.shogunai.domain.model.UpdateCommands
+import app.luxion.shogunai.domain.runSuspendCatching
 
 class DetectInstallChannelUseCase(
     private val os: HostOs,
@@ -27,7 +28,7 @@ class DetectInstallChannelUseCase(
     private fun installedWithScoop() =
         appLocation.replace('/', '\\').contains("\\scoop\\apps\\shogunai\\", ignoreCase = true)
 
-    private suspend fun listedByWinget(): Boolean = runCatching {
+    private suspend fun listedByWinget(): Boolean = runSuspendCatching {
         val listing = executor.executeWithin(
             command = listOf("winget", "list", "--id", UpdateCommands.WINGET_ID, "--exact"),
             timeout = CommandTimeouts.LISTING,

@@ -2,6 +2,7 @@ package app.luxion.shogunai.infrastructure
 
 import app.luxion.shogunai.domain.FakeShellCommandExecutor
 import app.luxion.shogunai.domain.executor.CommandExecutionException
+import app.luxion.shogunai.domain.executor.CommandTimeouts
 import app.luxion.shogunai.domain.model.ComposeAction
 import app.luxion.shogunai.domain.model.ComposeResource
 import app.luxion.shogunai.domain.model.ComposeResourceKind
@@ -84,6 +85,7 @@ class DockerComposeProjectSourceTest {
         assertEquals(command, executor.executedCommands.single())
         assertEquals("/w/TASK-123", executor.workingDirectories.single())
         assertEquals(environment, executor.environments[command])
+        assertEquals(CommandTimeouts.INSTALL, executor.timeouts[command])
     }
 
     @Test

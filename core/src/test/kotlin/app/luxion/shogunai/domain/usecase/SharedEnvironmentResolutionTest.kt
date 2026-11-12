@@ -5,6 +5,7 @@ import app.luxion.shogunai.domain.FakePortProbe
 import app.luxion.shogunai.domain.FakeRepositoryProvisioningSource
 import app.luxion.shogunai.domain.FakeRepositoryTrust
 import app.luxion.shogunai.domain.FakeShellCommandExecutor
+import app.luxion.shogunai.domain.ScriptedShellCommandExecutor
 import app.luxion.shogunai.domain.executor.CommandResult
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.model.EmulatorProvider
@@ -35,8 +36,8 @@ class SharedEnvironmentResolutionTest {
         apiBase to ("$apiBase/.git" to "$apiBase/.git"),
         apiTask to (apiAdmin to "$apiBase/.git"),
     )
-    private val git = object : ShellCommandExecutor {
-        override suspend fun execute(command: List<String>, workingDirectory: String?): CommandResult {
+    private val git = object : ScriptedShellCommandExecutor() {
+        override suspend fun respond(command: List<String>, workingDirectory: String?): CommandResult {
             val (admin, common) = directories.getValue(workingDirectory!!)
             return FakeShellCommandExecutor.success(command, "$admin\n$common\n")
         }
@@ -186,8 +187,8 @@ class SharedEnvironmentResolutionTest {
     @Test
     fun `a worktree that fails without a reason is reported unreadable with no detail`() = runTest {
         target = SharedTarget.Located(apiBase, "/home/dev/projects/product-worktrees/api/GONE")
-        val silent = object : ShellCommandExecutor {
-            override suspend fun execute(command: List<String>, workingDirectory: String?): CommandResult {
+        val silent = object : ScriptedShellCommandExecutor() {
+            override suspend fun respond(command: List<String>, workingDirectory: String?): CommandResult {
                 val (admin, common) = directories[workingDirectory] ?: throw IllegalStateException()
                 return FakeShellCommandExecutor.success(command, "$admin\n$common\n")
             }

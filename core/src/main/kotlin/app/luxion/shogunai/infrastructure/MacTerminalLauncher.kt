@@ -1,10 +1,12 @@
 package app.luxion.shogunai.infrastructure
 
+import app.luxion.shogunai.domain.executor.CommandTimeouts
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.io.TerminalLauncher
 import app.luxion.shogunai.domain.model.TerminalId
 import app.luxion.shogunai.domain.model.TerminalLaunch
 import app.luxion.shogunai.domain.model.WorktreeError
+import app.luxion.shogunai.domain.runSuspendCatching
 
 class MacTerminalLauncher(
     override val terminal: TerminalId,
@@ -15,10 +17,10 @@ class MacTerminalLauncher(
         require(terminal in SCRIPTS) { "${terminal.displayName} isn't scripted through osascript" }
     }
 
-    override suspend fun open(launch: TerminalLaunch): Result<Unit> = runCatching {
+    override suspend fun open(launch: TerminalLaunch): Result<Unit> = runSuspendCatching {
         val command = listOf("osascript") + SCRIPTS.getValue(terminal).flatMap { listOf("-e", it) } + launch.line
         try {
-            executor.runTool(command, bounded = false)
+            executor.runTool(command, CommandTimeouts.LOCAL_TOOL)
         } catch (failure: ToolCommandFailed) {
             if (failure.detail.contains(AUTOMATION_REFUSED)) throw WorktreeError.TerminalAutomationRefused(terminal)
             throw WorktreeError.TerminalLaunchFailed(terminal, failure.detail)

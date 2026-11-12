@@ -269,8 +269,20 @@ Use cases depend on interfaces, not implementations. This is what allows testing
 
 ```kotlin
 interface ShellCommandExecutor {
-    suspend fun execute(command: List<String>, workingDirectory: String? = null): CommandResult
-    suspend fun executeWithin(command: List<String>, timeout: Duration, workingDirectory: String? = null): CommandResult
+    suspend fun executeWithin(
+        command: List<String>,
+        timeout: Duration,
+        workingDirectory: String? = null,
+        environment: Map<String, String> = emptyMap(),
+    ): CommandResult
+
+    suspend fun executeStreaming(
+        command: List<String>,
+        timeout: Duration,
+        workingDirectory: String?,
+        environment: Map<String, String>,
+        onOutput: (OutputLine) -> Unit,
+    ): CommandResult
 }
 ```
 
@@ -278,7 +290,9 @@ The command is passed as **argv** (a list of strings), never as a string for a s
 
 `CommandResult` holds `command`, `exitCode`, `stdout`, `stderr` without interpreting their meaning — each use case decides what counts as success via `isSuccess` (`exitCode == 0`). A process that can't even start (e.g. the executable isn't in `PATH`) throws `CommandExecutionException` instead.
 
-`executeWithin` bounds a command's run: one that doesn't finish in time is stopped and throws `CommandExecutionException.TimedOut`. Read-only commands pass a limit from `CommandTimeouts` (`GIT_READ`, 30 s, for Git reads; `LISTING`, 10 s, for device, process and tool listings; `NETWORK`, 60 s, for `git fetch`); commands that may legitimately run long (creating a worktree, post-creation commands, builds) use `execute`, with no limit. Its default implementation ignores the limit, so test doubles don't have to implement it. A cancelled coroutine always stops the command, and no command ever waits for input.
+Every command runs with a time limit: one that doesn't finish in time is stopped with its children and throws `CommandExecutionException.TimedOut`. The limits come from `CommandTimeouts`: `LISTING`, 10 s, for device, process and tool listings; `GIT_READ`, 30 s, for Git reads; `NETWORK`, 60 s, for `git fetch`; `LOCAL_TOOL`, 60 s, for quick local tools (`kill`, `open`, `simctl create/shutdown/delete`, the Herdr and Orca CLIs); `LOCAL_WORK`, 5 minutes, for local Git writes (`worktree add/remove/repair`, `branch -D`), `simctl boot` and cloning `Pods`; and `INSTALL`, 30 minutes, for post-creation commands, `flutter pub get`, `docker compose` and the headless Gradle launch. `executeStreaming` also hands each output line to `onOutput` as it arrives. Neither method has a default body, so no implementation or test double can silently drop the limit or the environment; tests extend `ScriptedShellCommandExecutor` from `core`'s test fixtures, which records both. A cancelled coroutine always stops the command, and no command ever waits for input.
+
+Suspending code in `core` never swallows a cancellation: it uses `runSuspendCatching` (`runCatching` that rethrows `CancellationException`) instead of `runCatching`, and a broad `catch` either rethrows the error or follows a `catch` of `CancellationException` that does. `CancellationSourceTest` checks every `core` file that declares a suspending function.
 
 ### `HostEnvironment`
 
@@ -634,7 +648,7 @@ The multirepo agent is a local setting (`MultirepoSource.agent`/`setAgent`, `Mul
 
 ## Use cases
 
-The worktree use cases are built per project (they receive its `ProjectConfig`) and return `Result<T>` (using `runCatching`), with typed errors as `WorktreeError`. Every Git command runs from the base repository.
+The worktree use cases are built per project (they receive its `ProjectConfig`) and return `Result<T>` (using `runSuspendCatching`), with typed errors as `WorktreeError`. Every Git command runs from the base repository.
 
 ### `CreateWorktreeUseCase`
 

@@ -6,12 +6,13 @@ import app.luxion.shogunai.domain.model.BranchOption
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.REMOTE_PREFIX
 import app.luxion.shogunai.domain.model.WorktreeError
+import app.luxion.shogunai.domain.runSuspendCatching
 
 class ListBranchesUseCase(
     private val config: ProjectConfig,
     private val executor: ShellCommandExecutor,
 ) {
-    suspend operator fun invoke(): Result<List<BranchOption>> = runCatching {
+    suspend operator fun invoke(): Result<List<BranchOption>> = runSuspendCatching {
         val refs = executor.executeWithin(
             command = listOf(
                 "git", "for-each-ref", "--format=%(refname)", "refs/heads", "refs/remotes/$REMOTE_PREFIX",

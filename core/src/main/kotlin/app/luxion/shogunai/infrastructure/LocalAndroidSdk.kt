@@ -9,6 +9,7 @@ import app.luxion.shogunai.domain.model.EmulatorState
 import app.luxion.shogunai.domain.model.SdkLocation
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.emulatorSerial
+import app.luxion.shogunai.domain.runSuspendCatching
 import app.luxion.shogunai.domain.usecase.nestedGradleBuildFolders
 import java.io.File
 import java.nio.file.Files
@@ -152,6 +153,6 @@ internal fun launchDetached(command: List<String>, log: File): EmulatorProcess {
         override val isAlive: Boolean get() = process.isAlive
 
         override fun lastLogLines(count: Int): String =
-            runCatching { log.readLines().takeLast(count).joinToString("\n") }.getOrDefault("")
+            runSuspendCatching { log.readLines().takeLast(count).joinToString("\n") }.getOrDefault("")
     }
 }

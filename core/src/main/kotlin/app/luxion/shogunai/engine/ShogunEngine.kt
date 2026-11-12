@@ -1,5 +1,6 @@
 package app.luxion.shogunai.engine
 
+import app.luxion.shogunai.domain.runSuspendCatching
 import app.luxion.shogunai.domain.io.RepositoryApproval
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.SimulatorSettings
@@ -247,7 +248,7 @@ class ShogunEngine(
     fun project(config: ProjectConfig): ProjectEngine = ProjectEngine(config, this)
 
     fun simulatorSettingsFor(repositoryPath: String): SimulatorSettings {
-        val projects = runCatching { ports.projectRepository.list() }.getOrDefault(emptyList())
+        val projects = runSuspendCatching { ports.projectRepository.list() }.getOrDefault(emptyList())
         val project = projects.firstOrNull { sameDirectory(it.config.baseRepositoryPath, repositoryPath) }
         return if (project == null) SimulatorSettings() else project.config.simulator
     }

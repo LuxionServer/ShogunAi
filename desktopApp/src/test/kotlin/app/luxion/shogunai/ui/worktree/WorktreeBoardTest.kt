@@ -1,5 +1,6 @@
 package app.luxion.shogunai.ui.worktree
 
+import app.luxion.shogunai.domain.ScriptedShellCommandExecutor
 import app.luxion.shogunai.domain.model.RefreshCadence
 import app.luxion.shogunai.ui.WindowActivity
 import app.luxion.shogunai.domain.model.GroupRunnerOpening
@@ -207,8 +208,8 @@ class WorktreeBoardTest {
             files.stamps["$base/.git/HEAD"] = (files.stamps["$base/.git/HEAD"] ?: 0) + 1
         }
 
-        val executor = object : ShellCommandExecutor {
-            override suspend fun execute(command: List<String>, workingDirectory: String?): CommandResult {
+        val executor = object : ScriptedShellCommandExecutor() {
+            override suspend fun respond(command: List<String>, workingDirectory: String?): CommandResult {
                 executed += command
                 return when {
                     command == listCommand -> {

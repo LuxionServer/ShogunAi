@@ -1,5 +1,6 @@
 package app.luxion.shogunai.domain.usecase
 
+import app.luxion.shogunai.domain.executor.CommandTimeouts
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 
 class ResolveBaseBranchUseCase(
@@ -7,8 +8,9 @@ class ResolveBaseBranchUseCase(
 ) {
     suspend operator fun invoke(directory: String, ref: String): String? {
         if (isOptionLikeRef(ref)) return null
-        val result = executor.execute(
+        val result = executor.executeWithin(
             command = listOf("git", "rev-parse", "--verify", "--quiet", "--symbolic-full-name", ref),
+            timeout = CommandTimeouts.GIT_READ,
             workingDirectory = directory,
         )
         if (!result.isSuccess) return null

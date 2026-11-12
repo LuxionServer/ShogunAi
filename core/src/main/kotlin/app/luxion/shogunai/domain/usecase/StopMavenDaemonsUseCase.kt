@@ -1,5 +1,6 @@
 package app.luxion.shogunai.domain.usecase
 
+import app.luxion.shogunai.domain.executor.CommandTimeouts
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.io.MavenDaemonSource
 import app.luxion.shogunai.domain.model.DaemonKeptReason
@@ -8,12 +9,13 @@ import app.luxion.shogunai.domain.model.DaemonStopFailure
 import app.luxion.shogunai.domain.model.KeptMavenDaemon
 import app.luxion.shogunai.domain.model.MavenDaemonProcess
 import app.luxion.shogunai.domain.model.MavenDaemonStopReport
+import app.luxion.shogunai.domain.runSuspendCatching
 
 class StopMavenDaemonsUseCase(
     private val source: MavenDaemonSource,
     private val executor: ShellCommandExecutor,
 ) {
-    suspend operator fun invoke(pids: List<Long>? = null): Result<MavenDaemonStopReport> = runCatching {
+    suspend operator fun invoke(pids: List<Long>? = null): Result<MavenDaemonStopReport> = runSuspendCatching {
         val current = source.list()
         val currentByPid = current.associateBy { it.pid }
         val targets = if (pids == null) current else pids.distinct().mapNotNull { currentByPid[it] }
@@ -29,7 +31,7 @@ class StopMavenDaemonsUseCase(
                 kept += KeptMavenDaemon(daemon.pid, reason)
                 return@forEach
             }
-            val result = executor.execute(listOf("kill", daemon.pid.toString()))
+            val result = executor.executeWithin(listOf("kill", daemon.pid.toString()), CommandTimeouts.LOCAL_TOOL)
             if (result.isSuccess) {
                 stopped += daemon
             } else {

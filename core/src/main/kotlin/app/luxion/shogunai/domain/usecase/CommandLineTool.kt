@@ -3,6 +3,7 @@ package app.luxion.shogunai.domain.usecase
 import app.luxion.shogunai.domain.io.LauncherFiles
 import app.luxion.shogunai.domain.io.UserPathEntries
 import app.luxion.shogunai.domain.model.HostOs
+import app.luxion.shogunai.domain.runSuspendCatching
 
 enum class CommandLineToolState { AVAILABLE, INSTALLED_NOT_ON_PATH, BROKEN, MISSING }
 
@@ -53,18 +54,14 @@ class CommandLineTool(
         return CommandLineToolStatus(CommandLineToolState.INSTALLED_NOT_ON_PATH, found, folder, restartNeeded, canInstall, installedByApp = owned != null)
     }
 
-    suspend fun install(): Result<CommandLineToolInstallation> = runCatching {
+    suspend fun install(): Result<CommandLineToolInstallation> = runSuspendCatching {
         val launcher = appLauncher ?: throw CommandLineToolError.NotPackaged()
         if (os == HostOs.WINDOWS) installShim(launcher) else installLink(launcher)
     }
 
-    suspend fun remove(): Result<Unit> = runCatching {
-        val owned = ownedLauncher() ?: return@runCatching
-        try {
-            files.delete(owned.path)
-        } catch (error: Exception) {
-            throw CommandLineToolError.WriteFailed(owned.path, error)
-        }
+    suspend fun remove(): Result<Unit> = runSuspendCatching {
+        val owned = ownedLauncher() ?: return@runSuspendCatching
+        runSuspendCatching { files.delete(owned.path) }.getOrElse { throw CommandLineToolError.WriteFailed(owned.path, it) }
         if (os == HostOs.WINDOWS) userPath.remove(folderOf(owned.path))
     }
 
@@ -74,11 +71,7 @@ class CommandLineTool(
         if (files.exists(link) || files.linkTarget(link) != null) {
             if (!isOwnLink(link)) throw CommandLineToolError.ForeignFile(link)
         }
-        try {
-            files.createLink(launcher, link)
-        } catch (error: Exception) {
-            throw CommandLineToolError.WriteFailed(link, error)
-        }
+        runSuspendCatching { files.createLink(launcher, link) }.getOrElse { throw CommandLineToolError.WriteFailed(link, it) }
         return CommandLineToolInstallation(link, folder, restartNeeded = false, folderOnPath = isOnPath(folder))
     }
 
@@ -87,11 +80,7 @@ class CommandLineTool(
         val installFolder = launcher.substringBeforeLast('\\')
         if (files.exists(shim) && files.readText(shim)?.contains(ShimMarker) != true) throw CommandLineToolError.ForeignFile(shim)
         val body = "@\"$installFolder\\runtime\\bin\\java.exe\" -cp \"$installFolder\\app\\*\" $ShimMarker %*\r\n"
-        try {
-            files.writeText(shim, body)
-        } catch (error: Exception) {
-            throw CommandLineToolError.WriteFailed(shim, error)
-        }
+        runSuspendCatching { files.writeText(shim, body) }.getOrElse { throw CommandLineToolError.WriteFailed(shim, it) }
         if (!userPath.contains(windowsFolder)) userPath.add(windowsFolder)
         return CommandLineToolInstallation(shim, windowsFolder, restartNeeded = true, folderOnPath = isOnPath(windowsFolder))
     }

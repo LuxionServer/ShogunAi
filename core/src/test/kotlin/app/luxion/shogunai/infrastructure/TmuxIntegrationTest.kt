@@ -1,6 +1,7 @@
 package app.luxion.shogunai.infrastructure
 
 import app.luxion.shogunai.domain.executor.CommandResult
+import app.luxion.shogunai.domain.executor.CommandTimeouts
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.model.TerminalLaunch
 import kotlinx.coroutines.delay
@@ -9,16 +10,22 @@ import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.time.Duration
 
 class TmuxIntegrationTest {
 
     private val socket = "shogunai-test-${System.nanoTime()}"
     private val processes = ProcessBuilderShellCommandExecutor(path = null)
 
-    private val isolatedTmux = object : ShellCommandExecutor {
-        override suspend fun execute(command: List<String>, workingDirectory: String?): CommandResult {
+    private val isolatedTmux = object : ShellCommandExecutor by processes {
+        override suspend fun executeWithin(
+            command: List<String>,
+            timeout: Duration,
+            workingDirectory: String?,
+            environment: Map<String, String>,
+        ): CommandResult {
             val isolated = if (command.first() == "tmux") listOf("tmux", "-L", socket) + command.drop(1) else command
-            return processes.execute(isolated, workingDirectory)
+            return processes.executeWithin(isolated, timeout, workingDirectory, environment)
         }
     }
 
@@ -35,7 +42,7 @@ class TmuxIntegrationTest {
         val folder = Files.createTempDirectory("tmux-integration").toRealPath()
         val output = folder.resolve("output.txt")
         try {
-            check(isolatedTmux.execute(listOf("tmux", "new-session", "-d", "-s", "base")).isSuccess)
+            check(isolatedTmux.executeWithin(listOf("tmux", "new-session", "-d", "-s", "base"), CommandTimeouts.LISTING).isSuccess)
             val launch = TerminalLaunch(
                 worktreePath = folder.toString(),
                 variables = listOf("SHOGUN_TEST" to "it's \$(id)"),
@@ -49,7 +56,7 @@ class TmuxIntegrationTest {
             repeat(100) { if (linesOf(output) != expected) delay(100) }
             assertEquals(expected, linesOf(output))
         } finally {
-            isolatedTmux.execute(listOf("tmux", "kill-server"))
+            isolatedTmux.executeWithin(listOf("tmux", "kill-server"), CommandTimeouts.LISTING)
             folder.toFile().deleteRecursively()
         }
     }

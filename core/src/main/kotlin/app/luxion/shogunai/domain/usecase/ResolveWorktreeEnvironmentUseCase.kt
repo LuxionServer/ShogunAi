@@ -1,5 +1,6 @@
 package app.luxion.shogunai.domain.usecase
 
+import app.luxion.shogunai.domain.executor.CommandTimeouts
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.io.ComposeProjectRegistry
 import app.luxion.shogunai.domain.io.ComposeRegistryEntry
@@ -18,6 +19,7 @@ import app.luxion.shogunai.domain.model.approvalSubject
 import app.luxion.shogunai.domain.model.portKeyLabel
 import app.luxion.shogunai.domain.model.render
 import app.luxion.shogunai.domain.model.repositoryPorts
+import app.luxion.shogunai.domain.runSuspendCatching
 
 class ResolveWorktreeEnvironmentUseCase(
     private val executor: ShellCommandExecutor,
@@ -35,7 +37,7 @@ class ResolveWorktreeEnvironmentUseCase(
         repositoryPath: String,
         worktreePath: String,
         reserve: Boolean = true,
-    ): Result<WorktreeEnvironment> = runCatching {
+    ): Result<WorktreeEnvironment> = runSuspendCatching {
         val environment = resolve(repositoryPath, worktreePath, reserve, sharedVariables(repositoryPath, worktreePath, reserve))
         val present = environment.variables.map { it.first }.toSet() + environment.awaitingApproval
         val devices = deviceVariables(worktreePath).filterNot { it.first in present }
@@ -113,7 +115,7 @@ class ResolveWorktreeEnvironmentUseCase(
 
     private suspend fun referencedPorts(alias: String, target: SharedTarget, reserve: Boolean): ReferencedPorts = when (target) {
         is SharedTarget.Unreadable -> ReferencedPorts.Failed(UnresolvedReason.WorktreeUnreadable(alias, target.detail))
-        is SharedTarget.Located -> runCatching {
+        is SharedTarget.Located -> runSuspendCatching {
             val environment = resolve(target.repositoryPath, target.worktreePath, reserve)
             if (!environment.declarationApproved) {
                 ReferencedPorts.Failed(UnresolvedReason.RepositoryNotApproved(alias, target.repositoryPath))
@@ -153,10 +155,10 @@ class ResolveWorktreeEnvironmentUseCase(
     private fun recordComposeProject(repositoryPath: String, worktreePath: String, environment: WorktreeEnvironment) {
         val registry = composeRegistry ?: return
         val project = environment.variables.last { it.first == COMPOSE_PROJECT_NAME }
-        runCatching { registry.record(repositoryPath, ComposeRegistryEntry(project.second, normalizePath(worktreePath))) }
+        runSuspendCatching { registry.record(repositoryPath, ComposeRegistryEntry(project.second, normalizePath(worktreePath))) }
     }
 
-    suspend fun recordedOnMachine(repositoryPath: String, key: String): Result<Set<String>> = runCatching {
+    suspend fun recordedOnMachine(repositoryPath: String, key: String): Result<Set<String>> = runSuspendCatching {
         stateStore.recordedResourcesOnMachine(gitDirectories(repositoryPath).common, key)
     }
 
@@ -224,8 +226,9 @@ class ResolveWorktreeEnvironmentUseCase(
     }
 
     private suspend fun readGitDirectories(worktreePath: String): GitDirectories {
-        val result = executor.execute(
+        val result = executor.executeWithin(
             command = listOf("git", "rev-parse", "--path-format=absolute", "--git-dir", "--git-common-dir"),
+            timeout = CommandTimeouts.GIT_READ,
             workingDirectory = worktreePath,
         )
         val lines = result.stdout.lines().map { it.trim() }.filter { it.isNotEmpty() }

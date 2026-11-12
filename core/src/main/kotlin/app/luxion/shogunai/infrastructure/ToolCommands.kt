@@ -4,12 +4,13 @@ import app.luxion.shogunai.domain.executor.CommandExecutionException
 import app.luxion.shogunai.domain.executor.CommandResult
 import app.luxion.shogunai.domain.executor.CommandTimeouts
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
+import kotlin.time.Duration
 
 internal class ToolCommandFailed(val result: CommandResult?, val detail: String) : Exception(detail)
 
-internal suspend fun ShellCommandExecutor.runTool(command: List<String>, bounded: Boolean = true): CommandResult {
+internal suspend fun ShellCommandExecutor.runTool(command: List<String>, timeout: Duration = CommandTimeouts.LISTING): CommandResult {
     val result = try {
-        if (bounded) executeWithin(command, CommandTimeouts.LISTING) else execute(command)
+        executeWithin(command, timeout)
     } catch (error: CommandExecutionException) {
         throw ToolCommandFailed(null, error.cause.message ?: error.message)
     }

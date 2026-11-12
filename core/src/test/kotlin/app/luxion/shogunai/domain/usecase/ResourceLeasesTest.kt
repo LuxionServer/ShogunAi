@@ -2,6 +2,7 @@ package app.luxion.shogunai.domain.usecase
 
 import app.luxion.shogunai.domain.FakePhysicalDeviceInventoryStore
 import app.luxion.shogunai.domain.FakePhysicalDeviceLeaseStore
+import app.luxion.shogunai.domain.ScriptedShellCommandExecutor
 import app.luxion.shogunai.domain.model.DeviceLeases
 import app.luxion.shogunai.domain.model.DevicePlatform
 import app.luxion.shogunai.domain.model.PhysicalDeviceLease
@@ -49,8 +50,8 @@ class ResourceLeasesTest {
     private val admin4 = tasks.getValue(task4)
     private val task5 = "/home/dev/projects/worktrees/TASK-5"
 
-    private val git = object : ShellCommandExecutor {
-        override suspend fun execute(command: List<String>, workingDirectory: String?) = FakeShellCommandExecutor.success(
+    private val git = object : ScriptedShellCommandExecutor() {
+        override suspend fun respond(command: List<String>, workingDirectory: String?) = FakeShellCommandExecutor.success(
             command,
             "${tasks[workingDirectory] ?: common}\n$common\n",
         )
@@ -393,8 +394,8 @@ class ResourceLeasesTest {
 
     @Test
     fun `a worktree whose folders can't be resolved has no release record`() = runTest {
-        val broken = object : ShellCommandExecutor {
-            override suspend fun execute(command: List<String>, workingDirectory: String?) = FakeShellCommandExecutor.failure(command)
+        val broken = object : ScriptedShellCommandExecutor() {
+            override suspend fun respond(command: List<String>, workingDirectory: String?) = FakeShellCommandExecutor.failure(command)
         }
         val resolve = ResolveWorktreeEnvironmentUseCase(broken, source, store, FakePortProbe())
 

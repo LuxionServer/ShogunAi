@@ -15,7 +15,7 @@ import app.luxion.shogunai.domain.model.InstallationFinding
 import app.luxion.shogunai.domain.model.InstallationReport
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.WorktreeError
-import kotlinx.coroutines.CancellationException
+import app.luxion.shogunai.domain.runSuspendCatching
 
 class CheckInstallationUseCase(
     private val executor: ShellCommandExecutor,
@@ -37,7 +37,7 @@ class CheckInstallationUseCase(
     suspend operator fun invoke(): InstallationReport {
         val git = guarded(::gitFailure) { git() }
         val pathSource = guarded({ InstallationCheck(CheckState.FAILED, InstallationFinding.PathSource(HostPathSource.FALLBACK, shell)) }) { pathSource() }
-        val status = runCatchingNonCancellation { commandLineTool() }
+        val status = runSuspendCatching { commandLineTool() }
         val shogun = status.fold(::shogunCheck) { InstallationCheck(CheckState.FAILED, InstallationFinding.ShogunCommand(CommandLineToolState.MISSING, null, null, false)) }
         val hooksCheck = guarded(::hooksFailure) { hooks(status.getOrNull()) }
         val tools = listOf(
@@ -45,10 +45,10 @@ class CheckInstallationUseCase(
             agentTool(AgentToolId.HERDR, herdrLocation),
             agentTool(AgentToolId.ORCA, orcaLocation),
         )
-        val projectChecks = runCatchingNonCancellation { projects.list() }.getOrDefault(emptyList()).flatMap { project ->
+        val projectChecks = runSuspendCatching { projects.list() }.getOrDefault(emptyList()).flatMap { project ->
             listOf(guarded({ projectFailure(project, it) }) { projectFiles(project) }) + projectProviders(project)
         }
-        val multirepoChecks = runCatchingNonCancellation { multirepos() }.getOrDefault(emptyList())
+        val multirepoChecks = runSuspendCatching { multirepos() }.getOrDefault(emptyList())
         return InstallationReport(listOf(git, pathSource, shogun, hooksCheck) + tools + projectChecks + multirepoChecks)
     }
 
@@ -105,7 +105,7 @@ class CheckInstallationUseCase(
         InstallationCheck(CheckState.FAILED, InstallationFinding.Hooks(hooksSettingsPath, null, invalidDetail = error.message))
 
     private suspend fun agentTool(tool: AgentToolId, locate: () -> String?): InstallationCheck {
-        val location = runCatchingNonCancellation { locate() }.getOrNull()
+        val location = runSuspendCatching { locate() }.getOrNull()
         return InstallationCheck(if (location == null) CheckState.NOT_FOUND else CheckState.PASSED, InstallationFinding.AgentTool(tool, location))
     }
 
@@ -122,7 +122,7 @@ class CheckInstallationUseCase(
     private suspend fun projectProviders(project: Project): List<InstallationCheck> {
         val repository = project.config.baseRepositoryPath
         if (!fileManager.isDirectory(repository)) return emptyList()
-        val providers = runCatchingNonCancellation { provisioningSource.read(repository).providers }
+        val providers = runSuspendCatching { provisioningSource.read(repository).providers }
             .getOrElse { return listOf(providerTools.unreadable(project.name, it.message)) }
         return providerTools(project.name, repository, providers)
     }
@@ -133,15 +133,7 @@ class CheckInstallationUseCase(
     )
 
     private suspend fun guarded(onError: (Throwable) -> InstallationCheck, check: suspend () -> InstallationCheck): InstallationCheck =
-        runCatchingNonCancellation { check() }.getOrElse(onError)
-
-    private suspend fun <T> runCatchingNonCancellation(block: suspend () -> T): Result<T> = try {
-        Result.success(block())
-    } catch (error: CancellationException) {
-        throw error
-    } catch (error: Exception) {
-        Result.failure(error)
-    }
+        runSuspendCatching { check() }.getOrElse(onError)
 
     companion object {
         const val MINIMUM_GIT = "2.29"

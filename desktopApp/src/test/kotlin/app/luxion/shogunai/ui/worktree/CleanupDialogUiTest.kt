@@ -1,5 +1,6 @@
 package app.luxion.shogunai.ui.worktree
 
+import app.luxion.shogunai.domain.ScriptedShellCommandExecutor
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.MaterialTheme
@@ -28,7 +29,6 @@ import app.luxion.shogunai.domain.FakeDerivedDataSource
 import app.luxion.shogunai.domain.FakeFileManager
 import app.luxion.shogunai.domain.FakeGradleDaemonSource
 import app.luxion.shogunai.domain.executor.CommandResult
-import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.model.DerivedDataFolder
 import app.luxion.shogunai.domain.model.DockerComposeProvider
 import app.luxion.shogunai.domain.model.GradleProvider
@@ -114,10 +114,10 @@ class CleanupDialogUiTest {
                 orca = OrcaUseCases.NONE.copy(withTerminals = { paths -> paths.toSet() }),
                 cleanUp = CleanUpWorktreesUseCase(
                     repository.config,
-                    object : ShellCommandExecutor {
-                        override suspend fun execute(command: List<String>, workingDirectory: String?): CommandResult {
+                    object : ScriptedShellCommandExecutor() {
+                        override suspend fun respond(command: List<String>, workingDirectory: String?): CommandResult {
                             gate.await()
-                            return repository.executor.execute(command, workingDirectory)
+                            return repository.executor.respond(command, workingDirectory)
                         }
                     },
                 ),

@@ -23,6 +23,7 @@ import app.luxion.shogunai.domain.model.SimulatorSettings
 import app.luxion.shogunai.domain.model.WaitTicket
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.queueName
+import app.luxion.shogunai.domain.runSuspendCatching
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
@@ -75,7 +76,7 @@ class AcquireWorktreeResourceUseCase(
         wait: DeviceWait?,
     ): Result<ResourceAcquisition> {
         if (wait == null) return attempt(kind, repositoryPath, worktreePath, requested, ticketId = null)
-        return runCatching { acquireWaiting(kind, repositoryPath, worktreePath, requested, wait) }
+        return runSuspendCatching { acquireWaiting(kind, repositoryPath, worktreePath, requested, wait) }
     }
 
     private suspend fun acquireWaiting(
@@ -109,7 +110,7 @@ class AcquireWorktreeResourceUseCase(
         worktreePath: String,
         requested: SimulatorSettings,
         ticketId: String?,
-    ): Result<ResourceAcquisition> = runCatching {
+    ): Result<ResourceAcquisition> = runSuspendCatching {
         val directories = resolveEnvironment.directoriesOf(worktreePath)
         val key = keyOf(kind)
         val outcome = withContext(Dispatchers.IO) {
@@ -258,7 +259,7 @@ class AcquireWorktreeResourceUseCase(
     }
 
     private suspend fun refreshEnvironmentFile(repositoryPath: String, worktreePath: String) {
-        runCatching {
+        runSuspendCatching {
             val environment = resolveEnvironment(repositoryPath, worktreePath, reserve = false).getOrThrow()
             writeEnvironmentFile(repositoryPath, worktreePath, environment).getOrThrow()
         }

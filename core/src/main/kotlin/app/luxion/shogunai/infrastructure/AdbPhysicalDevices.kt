@@ -9,6 +9,7 @@ import app.luxion.shogunai.domain.model.PendingDevice
 import app.luxion.shogunai.domain.model.PhysicalDevice
 import app.luxion.shogunai.domain.model.PhysicalDeviceListing
 import app.luxion.shogunai.domain.model.SdkLocation
+import app.luxion.shogunai.domain.runSuspendCatching
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -21,8 +22,8 @@ class AdbPhysicalDevices(
     private val identities = mutableMapOf<String, Identity>()
 
     override suspend fun list(): PhysicalDeviceListing = mutex.withLock {
-        val location = runCatching { sdk.locate(repositoryPath()) }.getOrNull() ?: return@withLock PhysicalDeviceListing()
-        val attached = runCatching { sdk.attachedDevices(location) }.getOrDefault(emptyMap())
+        val location = runSuspendCatching { sdk.locate(repositoryPath()) }.getOrNull() ?: return@withLock PhysicalDeviceListing()
+        val attached = runSuspendCatching { sdk.attachedDevices(location) }.getOrDefault(emptyMap())
             .filterKeys { !it.startsWith(EMULATOR_PREFIX) }
         identities.keys.retainAll(attached.filterValues { it == ONLINE }.keys)
         val devices = mutableListOf<PhysicalDevice>()

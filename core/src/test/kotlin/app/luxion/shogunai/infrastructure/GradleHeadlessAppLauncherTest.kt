@@ -2,6 +2,7 @@ package app.luxion.shogunai.infrastructure
 
 import app.luxion.shogunai.domain.FakeShellCommandExecutor
 import app.luxion.shogunai.domain.FakeShellCommandExecutor.Companion.success
+import app.luxion.shogunai.domain.executor.CommandTimeouts
 import app.luxion.shogunai.domain.model.HeadlessLaunch
 import kotlinx.coroutines.test.runTest
 import java.nio.file.Files
@@ -46,6 +47,7 @@ class GradleHeadlessAppLauncherTest {
             executor.executedCommands.single(),
         )
         assertEquals(worktree.toString(), executor.workingDirectories.single())
+        assertEquals(CommandTimeouts.INSTALL, executor.timeouts.values.single())
         assertEquals(GradleHeadlessAppLauncher.INIT_SCRIPT, script.readText())
         assertTrue("Started 'MainKt' in background (4242)" in state.resolve("launch.log").readText())
         assertTrue(state.resolve("home").exists())

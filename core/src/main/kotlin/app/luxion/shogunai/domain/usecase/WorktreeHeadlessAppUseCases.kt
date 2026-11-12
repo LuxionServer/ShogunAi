@@ -17,6 +17,7 @@ import app.luxion.shogunai.domain.model.HideOutcome
 import app.luxion.shogunai.domain.model.MacPermission
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.gradleModuleDirectory
+import app.luxion.shogunai.domain.runSuspendCatching
 import kotlinx.coroutines.delay
 import java.time.Clock
 import java.time.ZoneOffset
@@ -39,7 +40,7 @@ class HeadlessAppWorktrees(
     }
 
     internal suspend fun declaresApp(worktreePath: String): Boolean =
-        windows.isSupported && runCatching { provisioningSource.read(worktreePath).providers.desktopApp }.getOrNull() != null
+        windows.isSupported && runSuspendCatching { provisioningSource.read(worktreePath).providers.desktopApp }.getOrNull() != null
 
     private suspend fun pathsOf(worktreePath: String, provider: DesktopAppProvider): HeadlessAppPaths {
         val state = "${adminDirectoryOf(worktreePath).trimEnd('/')}/$STATE_DIRECTORY"
@@ -80,12 +81,12 @@ class StartHeadlessAppUseCase(
     private val timeoutMs: Long = WINDOW_TIMEOUT_MS,
 ) {
     suspend operator fun invoke(worktreePath: String, visible: Boolean = false, fresh: Boolean = false): Result<HeadlessAppStart> =
-        runCatching {
+        runSuspendCatching {
             val located = worktrees.locate(worktreePath)
             val paths = located.paths
             worktrees.runningPid(paths)?.let { pid ->
                 val window = windows.mainWindow(pid)
-                return@runCatching finish(pid, alreadyRunning = true, window, visible, paths)
+                return@runSuspendCatching finish(pid, alreadyRunning = true, window, visible, paths)
             }
             if (fresh) paths.homePath?.let(fileManager::deleteRecursively)
             val launched = launcher.launch(HeadlessLaunch(worktreePath, located.provider.module, paths.homePath, paths.logPath))
@@ -126,9 +127,9 @@ class StopHeadlessAppUseCase(
     private val worktrees: HeadlessAppWorktrees,
     private val launcher: HeadlessAppLauncher,
 ) {
-    suspend operator fun invoke(worktreePath: String): Result<HeadlessAppStop> = runCatching {
+    suspend operator fun invoke(worktreePath: String): Result<HeadlessAppStop> = runSuspendCatching {
         val pid = worktrees.runningPid(worktrees.locate(worktreePath).paths)
-            ?: return@runCatching HeadlessAppStop(wasRunning = false, pid = null)
+            ?: return@runSuspendCatching HeadlessAppStop(wasRunning = false, pid = null)
         launcher.stop(pid)
         HeadlessAppStop(wasRunning = true, pid = pid)
     }
@@ -143,7 +144,7 @@ class ReadHeadlessAppUseCase(
     private val worktrees: HeadlessAppWorktrees,
     private val windows: AppWindowService,
 ) {
-    suspend operator fun invoke(worktreePath: String): Result<HeadlessAppStatus> = runCatching {
+    suspend operator fun invoke(worktreePath: String): Result<HeadlessAppStatus> = runSuspendCatching {
         val paths = worktrees.locate(worktreePath).paths
         val pid = worktrees.runningPid(paths)
         val window = pid?.let { windows.mainWindow(it) }
@@ -157,8 +158,8 @@ class ReadHeadlessAppUseCase(
         )
     }
 
-    suspend fun process(worktreePath: String): Result<HeadlessAppProcess?> = runCatching {
-        if (!worktrees.declaresApp(worktreePath)) return@runCatching null
+    suspend fun process(worktreePath: String): Result<HeadlessAppProcess?> = runSuspendCatching {
+        if (!worktrees.declaresApp(worktreePath)) return@runSuspendCatching null
         val paths = worktrees.locate(worktreePath).paths
         val pid = worktrees.runningPid(paths)
         HeadlessAppProcess(if (pid == null) HeadlessAppState.STOPPED else HeadlessAppState.RUNNING, pid, paths.logPath)
@@ -170,7 +171,7 @@ class CaptureHeadlessAppUseCase(
     private val windows: AppWindowService,
     private val clock: Clock = Clock.systemUTC(),
 ) {
-    suspend operator fun invoke(worktreePath: String, outputPath: String? = null): Result<String> = runCatching {
+    suspend operator fun invoke(worktreePath: String, outputPath: String? = null): Result<String> = runSuspendCatching {
         val paths = worktrees.locate(worktreePath).paths
         val pid = worktrees.runningPid(paths) ?: throw WorktreeError.HeadlessAppNotRunning
         if (!windows.isGranted(MacPermission.SCREEN_RECORDING)) throw WorktreeError.MacPermissionMissing(MacPermission.SCREEN_RECORDING)

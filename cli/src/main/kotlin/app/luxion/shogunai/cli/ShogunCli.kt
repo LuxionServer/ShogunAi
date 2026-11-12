@@ -3,6 +3,7 @@ package app.luxion.shogunai.cli
 import app.luxion.shogunai.BuildInfo
 import app.luxion.shogunai.engine.ShogunEngine
 import app.luxion.shogunai.domain.executor.CommandExecutionException
+import app.luxion.shogunai.domain.executor.CommandTimeouts
 import app.luxion.shogunai.domain.io.HostEnvironment
 import app.luxion.shogunai.domain.io.RepositoryApproval
 import app.luxion.shogunai.domain.io.ApprovalDecision
@@ -2736,7 +2737,7 @@ class ShogunCli(
     }
 
     private suspend fun worktreeTopLevel(directory: String): String {
-        val result = executor.execute(listOf("git", "rev-parse", "--show-toplevel"), directory)
+        val result = executor.executeWithin(listOf("git", "rev-parse", "--show-toplevel"), CommandTimeouts.GIT_READ, directory)
         val topLevel = result.stdout.trim()
         if (!result.isSuccess || topLevel.isEmpty()) throw WorktreeError.RepositoryNotFound(directory)
         return topLevel
@@ -3059,7 +3060,7 @@ class ShogunCli(
         val body = "${folderName(worktree.path)} is outside ${displayPath(config.worktreesRoot)}; create worktrees from ShogunAi"
         val herdr = environmentVariable(HERDR_BIN_PATH)?.takeIf { it.isNotBlank() } ?: "herdr"
         val failure = try {
-            val result = executor.execute(listOf(herdr, "notification", "show", "ShogunAi", "--body", body))
+            val result = executor.executeWithin(listOf(herdr, "notification", "show", "ShogunAi", "--body", body), CommandTimeouts.LOCAL_TOOL)
             if (result.isSuccess) null else result.stderr.trim().ifEmpty { "exit code ${result.exitCode}" }
         } catch (error: CommandExecutionException) {
             error.message

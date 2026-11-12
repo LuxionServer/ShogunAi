@@ -10,6 +10,7 @@ import app.luxion.shogunai.domain.FakeGradleDaemonSource.Companion.gradleDaemon
 import app.luxion.shogunai.domain.FakePortProbe
 import app.luxion.shogunai.domain.FakeRepositoryProvisioningSource
 import app.luxion.shogunai.domain.FakeShellCommandExecutor
+import app.luxion.shogunai.domain.ScriptedShellCommandExecutor
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.model.DaemonState
 import app.luxion.shogunai.domain.model.EmulatorProvider
@@ -42,8 +43,8 @@ class ReleaseWorktreeResourcesUseCaseTest {
     private val config = ProjectConfig(baseRepositoryPath = repository, worktreesRoot = "/home/dev/projects/worktrees", secretFiles = emptyList())
     private val worktree = Worktree(task, "feature/TASK-123")
 
-    private val git = object : ShellCommandExecutor {
-        override suspend fun execute(command: List<String>, workingDirectory: String?) = FakeShellCommandExecutor.success(
+    private val git = object : ScriptedShellCommandExecutor() {
+        override suspend fun respond(command: List<String>, workingDirectory: String?) = FakeShellCommandExecutor.success(
             command,
             if (workingDirectory == task) "$common/worktrees/TASK-123\n$common\n" else "$common\n$common\n",
         )

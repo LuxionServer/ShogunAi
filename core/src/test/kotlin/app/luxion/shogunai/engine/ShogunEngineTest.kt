@@ -1,12 +1,12 @@
 package app.luxion.shogunai.engine
 
+import app.luxion.shogunai.domain.ScriptedShellCommandExecutor
 import app.luxion.shogunai.domain.FakeDerivedDataSource
 import app.luxion.shogunai.domain.FakeFileManager
 import app.luxion.shogunai.domain.FakeRepositoryApproval
 import app.luxion.shogunai.domain.FakeRepositoryProvisioningSource
 import app.luxion.shogunai.domain.FakeRepositoryTrust
 import app.luxion.shogunai.domain.FakeShellCommandExecutor
-import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.io.ApprovalDecision
 import app.luxion.shogunai.domain.model.DesktopAppProvider
 import app.luxion.shogunai.domain.model.GradleProvider
@@ -34,10 +34,10 @@ class ShogunEngineTest {
     private val admin = "$common/worktrees/TASK-123"
     private val config = ProjectConfig(repository, "/home/dev/projects/worktrees", emptyList())
 
-    private val gitExecutor = object : ShellCommandExecutor {
+    private val gitExecutor = object : ScriptedShellCommandExecutor() {
         val commands = mutableListOf<List<String>>()
 
-        override suspend fun execute(command: List<String>, workingDirectory: String?) =
+        override suspend fun respond(command: List<String>, workingDirectory: String?) =
             FakeShellCommandExecutor.success(command, "$admin\n$common\n").also { commands += command }
     }
 

@@ -2,6 +2,7 @@ package app.luxion.shogunai.ui.worktree
 
 import androidx.compose.ui.test.isSelected
 import androidx.compose.ui.test.hasText
+import app.luxion.shogunai.domain.ScriptedShellCommandExecutor
 import app.luxion.shogunai.ui.actions.ActionId
 import app.luxion.shogunai.ui.actions.OpenTarget
 import app.luxion.shogunai.ui.actions.paletteEntries
@@ -910,8 +911,8 @@ class ProjectWorktreesTest {
         val gate = CompletableDeferred<Unit>()
         val viewModel = projectWorktrees(
             useCasesWith(
-                object : ShellCommandExecutor {
-                    override suspend fun execute(command: List<String>, workingDirectory: String?): CommandResult {
+                object : ScriptedShellCommandExecutor() {
+                    override suspend fun respond(command: List<String>, workingDirectory: String?): CommandResult {
                         if (command != removeCommand) return listingResponder()(command)
                         gate.await()
                         return failure(command, stderr = "fatal: locked")
@@ -943,8 +944,8 @@ class ProjectWorktreesTest {
         val executed = mutableListOf<List<String>>()
         val viewModel = projectWorktrees(
             useCasesWith(
-                object : ShellCommandExecutor {
-                    override suspend fun execute(command: List<String>, workingDirectory: String?): CommandResult {
+                object : ScriptedShellCommandExecutor() {
+                    override suspend fun respond(command: List<String>, workingDirectory: String?): CommandResult {
                         executed += command
                         if (command.take(3) == listOf("git", "worktree", "add")) gate.await()
                         return if (command == listCommand) success(command, porcelainOutput) else success(command)
@@ -1662,8 +1663,8 @@ class ProjectWorktreesTest {
     @Test
     fun `the list is shown while statuses are still loading`() = runTest(dispatcher) {
         val statusGate = CompletableDeferred<Unit>()
-        val executor = object : ShellCommandExecutor {
-            override suspend fun execute(command: List<String>, workingDirectory: String?): CommandResult {
+        val executor = object : ScriptedShellCommandExecutor() {
+            override suspend fun respond(command: List<String>, workingDirectory: String?): CommandResult {
                 if (command == statusCommand) statusGate.await()
                 return if (command == listCommand) success(command, porcelainOutput) else success(command)
             }
@@ -1726,8 +1727,8 @@ class ProjectWorktreesTest {
         val otherPath = "/home/dev/projects/TASK-456"
         var porcelain = porcelainOutput
         var statusGate: CompletableDeferred<Unit>? = null
-        val executor = object : ShellCommandExecutor {
-            override suspend fun execute(command: List<String>, workingDirectory: String?): CommandResult {
+        val executor = object : ScriptedShellCommandExecutor() {
+            override suspend fun respond(command: List<String>, workingDirectory: String?): CommandResult {
                 if (command == statusCommand) statusGate?.await()
                 return when (command) {
                     listCommand -> success(command, porcelain)
@@ -1782,8 +1783,8 @@ class ProjectWorktreesTest {
         var listCalls = 0
         var statusOutput = ""
         var statusGate: CompletableDeferred<Unit>? = null
-        val executor = object : ShellCommandExecutor {
-            override suspend fun execute(command: List<String>, workingDirectory: String?): CommandResult {
+        val executor = object : ScriptedShellCommandExecutor() {
+            override suspend fun respond(command: List<String>, workingDirectory: String?): CommandResult {
                 if (command == statusCommand) statusGate?.await()
                 return when (command) {
                     listCommand -> {
@@ -2220,8 +2221,8 @@ class ProjectWorktreesTest {
         val counters = Counters()
         val removeGate = CompletableDeferred<Unit>()
         val responder = countingResponder(counters)
-        val executor = object : ShellCommandExecutor {
-            override suspend fun execute(command: List<String>, workingDirectory: String?): CommandResult {
+        val executor = object : ScriptedShellCommandExecutor() {
+            override suspend fun respond(command: List<String>, workingDirectory: String?): CommandResult {
                 if (command == removeCommand) removeGate.await()
                 return responder(command)
             }

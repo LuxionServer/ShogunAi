@@ -15,6 +15,7 @@ import app.luxion.shogunai.domain.model.ComposeOwner
 import app.luxion.shogunai.domain.model.ComposeProject
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.WorktreeComposeProject
+import app.luxion.shogunai.domain.runSuspendCatching
 
 fun worktreeComposeProjectName(repositoryPath: String, worktreePath: String): String =
     composeProjectName(normalizePath(repositoryPath).substringAfterLast('/'), normalizePath(worktreePath).substringAfterLast('/'))
@@ -28,7 +29,7 @@ class ListComposeProjectsUseCase(
         repositoryPath: String,
         worktrees: List<Worktree>,
         worktreesRoot: String?,
-    ): Result<List<WorktreeComposeProject>> = runCatching {
+    ): Result<List<WorktreeComposeProject>> = runSuspendCatching {
         val byName = projectOwners(repositoryPath, worktrees, registry)
         val leftovers = leftoverProjects(repositoryPath, worktrees, registry)
         val repositoryPrefix = composeProjectName(normalizePath(repositoryPath).substringAfterLast('/'), "").trimEnd('-', '_') + "-"
@@ -85,11 +86,11 @@ class RunComposeProjectUseCase(
         worktreePath: String,
         action: ComposeAction,
         onOutput: (OutputLine) -> Unit = {},
-    ): Result<String> = runCatching {
+    ): Result<String> = runSuspendCatching {
         val environment = resolveEnvironment(repositoryPath, worktreePath, reserve = true).getOrThrow()
         val variables = environment.variables.toMap()
         val project = variables[COMPOSE_PROJECT_NAME] ?: worktreeComposeProjectName(repositoryPath, worktreePath)
-        runCatching { registry?.record(repositoryPath, ComposeRegistryEntry(project, normalizePath(worktreePath))) }
+        runSuspendCatching { registry?.record(repositoryPath, ComposeRegistryEntry(project, normalizePath(worktreePath))) }
         source.run(project, action, worktreePath, variables, onOutput).getOrThrow()
         project
     }
@@ -97,7 +98,7 @@ class RunComposeProjectUseCase(
 
 private fun projectOwners(repositoryPath: String, worktrees: List<Worktree>, registry: ComposeProjectRegistry?): Map<String, Worktree> {
     val byPath = worktrees.associateBy { normalizePath(it.path) }
-    val recorded = registry?.let { runCatching { it.entries(repositoryPath) }.getOrDefault(emptyList()) }.orEmpty()
+    val recorded = registry?.let { runSuspendCatching { it.entries(repositoryPath) }.getOrDefault(emptyList()) }.orEmpty()
         .mapNotNull { entry -> byPath[normalizePath(entry.worktreePath)]?.let { entry.project to it } }
     return recorded.toMap() + worktrees.associateBy { worktreeComposeProjectName(repositoryPath, it.path) }
 }
@@ -106,8 +107,8 @@ internal fun leftoverProjects(repositoryPath: String, worktrees: List<Worktree>,
     if (registry == null) return emptySet()
     val owned = projectOwners(repositoryPath, worktrees, registry).keys
     val existing = worktrees.map { normalizePath(it.path) }.toSet()
-    val elsewhere = runCatching { registry.recordedElsewhere(repositoryPath) }.getOrDefault(emptySet())
-    return runCatching { registry.entries(repositoryPath) }.getOrDefault(emptyList())
+    val elsewhere = runSuspendCatching { registry.recordedElsewhere(repositoryPath) }.getOrDefault(emptySet())
+    return runSuspendCatching { registry.entries(repositoryPath) }.getOrDefault(emptyList())
         .filter { normalizePath(it.worktreePath) !in existing }
         .map { it.project }
         .filter { it !in owned && it !in elsewhere }
@@ -119,13 +120,13 @@ class ListComposeLeftoversUseCase(
     private val registry: ComposeProjectRegistry,
 ) {
 
-    suspend operator fun invoke(repositoryPath: String, worktrees: List<Worktree>): Result<List<ComposeResource>> = runCatching {
+    suspend operator fun invoke(repositoryPath: String, worktrees: List<Worktree>): Result<List<ComposeResource>> = runSuspendCatching {
         val leftovers = leftoverProjects(repositoryPath, worktrees, registry)
-        if (leftovers.isEmpty()) return@runCatching emptyList()
+        if (leftovers.isEmpty()) return@runSuspendCatching emptyList()
         val resources = source.listResources().filter { it.project in leftovers }
         val withProject = source.list().map { it.name }.toSet()
         val gone = leftovers - resources.map { it.project }.toSet() - withProject
-        runCatching { registry.drop(repositoryPath, gone) }
+        runSuspendCatching { registry.drop(repositoryPath, gone) }
         resources
     }
 }
@@ -153,7 +154,7 @@ class RemoveComposeLeftoversUseCase(
         val recorded = registry
         if (repositoryPath != null && recorded != null) {
             val remaining = (kept + failures.map { it.resource }).map { it.project }.toSet()
-            runCatching { recorded.drop(repositoryPath, removed.map { it.project }.toSet() - remaining) }
+            runSuspendCatching { recorded.drop(repositoryPath, removed.map { it.project }.toSet() - remaining) }
         }
         return ComposeLeftoversReport(removed, kept, failures)
     }

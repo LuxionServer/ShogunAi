@@ -6,6 +6,7 @@ import app.luxion.shogunai.domain.model.ObservedPort
 import app.luxion.shogunai.domain.model.OrcaPort
 import app.luxion.shogunai.domain.model.OrcaWorktree
 import app.luxion.shogunai.domain.model.Worktree
+import app.luxion.shogunai.domain.runSuspendCatching
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.TimeoutCancellationException
@@ -81,7 +82,7 @@ class OrcaWorktreeReader(
     }
 
     fun origins(): OrcaOrigins {
-        val workspacesRoot = runCatching { store.workspacesRoot() }.getOrNull() ?: defaultWorkspacesRoot()
+        val workspacesRoot = runSuspendCatching { store.workspacesRoot() }.getOrNull() ?: defaultWorkspacesRoot()
         val created = lastRead?.filter { it.createdByOrca }?.map { canonical(it.path) }?.toSet()
         return OrcaOrigins(created, workspacesRoot, canonical)
     }
@@ -95,9 +96,9 @@ class OrcaWorktreeReader(
 
     private fun rememberWorkspacesRoot(worktrees: List<OrcaWorktree>) {
         val root = worktrees.firstOrNull { it.createdByOrca }
-            ?.let { runCatching { Path.of(it.path).parent?.parent?.toString() }.getOrNull() }
+            ?.let { runSuspendCatching { Path.of(it.path).parent?.parent?.toString() }.getOrNull() }
             ?: return
-        runCatching { store.remember(normalizePath(root)) }
+        runSuspendCatching { store.remember(normalizePath(root)) }
     }
 
     private fun defaultWorkspacesRoot(): String = "${normalizePath(userHome)}/orca/workspaces"
