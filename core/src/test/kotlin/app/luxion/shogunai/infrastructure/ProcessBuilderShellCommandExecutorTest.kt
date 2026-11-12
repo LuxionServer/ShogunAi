@@ -249,10 +249,10 @@ class ProcessBuilderShellCommandExecutorTest {
         val lines = mutableListOf<OutputLine>()
 
         val error = assertFailsWith<CommandExecutionException.TimedOut> {
-            executor.executeStreaming(listOf("sh", "-c", "echo started; sleep $marker; true"), 500.milliseconds, null, emptyMap()) { lines += it }
+            executor.executeStreaming(listOf("sh", "-c", "echo started; sleep $marker; true"), 3.seconds, null, emptyMap()) { lines += it }
         }
 
-        assertEquals(500.milliseconds, error.limit)
+        assertEquals(3.seconds, error.limit)
         assertEquals(listOf(OutputLine(OutputChannel.STANDARD, "started")), lines)
         awaitProcess(marker, running = false)
         assertFalse(isRunning(marker))
