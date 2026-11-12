@@ -2,6 +2,7 @@ package app.luxion.shogunai.domain.usecase
 
 import app.luxion.shogunai.domain.io.FileManager
 import app.luxion.shogunai.domain.model.ClaudeComputerUse
+import app.luxion.shogunai.domain.model.HooksInstallState
 import app.luxion.shogunai.domain.model.WorktreeError
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
@@ -14,8 +15,6 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.addJsonObject
 import kotlinx.serialization.json.putJsonArray
-
-enum class HooksInstallState { INSTALLED, OUTDATED, MISSING }
 
 data class HookEntry(val event: String, val command: String)
 

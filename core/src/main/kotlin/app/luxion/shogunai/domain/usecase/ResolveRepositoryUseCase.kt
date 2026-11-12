@@ -4,6 +4,7 @@ import app.luxion.shogunai.domain.executor.CommandResult
 import app.luxion.shogunai.domain.executor.CommandTimeouts
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.model.WorktreeError
+import app.luxion.shogunai.domain.model.normalizePath
 import java.nio.file.Path
 
 class ResolveRepositoryUseCase(

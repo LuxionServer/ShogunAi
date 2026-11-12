@@ -15,7 +15,6 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
-import app.luxion.shogunai.domain.usecase.sameDirectory
 import java.nio.file.Path
 
 const val MULTIREPO_FILE_NAME = ".shogunai-multirepo.json"

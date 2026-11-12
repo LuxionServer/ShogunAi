@@ -47,7 +47,27 @@ cli/src/main/kotlin/app/luxion/shogunai/cli/
 └── Main.kt           # punto de entrada independiente (runShogun)
 ```
 
-El dominio se define en términos de **puertos** (interfaces) y no conoce `ProcessBuilder` ni `java.nio.file` directamente; eso permite sustituir cada puerto por un doble de prueba (`FakeShellCommandExecutor`, `FakeFileManager`) en los tests de casos de uso, sin tocar disco ni lanzar procesos reales.
+El dominio se define en términos de **puertos** (interfaces), así que cada puerto se puede sustituir por un doble de prueba (`FakeShellCommandExecutor`, `FakeFileManager`) en los tests de casos de uso, sin tocar disco ni lanzar procesos reales.
+
+## Reglas que comprueba el build
+
+Los tests de `core/src/test/kotlin/app/luxion/shogunai/architecture/` leen los fuentes de los tres módulos en cada ejecución de los tests y fallan, indicando fichero y línea, cuando se rompe una de estas reglas:
+
+| Paquete de `core` | Puede importar del proyecto |
+|---|---|
+| `domain.model` | nada |
+| `domain.executor` | nada |
+| `domain.io` | `domain.model`, `domain.executor` |
+| `domain.usecase` | `domain.model`, `domain.executor`, `domain.io` |
+| `infrastructure` | `domain.model`, `domain.executor`, `domain.io` |
+
+- **El dominio no toca el sistema**: nada de `java.io.File`, `java.nio.file`, `kotlin.io.path`, `System.getProperty`, `ProcessBuilder` ni `Runtime` en `domain/`.
+- **Raíces de composición**: en la app de escritorio, solo `main.kt` y `AppContainer.kt` usan infraestructura, y `runShogun` es lo único que usa de la CLI; en la CLI, solo `Main.kt` y `ShogunCli.kt` usan infraestructura.
+- **Sin comentarios** en ningún fuente Kotlin ni script de Gradle.
+- **Comandos como argv**: nada de `Runtime.exec`, y ningún intérprete de shell nombrado como comando.
+- **Longitud de fichero**: ningún fichero de producción de más de 400 líneas.
+
+Parte del código existente aún no cumple las reglas del sistema, las shells y la longitud. Cada caso está en una lista de excepciones en `ArchitectureExceptions.kt`, que debe coincidir exactamente con el código: un caso nuevo falla, y también una entrada que ya no corresponde a nada, así que las listas solo pueden encoger.
 
 Ver el detalle de cada capa:
 

@@ -15,6 +15,7 @@ import app.luxion.shogunai.domain.model.TemplatePart
 import app.luxion.shogunai.domain.model.UnresolvedReason
 import app.luxion.shogunai.domain.model.UnresolvedVariable
 import app.luxion.shogunai.domain.model.approvalSubject
+import app.luxion.shogunai.domain.model.normalizePath
 import app.luxion.shogunai.domain.model.portKeyLabel
 import app.luxion.shogunai.domain.model.render
 import app.luxion.shogunai.domain.model.repositoryPorts

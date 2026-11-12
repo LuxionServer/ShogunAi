@@ -9,7 +9,7 @@ import app.luxion.shogunai.domain.model.RunnerOutcome
 import app.luxion.shogunai.domain.usecase.GroupCreation
 import app.luxion.shogunai.domain.usecase.GroupRepositoryResult
 import app.luxion.shogunai.domain.usecase.MultirepoMember
-import app.luxion.shogunai.domain.usecase.WorktreeGroup
+import app.luxion.shogunai.domain.model.WorktreeGroup
 
 class MultirepoActions(
     val createGroup: suspend (

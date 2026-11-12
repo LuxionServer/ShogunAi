@@ -9,6 +9,7 @@ import app.luxion.shogunai.domain.FakeEnvironmentStateStore
 import app.luxion.shogunai.domain.FakePortProbe
 import app.luxion.shogunai.domain.model.AgentLaunchConfig
 import app.luxion.shogunai.domain.model.ClaudeSession
+import app.luxion.shogunai.domain.model.GroupWorktree
 import app.luxion.shogunai.domain.model.HerdrOpening
 import app.luxion.shogunai.domain.model.HerdrOutcome
 import app.luxion.shogunai.domain.model.HerdrPane
@@ -22,6 +23,7 @@ import kotlinx.coroutines.test.runTest
 import app.luxion.shogunai.domain.model.MultirepoDeclaration
 import app.luxion.shogunai.domain.model.Divergence
 import app.luxion.shogunai.domain.model.MainBranch
+import app.luxion.shogunai.domain.model.WorktreeGroup
 import app.luxion.shogunai.domain.model.WorktreeStatus
 import kotlin.test.Test
 import kotlin.test.assertEquals

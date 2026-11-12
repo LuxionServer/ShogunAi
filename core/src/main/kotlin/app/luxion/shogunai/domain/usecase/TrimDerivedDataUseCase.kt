@@ -9,6 +9,7 @@ import app.luxion.shogunai.domain.model.DerivedDataOwner
 import app.luxion.shogunai.domain.model.DerivedDataQuotaMode
 import app.luxion.shogunai.domain.model.DerivedDataTrim
 import app.luxion.shogunai.domain.model.Worktree
+import app.luxion.shogunai.domain.model.normalizePath
 import java.time.Duration
 import java.time.Instant
 

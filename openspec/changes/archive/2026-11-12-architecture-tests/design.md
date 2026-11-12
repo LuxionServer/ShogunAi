@@ -10,7 +10,7 @@ Measured on `develop` at fdda1d05:
   - `io` imports `usecase` once: `AgentRunner.kt` (`usecase.WorktreeGroup`).
   - `infrastructure` imports `usecase` twice: `ProcessMavenDaemonSource.kt` (`parseLsofWorkingDirectories`), `LocalAndroidSdk.kt` (`nestedGradleBuildFolders`).
   - `executor` imports nothing; `io` imports `model` and `executor`; no domain file imports `infrastructure`.
-- System access in the domain: 12 files (listed under Decisions).
+- System access in the domain: 13 files (listed under Decisions). `DiagnosticReport.kt` (`System.getProperty`) was found by the scan, beyond the 12 of the initial review.
 - `desktopApp` imports infrastructure only from `main.kt` and `AppContainer.kt`, and from `cli` only `runShogun` (`main.kt`). In `cli`, only `Main.kt` and `ShogunCli.kt` import infrastructure.
 - No Kotlin source or Gradle script has a comment today.
 - Shell interpreters named in production code: `EditorLaunchers.kt` (`sh -c` with the arguments as positional parameters), `PowerShellUserPath.kt` and `WindowsTerminalLauncher.kt` (`powershell -Command`). `SystemHostEnvironment.kt` runs the user's login shell from a variable, which the literal check doesn't see and which it is the one file allowed to do. No `Runtime.exec`.
@@ -46,7 +46,8 @@ The tests live in `core/src/test/kotlin/app/luxion/shogunai/architecture/`:
 - `KotlinSourceScanner`: a small state machine that walks a file once and splits it into code, comments, and string and character literals. It handles line and nested block comments, escaped characters, `"..."` and `"""..."""` strings, and `${...}` templates with nested strings and braces. Its output keeps line numbers, and the code view replaces every literal and comment with blanks so the other rules never match text inside a string. It has its own unit tests (URLs in strings, `//` in raw strings, templates with quotes, `'/'` characters, KDoc, nested block comments).
 - `KotlinSource`: path relative to the repository, module, source set, package, imports (with alias and wildcard handled) with their line, the scanned code lines and string literals.
 - `SourceTree`: loads every `.kt` file under `<module>/src/**` of `core`, `cli` and `desktopApp`, plus the root and module `*.gradle.kts` scripts for the comment rule. It fails if a module folder is missing, so a wrong working directory can't make every rule pass on zero files.
-- One test class per spec requirement: `CoreLayersTest`, `DomainSystemAccessTest`, `CompositionRootsTest`, `NoCommentsTest`, `ArgvCommandsTest`, `FileLengthTest`. Each collects every violation and asserts the list is empty, so one run reports all of them.
+- `ArchitectureRules.kt`: one object per spec requirement (`CoreLayers`, `DomainSystemAccess`, `CompositionRoots`, `NoComments`, `ArgvCommands`, `FileLength`), each a function from a `SourceTree` (and its exception list) to the list of violations as `path:line: message`.
+- `RepositoryArchitectureTest` runs every rule on the repository and asserts each list is empty, so one run reports every violation. `ArchitectureRulesTest` runs each rule on small in-memory trees and checks the exact violations, so the failure paths (an unlisted case, a stale entry, a grown file) are tested permanently instead of by adding temporary violations to the code base.
 - `ArchitectureExceptions.kt` holds the three exception lists as plain Kotlin values, next to the rules that read them.
 
 A dependency is an import (explicit, aliased or wildcard) or a fully qualified reference in code, so `app.luxion.shogunai.infrastructure.Foo()` written inline doesn't slip past.
@@ -84,8 +85,7 @@ The alternative for the last two, letting infrastructure import use cases, was d
 - `model/Multirepo.kt`, `model/RepositoryConfigRules.kt`, `model/SameDirectory.kt`, `usecase/OrcaWorktreeReader.kt`, `usecase/ResolveMultirepoUseCase.kt`, `usecase/ResolveRepositoryUseCase.kt`: `java.nio.file`
 - `model/SameDirectory.kt`, `model/Tools.kt`, `model/Update.kt`, `usecase/CopyWorktreeLaunchCommandUseCase.kt`, `usecase/IosSimulatorContribution.kt`: `System.getProperty`
 - `usecase/DetectRunningAgentsUseCase.kt`, `usecase/WorktreeEnvironmentCache.kt`: `java.io.File`
-
-The exact API per file is fixed while implementing, from what the scan finds.
+- `usecase/DiagnosticReport.kt`: `System.getProperty`
 
 ### Exception lists are exact
 
@@ -97,7 +97,7 @@ In `desktopApp`, files outside the `infrastructure` package other than `main.kt`
 
 ### Comments and argv
 
-`NoCommentsTest` fails on every comment the scanner finds, in all source sets (main, test, test fixtures, end-to-end) and in the five Gradle scripts. `ArgvCommandsTest` applies to production sources only: it refuses `Runtime.getRuntime().exec` and any string literal whose whole content is a shell interpreter name, except in `EditorLaunchers.kt`, `PowerShellUserPath.kt` and `WindowsTerminalLauncher.kt`, which pass the user's data as separate arguments or escape it on purpose. Variables holding a shell (the login shell in `SystemHostEnvironment.kt`) are out of reach of a source check; they are left to review.
+`NoCommentsTest` fails on every comment the scanner finds, in all source sets (main, test, test fixtures, end-to-end) and in the five Gradle scripts. `ArgvCommandsTest` applies to production sources only: it refuses `Runtime.getRuntime().exec` and any string literal whose whole content is a lowercase shell interpreter name (case-sensitive, because `"Bash"` is the name of a Claude Code tool in the hooks and in `ShogunCli.kt`, not a shell), except in `EditorLaunchers.kt`, `PowerShellUserPath.kt` and `WindowsTerminalLauncher.kt`, which pass the user's data as separate arguments or escape it on purpose. Variables holding a shell (the login shell in `SystemHostEnvironment.kt`) are out of reach of a source check; they are left to review.
 
 ### File length
 

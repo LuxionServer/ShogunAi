@@ -3,6 +3,7 @@ package app.luxion.shogunai.domain.usecase
 import app.luxion.shogunai.domain.FakeShellCommandExecutor
 import app.luxion.shogunai.domain.io.LauncherFiles
 import app.luxion.shogunai.domain.io.UserPathEntries
+import app.luxion.shogunai.domain.model.CommandLineToolState
 import app.luxion.shogunai.domain.model.HostOs
 import app.luxion.shogunai.infrastructure.SystemHostEnvironment
 import kotlinx.coroutines.test.runTest

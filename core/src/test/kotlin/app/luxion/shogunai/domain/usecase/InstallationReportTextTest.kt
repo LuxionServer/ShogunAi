@@ -1,8 +1,10 @@
 package app.luxion.shogunai.domain.usecase
 
-import app.luxion.shogunai.domain.io.HostPathSource
+import app.luxion.shogunai.domain.model.HostPathSource
 import app.luxion.shogunai.domain.model.AgentToolId
 import app.luxion.shogunai.domain.model.CheckState
+import app.luxion.shogunai.domain.model.CommandLineToolState
+import app.luxion.shogunai.domain.model.HooksInstallState
 import app.luxion.shogunai.domain.model.InstallationCheck
 import app.luxion.shogunai.domain.model.HostOs
 import app.luxion.shogunai.domain.model.InstallationFinding

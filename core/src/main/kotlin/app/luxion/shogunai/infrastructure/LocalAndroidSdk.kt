@@ -9,7 +9,7 @@ import app.luxion.shogunai.domain.model.EmulatorState
 import app.luxion.shogunai.domain.model.SdkLocation
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.emulatorSerial
-import app.luxion.shogunai.domain.usecase.nestedGradleBuildFolders
+import app.luxion.shogunai.domain.io.nestedGradleBuildFolders
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.Path

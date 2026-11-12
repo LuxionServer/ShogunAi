@@ -4,6 +4,7 @@ import app.luxion.shogunai.domain.io.EnvironmentStateStore
 import app.luxion.shogunai.domain.model.EMULATOR_PORT_KEY
 import app.luxion.shogunai.domain.model.IOS_SIMULATOR_KEY
 import app.luxion.shogunai.domain.io.PhysicalDeviceLeaseStore
+import app.luxion.shogunai.domain.model.normalizePath
 import java.time.Instant
 
 class RenewWorktreeLeasesUseCase(

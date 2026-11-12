@@ -4,7 +4,7 @@ import app.luxion.shogunai.domain.FakeShellCommandExecutor
 import app.luxion.shogunai.domain.executor.CommandExecutionException
 import app.luxion.shogunai.domain.executor.CommandResult
 import app.luxion.shogunai.domain.io.HostPath
-import app.luxion.shogunai.domain.io.HostPathSource
+import app.luxion.shogunai.domain.model.HostPathSource
 import app.luxion.shogunai.domain.model.HostOs
 import java.io.IOException
 import kotlin.test.Test

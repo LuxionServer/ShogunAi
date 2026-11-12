@@ -1,22 +1,15 @@
 package app.luxion.shogunai.domain.usecase
 
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
+import app.luxion.shogunai.domain.model.GroupWorktree
 import app.luxion.shogunai.domain.model.Multirepo
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.Worktree
+import app.luxion.shogunai.domain.model.WorktreeGroup
+import app.luxion.shogunai.domain.model.sameDirectory
 
 data class MultirepoMember(val alias: String, val config: ProjectConfig)
-
-data class GroupWorktree(val alias: String, val config: ProjectConfig, val worktree: Worktree)
-
-data class WorktreeGroup(val branch: String, val worktrees: List<GroupWorktree>) {
-    val title: String
-        get() = branch.substringAfterLast('/')
-
-    val aliases: List<String>
-        get() = worktrees.map { it.alias }
-}
 
 data class MultirepoWorktrees(
     val members: List<MultirepoMember>,

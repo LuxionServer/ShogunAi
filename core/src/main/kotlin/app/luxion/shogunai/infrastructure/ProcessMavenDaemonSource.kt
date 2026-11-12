@@ -6,7 +6,7 @@ import app.luxion.shogunai.domain.io.MavenDaemonSource
 import app.luxion.shogunai.domain.model.DaemonState
 import app.luxion.shogunai.domain.model.MavenDaemonProcess
 import app.luxion.shogunai.domain.model.WorktreeError
-import app.luxion.shogunai.domain.usecase.parseLsofWorkingDirectories
+import app.luxion.shogunai.domain.model.parseLsofWorkingDirectories
 import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.InvalidPathException

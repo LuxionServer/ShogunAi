@@ -1,10 +1,12 @@
 package app.luxion.shogunai.domain.model
 
-import app.luxion.shogunai.domain.io.HostPathSource
-import app.luxion.shogunai.domain.usecase.CommandLineToolState
-import app.luxion.shogunai.domain.usecase.HooksInstallState
-
 enum class CheckState { PASSED, WARNING, FAILED, NOT_FOUND }
+
+enum class HostPathSource { LOGIN_SHELL, PROCESS, FALLBACK }
+
+enum class CommandLineToolState { AVAILABLE, INSTALLED_NOT_ON_PATH, BROKEN, MISSING }
+
+enum class HooksInstallState { INSTALLED, OUTDATED, MISSING }
 
 enum class AgentToolId(val id: String, val displayName: String, val website: String) {
     CLAUDE_CODE("claude-code", "Claude Code", "https://docs.claude.com/en/docs/claude-code/setup"),

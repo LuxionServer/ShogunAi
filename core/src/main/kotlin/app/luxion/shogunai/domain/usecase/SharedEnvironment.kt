@@ -8,6 +8,7 @@ import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.UnresolvedReason
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.repositoryPorts
+import app.luxion.shogunai.domain.model.sameDirectory
 
 sealed interface SharedTarget {
     data class Located(val repositoryPath: String, val worktreePath: String) : SharedTarget

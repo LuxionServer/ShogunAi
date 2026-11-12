@@ -8,6 +8,7 @@ import app.luxion.shogunai.domain.model.OrcaWorktreeUpdate
 import app.luxion.shogunai.domain.model.RunningAgent
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.WorktreeStatus
+import app.luxion.shogunai.domain.model.canonicalDirectory
 import kotlinx.coroutines.CancellationException
 import java.util.concurrent.ConcurrentHashMap
 

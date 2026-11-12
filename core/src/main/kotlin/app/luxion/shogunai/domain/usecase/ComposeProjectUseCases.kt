@@ -15,6 +15,7 @@ import app.luxion.shogunai.domain.model.ComposeOwner
 import app.luxion.shogunai.domain.model.ComposeProject
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.WorktreeComposeProject
+import app.luxion.shogunai.domain.model.normalizePath
 
 fun worktreeComposeProjectName(repositoryPath: String, worktreePath: String): String =
     composeProjectName(normalizePath(repositoryPath).substringAfterLast('/'), normalizePath(worktreePath).substringAfterLast('/'))

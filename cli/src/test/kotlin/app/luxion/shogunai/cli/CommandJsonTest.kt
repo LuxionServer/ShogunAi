@@ -40,11 +40,11 @@ import app.luxion.shogunai.domain.usecase.GroupCreation
 import app.luxion.shogunai.domain.usecase.GroupRepositoryOutcome
 import app.luxion.shogunai.domain.usecase.GroupRepositoryResult
 import app.luxion.shogunai.domain.usecase.GroupState
-import app.luxion.shogunai.domain.usecase.GroupWorktree
+import app.luxion.shogunai.domain.model.GroupWorktree
 import app.luxion.shogunai.domain.usecase.GroupWorktreeState
 import app.luxion.shogunai.domain.usecase.MultirepoState
 import app.luxion.shogunai.domain.usecase.MultirepoWorktrees
-import app.luxion.shogunai.domain.usecase.WorktreeGroup
+import app.luxion.shogunai.domain.model.WorktreeGroup
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonArray

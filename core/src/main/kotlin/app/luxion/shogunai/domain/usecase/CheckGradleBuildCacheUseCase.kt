@@ -1,6 +1,7 @@
 package app.luxion.shogunai.domain.usecase
 
 import app.luxion.shogunai.domain.io.FileManager
+import app.luxion.shogunai.domain.io.nestedGradleBuildPaths
 
 class CheckGradleBuildCacheUseCase(
     private val fileManager: FileManager,

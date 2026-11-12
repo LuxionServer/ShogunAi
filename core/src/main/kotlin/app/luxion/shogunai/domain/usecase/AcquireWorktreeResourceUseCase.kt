@@ -22,6 +22,7 @@ import app.luxion.shogunai.domain.model.ResourceKind
 import app.luxion.shogunai.domain.model.SimulatorSettings
 import app.luxion.shogunai.domain.model.WaitTicket
 import app.luxion.shogunai.domain.model.WorktreeError
+import app.luxion.shogunai.domain.model.normalizePath
 import app.luxion.shogunai.domain.model.queueName
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay

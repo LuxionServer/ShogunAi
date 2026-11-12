@@ -22,10 +22,10 @@ import app.luxion.shogunai.domain.model.SharedVariablesDeclaration
 import app.luxion.shogunai.domain.model.WorkspaceSetting
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.usecase.AddedRepository
-import app.luxion.shogunai.domain.usecase.GroupWorktree
+import app.luxion.shogunai.domain.model.GroupWorktree
 import app.luxion.shogunai.domain.usecase.MultirepoMember
 import app.luxion.shogunai.domain.usecase.RegisteredMultirepo
-import app.luxion.shogunai.domain.usecase.WorktreeGroup
+import app.luxion.shogunai.domain.model.WorktreeGroup
 import app.luxion.shogunai.domain.usecase.WorktreesFolderProposal
 import app.luxion.shogunai.ui.projectconfig.AgentDraft
 import kotlinx.coroutines.CoroutineScope

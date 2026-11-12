@@ -20,6 +20,7 @@ import app.luxion.shogunai.domain.model.ResourceKind
 import app.luxion.shogunai.domain.model.SimulatorState
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.effectiveLimit
+import app.luxion.shogunai.domain.model.normalizePath
 import app.luxion.shogunai.domain.model.releaseRank
 import app.luxion.shogunai.domain.model.emulatorSerial
 import java.time.Duration

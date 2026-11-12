@@ -28,6 +28,7 @@ import app.luxion.shogunai.domain.model.RecordedDevice
 import app.luxion.shogunai.domain.model.SHOGUN_ANDROID_DEVICE_SERIAL
 import app.luxion.shogunai.domain.model.SHOGUN_IOS_DEVICE_UDID
 import app.luxion.shogunai.domain.model.WorktreeError
+import app.luxion.shogunai.domain.model.normalizePath
 import app.luxion.shogunai.domain.model.poolDisplayName
 import app.luxion.shogunai.domain.model.releaseRank
 import kotlinx.coroutines.Dispatchers

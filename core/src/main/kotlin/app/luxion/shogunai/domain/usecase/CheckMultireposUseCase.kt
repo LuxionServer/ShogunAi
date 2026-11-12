@@ -9,6 +9,7 @@ import app.luxion.shogunai.domain.model.Multirepo
 import app.luxion.shogunai.domain.model.MultirepoDeclaration
 import app.luxion.shogunai.domain.model.MultirepoProblem
 import app.luxion.shogunai.domain.model.WorktreeError
+import app.luxion.shogunai.domain.model.normalizePath
 import kotlinx.coroutines.CancellationException
 
 class CheckMultireposUseCase(

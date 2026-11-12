@@ -12,8 +12,8 @@ import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.usecase.ClaudeCodeHooks
 import app.luxion.shogunai.domain.usecase.CommandLineTool
-import app.luxion.shogunai.domain.usecase.CommandLineToolState
-import app.luxion.shogunai.domain.usecase.HooksInstallState
+import app.luxion.shogunai.domain.model.CommandLineToolState
+import app.luxion.shogunai.domain.model.HooksInstallState
 import app.luxion.shogunai.ui.projectconfig.ProjectConfigViewModel
 import app.luxion.shogunai.ui.projectconfig.RepositoryInspection
 import app.luxion.shogunai.ui.shell.ClaudeHooksState

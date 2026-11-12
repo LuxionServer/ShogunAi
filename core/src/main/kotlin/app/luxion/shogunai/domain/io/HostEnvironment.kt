@@ -1,6 +1,7 @@
 package app.luxion.shogunai.domain.io
 
 import app.luxion.shogunai.domain.model.HostOs
+import app.luxion.shogunai.domain.model.HostPathSource
 
 interface HostEnvironment {
     val os: HostOs
@@ -13,5 +14,3 @@ interface HostEnvironment {
 }
 
 data class HostPath(val folders: List<String>, val source: HostPathSource)
-
-enum class HostPathSource { LOGIN_SHELL, PROCESS, FALLBACK }

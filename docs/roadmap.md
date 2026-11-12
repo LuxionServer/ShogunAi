@@ -185,6 +185,7 @@ Left out:
 - Removing Cmd/Ctrl+E, kept for one release as an alias of Cmd/Ctrl+O when the shortcut moved to the default runner.
 - Showing the build that holds a busy Gradle daemon in the desktop app's Gradle view; today `shogun gradle` names it, with its client, tasks and the agent session that started it.
 - Writing the remaining state texts of the Machine views in the interface font: the Compose view still writes its leftovers title and a removed worktree as its owner in the data font.
+- Taking the system out of the domain: the 13 domain files on the architecture tests' exception list still use `java.io.File`, `java.nio.file` or `System.getProperty` directly, instead of a port or an `osName` parameter.
 
 ## Later
 

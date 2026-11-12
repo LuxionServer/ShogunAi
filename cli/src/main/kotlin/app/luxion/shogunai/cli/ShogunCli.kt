@@ -118,7 +118,7 @@ import app.luxion.shogunai.domain.usecase.AgentInstructionsBlock
 import app.luxion.shogunai.domain.usecase.ClaudeCodeHooks
 import app.luxion.shogunai.domain.usecase.GuideBlockState
 import app.luxion.shogunai.domain.usecase.GuideBlockStatus
-import app.luxion.shogunai.domain.usecase.HooksInstallState
+import app.luxion.shogunai.domain.model.HooksInstallState
 import app.luxion.shogunai.domain.usecase.HooksPreview
 import app.luxion.shogunai.domain.usecase.CheckGradleBuildCacheUseCase
 import app.luxion.shogunai.domain.usecase.CleanUpWorktreesUseCase
@@ -225,7 +225,7 @@ import app.luxion.shogunai.domain.usecase.StartHeadlessAppUseCase
 import app.luxion.shogunai.domain.usecase.StopHeadlessAppUseCase
 import app.luxion.shogunai.domain.usecase.StopWorktreeSimulatorUseCase
 import app.luxion.shogunai.domain.usecase.TrimGradleDaemonsUseCase
-import app.luxion.shogunai.domain.usecase.WorktreeGroup
+import app.luxion.shogunai.domain.model.WorktreeGroup
 import app.luxion.shogunai.domain.usecase.WriteEnvironmentFileUseCase
 import app.luxion.shogunai.domain.usecase.classifyOrigin
 import app.luxion.shogunai.domain.usecase.formatEnvironment

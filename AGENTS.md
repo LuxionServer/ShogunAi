@@ -17,6 +17,12 @@ Don't load all of `docs/` into context by default: search for the specific page 
 
 - Every bug fix comes with a regression test, written first and seen failing so it reproduces the bug before the fix makes it pass.
 
+## Architecture rules
+
+- The tests in `core/src/test/kotlin/app/luxion/shogunai/architecture/` enforce the layering, composition roots, no comments, argv commands and the file length cap described in `docs/architecture/overview.md`.
+- When one fails, fix the code: move the declaration to the right package, take the system behind a port, or split the file.
+- Never add an entry to an exception list in `ArchitectureExceptions.kt`, or raise a length cap, without its reason in your change's `design.md`. When your change fixes a listed case, remove its entry.
+
 ## Testing integrations with real tools
 
 - Agent sessions usually run inside a Herdr pane and inherit `HERDR_SOCKET_PATH`, so any `herdr` command they run reaches the user's running server, whatever `HOME` says.

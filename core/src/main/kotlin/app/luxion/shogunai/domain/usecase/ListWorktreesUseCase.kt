@@ -6,6 +6,8 @@ import app.luxion.shogunai.domain.io.FileManager
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.WorktreeError
+import app.luxion.shogunai.domain.model.normalizePath
+import app.luxion.shogunai.domain.model.sameDirectory
 
 class ListWorktreesUseCase(
     private val config: ProjectConfig,
