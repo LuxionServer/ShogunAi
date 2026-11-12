@@ -127,7 +127,7 @@ In every view other than the multirepo view, the row of a worktree that belongs 
 - **THEN** its `app` and `api` child rows show no group tag
 
 ### Requirement: Add a multirepo from the app
-The user SHALL be able to add a multirepo by dropping a folder on the sidebar or choosing it with "Add multirepo". Before confirming, the app SHALL list the Git repositories directly inside the folder, and any added from elsewhere, with their aliases, which already are projects, the proposed worktrees folder of each (optional) and the groups detected by branch. A folder's existing declaration SHALL be shown as `shogun multirepo trust` shows it. Confirming SHALL write the declaration as `shogun multirepo init` and `add-repo` do, and approve it.
+The user SHALL be able to add a multirepo by dropping a folder on the sidebar or choosing it with "Add multirepo". Before confirming, the app SHALL list the Git repositories directly inside the folder, and any added from elsewhere, with their aliases, which already are projects, the proposed worktrees folder of each (optional) and the groups detected by branch. Confirming SHALL write the declaration as `shogun multirepo init` and `add-repo` do, and approve it.
 
 #### Scenario: Detected repositories
 - **WHEN** the user drops `~/projects/product`, which contains `product-app`, `product-api`, `product-docs` and a folder `notes`
@@ -173,7 +173,7 @@ The multirepo SHALL have a settings screen to set its name, add, remove and rena
 - **THEN** the settings screen points to the review and saves nothing
 
 ### Requirement: New change from the app
-The multirepo view SHALL offer "New change", a dialog like "New worktree" with the change id, feature or fix, fetching first, one checkbox per repository with the default repositories checked, and a selector to open the new worktrees in Herdr or in Orca, starting on the runner in use when the selector offers it and on not opening them otherwise. It SHALL create the group as `shogun new <id> --repos` does, report each repository's result and then open the group in the chosen runner as "Open all" does.
+The multirepo view SHALL offer "New change", a dialog like "New worktree" with the change id, feature or fix, fetching first, one checkbox per repository with the default repositories checked, and a selector of where to open the new worktrees. It SHALL create the group as `shogun new <id> --repos` does, report each repository's result and then open the group in the chosen runner as "Open all" does.
 
 #### Scenario: Create a change
 - **WHEN** the user enters `TASK-20`, keeps `app` and `api` checked, sets the selector to not opening and confirms
@@ -407,3 +407,21 @@ A group's actions SHALL work from any view that offers them, acting on the group
 #### Scenario: Add a repository from Active
 - **WHEN** `product` has `app`, `api` and `docs`, the group `feature/TASK-1` has `app` and `api`, and the user opens the `TASK-1` row's menu in "Active"
 - **THEN** "Add repository" offers `docs`, and picking it creates `docs`'s worktree as `shogun new TASK-1 --repos docs` would
+
+### Requirement: Show a folder's existing declaration when adding it
+When the folder added as a multirepo already has a declaration, the app SHALL show it as `shogun multirepo trust` shows it.
+
+#### Scenario: Cloned declaration reviewed
+- **WHEN** the user drops a cloned `~/projects/product` whose declaration lists `api` as `/srv/other/api`
+- **THEN** the dialog lists `api` with `/srv/other/api` marked as outside `~/projects`, and only confirming registers and approves it
+
+### Requirement: Where "New change" opens the worktrees
+The selector of the "New change" dialog SHALL offer to open the new worktrees in Herdr or in Orca, or not to open them, starting on the runner in use when the selector offers it and on not opening them otherwise.
+
+#### Scenario: Runner in use preselected
+- **WHEN** Orca is the runner in use and installed, and the user opens "New change"
+- **THEN** the selector starts on Orca
+
+#### Scenario: No runner in use offered
+- **WHEN** the runner in use isn't installed and the other runner is, and the user opens "New change"
+- **THEN** the selector starts on not opening the worktrees

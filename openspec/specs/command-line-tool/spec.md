@@ -6,7 +6,7 @@ Defines the `shogun` command, which runs ShogunAi's worktree operations from a t
 ## Requirements
 
 ### Requirement: Find the repository and its project
-Every command SHALL work on the Git repository that contains the current directory, or the path it's given, resolved to its main worktree even when run from a linked worktree. When the desktop app has a project for that repository, the command SHALL use its worktrees folder, local files and main branch. `shogun new`, `shogun status`, `shogun open`, `shogun clean` and `shogun multirepo` SHALL also work in a multirepo folder, which isn't a Git repository, acting on the multirepo and its groups. `project list` and `app` without a path are the exceptions: they work outside a Git repository.
+Every command SHALL work on the Git repository that contains the current directory, or the path it's given, resolved to its main worktree even when run from a linked worktree. When the desktop app has a project for that repository, the command SHALL use its worktrees folder, local files and main branch. `project list` and `app` without a path are the exceptions: they work outside a Git repository.
 
 #### Scenario: Run from a linked worktree
 - **WHEN** the user runs `shogun status` inside a linked worktree of `~/projects/main-repo`
@@ -29,7 +29,7 @@ Every command SHALL work on the Git repository that contains the current directo
 - **THEN** the command runs and does not fail for lack of a repository
 
 ### Requirement: Create a worktree from the command line
-`shogun new <task-id> [--fix] [--from <ref>]` SHALL create a worktree on a new `feature/` (or `fix/`) branch, and `shogun new --branch <branch>` one from an existing local branch, with the same folder, provisioning, validation and rollback as the desktop app. The new branch SHALL start at `<ref>` when `--from` is given, and otherwise at the HEAD of the worktree containing the current directory. On success it SHALL print the worktree's absolute path alone on standard output and, for a new branch, the commit it starts at, with its short hash and subject, and the `--from` ref when given, on standard error.
+`shogun new <task-id> [--fix] [--from <ref>]` SHALL create a worktree on a new `feature/` (or `fix/`) branch, and `shogun new --branch <branch>` one from an existing local branch, with the same folder, provisioning, validation and rollback as the desktop app. The new branch SHALL start at `<ref>` when `--from` is given, and otherwise at the HEAD of the worktree containing the current directory.
 
 #### Scenario: New branch
 - **WHEN** the user runs `shogun new TASK-123` in a repository with a project
@@ -79,7 +79,7 @@ Every command SHALL work on the Git repository that contains the current directo
 - **THEN** nothing is copied and the command exits with code 1 explaining why
 
 ### Requirement: Show worktree status from the command line
-`shogun status` SHALL print one line per worktree of the repository with its path, branch (or detached), origin (ShogunAi, Claude Code, Herdr or other), uncommitted changes, divergence from its upstream and from its base, and whether it's merged into its base or the main branch, the same information the desktop app shows. `shogun status --json` SHALL print the same information, plus each worktree's HEAD, its divergence from the main branch and its last commit time, as a single JSON document on standard output, whose fields later versions only add to and never rename, remove or change the type of.
+`shogun status` SHALL print one line per worktree of the repository with its path, branch (or detached), origin (ShogunAi, Claude Code, Herdr or other), uncommitted changes, divergence from its upstream and from its base, and whether it's merged into its base or the main branch, the same information the desktop app shows.
 
 #### Scenario: Several worktrees
 - **WHEN** the repository has the main worktree, a merged worktree and one with uncommitted changes
@@ -213,7 +213,7 @@ The `shogun` command SHALL be available from each release: on macOS and Linux th
 - **THEN** the worktree and its branch are removed
 
 ### Requirement: List Gradle daemons from the command line
-`shogun gradle` SHALL print one line per Gradle or Kotlin daemon with its process id, kind, Gradle version, memory, state and, inside a Git repository, its worktree, followed by the total memory. Under each busy daemon with a holding build it SHALL print the build: the client's process id and tasks when known, its directory, how long it has been running and the agent session and worktree that started it when known. `shogun gradle --json` SHALL add a `holder` object to each daemon, or `null`. It SHALL work outside a Git repository. Inside a repository that declares the Gradle provider it SHALL also print the build cache notice when it applies.
+`shogun gradle` SHALL print one line per Gradle or Kotlin daemon with its process id, kind, Gradle version, memory, state and, inside a Git repository, its worktree, followed by the total memory. It SHALL work outside a Git repository. Inside a repository that declares the Gradle provider it SHALL also print the build cache notice when it applies.
 
 #### Scenario: Daemons running
 - **WHEN** the user runs `shogun gradle` in a repository while an idle and a busy Gradle daemon are running
@@ -270,7 +270,7 @@ With `--yes`, `shogun clean --stop-gradle-daemons` SHALL also stop the idle Grad
 - **THEN** nothing is removed or stopped, and the output also lists the daemons that would be stopped
 
 ### Requirement: Print a worktree's environment from the command line
-`shogun env [<path>] [--format sh|dotenv|json]` SHALL resolve the environment of the worktree containing the path, or the current directory, and print it: `sh` (the default) as `export NAME='value'` lines safe for `eval`, `dotenv` as `NAME=value` lines, `json` as an object. Declared variables SHALL only be printed while the repository is approved (see `worktree-environment`); when some await approval, a note naming them and `shogun trust` SHALL go to standard error. An empty environment SHALL print nothing on standard output and exit with code 0.
+`shogun env [<path>] [--format sh|dotenv|json]` SHALL resolve the environment of the worktree containing the path, or the current directory, and print it: `sh` (the default) as `export NAME='value'` lines safe for `eval`, `dotenv` as `NAME=value` lines, `json` as an object. An empty environment SHALL print nothing on standard output and exit with code 0.
 
 #### Scenario: Shell format
 - **WHEN** the user runs `eval "$(shogun env)"` inside a worktree of an approved repository whose `PORT` resolves to 20001
@@ -293,7 +293,7 @@ With `--yes`, `shogun clean --stop-gradle-daemons` SHALL also stop the idle Grad
 - **THEN** `PORT` isn't printed, standard error names `PORT` and `shogun trust`, and the command exits with code 0
 
 ### Requirement: Deliver the environment through Claude Code's SessionStart hook
-`shogun hook session-start` SHALL read the hook's JSON from standard input and, inside a Git repository, print the short workflow rules of `shogun guide` that apply to that location. Only when the repository is registered as a project SHALL it also resolve the environment of the worktree containing its `cwd` field, append one `export` line per variable to the file named by `CLAUDE_ENV_FILE`, and print a context line naming the variables without their values; declared variables awaiting approval SHALL be named in the context as awaiting the user's approval with `shogun trust`, and not delivered. In a group worktree it SHALL also add the group's context, and in a multirepo folder it SHALL print the multirepo's context. Anywhere else outside a Git repository it SHALL write and print nothing and exit with code 0.
+`shogun hook session-start` SHALL read the hook's JSON from standard input and, inside a Git repository, print the short workflow rules of `shogun guide` that apply to that location. In a group worktree it SHALL also add the group's context, and in a multirepo folder it SHALL print the multirepo's context. Anywhere else outside a Git repository it SHALL write and print nothing and exit with code 0.
 
 #### Scenario: Session in a worktree
 - **WHEN** Claude Code starts a session in a worktree of a registered, approved project whose `PORT` resolves to 20001
@@ -344,7 +344,7 @@ With `--yes`, `shogun clean --stop-gradle-daemons` SHALL also stop the idle Grad
 - **THEN** nothing about `PORT` is written to `$CLAUDE_ENV_FILE`, and the context names `PORT` as awaiting the user's approval with `shogun trust`
 
 ### Requirement: Manage a worktree's emulator from the command line
-`shogun emulator start [<path>] [--avd <name>] [--no-window]`, `shogun emulator stop [<path>]` and `shogun emulator status [<path>]` SHALL act on the emulator of the worktree containing the path or the current directory, printing its serial and state, or `not acquired` when the worktree holds no emulator. `start` SHALL acquire the emulator from the pool when needed, print on standard error any emulator released to make room, and print the `export ANDROID_SERIAL=…` line to run when the emulator was just acquired. In a repository that doesn't declare the emulator provider they SHALL fail with exit code 1 and say how to declare it.
+`shogun emulator start [<path>] [--avd <name>] [--no-window]`, `shogun emulator stop [<path>]` and `shogun emulator status [<path>]` SHALL act on the emulator of the worktree containing the path or the current directory, printing its serial and state, or `not acquired` when the worktree holds no emulator. In a repository that doesn't declare the emulator provider they SHALL fail with exit code 1 and say how to declare it.
 
 #### Scenario: Start
 - **WHEN** the user runs `shogun emulator start` in a worktree whose serial is `emulator-5556`
@@ -382,7 +382,7 @@ With `--yes`, `shogun clean --stop-emulators` SHALL also stop the running emulat
 - **THEN** no emulator is stopped
 
 ### Requirement: Tell Claude how to start its emulator
-When the repository declares the emulator provider, the context line printed by `shogun hook session-start` SHALL say how to get the worktree's emulator: when the worktree holds one, that it is `ANDROID_SERIAL` and that `shogun emulator start` starts it; otherwise, that `shogun emulator start` acquires and starts it and prints the `ANDROID_SERIAL` to export. It SHALL also warn that the adb server is shared with other worktrees' agents, so the agent must not restart it nor pick a device other than `ANDROID_SERIAL`.
+When the repository declares the emulator provider, the context line printed by `shogun hook session-start` SHALL say how to get the worktree's emulator: when the worktree holds one, that it is `ANDROID_SERIAL` and that `shogun emulator start` starts it; otherwise, that `shogun emulator start` acquires and starts it and prints the `ANDROID_SERIAL` to export.
 
 #### Scenario: Context with the emulator
 - **WHEN** a Claude Code session starts in a worktree whose serial is `emulator-5556`
@@ -397,7 +397,7 @@ When the repository declares the emulator provider, the context line printed by 
 - **THEN** the context line says not to run `adb kill-server` or `adb start-server` and not to pass `-s`, `-e` or `-d` to adb
 
 ### Requirement: Manage a worktree's iOS simulator from the command line
-`shogun simulator start|stop|status [<path>] [--device <type>] [--runtime <runtime>]` SHALL act on the simulator of the worktree containing the path or the current directory, printing its UDID and state, or `not acquired` when the worktree holds none; `--device` and `--runtime` only apply when the simulator has to be created. `start` SHALL acquire the simulator from the pool when needed, print on standard error any simulator released to make room, and print the `export IOS_SIMULATOR_UDID=…` line to run when it was just acquired. `status` SHALL also say whether the repository's KMP tests are wired to it, only when the repository applies the Kotlin Multiplatform plugin. In a repository without the provider the commands SHALL fail with exit code 1 and say how to declare it.
+`shogun simulator start|stop|status [<path>] [--device <type>] [--runtime <runtime>]` SHALL act on the simulator of the worktree containing the path or the current directory, printing its UDID and state, or `not acquired` when the worktree holds none; `--device` and `--runtime` only apply when the simulator has to be created. In a repository without the provider the commands SHALL fail with exit code 1 and say how to declare it.
 
 #### Scenario: Start
 - **WHEN** the user runs `shogun simulator start` in a worktree
@@ -599,7 +599,7 @@ Commands SHALL work in submodules and in repositories whose Git folder is separa
 - **THEN** the command prints the fetch error on standard error, creates nothing and exits with code 1
 
 ### Requirement: Remove a worktree from the command line
-`shogun remove <target>` SHALL remove the linked worktree identified by a task id, a path or a branch name. It SHALL refuse a worktree with uncommitted or untracked changes, a locked worktree, or one with a running agent, unless `--force` is given; it SHALL never remove the main worktree. With `--delete-branch` it SHALL delete the branch only when merged into its base or the main branch, and keep it otherwise, saying why; with `--force-delete-branch` it SHALL delete the branch even if unmerged. A kept branch SHALL NOT make the command fail. With `--json`, `branchDeleted` SHALL name the deleted branch or be `null`, and `branchKeptReason` SHALL say why a requested deletion didn't happen or be `null`. It SHALL stop the resources the repository's providers keep for that worktree, as cleanup does.
+`shogun remove <target>` SHALL remove the linked worktree identified by a task id, a path or a branch name. It SHALL refuse a worktree with uncommitted or untracked changes, a locked worktree, or one with a running agent, unless `--force` is given; it SHALL never remove the main worktree. It SHALL stop the resources the repository's providers keep for that worktree, as cleanup does.
 
 #### Scenario: Remove by task id
 - **WHEN** the user runs `shogun remove TASK-123` and the worktree is clean
@@ -1054,7 +1054,7 @@ With `--yes`, `shogun clean --down-compose-projects` SHALL also take down the Co
 - **THEN** the command says it needs a worktree and exits with code 1
 
 ### Requirement: Tell the agent how to check its desktop app
-When the repository declares the desktop app provider on macOS, the context printed by `shogun hook session-start` SHALL say in one line to check the app hidden with `shogun headless start` instead of computer use, and to read `shogun guide resources` for how to drive and capture it. `shogun guide resources` SHALL keep the full rule: drive it with the Hot Reload MCP, capture it with `shogun headless capture` instead of the MCP's screenshot, re-read the tree after each view change, hide it again with `shogun headless start` after `restart`, and say what still needs the desktop and that for it the agent takes the desktop turn with `shogun desktop acquire --wait` first.
+When the repository declares the desktop app provider on macOS, the context printed by `shogun hook session-start` SHALL say in one line to check the app hidden with `shogun headless start` instead of computer use, and to read `shogun guide resources` for how to drive and capture it.
 
 #### Scenario: Context with the provider
 - **WHEN** a Claude Code session starts on macOS in a worktree of a repository that declares the provider
@@ -1182,3 +1182,131 @@ The command SHALL write standard output and standard error in UTF-8 whatever the
 #### Scenario: JSON with nobody waiting
 - **WHEN** nobody waits for a physical device and the user runs `shogun pool status --json`
 - **THEN** `physicalDevices.android.waiting` and `physicalDevices.ios.waiting` are empty arrays
+
+### Requirement: Commands that work in a multirepo folder
+`shogun new`, `shogun status`, `shogun open`, `shogun clean` and `shogun multirepo` SHALL also work in a multirepo folder, which isn't a Git repository, acting on the multirepo and its groups.
+
+#### Scenario: Status in a multirepo folder
+- **WHEN** the user runs `shogun status` in a multirepo folder, which isn't a Git repository
+- **THEN** the command shows the multirepo's groups instead of failing
+
+### Requirement: Report the new worktree's path and start commit
+On success, `shogun new` SHALL print the worktree's absolute path alone on standard output and, for a new branch, the commit it starts at, with its short hash and subject, and the `--from` ref when given, on standard error.
+
+#### Scenario: Start commit and ref reported
+- **WHEN** the user runs `shogun new TASK-123 --from origin/develop` and `origin/develop` points to `a41d265 Merge pull request #12`
+- **THEN** standard error says the branch starts from `origin/develop` at `a41d265 Merge pull request #12`, and standard output has only the path
+
+#### Scenario: No start commit for an existing branch
+- **WHEN** the user runs `shogun new --branch hotfix/login`
+- **THEN** its path is printed and no start commit is reported
+
+### Requirement: Worktree status as JSON
+`shogun status --json` SHALL print the information of `shogun status`, plus each worktree's HEAD, its divergence from the main branch and its last commit time, as a single JSON document on standard output. Later versions SHALL only add fields to it, and never rename, remove or change the type of one.
+
+#### Scenario: One JSON document
+- **WHEN** the user runs `shogun status --json` in a repository with the main worktree, a merged worktree and one with two uncommitted changes
+- **THEN** standard output is one JSON object with `repository`, `mainBranch` and a `worktrees` array with one object per worktree, where the main one has `main: true` and `origin: null`, the merged one has `status.merged: true`, and the other has `status.uncommittedChanges: 2`
+
+#### Scenario: Every field present
+- **WHEN** the user runs `shogun status --json` and a worktree's folder no longer exists, and another worktree has a detached HEAD
+- **THEN** the first has `folderMissing: true` and `status: null`, and the second has `branch: null`; every field is present in every worktree object
+
+### Requirement: Show the build holding a busy Gradle daemon
+Under each busy daemon with a holding build, `shogun gradle` SHALL print the build: the client's process id and tasks when known, its directory, how long it has been running and the agent session and worktree that started it when known. `shogun gradle --json` SHALL add a `holder` object to each daemon, or `null`.
+
+#### Scenario: Holding build printed
+- **WHEN** a daemon is busy with `./gradlew benchRun` in the `api` worktree, started two hours ago by the session of the `apps` worktree, and the user runs `shogun gradle`
+- **THEN** under the daemon's line a line names the client's process id, `benchRun`, the `api` worktree's directory, about two hours, and the `apps` worktree's session
+
+#### Scenario: Holder object in JSON
+- **WHEN** the user runs `shogun gradle --json` while a daemon is busy and another is idle
+- **THEN** the busy daemon has a `holder` with its directory, start time, client process id, tasks and session when known, and the idle one has `"holder": null`
+
+### Requirement: Leave out variables awaiting approval in `shogun env`
+`shogun env` SHALL only print declared variables while the repository is approved (see `worktree-environment`). When some await approval, a note naming them and `shogun trust` SHALL go to standard error.
+
+#### Scenario: Repository not approved
+- **WHEN** the user runs `shogun env` in a worktree of a repository that declares `PORT` and isn't approved
+- **THEN** `PORT` isn't printed, standard error names `PORT` and `shogun trust`, and the command exits with code 0
+
+### Requirement: Deliver a registered project's environment at session start
+Only when the repository is registered as a project SHALL `shogun hook session-start` resolve the environment of the worktree containing its `cwd` field, append one `export` line per variable to the file named by `CLAUDE_ENV_FILE`, and print a context line naming the variables without their values. Declared variables awaiting approval SHALL be named in the context as awaiting the user's approval with `shogun trust`, and not delivered.
+
+#### Scenario: Environment delivered
+- **WHEN** Claude Code starts a session in a worktree of a registered, approved project whose `PORT` resolves to 20001
+- **THEN** `export PORT='20001'` is appended to `$CLAUDE_ENV_FILE` and the context says this worktree's environment has `PORT` without showing `20001`
+
+#### Scenario: Unregistered repository
+- **WHEN** Claude Code starts a session in a cloned repository that isn't registered as a project and whose `.shogunai.json` declares `env`
+- **THEN** nothing is written to `$CLAUDE_ENV_FILE`, no environment is resolved nor reserved, and the context has only the workflow rules
+
+#### Scenario: Awaiting approval
+- **WHEN** a session starts in a worktree of a registered project that declares `PORT` and isn't approved
+- **THEN** nothing about `PORT` is written to `$CLAUDE_ENV_FILE`, and the context names `PORT` as awaiting the user's approval with `shogun trust`
+
+### Requirement: Acquire the emulator when starting it
+`shogun emulator start` SHALL acquire the emulator from the pool when needed, print on standard error any emulator released to make room, and print the `export ANDROID_SERIAL=…` line to run when the emulator was just acquired.
+
+#### Scenario: Acquired on start
+- **WHEN** the user runs `shogun emulator start` in a worktree that holds no emulator and the pool has room
+- **THEN** a console port is reserved, the emulator boots, and the output includes its serial and `export ANDROID_SERIAL=emulator-<port>`
+
+#### Scenario: Emulator released to make room
+- **WHEN** the user runs `shogun emulator start` in a worktree that holds no emulator and the pool released another worktree's idle emulator to make room
+- **THEN** standard error names the released emulator
+
+### Requirement: Warn that the adb server is shared
+When the repository declares the emulator provider, the context printed by `shogun hook session-start` SHALL warn that the adb server is shared with other worktrees' agents, so the agent must not restart it nor pick a device other than `ANDROID_SERIAL`.
+
+#### Scenario: Warning in the context
+- **WHEN** a Claude Code session starts in a worktree of a repository that declares the emulator provider
+- **THEN** the context line says not to run `adb kill-server` or `adb start-server` and not to pass `-s`, `-e` or `-d` to adb
+
+### Requirement: Acquire the simulator when starting it
+`shogun simulator start` SHALL acquire the simulator from the pool when needed, print on standard error any simulator released to make room, and print the `export IOS_SIMULATOR_UDID=…` line to run when it was just acquired.
+
+#### Scenario: Acquired on start
+- **WHEN** the user runs `shogun simulator start` in a worktree that holds no simulator and the pool has room
+- **THEN** the simulator is created and booted, and the output includes `export IOS_SIMULATOR_UDID=<UDID>`
+
+#### Scenario: Simulator released to make room
+- **WHEN** the user runs `shogun simulator start` in a worktree that holds no simulator and the pool released another worktree's idle simulator to make room
+- **THEN** standard error names the released simulator
+
+### Requirement: Say whether KMP tests use the simulator
+`shogun simulator status` SHALL also say whether the repository's KMP tests are wired to the simulator, only when the repository applies the Kotlin Multiplatform plugin.
+
+#### Scenario: Unwired Kotlin Multiplatform repository
+- **WHEN** the user runs `shogun simulator status` in a Kotlin Multiplatform repository and no build script mentions `IOS_SIMULATOR_UDID`
+- **THEN** the output includes the state and says the KMP tests aren't wired, pointing to `shogun simulator gradle-init install`
+
+#### Scenario: Not Kotlin Multiplatform
+- **WHEN** the user runs `shogun simulator status` in a repository whose build scripts don't apply the Kotlin Multiplatform plugin
+- **THEN** the output is the simulator's state alone, without any line about KMP tests
+
+### Requirement: Delete the branch of a removed worktree
+With `--delete-branch`, `shogun remove` SHALL delete the branch only when merged into its base or the main branch, and keep it otherwise, saying why; with `--force-delete-branch` it SHALL delete the branch even if unmerged. A kept branch SHALL NOT make the command fail. With `--json`, `branchDeleted` SHALL name the deleted branch or be `null`, and `branchKeptReason` SHALL say why a requested deletion didn't happen or be `null`.
+
+#### Scenario: Merged branch deleted
+- **WHEN** the user runs `shogun remove TASK-123 --delete-branch` and the branch is merged into the main branch
+- **THEN** the worktree and its branch are removed
+
+#### Scenario: Unmerged branch kept without failing
+- **WHEN** the user runs `shogun remove TASK-123 --delete-branch` and the branch isn't merged into the main branch
+- **THEN** the worktree is removed, the branch is kept with a message saying it isn't merged, and the command exits with code 0
+
+#### Scenario: Unmerged branch force-deleted
+- **WHEN** the user runs `shogun remove TASK-123 --force-delete-branch` and the branch isn't merged into the main branch
+- **THEN** the worktree and the branch are removed
+
+#### Scenario: Branch fields in JSON
+- **WHEN** the user runs `shogun remove TASK-123 --delete-branch --json` and the branch is kept
+- **THEN** the object has `branchDeleted: null` and `branchKeptReason` with the reason
+
+### Requirement: Full rule for checking the desktop app
+When the repository declares the desktop app provider on macOS, `shogun guide resources` SHALL keep the full rule for checking the app: drive it with the Hot Reload MCP, capture it with `shogun headless capture` instead of the MCP's screenshot, re-read the tree after each view change, hide it again with `shogun headless start` after `restart`, and say what still needs the desktop and that for it the agent takes the desktop turn with `shogun desktop acquire --wait` first.
+
+#### Scenario: Full rule printed
+- **WHEN** the user runs `shogun guide resources` on macOS in a worktree of a repository that declares the provider
+- **THEN** the output mentions `shogun headless capture`, not to use the MCP's `take_screenshot`, hiding again after `restart`, what still needs the desktop and `shogun desktop acquire --wait` for it

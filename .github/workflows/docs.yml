@@ -8,6 +8,7 @@ on:
       - "requirements-docs.txt"
       - "scripts/mkdocs/**"
       - ".github/release-notes/**"
+      - "openspec/**"
       - ".github/workflows/docs.yml"
   workflow_dispatch:
 
@@ -25,6 +26,8 @@ jobs:
     timeout-minutes: 10
     env:
       NO_MKDOCS_2_WARNING: "1"
+      OPENSPEC_TELEMETRY: "0"
+      OPENSPEC_NO_UPDATE_CHECK: "1"
     steps:
       - uses: actions/checkout@v7
         with:
@@ -45,3 +48,13 @@ jobs:
 
       - name: Build the site in strict mode
         run: mkdocs build --strict
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+
+      - name: Install the OpenSpec CLI
+        run: npm install --global @fission-ai/openspec@1.17.0
+
+      - name: Validate the specs in strict mode
+        run: openspec validate --specs --strict --no-interactive

@@ -111,7 +111,7 @@ In both color schemes, body and label text SHALL have a contrast ratio of at lea
 - **THEN** each of them reaches 4.5:1, in light and dark
 
 ### Requirement: Data text is monospaced with tabular figures
-Paths, branch names, ports, process ids, and sizes, counts and durations written as lone figures SHALL be shown in the app's monospaced family with tabular figures, so values that refresh do not shift the layout. Counts inside sentences (such as "5 worktrees · 1.2 GB" or "2 ports · 5 vars") SHALL be shown in the UI family with tabular figures. States written as words (such as "working", "busy" or "idle"), relative dates written as text and project names SHALL be shown in the UI family, not in the monospaced one.
+Paths, branch names, ports, process ids, and sizes, counts and durations written as lone figures SHALL be shown in the app's monospaced family with tabular figures, so values that refresh do not shift the layout. Counts inside sentences SHALL be shown in the UI family with tabular figures. States written as words (such as "working", "busy" or "idle"), relative dates written as text and project names SHALL be shown in the UI family, not in the monospaced one.
 
 #### Scenario: Size updates in place
 - **WHEN** a worktree's size changes from "1.2 GB" to "1.8 GB" during a refresh

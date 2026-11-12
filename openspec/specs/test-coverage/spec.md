@@ -28,7 +28,7 @@ Coverage SHALL count only the production code of each module that unit tests can
 - **THEN** `core`'s coverage is unchanged by it
 
 ### Requirement: Each module meets its coverage threshold
-The build SHALL fail its coverage verification when a module falls below its threshold: 100% of lines in `core` and in `cli`; 100% of branches in `cli`; every branch of `core` covered except the deserializer checks kotlinx.serialization generates for `@Serializable` classes whose fields all have defaults, which no input can reach, with the rule set to that count of missed branches; and, for the lines and branches of the desktop app outside its composables, a floor at the whole percentage they had when it was set.
+The build SHALL fail its coverage verification when a module falls below its threshold: 100% of lines in `core` and in `cli`; 100% of branches in `cli`; every branch of `core` covered except the deserializer checks kotlinx.serialization generates for `@Serializable` classes whose fields all have defaults, which no input can reach, with the rule set to that count of missed branches.
 
 #### Scenario: Untested line in core
 - **WHEN** a change adds a line to `core`'s production code that no test runs
@@ -56,3 +56,10 @@ A coverage floor below 100% SHALL only be raised, never lowered, and a change th
 #### Scenario: Change that adds tests
 - **WHEN** a change raises the desktop app's line coverage from its floor to two points above it
 - **THEN** the same change raises the desktop app's line floor by those two points
+
+### Requirement: The desktop app meets its coverage floors
+The build SHALL fail its coverage verification when the lines or branches of the desktop app outside its composables fall below their floor, set at the whole percentage they had when it was set.
+
+#### Scenario: Desktop branches below the floor
+- **WHEN** a change lowers the branch coverage of the desktop app outside its composables below its floor
+- **THEN** the coverage verification fails
