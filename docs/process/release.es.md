@@ -71,6 +71,8 @@ Cada release tiene unas notas escritas a mano para quien la usa, en inglés y en
 
 Los mismos ficheros construyen el [Historial de cambios](../changelog.md) del sitio de documentación, de la release más nueva a la más antigua, en el idioma de quien lo lee (en inglés cuando una release no tiene fichero en español). Se regenera en cada `mkdocs build` y `mkdocs serve` con el hook de `scripts/mkdocs/changelog_hook.py`, así que no hay página que actualizar a mano: `docs/changelog.md` y `docs/changelog.es.md` son generados y Git los ignora. Sus tests se ejecutan con `python3 -m unittest discover -s scripts/mkdocs`.
 
+El workflow `Docs` (`.github/workflows/docs.yml`) ejecuta esos tests y `mkdocs build --strict` en cada pull request que toque `docs/`, `mkdocs.yml`, `requirements-docs.txt`, `scripts/mkdocs/` o `.github/release-notes/`, incluidas las de release, así que un hook roto o un enlace roto hace fallar el check.
+
 Cómo escribirlas:
 
 - Describe qué cambia para quien usa ShogunAi, en lenguaje llano: qué puede hacer ahora, qué funciona mejor, qué se ha corregido.

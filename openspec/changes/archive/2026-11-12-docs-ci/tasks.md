@@ -13,7 +13,7 @@
 ## 3. Workflow
 
 - [x] 3.1 Add `.github/workflows/docs.yml` as described in the design (paths filter, `workflow_dispatch`, concurrency, checkout with full history, Python 3.13 with pip cache, hook tests, strict build); verify its syntax and run the same commands locally
-- [ ] 3.2 Push the branch and verify the `Docs` check runs and succeeds on the pull request
+- [x] 3.2 Push the branch and verify the `Docs` check runs and succeeds on the pull request
 - [x] 3.3 Verify locally, with the workflow's commands and uncommitted throwaway edits, that a broken anchor and a failing hook test each make them exit non-zero; verify from the pull request's checks that the `Docs` workflow is listed only because the pull request touches its paths
 
 ## Workflow follow-up
