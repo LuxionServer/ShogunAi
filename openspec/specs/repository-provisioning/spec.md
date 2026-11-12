@@ -122,7 +122,7 @@ The system SHALL treat `.shogunai.json` as invalid, with the same error and effe
 - **THEN** the file is reported as invalid with the same error
 
 ### Requirement: Prepare the environment when provisioning
-Creating a worktree (on a new or an existing branch) and provisioning an existing worktree SHALL, once the repository's approval has been settled under the asking rules of the entry point, resolve the worktree's environment, reserving its ports, and write the environment file when one is declared and the repository is approved. While the repository isn't approved, the declared variables and the environment file SHALL be left out (see `worktree-environment`). During creation, a failure to reserve ports or to write the file SHALL remove the new worktree, as a failed copy does; when provisioning, the worktree SHALL be left in place.
+Creating a worktree (on a new or an existing branch) and provisioning an existing worktree SHALL, once the repository's approval has been settled under the asking rules of the entry point, resolve the worktree's environment, reserving its ports, and write the environment file when one is declared and the repository is approved. While the repository isn't approved, the declared variables and the environment file SHALL be left out (see `worktree-environment`).
 
 #### Scenario: Creation reserves ports
 - **WHEN** the repository declares `{ "env": { "PORT": "${port}" } }`, is approved, and a worktree is created
@@ -265,7 +265,7 @@ The system SHALL treat `.shogunai.json` as invalid, with the same error and effe
 - **THEN** the file is reported as invalid with the same error
 
 ### Requirement: Run post-creation commands
-After a worktree's files are in place and its environment prepared, the system SHALL run the post-creation commands in order, each as argv with the worktree as working directory, stopping at the first that fails, only when the repository is approved on this machine (see `repository-trust`); an unapproved repository follows the asking rules of the entry point, asked once for its commands and its declared variables before the environment is prepared. A failure SHALL report the command, its exit code and its error output, and SHALL NOT remove the worktree.
+After a worktree's files are in place and its environment prepared, the system SHALL run the post-creation commands in order, each as argv with the worktree as working directory, stopping at the first that fails, only when the repository is approved on this machine (see `repository-trust`); an unapproved repository follows the asking rules of the entry point, asked once for its commands and its declared variables before the environment is prepared.
 
 #### Scenario: Commands succeed
 - **WHEN** the repository declares `[["npm", "install"]]`, the commands are approved and a worktree is created
@@ -564,3 +564,25 @@ The system SHALL read `providers.flutter` in `.shogunai.json` as an object with 
 #### Scenario: Invalid declaration
 - **WHEN** `providers.flutter` is `true`
 - **THEN** the file is reported as invalid with an error that names `.shogunai.json`
+
+### Requirement: Failure to prepare the environment
+During creation, a failure to reserve the worktree's ports or to write its environment file SHALL remove the new worktree, as a failed copy does; when provisioning an existing worktree, the worktree SHALL be left in place.
+
+#### Scenario: Failure during creation
+- **WHEN** writing the environment file fails after the worktree was added
+- **THEN** the worktree is removed, best-effort, and creation fails with the error
+
+#### Scenario: Failure while provisioning
+- **WHEN** reserving ports fails while provisioning a worktree created by another tool
+- **THEN** provisioning fails with the error and the worktree is left in place
+
+### Requirement: Report a failed post-creation command
+A failed post-creation command SHALL be reported with the command, its exit code and its error output, and SHALL NOT remove the worktree.
+
+#### Scenario: Command exits with an error
+- **WHEN** the first of two approved post-creation commands exits with code 1 while creating a worktree
+- **THEN** the second command doesn't run, creation fails with an error naming the command, its exit code and its error output, and the worktree and its branch are kept
+
+#### Scenario: Program not installed
+- **WHEN** an approved post-creation command names a program that isn't installed
+- **THEN** creation fails with an error naming the command, and the worktree is kept

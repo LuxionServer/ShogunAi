@@ -101,7 +101,7 @@ Creating a worktree for an existing branch (`shogun new --branch`, or a group's 
 - **THEN** it prints that `--set` needs a value and exits with code 2
 
 ### Requirement: Show the base in status
-`shogun status` SHALL show `base=<branch>` on the line of each worktree with a recorded base, and `base-ahead=<n> base-behind=<m> of <base>` with its divergence from its base (recorded or main branch), and `shogun status --json` SHALL add a `base` field to every worktree object: the recorded branch, or `null` when none is recorded or the worktree is detached, and a `base` object inside `status` with the `branch` it was compared with and the commits `ahead` and `behind`, or `null` when there is no base to compare with. All the recorded bases SHALL be read with one Git command, and a failure to read them SHALL leave every `base` `null` without failing the command.
+`shogun status` SHALL show `base=<branch>` on the line of each worktree with a recorded base, and `base-ahead=<n> base-behind=<m> of <base>` with its divergence from its base (recorded or main branch). All the recorded bases SHALL be read with one Git command, and a failure to read them SHALL leave every `base` `null` without failing the command.
 
 #### Scenario: Mixed worktrees
 - **WHEN** the repository has the main worktree, a worktree recorded with base `develop` and one created by another tool
@@ -148,3 +148,18 @@ The system SHALL compare each worktree's branch with its base: the branch's reco
 #### Scenario: Recorded bases can't be read
 - **WHEN** reading the repository's recorded bases fails
 - **THEN** every worktree is compared with the main branch and the status is still shown
+
+### Requirement: Show the base in the status JSON
+`shogun status --json` SHALL add a `base` field to every worktree object: the recorded branch, or `null` when none is recorded or the worktree is detached; and a `base` object inside `status` with the `branch` it was compared with and the commits `ahead` and `behind`, or `null` when there is no base to compare with.
+
+#### Scenario: Recorded base in JSON
+- **WHEN** the repository has the main worktree, a worktree recorded with base `develop` and one created by another tool
+- **THEN** in the JSON the second's `base` is `"develop"` while the others have `base: null`
+
+#### Scenario: Divergence in JSON
+- **WHEN** a worktree recorded with base `epic/redesign` is 3 commits ahead of and 1 behind `origin/epic/redesign`
+- **THEN** its JSON `status.base` is `{"branch": "epic/redesign", "ahead": 3, "behind": 1}`
+
+#### Scenario: Detached worktree
+- **WHEN** a worktree has a detached HEAD
+- **THEN** its JSON `base` is `null`

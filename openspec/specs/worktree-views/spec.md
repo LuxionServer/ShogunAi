@@ -207,7 +207,7 @@ A project's load failure and the errors of its actions (removal, cleanup, branch
 - **THEN** the error is still shown under the group header
 
 ### Requirement: Each worktree has one state
-Each worktree SHALL have the first state that applies: "Folder missing" when its folder is gone; "Waiting for you" when an agent is blocked or done; "Agent working" when an agent is working or runs without a known state; "Other" for an unread status or the main worktree; "Inactive"; "Unfinished" when there are uncommitted changes, commits not pushed to its upstream, or commits of its own and no upstream; then "New" with no commits of its own, "Merged", and "Stopped" otherwise. An idle agent SHALL NOT decide the state.
+Each worktree SHALL have the first state that applies: "Folder missing" when its folder is gone; "Waiting for you" when an agent is blocked or done; "Agent working" when an agent is working or runs without a known state; "Other" for an unread status or the main worktree; "Inactive"; "Unfinished" when there are uncommitted changes, commits not pushed to its upstream, or commits of its own and no upstream; then "New" with no commits of its own, "Merged", and "Stopped" otherwise.
 
 #### Scenario: Idle agent with pending work
 - **WHEN** Herdr reports a worktree's agent as idle and the worktree has 2 uncommitted changes
@@ -446,3 +446,14 @@ Selecting a worktree of a collapsed change row, from the command palette, the me
 #### Scenario: Filter by text
 - **WHEN** the user types `api-TASK-1` in the filter and only `api`'s worktree path matches
 - **THEN** the `TASK-1` row is shown expanded with only its `api` child row
+
+### Requirement: An idle agent doesn't decide the state
+An idle agent SHALL NOT decide a worktree's state: the worktree gets the state that applies to it as if it had no agent.
+
+#### Scenario: Idle with pending work
+- **WHEN** Herdr reports a worktree's agent as idle and the worktree has 2 uncommitted changes
+- **THEN** the worktree is under "Unfinished"
+
+#### Scenario: Idle without pending work
+- **WHEN** Herdr reports a worktree's agent as idle, the worktree is clean and its pushed branch has commits of its own
+- **THEN** the worktree is under "Stopped", and its row shows the idle agent

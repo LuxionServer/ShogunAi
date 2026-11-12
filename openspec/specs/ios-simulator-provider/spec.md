@@ -66,7 +66,7 @@ A recorded simulator that no longer exists SHALL be created again the next time 
 - **THEN** the worktree's environment uses the declared value
 
 ### Requirement: Boot, shut down and report a worktree's simulator
-Starting SHALL first acquire the worktree's simulator from the simulator pool when it holds none, then boot it and wait until it has finished booting or a timeout passes; starting a booted one SHALL succeed without changes. Every start SHALL record the time as the simulator's last use. Once booted, starting SHALL open Xcode's simulator viewer (the Simulator app, or Device Hub where Xcode no longer ships Simulator) showing that device, best effort: if the window can't be opened, the start still succeeds. Stopping SHALL shut it down, and stopping a shut-down or not acquired one SHALL succeed without changes. The state SHALL be reported as not acquired, shut down, booting or booted.
+Starting SHALL first acquire the worktree's simulator from the simulator pool when it holds none, then boot it and wait until it has finished booting or a timeout passes; starting a booted one SHALL succeed without changes. Every start SHALL record the time as the simulator's last use. Stopping SHALL shut it down, and stopping a shut-down or not acquired one SHALL succeed without changes. The state SHALL be reported as not acquired, shut down, booting or booted.
 
 #### Scenario: Start and wait
 - **WHEN** the user starts a worktree's shut-down simulator
@@ -116,7 +116,7 @@ The system SHALL delete a worktree's simulator when the cleanup removes the work
 - **THEN** they're never reported as orphaned nor deleted
 
 ### Requirement: Wire KMP simulator tests
-The system SHALL detect whether the repository's Gradle build scripts apply the Kotlin Multiplatform plugin and whether they mention `IOS_SIMULATOR_UDID`. Only in a Kotlin Multiplatform repository that doesn't mention it SHALL it show the snippet that sets the simulator test tasks' `device` from that variable, and offer a machine-wide Gradle init script that does the same for every project, installed only after explicit confirmation and removable. The init script SHALL change nothing when `IOS_SIMULATOR_UDID` isn't set.
+The system SHALL detect whether the repository's Gradle build scripts apply the Kotlin Multiplatform plugin and whether they mention `IOS_SIMULATOR_UDID`. Only in a Kotlin Multiplatform repository that doesn't mention it SHALL it show the snippet that sets the simulator test tasks' `device` from that variable, and offer a machine-wide Gradle init script that does the same for every project, installed only after explicit confirmation and removable.
 
 #### Scenario: Repository already wired
 - **WHEN** a `build.gradle.kts` of the repository reads `IOS_SIMULATOR_UDID`
@@ -163,3 +163,25 @@ The simulator pool SHALL apply the same leases, release order and release record
 #### Scenario: Status after a release
 - **WHEN** `TASK-1`'s simulator was released for `TASK-2`
 - **THEN** its state is reported as not acquired and says it was released for `TASK-2` and when
+
+### Requirement: Show the booted simulator
+Once a worktree's simulator is booted, starting it SHALL open Xcode's simulator viewer (the Simulator app, or Device Hub where Xcode no longer ships Simulator) showing that device, best effort: if the window can't be opened, the start still succeeds.
+
+#### Scenario: Viewer opened after booting
+- **WHEN** a worktree's simulator finishes booting after a start
+- **THEN** Xcode's simulator viewer is opened showing that device
+
+#### Scenario: Device Hub
+- **WHEN** a simulator boots on a machine whose Xcode ships Device Hub instead of the Simulator app
+- **THEN** Device Hub is opened, listing the worktree's simulator
+
+#### Scenario: Viewer fails to open
+- **WHEN** the simulator boots but opening Xcode's simulator viewer fails
+- **THEN** the start succeeds and reports the simulator as booted
+
+### Requirement: The KMP init script needs the simulator variable
+The machine-wide Gradle init script for KMP simulator tests SHALL change nothing when `IOS_SIMULATOR_UDID` isn't set.
+
+#### Scenario: Variable not set
+- **WHEN** the init script is installed and a Gradle build runs without `IOS_SIMULATOR_UDID` set
+- **THEN** the simulator test tasks keep the `device` their build scripts give them
