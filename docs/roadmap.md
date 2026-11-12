@@ -103,7 +103,7 @@ In order:
     Lines of `core` and `cli`, branches of `cli`, every branch of `core` that some input can reach, and the desktop app's texts and project settings are already covered.
     The worktrees and their inspector are covered but for 41 branches of their list, rows and action bars, left for the shared components' change.
     The desktop app goes up one package per change, in this order: the shell and the menu bar icon, the machine views and multirepos, shared components, and last the app's wiring.
-- The Java that `shogun doctor` and "Check Installation" don't check yet: the one Gradle's daemon runs when the build chooses it (`org.gradle.java.home`, toolchains or Gradle's daemon JVM criteria), and the one the Android Gradle Plugin needs (Java 17 for AGP 8); today they check the Java the wrappers run against the Gradle and Maven versions.
+- The Gradle checks of `shogun doctor` and "Check Installation" for a Gradle build in a subfolder, such as `android/` in a Flutter repository: today they only read the repository's root.
 
 ### Orca, a second first-class runner
 
@@ -176,16 +176,13 @@ Left out:
 - Finding the root cause of the errors that closed the Preferences window, from the entries the isolation now leaves in the diagnostics log, and of the native crash seen on another machine that left an empty diagnostic report.
 - Checking on a real Windows machine that removing and cleaning up worktrees with build outputs deeper than 260 characters now succeeds (Git's long path support and the leftover fallback are covered by tests with fakes only).
 - Moving the per-project ports of `ProjectWorktrees` that still run on the caller's dispatcher (emulator and simulator states, ports, releasing resources) off the interface thread, as the machine views now do.
-- Noticing a broken Herdr plugin: an install linked to a folder that no longer exists stops provisioning Herdr's worktrees without any error, so `shogun hooks status` and the app should check `herdr plugin list` and offer reinstalling it from the repository.
+- Reporting a broken or missing Herdr plugin in `shogun doctor` and the installation check, which today only say whether Herdr is installed; `shogun hooks status` and the hooks section of Settings already report it and reinstall it.
 - Checking the state of Maven daemons on a real mvnd 2.x daemon: it was checked on mvnd 1.0.6, and 2.x is covered by its sources and by tests with its log argument.
 - Filesystem watchers instead of polling for Git metadata changes.
 - Support for bare repositories with worktrees (the "bare clone" layout), which changes what the base repository and copying from it mean.
   Today ShogunAi rejects them with a specific error.
 - Splitting `ProjectWorktrees.kt` and `ProjectSettingsView.kt` into smaller holders and sections.
 - Checking the guided tour on Windows and Linux with a real installed app: creating the sample with the system's Git, and the tour's agent command, whose prompt is quoted for the shell each terminal runs.
-- A workflow that builds the documentation site with `mkdocs build --strict` and runs the changelog hook's tests (`python3 -m unittest discover -s scripts/mkdocs`) on every pull request that touches `docs/`, `mkdocs.yml`, `scripts/mkdocs/` or `.github/release-notes/`; today the site is only built locally.
-- Getting live reload back in `mkdocs serve`: with recent Click releases MkDocs 1.6.1 starts it with live reload off, so it only reloads with `mkdocs serve --livereload`.
-  Pinning Click in `requirements-docs.txt`, or documenting the flag, fixes it.
 - Removing Cmd/Ctrl+E, kept for one release as an alias of Cmd/Ctrl+O when the shortcut moved to the default runner.
 - Showing the build that holds a busy Gradle daemon in the desktop app's Gradle view; today `shogun gradle` names it, with its client, tasks and the agent session that started it.
 - Writing the remaining state texts of the Machine views in the interface font: the Compose view still writes its leftovers title and a removed worktree as its owner in the data font.

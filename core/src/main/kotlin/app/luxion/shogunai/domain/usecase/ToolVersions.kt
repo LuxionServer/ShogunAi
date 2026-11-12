@@ -10,6 +10,7 @@ object ToolVersions {
     private val JAVA_PRINTED = Regex("version \"(\\d+)(?:\\.(\\d+))?")
     private val COMPOSE_PRINTED = Regex("version v?(\\d+\\.\\d+(?:\\.\\d+)?)")
     private val NUMERIC = Regex("^\\d+(?:\\.\\d+)*")
+    private val JAVA_RELEASE = Regex("(?m)^JAVA_VERSION=\"(\\d+)(?:\\.(\\d+))?")
 
     fun gradleDistribution(url: String?): String? = url?.let { GRADLE_DISTRIBUTION.firstGroup(it) }
 
@@ -23,9 +24,15 @@ object ToolVersions {
 
     fun javaMajor(output: String): Int? {
         val match = JAVA_PRINTED.find(output) ?: return null
+        return major(match)
+    }
+
+    private fun major(match: MatchResult): Int {
         val (first, second) = match.destructured
         return if (first == "1" && second.isNotEmpty()) second.toInt() else first.toInt()
     }
+
+    fun javaReleaseMajor(release: String): Int? = JAVA_RELEASE.find(release)?.let(::major)
 
     fun numeric(version: String): String? = NUMERIC.find(version)?.value
 
@@ -59,6 +66,15 @@ object JavaCompatibility {
         CheckInstallationUseCase.isAtLeast(maven, "4") -> 17
         CheckInstallationUseCase.isAtLeast(maven, "3.9") -> 8
         else -> 7
+    }
+
+    fun minimumJavaForAndroidGradlePlugin(agp: String): Int {
+        val version = ToolVersions.numeric(agp) ?: return 8
+        return when {
+            CheckInstallationUseCase.isAtLeast(version, "8") -> 17
+            CheckInstallationUseCase.isAtLeast(version, "7") -> 11
+            else -> 8
+        }
     }
 
     fun firstGradleFor(java: Int): String? = FIRST_GRADLE_FOR_JAVA[java]

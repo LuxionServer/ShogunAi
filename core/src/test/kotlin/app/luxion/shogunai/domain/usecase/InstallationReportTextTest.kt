@@ -7,6 +7,7 @@ import app.luxion.shogunai.domain.model.InstallationCheck
 import app.luxion.shogunai.domain.model.HostOs
 import app.luxion.shogunai.domain.model.InstallationFinding
 import app.luxion.shogunai.domain.model.InstallationReport
+import app.luxion.shogunai.domain.model.JavaSource
 import app.luxion.shogunai.domain.model.LocalFileOrigin
 import app.luxion.shogunai.domain.model.MultirepoProblem
 import app.luxion.shogunai.domain.model.ProviderToolId
@@ -250,6 +251,63 @@ class InstallationReportTextTest {
         assertEquals(fix(CheckState.WARNING, mac), fix(CheckState.WARNING, windows))
         val linux = tool(ProviderToolId.DOCKER_DAEMON, problem = ProviderToolProblem.DaemonNotRunning(HostOs.LINUX, null))
         assertTrue(fix(CheckState.WARNING, linux)!!.contains("sudo systemctl start docker"))
+    }
+
+    @Test
+    fun `Gradle build Java texts when they pass`() {
+        val daemon = InstallationFinding.ProviderTool("main-repo", ProviderToolId.GRADLE_DAEMON_JAVA, "/opt/jdk-21", version = "21")
+        assertEquals("main-repo: Java for Gradle's daemon 21 at /opt/jdk-21", summary(CheckState.PASSED, daemon))
+        val downloaded = InstallationFinding.ProviderTool("main-repo", ProviderToolId.GRADLE_DAEMON_JAVA, null, version = "21", provisioned = true)
+        assertEquals("main-repo: Java for Gradle's daemon 21, which Gradle downloads when it's missing", summary(CheckState.PASSED, downloaded))
+        val toolchains = tool(ProviderToolId.GRADLE_TOOLCHAINS, version = "17, 21")
+        assertEquals("main-repo: Java toolchains 17, 21 installed", summary(CheckState.PASSED, toolchains))
+        val agp = InstallationFinding.ProviderTool("main-repo", ProviderToolId.ANDROID_GRADLE_PLUGIN_JAVA, null, version = "8.5.2", java = 17)
+        assertEquals("main-repo: Android Gradle Plugin 8.5.2 runs on Java 17", summary(CheckState.PASSED, agp))
+    }
+
+    @Test
+    fun `Gradle build Java problem texts`() {
+        val searched = listOf("/home/dev/.gradle/jdks", "/usr/lib/jvm")
+        val criteriaMissing = tool(ProviderToolId.GRADLE_DAEMON_JAVA, problem = ProviderToolProblem.JavaNotInstalled(listOf(21), searched), version = "21")
+        assertEquals(
+            "main-repo: Java for Gradle's daemon: Java 21 isn't installed (looked in /home/dev/.gradle/jdks, /usr/lib/jvm)",
+            summary(CheckState.WARNING, criteriaMissing),
+        )
+        assertEquals(
+            "Install a Java 21 JDK (for example from https://adoptium.net), or add a toolchain download repository and run './gradlew updateDaemonJvm' so Gradle downloads it",
+            fix(CheckState.WARNING, criteriaMissing),
+        )
+        val toolchainsMissing = tool(ProviderToolId.GRADLE_TOOLCHAINS, problem = ProviderToolProblem.JavaNotInstalled(listOf(11, 17), searched))
+        assertEquals("main-repo: Java toolchains: Java 11 and 17 aren't installed (looked in /home/dev/.gradle/jdks, /usr/lib/jvm)", summary(CheckState.WARNING, toolchainsMissing))
+        assertTrue(fix(CheckState.WARNING, toolchainsMissing)!!.contains("'org.gradle.toolchains.foojay-resolver-convention' plugin"))
+
+        val invalid = tool(ProviderToolId.GRADLE_DAEMON_JAVA, problem = ProviderToolProblem.GradleJavaHomeInvalid("/opt/jdk-gone", "/repo/gradle.properties"))
+        assertEquals("main-repo: Java for Gradle's daemon not found: org.gradle.java.home is /opt/jdk-gone in /repo/gradle.properties, which has no bin/java", summary(CheckState.WARNING, invalid))
+        assertEquals("Point org.gradle.java.home in /repo/gradle.properties at a JDK's folder (the one with bin/java), or remove it", fix(CheckState.WARNING, invalid))
+
+        val unreadable = tool(ProviderToolId.GRADLE_DAEMON_JAVA, "/repo/gradle/gradle-daemon-jvm.properties", ProviderToolProblem.DaemonCriteriaUnreadable("/repo/gradle/gradle-daemon-jvm.properties"))
+        assertEquals("main-repo: Java for Gradle's daemon: couldn't read toolchainVersion in /repo/gradle/gradle-daemon-jvm.properties", summary(CheckState.WARNING, unreadable))
+        assertEquals("Regenerate the daemon JVM criteria with './gradlew updateDaemonJvm --jvm-version=<version>'", fix(CheckState.WARNING, unreadable))
+
+        val criteriaTooNew = tool(ProviderToolId.GRADLE_DAEMON_JAVA, problem = ProviderToolProblem.GradleTooOld(25, "8.10", "9.1", JavaSource.DAEMON_CRITERIA))
+        assertEquals("main-repo: Java for Gradle's daemon is Java 25, which needs Gradle 9.1 or newer, but the project uses Gradle 8.10", summary(CheckState.WARNING, criteriaTooNew))
+        assertEquals("Update the project's Gradle wrapper to 9.1 or newer, or lower toolchainVersion in gradle/gradle-daemon-jvm.properties", fix(CheckState.WARNING, criteriaTooNew))
+        val propertyTooNew = tool(ProviderToolId.GRADLE_DAEMON_JAVA, "/opt/jdk-25/bin/java", ProviderToolProblem.GradleTooOld(25, "8.10", "9.1", JavaSource.GRADLE_PROPERTY))
+        assertEquals("Update the project's Gradle wrapper to 9.1 or newer, or point org.gradle.java.home at an older Java", fix(CheckState.WARNING, propertyTooNew))
+
+        val propertyTooOld = tool(ProviderToolId.GRADLE_DAEMON_JAVA, "/opt/jdk-11/bin/java", ProviderToolProblem.JavaTooOld(11, 17, "9.1.0", JavaSource.GRADLE_PROPERTY))
+        assertEquals("main-repo: Java for Gradle's daemon is Java 11 at /opt/jdk-11/bin/java, but Gradle 9.1.0 needs Java 17 or newer", summary(CheckState.WARNING, propertyTooOld))
+        assertEquals("Install Java 17 or newer and point org.gradle.java.home at it", fix(CheckState.WARNING, propertyTooOld))
+        val criteriaTooOld = tool(ProviderToolId.GRADLE_DAEMON_JAVA, problem = ProviderToolProblem.JavaTooOld(11, 17, "9.1.0", JavaSource.DAEMON_CRITERIA))
+        assertEquals("Raise the daemon's Java to 17 or newer: './gradlew updateDaemonJvm --jvm-version=17'", fix(CheckState.WARNING, criteriaTooOld))
+
+        val agp = tool(ProviderToolId.ANDROID_GRADLE_PLUGIN_JAVA, problem = ProviderToolProblem.AndroidGradlePluginNeedsJava(11, 17, "8.2.0", JavaSource.ENVIRONMENT))
+        assertEquals("main-repo: Android Gradle Plugin 8.2.0 needs Java 17 or newer, but Gradle's daemon runs Java 11", summary(CheckState.WARNING, agp))
+        assertEquals("Install Java 17 or newer and point JAVA_HOME at it", fix(CheckState.WARNING, agp))
+
+        listOf(ProviderToolId.GRADLE_DAEMON_JAVA, ProviderToolId.GRADLE_TOOLCHAINS, ProviderToolId.ANDROID_GRADLE_PLUGIN_JAVA).forEach { id ->
+            assertTrue(fix(CheckState.WARNING, tool(id, problem = ProviderToolProblem.Unusable("boom")))!!.startsWith("Install a JDK"))
+        }
     }
 
     @Test

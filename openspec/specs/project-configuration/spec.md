@@ -32,7 +32,7 @@ The system SHALL let the user edit an existing project's configuration from the 
 - **THEN** the app persists the updated `ProjectConfig` for that project's id and navigates back to the worktree management screen
 
 ### Requirement: Add or remove secret files
-The system SHALL let the user add or remove entries in the project's `secretFiles` list within the configuration form, shown as "Local files": exact paths of files or folders, or patterns, stored only on this machine, copied or linked into each new worktree in addition to what the repository declares. Entries SHALL be typed in the field or chosen with the in-app local file picker, which offers the base repository's untracked and ignored files and folders. The system SHALL NOT add an entry that is already present in the list.
+The system SHALL let the user add or remove entries in the project's `secretFiles` list within the configuration form, shown as "Local files": exact paths of files or folders, or patterns, stored only on this machine, copied or linked into each new worktree in addition to what the repository declares. Entries SHALL be typed in the field or chosen with the in-app local file picker, which offers the base repository's untracked and ignored files and folders.
 
 #### Scenario: Add a secret file entry
 - **WHEN** the user adds a file name to the secret files list and saves
@@ -151,7 +151,7 @@ The system SHALL let the user set an optional main branch on the project configu
 - **THEN** the app asks for confirmation before discarding the change
 
 ### Requirement: Show the repository's provisioning
-The project configuration screen SHALL show, read-only, the patterns the base repository declares in `.shogunai.json` (`copy` and `link`) and in `.worktreeinclude`, each with the file it comes from and `link` patterns marked as linked, and SHALL refresh them when the base repository path changes. When the repository declares post-creation commands, the screen SHALL say how many there are and where they're listed. When `.shogunai.json` can't be read, the screen SHALL say so instead of listing its patterns.
+The project configuration screen SHALL show, read-only, the patterns the base repository declares in `.shogunai.json` (`copy` and `link`) and in `.worktreeinclude`, each with the file it comes from and `link` patterns marked as linked, and SHALL refresh them when the base repository path changes. When `.shogunai.json` can't be read, the screen SHALL say so instead of listing its patterns.
 
 #### Scenario: Repository with both files
 - **WHEN** the user opens the configuration of a project whose repository has `.shogunai.json` with `local.properties` and `.worktreeinclude` with `.env`
@@ -612,3 +612,21 @@ The "Repository configuration" section SHALL offer a switch for the Flutter prov
 #### Scenario: Turn Flutter off
 - **WHEN** the repository declares Flutter, the user turns it off and saves
 - **THEN** `.shogunai.json` no longer contains `providers.flutter` and its other providers are kept
+
+### Requirement: No duplicate local file entries
+The system SHALL NOT add an entry to the project's local files that is already present in the list.
+
+#### Scenario: Same file name twice
+- **WHEN** the user adds a file name that is already present in the secret files list
+- **THEN** the list is unchanged and no duplicate entry is added
+
+#### Scenario: Folder with a trailing separator
+- **WHEN** the list contains `keys` and the user adds `keys/`
+- **THEN** the list is unchanged and no duplicate entry is added
+
+### Requirement: Show the repository's post-creation commands
+When the base repository declares post-creation commands, the project configuration screen SHALL say how many there are and where they're listed.
+
+#### Scenario: Two commands declared
+- **WHEN** the repository's `.shogunai.json` declares two post-creation commands and no patterns
+- **THEN** the screen says two commands run after creation and points to the repository configuration section, and doesn't say the repository declares nothing

@@ -150,6 +150,7 @@ sealed interface CliCommand {
         val project: Boolean = false,
         val yes: Boolean = false,
         val json: Boolean = false,
+        val herdr: Boolean = false,
     ) : CliCommand, JsonOutput {
         override fun withJson() = copy(json = true)
     }
@@ -634,15 +635,19 @@ private fun parseHooks(rest: List<String>): CliCommand {
         ?: throw UsageException("unknown action '$name' for 'hooks', expected install, uninstall or status")
     var project = false
     var yes = false
+    var herdr = false
     rest.drop(1).forEach { argument ->
         when {
             argument == "--project" -> project = true
             argument == "--yes" || argument == "-y" -> yes = true
+            argument == "--herdr" -> herdr = true
             argument.startsWith("-") -> throw UsageException("unknown option '$argument' for 'hooks'")
             else -> throw UsageException("'hooks $name' takes no arguments, got '$argument'")
         }
     }
-    return CliCommand.Hooks(action, project, yes)
+    if (herdr && action != HooksAction.INSTALL) throw UsageException("'--herdr' only applies to 'hooks install'")
+    if (herdr && project) throw UsageException("'--herdr' can't be combined with '--project'")
+    return CliCommand.Hooks(action, project, yes, herdr = herdr)
 }
 
 enum class GuideAction { INSTALL, UNINSTALL, STATUS }

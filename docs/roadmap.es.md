@@ -103,7 +103,7 @@ Por orden:
     Las líneas de `core` y `cli`, las ramas de `cli`, todas las ramas de `core` a las que llega alguna entrada, y los textos y los ajustes de proyecto de la app de escritorio ya están cubiertos.
     Los worktrees y su inspector están cubiertos salvo 41 ramas de su lista, sus filas y sus barras de acciones, que quedan para el cambio de los componentes compartidos.
     La app de escritorio sube un paquete por cambio, en este orden: el shell y el icono de la barra de menús, las vistas de la máquina y los multirepos, los componentes compartidos y, por último, el cableado de la app.
-- El Java que `shogun doctor` y «Comprobar instalación» aún no comprueban: el que ejecuta el daemon de Gradle cuando lo elige el build (`org.gradle.java.home`, toolchains o los criterios de JVM del daemon de Gradle), y el que necesita el Android Gradle Plugin (Java 17 para AGP 8); hoy comprueban el Java que ejecutan los wrappers frente a las versiones de Gradle y Maven.
+- Las comprobaciones de Gradle de `shogun doctor` y «Comprobar instalación» para un build de Gradle en una subcarpeta, como `android/` en un repositorio Flutter: hoy solo leen la raíz del repositorio.
 
 ### Orca, un segundo runner de primera clase
 
@@ -176,16 +176,13 @@ Quedaron fuera:
 - Encontrar la causa raíz de los errores que cerraban la ventana de Preferencias, a partir de las entradas que el aislamiento deja ahora en el registro de diagnóstico, y del crash nativo visto en otra máquina que dejó un informe de diagnóstico vacío.
 - Comprobar en un Windows real que borrar y limpiar worktrees con salidas de build de más de 260 caracteres de profundidad funciona ahora (el soporte de rutas largas de Git y el borrado del resto solo están cubiertos con pruebas con dobles).
 - Sacar del hilo de la interfaz los puertos por proyecto de `ProjectWorktrees` que aún se ejecutan en el dispatcher de quien los llama (estados de emuladores y simuladores, puertos, liberar recursos), como ya hacen las vistas de la máquina.
-- Detectar un plugin de Herdr roto: una instalación enlazada a una carpeta que ya no existe deja de provisionar los worktrees de Herdr sin ningún error, así que `shogun hooks status` y la app deberían comprobar `herdr plugin list` y ofrecer reinstalarlo desde el repositorio.
+- Avisar de un plugin de Herdr roto o ausente en `shogun doctor` y la comprobación de la instalación, que hoy solo dicen si Herdr está instalado; `shogun hooks status` y la sección de hooks de los Ajustes ya lo indican y lo reinstalan.
 - Comprobar el estado de los daemons de Maven con un daemon real de mvnd 2.x: se comprobó con mvnd 1.0.6, y 2.x está cubierto por su código fuente y por tests con su argumento de log.
 - Watchers del sistema de ficheros en vez de polling para los cambios de metadatos de Git.
 - Soporte de repositorios bare con worktrees (el esquema «bare clone»), que cambia lo que significan el repositorio base y copiar desde él.
   Hoy ShogunAi los rechaza con un error específico.
 - Dividir `ProjectWorktrees.kt` y `ProjectSettingsView.kt` en holders y secciones más pequeños.
 - Comprobar el recorrido guiado en Windows y Linux con una app instalada real: la creación del ejemplo con el Git del sistema, y el comando del agente del recorrido, cuyo prompt se entrecomilla para la shell que ejecuta cada terminal.
-- Un workflow que construya la web de documentación con `mkdocs build --strict` y ejecute los tests del hook del historial de cambios (`python3 -m unittest discover -s scripts/mkdocs`) en cada pull request que toque `docs/`, `mkdocs.yml`, `scripts/mkdocs/` o `.github/release-notes/`; hoy la web solo se construye en local.
-- Recuperar la recarga en vivo de `mkdocs serve`: con las versiones recientes de Click, MkDocs 1.6.1 lo arranca sin recarga en vivo, así que solo recarga con `mkdocs serve --livereload`.
-  Fijar Click en `requirements-docs.txt`, o documentar el flag, lo arregla.
 - Quitar Cmd/Ctrl+E, que se mantiene una versión como alias de Cmd/Ctrl+O desde que el atajo pasó al runner por defecto.
 - Mostrar en la vista de Gradle de la app de escritorio la build que ocupa un daemon; hoy `shogun gradle` la nombra, con su cliente, sus tareas y la sesión de agente que la lanzó.
 - Escribir en la fuente de la interfaz los textos de estado que quedan en las vistas de Máquina: la vista de Compose aún escribe el título de los restos y un worktree eliminado como dueño en la fuente de datos.

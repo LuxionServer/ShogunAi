@@ -98,7 +98,7 @@ class CheckInstallationUseCaseTest {
                 projects = projectRepository,
                 fileManager = fileManager,
                 provisioningSource = provisioning,
-                providerTools = CheckProviderToolsUseCase(executor, { executables[it] }, fileManager, FakeAndroidSdk(), FakeAppleSimulators(), { null }, HostOs.MACOS),
+                providerTools = CheckProviderToolsUseCase(executor, { executables[it] }, fileManager, FakeAndroidSdk(), FakeAppleSimulators(), { null }, HostOs.MACOS, "/home/dev"),
                 multirepos = CheckMultireposUseCase(
                     multirepoSource,
                     ResolveMultirepoUseCase(multirepoSource, executor, fileManager),
@@ -391,7 +391,7 @@ class CheckInstallationUseCaseTest {
                 projects = FakeProjectRepository(listOf(project)),
                 fileManager = NioFileManager(),
                 provisioningSource = RepositoryProvisioningFiles(),
-                providerTools = CheckProviderToolsUseCase(git, { null }, NioFileManager(), FakeAndroidSdk(), FakeAppleSimulators(), { null }, HostOs.MACOS),
+                providerTools = CheckProviderToolsUseCase(git, { null }, NioFileManager(), FakeAndroidSdk(), FakeAppleSimulators(), { null }, HostOs.MACOS, "/home/dev"),
                 multirepos = CheckMultireposUseCase(
                     FakeMultirepoSource(),
                     ResolveMultirepoUseCase(FakeMultirepoSource(), git, NioFileManager()),

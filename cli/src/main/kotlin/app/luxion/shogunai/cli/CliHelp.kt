@@ -201,9 +201,13 @@ internal object CliHelp {
                               Add or remove every ShogunAi hook in Claude Code's user settings
                               (--project: the repository's .claude/settings.json); shows what changes
                               and asks first unless --yes is given
+  hooks install --herdr [--yes] [--json]
+                              Reinstall ShogunAi's Herdr plugin from the repository when it is broken
+                              or missing; shows the Herdr commands and asks first unless --yes is given
   hooks status [--json]
                               Say whether the hooks are installed, outdated or missing, in the user
-                              settings and in the current repository's
+                              settings and in the current repository's, and whether Herdr's plugin is
+                              installed, disabled, broken or missing
 """.trimIndent(),
         "doctor" to """
   doctor [--json]             Check Git, the PATH, the shogun command, Claude Code's hooks, Claude Code, Herdr,

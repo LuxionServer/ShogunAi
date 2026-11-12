@@ -17,6 +17,7 @@ import app.luxion.shogunai.domain.model.ProvisionDriftState
 import app.luxion.shogunai.domain.model.AppLanguage
 import app.luxion.shogunai.domain.usecase.HookEntry
 import app.luxion.shogunai.domain.usecase.HookReplacement
+import app.luxion.shogunai.domain.model.HerdrPluginState
 import app.luxion.shogunai.domain.usecase.HooksInstallState
 import app.luxion.shogunai.domain.model.HostOs
 import app.luxion.shogunai.domain.usecase.CommandLineToolInstallation
@@ -235,6 +236,22 @@ object SpanishStrings : Strings {
     override val claudeHooksCancel = "Cancelar"
     override val claudeHooksConfirm = "Aplicar"
     override val claudeHooksNeedsTool = "Instala antes la herramienta de línea de comandos"
+    override val herdrPluginLabel = "Plugin de Herdr"
+    override fun herdrPluginStatus(state: HerdrPluginState) = when (state) {
+        HerdrPluginState.INSTALLED -> "El plugin de ShogunAi para Herdr está instalado"
+        HerdrPluginState.DISABLED -> "El plugin de ShogunAi para Herdr está desactivado en Herdr"
+        HerdrPluginState.BROKEN -> "El plugin de ShogunAi para Herdr está roto"
+        HerdrPluginState.MISSING -> "El plugin de ShogunAi para Herdr no está instalado"
+        HerdrPluginState.UNKNOWN -> "No se ha podido comprobar el plugin de ShogunAi para Herdr"
+    }
+    override fun herdrPluginWarning(warning: String) = "Herdr dice: $warning"
+    override val herdrPluginBrokenHint = "Herdr no puede cargarlo, así que los worktrees que crea no se aprovisionan."
+    override val herdrPluginReinstall = "Reinstalar"
+    override val herdrPluginInstall = "Instalar"
+    override fun herdrPluginDialogTitle(state: HerdrPluginState) =
+        if (state == HerdrPluginState.BROKEN) "Reinstalar el plugin de Herdr" else "Instalar el plugin de Herdr"
+    override val herdrPluginDialogIntro = "ShogunAi ejecutará estos comandos de Herdr para instalarlo desde su repositorio:"
+    override val herdrPluginRun = "Ejecutar"
     override val commandLineToolLabel = "Herramienta de línea de comandos"
     override fun commandLineToolStatus(status: CommandLineToolStatus) = when (status.state) {
         CommandLineToolState.AVAILABLE -> "El comando shogun está disponible"

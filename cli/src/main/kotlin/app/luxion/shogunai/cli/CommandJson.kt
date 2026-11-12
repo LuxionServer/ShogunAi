@@ -54,6 +54,8 @@ import app.luxion.shogunai.domain.usecase.GuideBlockStatus
 import app.luxion.shogunai.domain.usecase.HookEntry
 import app.luxion.shogunai.domain.usecase.HooksPreview
 import app.luxion.shogunai.domain.usecase.HooksStatus
+import app.luxion.shogunai.domain.model.HerdrPluginStatus
+import app.luxion.shogunai.domain.model.HerdrPluginStep
 import app.luxion.shogunai.domain.usecase.totalMavenResidentMemory
 import app.luxion.shogunai.domain.usecase.totalResidentMemory
 import kotlinx.serialization.json.Json
@@ -924,9 +926,10 @@ private fun hookEntryJson(entry: HookEntry): JsonObject = buildJsonObject {
     put("command", entry.command)
 }
 
-fun hooksStatusJson(statuses: List<Pair<String, HooksStatus>>): JsonObject = buildJsonObject {
+fun hooksStatusJson(statuses: List<Pair<String, HooksStatus>>, herdrPlugin: HerdrPluginStatus?): JsonObject = buildJsonObject {
     put("user", JsonNull)
     put("project", JsonNull)
+    put("herdr", if (herdrPlugin == null) JsonNull else herdrPluginJson(herdrPlugin))
     statuses.forEach { (scope, status) ->
         put(
             scope,
@@ -938,6 +941,22 @@ fun hooksStatusJson(statuses: List<Pair<String, HooksStatus>>): JsonObject = bui
         )
     }
 }
+
+fun herdrPluginJson(status: HerdrPluginStatus): JsonObject = buildJsonObject {
+    put("state", status.state.name.lowercase())
+    put("source", status.plugin?.sourceKind)
+    put("root", status.plugin?.root)
+    put("warnings", buildJsonArray { status.plugin?.warnings.orEmpty().forEach { add(JsonPrimitive(it)) } })
+    put("error", status.error)
+}
+
+fun herdrPluginInstallJson(steps: List<HerdrPluginStep>, applied: Boolean, status: HerdrPluginStatus?): JsonObject = buildJsonObject {
+    put("steps", buildJsonArray { steps.forEach { add(JsonPrimitive(herdrCommandLine(it))) } })
+    put("applied", applied)
+    put("herdr", if (status == null) JsonNull else herdrPluginJson(status))
+}
+
+fun herdrCommandLine(step: HerdrPluginStep): String = (listOf("herdr") + step.arguments).joinToString(" ")
 
 fun guideResultJson(status: GuideBlockStatus, applied: Boolean, warnings: List<String>): JsonObject = buildJsonObject {
     put("path", status.path)

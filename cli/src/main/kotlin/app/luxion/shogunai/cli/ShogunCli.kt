@@ -163,6 +163,10 @@ import app.luxion.shogunai.domain.usecase.findWorktreeTarget
 import app.luxion.shogunai.domain.usecase.ListWorktreesUseCase
 import app.luxion.shogunai.domain.usecase.MachineProviderContributions
 import app.luxion.shogunai.domain.usecase.HerdrAgentLauncher
+import app.luxion.shogunai.domain.usecase.HerdrPluginHealth
+import app.luxion.shogunai.domain.model.HerdrPlugin
+import app.luxion.shogunai.domain.model.HerdrPluginState
+import app.luxion.shogunai.domain.model.HerdrPluginStatus
 import app.luxion.shogunai.domain.usecase.isLiveClaudeProcess
 import app.luxion.shogunai.domain.usecase.HerdrAgentRunner
 import app.luxion.shogunai.domain.usecase.effectiveGradleJvmArgs
@@ -2367,7 +2371,7 @@ class ShogunCli(
             projects = projectRepository,
             fileManager = fileManager,
             provisioningSource = provisioningSource,
-            providerTools = CheckProviderToolsUseCase(executor, findExecutable, fileManager, androidSdk, appleSimulators, environment::variable, environment.os),
+            providerTools = CheckProviderToolsUseCase(executor, findExecutable, fileManager, androidSdk, appleSimulators, environment::variable, environment.os, environment.home),
             multirepos = CheckMultireposUseCase(multirepoSource, resolveMultirepo, DetectGroupsUseCase(executor), projectRepository),
         )()
         if (command.json) printJson(doctorJson(report)) else InstallationReportText.lines(report).forEach { out.line(it) }
@@ -3083,6 +3087,7 @@ class ShogunCli(
 
     private suspend fun hooks(command: CliCommand.Hooks): Int {
         if (command.action == HooksAction.STATUS) return hooksStatus(command)
+        if (command.herdr) return installHerdrPlugin(command)
         val path = hooksSettingsPath(command.project)
         val install = command.action == HooksAction.INSTALL
         val preview = (if (install) claudeHooks.previewInstall(path) else claudeHooks.previewUninstall(path)).getOrThrow()
@@ -3128,16 +3133,71 @@ class ShogunCli(
                 ?.let { add("project" to ClaudeCodeHooks.projectSettingsPath(it)) }
         }
         val statuses = scopes.map { (scope, path) -> scope to claudeHooks.status(path).getOrThrow() }
+        val herdrPlugin = herdrPluginHealth.status()
         if (command.json) {
-            printJson(hooksStatusJson(statuses))
+            printJson(hooksStatusJson(statuses, herdrPlugin))
             return EXIT_OK
         }
         statuses.forEach { (scope, status) ->
             val detail = if (status.state == HooksInstallState.OUTDATED) " (${status.events.joinToString()})" else ""
             out.line("$scope: ${status.state.name.lowercase()}$detail  ${status.path}")
         }
+        herdrPlugin?.let(::printHerdrPluginStatus)
         return EXIT_OK
     }
+
+    private val herdrPluginHealth by lazy { HerdrPluginHealth(herdr) }
+
+    private fun printHerdrPluginStatus(status: HerdrPluginStatus) {
+        val plugin = status.plugin
+        val source = plugin?.let { listOfNotNull(it.sourceKind, it.root).joinToString(":") }.orEmpty()
+        val detail = status.error?.let { " ($it)" }.orEmpty()
+        out.line("herdr plugin: ${status.state.name.lowercase()}$detail${if (source.isEmpty()) "" else "  $source"}")
+        plugin?.warnings.orEmpty().forEach { out.line("  warning: $it") }
+        if (herdrPluginHealth.reinstallSteps(status).isNotEmpty()) {
+            out.line("  reinstall it from the repository with: shogun hooks install --herdr")
+        }
+    }
+
+    private suspend fun installHerdrPlugin(command: CliCommand.Hooks): Int {
+        val status = herdrPluginHealth.status()
+        if (status == null) {
+            err.line("shogun: Herdr isn't installed; get it from https://herdr.dev")
+            return EXIT_FAILURE
+        }
+        val steps = herdrPluginHealth.reinstallSteps(status)
+        if (steps.isEmpty()) return reportHerdrPluginUnchanged(command, status)
+        if (!command.json) {
+            out.line("Herdr's plugin is ${status.state.name.lowercase()}; ShogunAi will run:")
+            steps.forEach { out.line("  $ ${herdrCommandLine(it)}") }
+        }
+        val confirmed = command.yes || (!command.json && confirm("Run them? [y/N] "))
+        if (!confirmed) {
+            if (command.json) printJson(herdrPluginInstallJson(steps, applied = false, status)) else out.line("Nothing changed.")
+            return EXIT_OK
+        }
+        val after = herdrPluginHealth.reinstall(steps).getOrElse { error ->
+            err.line("shogun: couldn't reinstall Herdr's plugin: ${herdrFailureReason(error)}")
+            return EXIT_FAILURE
+        }
+        if (command.json) printJson(herdrPluginInstallJson(steps, applied = true, after)) else after?.let(::printHerdrPluginStatus)
+        return EXIT_OK
+    }
+
+    private fun reportHerdrPluginUnchanged(command: CliCommand.Hooks, status: HerdrPluginStatus): Int {
+        val unknown = status.state == HerdrPluginState.UNKNOWN
+        when {
+            command.json -> printJson(herdrPluginInstallJson(emptyList(), applied = false, status))
+            unknown -> err.line("shogun: couldn't check Herdr's plugin: ${status.error}")
+            status.state == HerdrPluginState.DISABLED ->
+                out.line("Herdr's plugin is disabled; enable it with: herdr plugin enable ${HerdrPlugin.SHOGUN_PLUGIN_ID}")
+            else -> out.line("Herdr's plugin is already installed")
+        }
+        return if (unknown) EXIT_FAILURE else EXIT_OK
+    }
+
+    private fun herdrFailureReason(error: Throwable): String =
+        if (error is WorktreeError) error.herdrDetail() else failureReason(error)
 
     private suspend fun hookHerdr(): Int {
         val event = environmentVariable(HERDR_PLUGIN_EVENT)?.takeIf { it.isNotBlank() }

@@ -31,6 +31,7 @@ import kotlin.test.assertTrue
 class CheckProviderToolsUseCaseTest {
 
     private val repository = "/home/dev/projects/main-repo"
+    private val home = "/home/dev"
 
     private suspend fun check(
         providers: RepositoryProviders,
@@ -43,12 +44,17 @@ class CheckProviderToolsUseCaseTest {
         properties: Map<String, Map<String, String>> = emptyMap(),
         variables: Map<String, String> = emptyMap(),
         os: HostOs = HostOs.MACOS,
-    ): List<InstallationCheck> =
-        CheckProviderToolsUseCase(executor, { executables[it] }, FakeFileManager(existing = files, properties = properties), androidSdk, simulators, { variables[it] }, os)(
+        texts: Map<String, String> = emptyMap(),
+        directories: Set<String> = emptySet(),
+    ): List<InstallationCheck> {
+        val fileManager = FakeFileManager(existing = files, properties = properties, directories = directories)
+        texts.forEach { (path, text) -> fileManager.writeText(path, text) }
+        return CheckProviderToolsUseCase(executor, { executables[it] }, fileManager, androidSdk, simulators, { variables[it] }, os, home)(
             "main-repo",
             repository,
             providers,
         )
+    }
 
     private fun List<InstallationCheck>.finding(): InstallationFinding.ProviderTool = first().finding as InstallationFinding.ProviderTool
 
@@ -256,7 +262,7 @@ class CheckProviderToolsUseCaseTest {
 
     @Test
     fun `unreadable providers warn with the reason`() {
-        val check = CheckProviderToolsUseCase(FakeShellCommandExecutor(), { null }, FakeFileManager(), FakeAndroidSdk(), FakeAppleSimulators(), { null }, HostOs.MACOS)
+        val check = CheckProviderToolsUseCase(FakeShellCommandExecutor(), { null }, FakeFileManager(), FakeAndroidSdk(), FakeAppleSimulators(), { null }, HostOs.MACOS, home)
             .unreadable("main-repo", "malformed")
 
         assertEquals(CheckState.WARNING, check.state)

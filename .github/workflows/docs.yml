@@ -1,0 +1,60 @@
+name: Docs
+
+on:
+  pull_request:
+    paths:
+      - "docs/**"
+      - "mkdocs.yml"
+      - "requirements-docs.txt"
+      - "scripts/mkdocs/**"
+      - ".github/release-notes/**"
+      - "openspec/**"
+      - ".github/workflows/docs.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  docs:
+    name: Docs
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      NO_MKDOCS_2_WARNING: "1"
+      OPENSPEC_TELEMETRY: "0"
+      OPENSPEC_NO_UPDATE_CHECK: "1"
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: requirements-docs.txt
+
+      - name: Install documentation dependencies
+        run: python3 -m pip install -r requirements-docs.txt
+
+      - name: Test the changelog hook
+        run: python3 -m unittest discover -s scripts/mkdocs
+
+      - name: Build the site in strict mode
+        run: mkdocs build --strict
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+
+      - name: Install the OpenSpec CLI
+        run: npm install --global @fission-ai/openspec@1.17.0
+
+      - name: Validate the specs in strict mode
+        run: openspec validate --specs --strict --no-interactive

@@ -6,7 +6,7 @@ Defines how ShogunAi inspects a repository's files to tell which stacks it uses 
 ## Requirements
 
 ### Requirement: Detect the stacks of a repository
-The system SHALL inspect the repository's main folder and its direct subfolders, reading only file names and, for Gradle build and settings files and the main folder's `pubspec.yaml`, their text, and report the stacks it finds with the files that revealed each. The stacks are Gradle, Android, Xcode, Maven, Docker Compose and Flutter. A direct subfolder with `settings.gradle` or `settings.gradle.kts` SHALL count as a Gradle build when the main folder has neither `gradlew` nor a settings file. Folders such as `build`, `node_modules` and hidden folders SHALL NOT be inspected.
+The system SHALL inspect the repository's main folder and its direct subfolders, reading only file names and, for Gradle build and settings files and the main folder's `pubspec.yaml`, their text, and report the stacks it finds with the files that revealed each. The stacks are Gradle, Android, Xcode, Maven, Docker Compose and Flutter. Folders such as `build`, `node_modules` and hidden folders SHALL NOT be inspected.
 
 #### Scenario: Gradle repository
 - **WHEN** the repository has `gradlew` and `settings.gradle.kts` in its main folder
@@ -84,7 +84,7 @@ The system SHALL map each detected stack to a provider: Gradle to `gradle`, Andr
 - **THEN** `.shogunai.json` is neither created nor changed until the user saves a change
 
 ### Requirement: Detect the mobile secrets of a repository
-The system SHALL find, at any depth of the base repository, the files Git doesn't track named `local.properties`, `keystore.properties`, `key.properties`, `google-services.json`, `GoogleService-Info.plist` or `firebase_options.dart`, or ending in `.jks` or `.keystore`, each with its kind: local properties, signing properties, keystore or Firebase configuration. Files under `build`, `.gradle`, `.dart_tool`, `node_modules`, `Pods` or `DerivedData` folders SHALL NOT be reported, nor a `local.properties` that sets `flutter.sdk`.
+The system SHALL find, at any depth of the base repository, the files Git doesn't track named `local.properties`, `keystore.properties`, `key.properties`, `google-services.json`, `GoogleService-Info.plist` or `firebase_options.dart`, or ending in `.jks` or `.keystore`, each with its kind: local properties, signing properties, keystore or Firebase configuration.
 
 #### Scenario: Android secrets
 - **WHEN** the base repository has the ignored files `local.properties`, `app/google-services.json` and `keys/release.jks`
@@ -151,3 +151,25 @@ The system SHALL suggest, for each detected mobile secret that the current provi
 #### Scenario: Detection changes nothing
 - **WHEN** mobile secrets are suggested
 - **THEN** `.shogunai.json` is neither created nor changed until the user saves a change
+
+### Requirement: Gradle build in a direct subfolder
+A direct subfolder with `settings.gradle` or `settings.gradle.kts` SHALL count as a Gradle build when the main folder has neither `gradlew` nor a settings file.
+
+#### Scenario: Build only in a subfolder
+- **WHEN** the main folder has no Gradle files and `android/settings.gradle.kts` exists
+- **THEN** the Gradle stack is detected and the evidence names `android/settings.gradle.kts`
+
+#### Scenario: Subfolder next to a root build
+- **WHEN** the main folder has `settings.gradle.kts` and `build-logic/settings.gradle.kts` exists
+- **THEN** the Gradle stack's evidence names only the main folder's files
+
+### Requirement: Files left out of the mobile secrets
+Files under `build`, `.gradle`, `.dart_tool`, `node_modules`, `Pods` or `DerivedData` folders SHALL NOT be reported as mobile secrets, nor a `local.properties` that sets `flutter.sdk`.
+
+#### Scenario: File in a build folder
+- **WHEN** an untracked `app/build/intermediates/local.properties` exists
+- **THEN** it isn't reported
+
+#### Scenario: Flutter's local properties
+- **WHEN** the ignored `android/local.properties` contains `flutter.sdk=/opt/flutter` and `sdk.dir=/opt/android-sdk`
+- **THEN** it isn't reported

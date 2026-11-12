@@ -6,6 +6,8 @@ import app.luxion.shogunai.domain.io.HerdrClient
 import app.luxion.shogunai.domain.model.HerdrAgent
 import app.luxion.shogunai.domain.model.HerdrPane
 import app.luxion.shogunai.domain.model.HerdrPaneProcesses
+import app.luxion.shogunai.domain.model.HerdrPlugin
+import app.luxion.shogunai.domain.model.HerdrPluginStep
 import app.luxion.shogunai.domain.model.HerdrWorkspace
 import app.luxion.shogunai.domain.model.AgentState
 import app.luxion.shogunai.domain.model.HerdrWorktreeOpening
@@ -134,6 +136,23 @@ class CliHerdrClient(
         val foregroundProcessGroupId = info.long("foreground_process_group_id")
         if (shellPid == null || foregroundProcessGroupId == null) return null
         return HerdrPaneProcesses(shellPid, foregroundProcessGroupId)
+    }
+
+    override suspend fun listPlugins(): List<HerdrPlugin> {
+        val arguments = listOf("plugin", "list", "--json")
+        val plugins = run(arguments).field("plugins") as? JsonArray ?: throw unexpectedResponse(arguments)
+        return plugins.filterIsInstance<JsonObject>().mapNotNull(::plugin)
+    }
+
+    override suspend fun changePlugins(step: HerdrPluginStep) {
+        run(step.arguments)
+    }
+
+    private fun plugin(entry: JsonObject): HerdrPlugin? {
+        val id = entry.string("plugin_id") ?: return null
+        val enabled = (entry["enabled"] as? JsonPrimitive)?.takeUnless { it.isString }?.booleanOrNull ?: return null
+        val warnings = (entry["warnings"] as? JsonArray).orEmpty().mapNotNull { (it as? JsonPrimitive)?.stringOrNull() }
+        return HerdrPlugin(id, enabled, (entry["source"] as? JsonObject)?.string("kind"), entry.string("plugin_root"), warnings)
     }
 
     private fun agentState(status: String?): AgentState? = when (status) {
