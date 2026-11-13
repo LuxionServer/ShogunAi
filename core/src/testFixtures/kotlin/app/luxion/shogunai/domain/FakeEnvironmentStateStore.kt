@@ -14,6 +14,8 @@ class FakeEnvironmentStateStore(
         private set
     var locks = 0
         private set
+    var held = false
+        private set
 
     override fun readPorts(adminDirectory: String): Map<String, Int> = portsByAdminDirectory[adminDirectory].orEmpty()
 
@@ -71,7 +73,12 @@ class FakeEnvironmentStateStore(
 
     override fun <T> withLock(block: () -> T): T {
         locks++
-        return block()
+        held = true
+        try {
+            return block()
+        } finally {
+            held = false
+        }
     }
 }
 

@@ -11,6 +11,7 @@ import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.InvalidSharedEnvironment
 import app.luxion.shogunai.domain.model.SharedVariablesDeclaration
+import app.luxion.shogunai.domain.model.UnavailableMultirepo
 import app.luxion.shogunai.domain.model.WorkspaceSetting
 import app.luxion.shogunai.domain.model.normalizePath
 import app.luxion.shogunai.domain.model.parseSharedEnvironment
@@ -246,6 +247,10 @@ class ConfigureMultirepoUseCase(
     }
 
     fun revoke(multirepo: Multirepo): Result<Unit> = runSuspendCatching {
+        source.forget(multirepo.folder)
+    }
+
+    fun forget(multirepo: UnavailableMultirepo): Result<Unit> = runSuspendCatching {
         source.forget(multirepo.folder)
     }
 

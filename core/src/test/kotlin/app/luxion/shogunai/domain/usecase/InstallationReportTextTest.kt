@@ -375,7 +375,7 @@ class InstallationReportTextTest {
 
         val gone = InstallationFinding.MultirepoCheck(folder, "product", emptyList(), 0, listOf(MultirepoProblem.DeclarationMissing))
         assertEquals("Multirepo product (/home/dev/projects/product): .shogunai-multirepo.json is gone", summary(CheckState.WARNING, gone))
-        assertEquals("Restore /home/dev/projects/product; otherwise ShogunAi forgets it the next time it starts", fix(CheckState.WARNING, gone))
+        assertEquals("Restore /home/dev/projects/product, or forget it with 'shogun multirepo trust /home/dev/projects/product --revoke'", fix(CheckState.WARNING, gone))
 
         val broken = healthy.copy(
             problems = listOf(
@@ -389,7 +389,7 @@ class InstallationReportTextTest {
         assertEquals("Multirepo product (/home/dev/projects/product): 5 problems", summary(CheckState.FAILED, broken))
         assertEquals(
             listOf(
-                "/home/dev/projects/product/.shogunai-multirepo.json: worktreesRoot is missing; correct it",
+                "/home/dev/projects/product/.shogunai-multirepo.json: worktreesRoot is missing; correct it, or forget it with 'shogun multirepo trust /home/dev/projects/product --revoke'",
                 "'api': /home/dev/projects/product/product-api isn't a Git repository; restore it, or change its path in /home/dev/projects/product/.shogunai-multirepo.json",
                 "It isn't trusted on this machine; review it and run 'shogun multirepo trust /home/dev/projects/product'",
                 "Couldn't list the worktrees of 'app': boom; check it's a Git repository you can read",
