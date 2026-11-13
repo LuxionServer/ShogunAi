@@ -547,9 +547,9 @@ fun unavailableSidebarFolder(multirepo: UnavailableMultirepo, collapsed: Boolean
     SidebarMultirepo(multirepo.folder, multirepo.name, emptyList(), ProjectActivity.NONE, collapsed, unavailable = multirepo.reason)
 
 fun multirepoChildLabels(membership: MultirepoMembership): Map<String, String> {
-    val workspaceAlias = membership.multirepo.workspaceRepository?.alias ?: return emptyMap()
-    val projectId = membership.projectIdOf(workspaceAlias) ?: return emptyMap()
-    return mapOf(projectId to workspaceAlias)
+    val workspace = membership.multirepo.workspaceRepository ?: return emptyMap()
+    val projectId = membership.projectIdOf(workspace.alias) ?: return emptyMap()
+    return mapOf(projectId to workspace.alias)
 }
 
 sealed interface SidebarEntry {

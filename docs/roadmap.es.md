@@ -99,10 +99,11 @@ Ninguno de los dos fallos apareció en la máquina de desarrollo, cuya propia co
 Por orden:
 
 - Tests que obligan al producto a cumplirlo:
-  - Subir hasta el 100% los suelos de cobertura que exige CI: las líneas (hoy 93%) y ramas (87%) de la app de escritorio fuera de sus composables, que cubren los tests end to end.
+  - Subir hasta el 100% los suelos de cobertura que exige CI: las líneas (hoy 96%) y ramas (90%) de la app de escritorio fuera de sus composables, que cubren los tests end to end.
     Las líneas de `core` y `cli`, las ramas de `cli`, todas las ramas de `core` a las que llega alguna entrada, y los textos y los ajustes de proyecto de la app de escritorio ya están cubiertos.
     Los worktrees y su inspector están cubiertos salvo 41 ramas de su lista, sus filas y sus barras de acciones, que quedan para el cambio de los componentes compartidos.
-    La app de escritorio sube un paquete por cambio, en este orden: el shell y el icono de la barra de menús, las vistas de la máquina y los multirepos, los componentes compartidos y, por último, el cableado de la app.
+    El shell y el icono de la barra de menús están cubiertos salvo 8 líneas y 4 ramas, sobre todo de sus ventanas y de la comprobación de actualizaciones, que quedan para el cambio del cableado de la app.
+    La app de escritorio sube un paquete por cambio, en este orden: las vistas de la máquina y los multirepos, los componentes compartidos y, por último, el cableado de la app.
 
 ### Orca, un segundo runner de primera clase
 

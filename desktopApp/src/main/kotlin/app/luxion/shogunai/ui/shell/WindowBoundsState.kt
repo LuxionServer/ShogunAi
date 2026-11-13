@@ -45,10 +45,13 @@ fun saveWindowBounds(state: WindowState, preferences: ShellPreferenceRepository)
     preferences.saveWindowBounds(bounds)
 }
 
-private fun isOnAnyDisplay(bounds: WindowBounds): Boolean = try {
+internal fun isOnAnyDisplay(bounds: WindowBounds, screens: List<Rectangle> = screenBounds()): Boolean {
     val window = Rectangle(bounds.x, bounds.y, bounds.width, bounds.height)
-    GraphicsEnvironment.getLocalGraphicsEnvironment().screenDevices
-        .any { it.defaultConfiguration.bounds.intersects(window) }
+    return screens.any { it.intersects(window) }
+}
+
+internal fun screenBounds(environment: GraphicsEnvironment = GraphicsEnvironment.getLocalGraphicsEnvironment()): List<Rectangle> = try {
+    environment.screenDevices.map { it.defaultConfiguration.bounds }
 } catch (_: HeadlessException) {
-    false
+    emptyList()
 }

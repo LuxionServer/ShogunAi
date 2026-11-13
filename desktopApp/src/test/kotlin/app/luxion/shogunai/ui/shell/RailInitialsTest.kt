@@ -36,4 +36,9 @@ class RailInitialsTest {
     fun `a name without letters keeps its tile`() {
         assertEquals(mapOf("--" to "--", "__" to "__"), railInitials(listOf("--", "__")))
     }
+
+    @Test
+    fun `colliding names without letters keep their tile`() {
+        assertEquals(mapOf("--" to "--", "---" to "--"), railInitials(listOf("--", "---")))
+    }
 }

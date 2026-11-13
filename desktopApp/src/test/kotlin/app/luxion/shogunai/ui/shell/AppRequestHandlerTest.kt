@@ -121,4 +121,14 @@ class AppRequestHandlerTest {
 
         assertEquals(ShellDestination.All(projectFilter = "mobile"), viewModel.destination)
     }
+
+    @Test
+    fun `a request this version doesn't know does nothing`() {
+        viewModel.selectAll()
+
+        handler.handle(AppRequest(createdAt = 1, action = "open-something-new"))
+
+        assertEquals(ShellDestination.All(), viewModel.destination)
+        assertEquals(0, windowShown)
+    }
 }
