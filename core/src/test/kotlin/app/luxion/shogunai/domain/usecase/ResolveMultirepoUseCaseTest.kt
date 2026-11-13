@@ -345,6 +345,20 @@ class ResolveMultirepoUseCaseTest {
     }
 
     @Test
+    fun `an unavailable multirepo is found at its exact folder and an available or unknown one isn't`() = runTest {
+        val unreachable = "/Volumes/External/main-multirepo"
+        world.source.known += listOf(unreachable, "/home/dev/projects/invalid")
+        world.source.unreadable["/home/dev/projects/invalid"] = IllegalStateException("permission denied")
+
+        assertEquals(UnavailableMultirepo(unreachable, MultirepoUnavailability.FolderUnreachable), world.resolver.unavailableAt("$unreachable/"))
+        assertEquals(MultirepoUnavailability.InvalidDeclaration("permission denied"), world.resolver.unavailableAt("/home/dev/projects/invalid")?.reason)
+        assertEquals("$unreachable/.shogunai-multirepo.json", world.resolver.unavailableAt(unreachable)?.declarationPath)
+        assertNull(world.resolver.unavailableAt("$unreachable/api"))
+        assertNull(world.resolver.unavailableAt(world.folder))
+        assertNull(world.resolver.unavailableAt("/home/dev/projects/other"))
+    }
+
+    @Test
     fun `a registered folder without a declaration is passed over and a context in another repository has no alias`() = runTest {
         world.source.known += "/home/dev/projects/gone"
 

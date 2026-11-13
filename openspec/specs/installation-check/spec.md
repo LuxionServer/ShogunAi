@@ -190,11 +190,11 @@ For each multirepo ShogunAi knows, the check SHALL report one check that passes,
 
 #### Scenario: Invalid declaration
 - **WHEN** a multirepo's `.shogunai-multirepo.json` isn't valid
-- **THEN** its check fails, naming the file and the problem, with the fix to correct it
+- **THEN** its check fails, naming the file and the problem, with the fix to correct it or, in `shogun doctor`, to forget the multirepo with `shogun multirepo trust <folder> --revoke`
 
 #### Scenario: Declaration gone
 - **WHEN** a known multirepo's folder no longer has `.shogunai-multirepo.json`
-- **THEN** its check warns that ShogunAi will forget it, with the fix to restore the folder or ignore the warning
+- **THEN** its check warns that the declaration is gone, with the fix to restore the folder or, in `shogun doctor`, to forget the multirepo with `shogun multirepo trust <folder> --revoke`
 
 #### Scenario: Not trusted
 - **WHEN** a multirepo's declaration changed since it was trusted on this machine

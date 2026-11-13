@@ -86,6 +86,9 @@ class ResolveMultirepoUseCase(
 
     fun known(): List<Multirepo> = listing().available
 
+    fun unavailableAt(folder: String): UnavailableMultirepo? =
+        listing().unavailable.firstOrNull { sameDirectory(it.folder, folder) }
+
     private fun invalidDetailOf(error: Throwable): String = when (error) {
         is WorktreeError.InvalidMultirepo -> error.detail
         else -> error.message.orEmpty()

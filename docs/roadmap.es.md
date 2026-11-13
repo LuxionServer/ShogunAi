@@ -162,7 +162,6 @@ Los multirepos y los grupos por rama están hechos en el CLI y en la app de escr
 Quedaron fuera:
 
 - Llevarse el agente del multirepo fijado en este equipo cuando su carpeta se mueve: `shogun multirepo init` (o "Añadir multirepo") en la carpeta nueva la registra tras revisarla, pero el agente local se queda en la entrada antigua y hay que volver a fijarlo.
-- Olvidar desde la línea de comandos un multirepo conocido cuya declaración no se puede leer (`trust --revoke` y `delete` necesitan la declaración); hoy solo lo hace "Quitar" en la app de escritorio.
 - Asociar worktrees cuyas ramas no coinciden, por ejemplo `shogun group add <id> <worktree>`.
   Necesita un diseño propio: hoy los grupos no tienen estado, y la asociación llegaría a la detección de grupos, a los puertos contra los que se resuelven las variables compartidas, a la limpieza y a todas las vistas de grupo.
 - Mostrar en las vistas de la app de escritorio los nombres de las sesiones de Claude de los worktrees de un grupo y del agente del multirepo; hoy los informan `shogun open --herdr` y `shogun status`, y la app solo nombra las sesiones que abre.
