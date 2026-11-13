@@ -102,5 +102,18 @@ class MultirepoEndToEndTest {
         }
     }
 
+    @Test
+    fun `trust --revoke forgets a multirepo whose declaration was deleted`() {
+        val registry = sandbox.home.resolve(".shogunai/multirepos.json")
+        assertTrue(registry.toFile().readText().contains(".shogunai-multirepo.json"))
+        multirepo.resolve(".shogunai-multirepo.json").toFile().delete()
+
+        val forgotten = sandbox.shogunSucceeds(multirepo, "multirepo", "trust", "--revoke")
+
+        assertTrue(forgotten.stdout.contains("its folder has no declaration"), forgotten.describe())
+        assertFalse(registry.toFile().readText().contains(".shogunai-multirepo.json"), registry.toFile().readText())
+        assertTrue(multirepo.resolve("api").exists())
+    }
+
     private fun worktreeOf(alias: String): Path = worktreesRoot.resolve("$alias/TASK-2").toRealPath()
 }

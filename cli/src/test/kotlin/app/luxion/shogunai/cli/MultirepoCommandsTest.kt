@@ -47,6 +47,7 @@ import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.ResourceSettings
 import app.luxion.shogunai.domain.model.RunnerId
 import app.luxion.shogunai.domain.model.WorkspaceSetting
+import app.luxion.shogunai.domain.model.WorktreeError
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonArray
@@ -1236,6 +1237,75 @@ class MultirepoCommandsTest {
         assertTrue(multirepos.known.isEmpty())
         assertEquals(declaration, multirepos.declarations[folder])
         assertEquals(2, cli(multirepos = multirepos).run(listOf("multirepo", "trust", "--yes", "--revoke")))
+    }
+
+    @Test
+    fun `trust --revoke forgets a known multirepo whose folder can't be reached`() {
+        val unreachable = "/Volumes/External/main-multirepo"
+        source.known += unreachable
+
+        assertEquals(0, cli(workingDirectory = "/home/dev").run(listOf("multirepo", "trust", unreachable, "--revoke")))
+
+        assertEquals(listOf(folder), source.known)
+        assertTrue(out.contains("forgot $unreachable/.shogunai-multirepo.json; its folder can't be reached"))
+    }
+
+    @Test
+    fun `trust --revoke forgets a folder without a declaration, not the multirepo around it`() {
+        val nested = "$folder/stray"
+        source.known += nested
+
+        assertEquals(0, cli(workingDirectory = nested).run(listOf("multirepo", "trust", "--revoke")))
+
+        assertEquals(listOf(folder), source.known)
+        assertTrue(out.contains("forgot $nested/.shogunai-multirepo.json; its folder has no declaration"))
+    }
+
+    @Test
+    fun `trust --revoke forgets a known multirepo with an invalid declaration and names the problem`() {
+        val invalid = "/home/dev/projects/invalid"
+        val silent = "/home/dev/projects/silent"
+        source.known += listOf(invalid, silent)
+        source.unreadable[invalid] = WorktreeError.InvalidMultirepo("$invalid/.shogunai-multirepo.json", "unexpected end of input")
+        source.unreadable[silent] = IllegalStateException()
+
+        assertEquals(0, cli().run(listOf("multirepo", "trust", invalid, "--revoke")))
+        assertEquals(0, cli().run(listOf("multirepo", "trust", silent, "--revoke")))
+
+        assertEquals(listOf(folder), source.known)
+        assertTrue(out.contains("forgot $invalid/.shogunai-multirepo.json; its declaration is invalid: unexpected end of input"))
+        assertTrue(out.lines().contains("forgot $silent/.shogunai-multirepo.json; its declaration is invalid"))
+    }
+
+    @Test
+    fun `trust --revoke --json reports why an unavailable multirepo was forgotten`() {
+        val unreachable = "/Volumes/External/main-multirepo"
+        val nested = "$folder/stray"
+        val invalid = "/home/dev/projects/invalid"
+        source.known += listOf(unreachable, nested, invalid)
+        source.unreadable[invalid] = IllegalStateException("permission denied")
+
+        val reports = listOf(unreachable, nested, invalid).map { forgotten ->
+            out.clear()
+            assertEquals(0, cli().run(listOf("multirepo", "trust", forgotten, "--revoke", "--json")))
+            json()
+        }
+
+        assertEquals(unreachable, reports[0]["path"]!!.jsonPrimitive.content)
+        assertEquals("$unreachable/.shogunai-multirepo.json", reports[0]["declaration"]!!.jsonPrimitive.content)
+        assertEquals("false", reports[0]["approved"]!!.jsonPrimitive.content)
+        assertEquals("true", reports[0]["changed"]!!.jsonPrimitive.content)
+        assertEquals(listOf("folder-unreachable", "declaration-missing", "invalid-declaration"), reports.map { it["unavailable"]!!.jsonPrimitive.content })
+        assertEquals("permission denied", reports[2]["detail"]!!.jsonPrimitive.content)
+        assertNull(reports[0]["detail"])
+        assertEquals(listOf(folder), source.known)
+    }
+
+    @Test
+    fun `trust --revoke in an unknown folder without a declaration finds no multirepo and changes nothing`() {
+        assertEquals(1, cli(workingDirectory = "/home/dev").run(listOf("multirepo", "trust", "/home/dev/projects/other", "--revoke")))
+
+        assertEquals(listOf(folder), source.known)
     }
 
     @Test
