@@ -28,7 +28,7 @@ import app.luxion.shogunai.ui.shell.HooksAction
 import app.luxion.shogunai.domain.model.RepositoryConfigIssue
 import app.luxion.shogunai.domain.usecase.GitFailureCause
 
-interface Strings {
+interface Strings : XcodeStrings {
     val language: AppLanguage
     val languageName: String
 
@@ -414,22 +414,8 @@ interface Strings {
     fun daemonsStopped(stopped: Int, kept: Int, failed: Int): String
     val justNow: String
 
-    val xcodeDerivedDataTitle: String
-    val xcodeDerivedDataUnavailable: String
     val calculating: String
-    fun derivedDataSummary(count: Int, totalSize: String): String
-    fun derivedDataOrphans(count: Int, size: String): String
     val deleteOrphans: String
-    fun derivedDataOnUnavailableVolumes(count: Int): String
-    fun derivedDataCompilationCache(size: String): String
-    fun derivedDataSwiftPmCache(size: String): String
-    fun derivedDataCocoaPodsCache(size: String): String
-    fun derivedDataWithPackages(name: String, size: String): String
-    fun derivedDataDeleted(count: Int, freed: String): String
-    fun derivedDataQuotaUsage(usage: String, quota: String, automatic: Boolean): String
-    val derivedDataQuotaUnknown: String
-    fun derivedDataQuotaExceeded(inUse: List<String>): String
-    fun derivedDataReleased(count: Int, freed: String): String
     val machineTitle: String
     val machineStatusGradle: String
     val machineStatusEmulators: String

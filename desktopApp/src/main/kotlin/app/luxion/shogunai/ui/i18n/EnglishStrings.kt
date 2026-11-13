@@ -26,7 +26,7 @@ import app.luxion.shogunai.domain.usecase.CommandLineToolStatus
 import app.luxion.shogunai.ui.shell.HooksAction
 import app.luxion.shogunai.domain.usecase.GitFailureCause
 
-object EnglishStrings : Strings {
+object EnglishStrings : Strings, XcodeStrings by EnglishXcodeStrings {
     override val language = AppLanguage.ENGLISH
     override val languageName = "English"
 
@@ -502,30 +502,8 @@ object EnglishStrings : Strings {
     ).joinToString(", ")
     override val justNow = "just now"
 
-    override val xcodeDerivedDataTitle = "Xcode DerivedData"
-    override val xcodeDerivedDataUnavailable = "DerivedData can't be inspected on this system"
     override val calculating = "Calculating…"
-    override fun derivedDataSummary(count: Int, totalSize: String) =
-        (if (count == 1) "1 DerivedData folder" else "$count DerivedData folders") + " · $totalSize"
-    override fun derivedDataOrphans(count: Int, size: String) =
-        if (count == 1) "1 orphaned folder · $size" else "$count orphaned folders · $size"
     override val deleteOrphans = "Delete orphans"
-    override fun derivedDataOnUnavailableVolumes(count: Int) =
-        if (count == 1) "1 folder is on an unavailable volume and is kept"
-        else "$count folders are on unavailable volumes and are kept"
-    override fun derivedDataCompilationCache(size: String) = "Compilation cache · $size"
-    override fun derivedDataSwiftPmCache(size: String) = "SwiftPM cache · $size"
-    override fun derivedDataCocoaPodsCache(size: String) = "CocoaPods cache · $size"
-    override fun derivedDataWithPackages(name: String, size: String) = "$name · packages $size"
-    override fun derivedDataQuotaUsage(usage: String, quota: String, automatic: Boolean) =
-        "$usage of $quota quota" + if (automatic) " (automatic)" else ""
-    override val derivedDataQuotaUnknown = "Automatic quota unknown: the free disk space couldn't be read"
-    override fun derivedDataQuotaExceeded(inUse: List<String>) =
-        "Over the quota" + if (inUse.isEmpty()) "" else "; kept because they are in use: ${inUse.joinToString(", ")}"
-    override fun derivedDataReleased(count: Int, freed: String) =
-        "Released $count ${if (count == 1) "folder" else "folders"} to honour the quota, freeing $freed"
-    override fun derivedDataDeleted(count: Int, freed: String) =
-        if (count == 1) "1 DerivedData folder deleted · $freed freed" else "$count DerivedData folders deleted · $freed freed"
     override val machineTitle = "Machine"
     override val machineStatusGradle = "Gradle"
     override val machineStatusEmulators = "Emulators"

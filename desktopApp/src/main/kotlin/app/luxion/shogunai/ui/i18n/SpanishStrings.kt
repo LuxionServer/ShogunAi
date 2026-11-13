@@ -26,7 +26,7 @@ import app.luxion.shogunai.domain.usecase.CommandLineToolStatus
 import app.luxion.shogunai.ui.shell.HooksAction
 import app.luxion.shogunai.domain.usecase.GitFailureCause
 
-object SpanishStrings : Strings {
+object SpanishStrings : Strings, XcodeStrings by SpanishXcodeStrings {
     override val language = AppLanguage.SPANISH
     override val languageName = "Español"
 
@@ -502,31 +502,8 @@ object SpanishStrings : Strings {
     ).joinToString(", ")
     override val justNow = "ahora mismo"
 
-    override val xcodeDerivedDataTitle = "DerivedData de Xcode"
-    override val xcodeDerivedDataUnavailable = "No se pueden inspeccionar los DerivedData en este sistema"
     override val calculating = "Calculando…"
-    override fun derivedDataSummary(count: Int, totalSize: String) =
-        (if (count == 1) "1 carpeta de DerivedData" else "$count carpetas de DerivedData") + " · $totalSize"
-    override fun derivedDataOrphans(count: Int, size: String) =
-        if (count == 1) "1 carpeta huérfana · $size" else "$count carpetas huérfanas · $size"
     override val deleteOrphans = "Eliminar huérfanas"
-    override fun derivedDataOnUnavailableVolumes(count: Int) =
-        if (count == 1) "1 carpeta está en un volumen no montado y se conserva"
-        else "$count carpetas están en volúmenes no montados y se conservan"
-    override fun derivedDataCompilationCache(size: String) = "Caché de compilación · $size"
-    override fun derivedDataSwiftPmCache(size: String) = "Caché de SwiftPM · $size"
-    override fun derivedDataCocoaPodsCache(size: String) = "Caché de CocoaPods · $size"
-    override fun derivedDataWithPackages(name: String, size: String) = "$name · paquetes $size"
-    override fun derivedDataQuotaUsage(usage: String, quota: String, automatic: Boolean) =
-        "$usage de $quota de cuota" + if (automatic) " (automática)" else ""
-    override val derivedDataQuotaUnknown = "Cuota automática desconocida: no se pudo leer el espacio libre en disco"
-    override fun derivedDataQuotaExceeded(inUse: List<String>) =
-        "Por encima de la cuota" + if (inUse.isEmpty()) "" else "; se conservan por estar en uso: ${inUse.joinToString(", ")}"
-    override fun derivedDataReleased(count: Int, freed: String) =
-        "Se ${if (count == 1) "liberó 1 carpeta" else "liberaron $count carpetas"} para cumplir la cuota, liberando $freed"
-    override fun derivedDataDeleted(count: Int, freed: String) =
-        if (count == 1) "1 carpeta de DerivedData borrada · $freed liberados"
-        else "$count carpetas de DerivedData borradas · $freed liberados"
     override val resourcesLabel = "Recursos"
     override fun profileName(profile: CapacityProfile) = when (profile) {
         CapacityProfile.AUTOMATIC -> "Automático"

@@ -27,7 +27,7 @@ None.
 
 ## Impact
 
-- `core`: `DerivedDataFolder` gains a kind; a new `SwiftBuildSource` port with its `LocalSwiftBuildSource` implementation wired into `EnginePorts`; `ListDerivedDataUseCase`, `MeasureDerivedDataUseCase` and `TrimDerivedDataUseCase` handle both kinds; a new `DeleteUnusedSwiftBuildsUseCase`.
+- `core`: `DerivedDataFolder` gains a kind; a new `SwiftBuildSource` port with its `FileSwiftBuildSource` implementation wired into `EnginePorts`; `ListDerivedDataUseCase`, `MeasureDerivedDataUseCase` and `TrimDerivedDataUseCase` handle both kinds; a new `DeleteUnusedSwiftBuildsUseCase`.
 - `cli`: `shogun xcode`, `shogun xcode trim`, `shogun xcode clean --swift-build`, their JSON and help.
 - `desktopApp`: `XcodeDerivedDataView`, the DerivedData parts of `MachineResources` and `AppContainer`, English and Spanish strings.
 - Docs: the Xcode provider pages (en and es) and the roadmap bullet, removed when archiving.

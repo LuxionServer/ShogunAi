@@ -180,10 +180,12 @@ internal object CliHelp {
   pool trim [--json]          Stop idle Gradle daemons, longest idle first, until they are within the limit
 """.trimIndent(),
         "xcode" to """
-  xcode [--json]              List Xcode DerivedData folders of the worktrees, orphans and compilation cache
+  xcode [--json]              List Xcode DerivedData and Swift .build folders of the worktrees, orphans and compilation cache
   xcode clean [--json]        Delete orphaned Xcode DerivedData folders on the machine
+  xcode clean --swift-build [--json]
+                              Delete the .build folders of the worktrees not in use instead
   xcode trim [--dry-run] [--json]
-                              Release DerivedData folders until it is within the quota in Preferences (automatic by default)
+                              Release DerivedData and .build folders until they are within the quota in Preferences (automatic by default)
 """.trimIndent(),
         "hook" to """
   hook worktree-create        Claude Code WorktreeCreate hook: create and provision the worktree, print its path

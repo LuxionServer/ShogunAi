@@ -560,6 +560,19 @@ interface DerivedDataSource {
 
 Everything the Xcode provider needs from Xcode's DerivedData: whether the host is macOS, the project folders in the current location without their sizes (never Xcode's shared caches, which have no `info.plist`), the size of one folder measured on demand and cancellable, the size of the shared compilation cache (`null` when it doesn't exist), whether a workspace still exists or sits on an unmounted volume, and deleting one folder.
 
+### `SwiftBuildSource`
+
+```kotlin
+interface SwiftBuildSource {
+    fun folderOf(worktreePath: String): DerivedDataFolder?
+    suspend fun size(folder: DerivedDataFolder): Long
+    suspend fun packagesSize(folder: DerivedDataFolder): Long
+    suspend fun delete(folder: DerivedDataFolder)
+}
+```
+
+The `.build` folder of a Swift package worktree, as a `DerivedDataFolder` of kind `SWIFT_BUILD` whose `workspacePath` is the worktree, so listing, measuring, remembering sizes and the quota treat it like a DerivedData folder. `DerivedDataFolders` dispatches size, packages size, deletion and the fresh read before a release on the folder's kind.
+
 ### `TerminalLauncher` / `EditorLauncher` / `FolderLauncher` / `ToolDetector`
 
 ```kotlin
@@ -889,6 +902,8 @@ Used on macOS when the repository declares the Xcode provider:
 
 - `ListDerivedDataUseCase(worktrees, includeCompilationCache, measure)` attributes every folder from `DerivedDataSource`: a workspace that doesn't exist is `UnavailableVolume` if its volume isn't mounted, otherwise `Orphaned`; an existing one belongs to the worktree with the longest path containing it (`owningWorktree`, the same rule as running agents and Gradle daemons), otherwise to `OtherProject`. `measure` says which folders get their size: `NONE`, `ORPHANS` or `ALL`. Orphans are machine-wide: once its project is gone, a folder can't be used by anything, whichever tool created it.
 - `DeleteOrphanedDerivedDataUseCase` lists the folders again, keeps those still orphaned, checks each workspace once more right before deleting it (a project restored in the meantime keeps its folder), measures each orphan that has no size yet so `bytesFreed` is right, and returns a `DerivedDataDeletion`; one failure doesn't stop the rest. A removed worktree's folder is orphaned by definition, so a cleanup only runs this use case after the removals.
+- `ListDerivedDataUseCase` also takes `packageWorktrees`, the worktrees of repositories declaring the Xcode provider, and adds each one's `.build` folder (`SwiftBuildSource.folderOf`) owned by that worktree, never orphaned. `TrimDerivedDataUseCase` releases those folders with the worktrees' DerivedData, in the same order and under the same in-use rule (`isWorktreeFolderInUse`), reading them again before deleting.
+- `DeleteUnusedSwiftBuildsUseCase` deletes the `.build` folders of the given worktrees that are not in use, measuring each one and reading it again before deleting it, and returns a `SwiftBuildDeletion` with the deleted, the kept in use and the failures.
 - `PrepareCocoaPodsUseCase` (a `CocoaPodsPreparer`) runs from `PrepareWorktreeEnvironmentUseCase` after the environment file, so every creation and provisioning flow gets it, and returns a `PodsPreparation` (`cloned`, `installNeeded` with a `PodsInstallReason`, `error`) carried in `PreparedWorktree` to `Worktree.pods` and `ProvisionResult.pods`. With `XcodeProvider.cocoaPods` on macOS, it lists the tracked `Podfile.lock` files with `git ls-files`, and for each folder without `Pods` clones the base's `Pods` with `cp -c -R` when its `Manifest.lock` has the same content; it never throws, so pods can't roll a worktree back.
 - `xcodeCompilationCacheContribution` is the provider's environment contribution when `XcodeProvider.compilationCache` is set, on macOS (`MachineProviderContributions`): a resource `xcode-compilation-cache` whose `create` writes `~/.shogunai/xcode/compilation-cache.xcconfig` (`COMPILATION_CACHE_ENABLE_CACHING` and Swift and Clang prefix mapping, five `KEY = YES` lines) and whose `exists` checks the file holds that content, plus the variable `XCODE_XCCONFIG_FILE=<path>`. Being a resource, it's only written when resolving with reservation and is re-created if deleted; the file is the same for every repository on the machine. An `XCODE_XCCONFIG_FILE` declared in `env` wins.
 

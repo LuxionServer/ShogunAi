@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: Swift build folders in the DerivedData view
-On macOS, the DerivedData view SHALL list the `.build` folders of the worktrees of saved projects that declare the Xcode provider, each as a row of its project and worktree marked as `.build`, with its size, packages size and last access, counted in the total, the usage and the quota. A "Delete unused .build" action SHALL ask for confirmation and delete the folders whose worktree is not in use.
+On macOS, the DerivedData view SHALL list the `.build` folders of the worktrees of saved projects that declare the Xcode provider, each as a row of its project and worktree marked as `.build`, with its size, packages size and last access, counted in the total, the usage and the quota. When there are any, the view SHALL show their total and a "Delete unused .build" action that asks for confirmation and deletes the folders whose worktree is not in use.
 
 #### Scenario: Package worktree shown
 - **WHEN** a worktree `task-123` of a saved Swift package project has a 4 GB `.build` folder
@@ -13,7 +13,7 @@ On macOS, the DerivedData view SHALL list the `.build` folders of the worktrees 
 
 #### Scenario: No builds
 - **WHEN** no saved project's worktree has a `.build` folder
-- **THEN** the "Delete unused .build" action is disabled
+- **THEN** the view shows neither a `.build` total nor the "Delete unused .build" action
 
 ### Requirement: Quota releases unused worktree folders in the desktop app
 When the desktop app applies the DerivedData quota, the DerivedData folders and `.build` folders of the worktrees of saved projects that declare the Xcode provider SHALL be releasable when their worktree is not in use, not only the orphaned folders.

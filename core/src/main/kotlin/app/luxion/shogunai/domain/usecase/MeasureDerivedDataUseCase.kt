@@ -2,6 +2,7 @@ package app.luxion.shogunai.domain.usecase
 
 import app.luxion.shogunai.domain.io.DerivedDataSizeStore
 import app.luxion.shogunai.domain.io.DerivedDataSource
+import app.luxion.shogunai.domain.io.SwiftBuildSource
 import app.luxion.shogunai.domain.model.DerivedDataFolder
 import app.luxion.shogunai.domain.model.MeasuredSize
 import app.luxion.shogunai.domain.model.RememberedSize
@@ -16,10 +17,13 @@ import kotlinx.coroutines.sync.withPermit
 import java.util.concurrent.ConcurrentHashMap
 
 class MeasureDerivedDataUseCase(
-    private val source: DerivedDataSource,
+    source: DerivedDataSource,
     private val store: DerivedDataSizeStore = DerivedDataSizeStore.NONE,
     private val concurrency: Int = MAX_PARALLEL_MEASUREMENTS,
+    swiftBuilds: SwiftBuildSource = SwiftBuildSource.NONE,
 ) {
+    private val source = DerivedDataFolders(source, swiftBuilds)
+
     operator fun invoke(folders: List<DerivedDataFolder>, remeasure: Boolean = false): Flow<MeasuredSize> = channelFlow {
         val remembered = runSuspendCatching { store.load() }.getOrDefault(emptyMap())
         val known = ConcurrentHashMap<String, RememberedSize>()

@@ -33,7 +33,7 @@ Alternative: a separate `SwiftBuildFolder` model and listing. Rejected: the quot
 
 ### A `SwiftBuildSource` port next to `DerivedDataSource`
 
-`SwiftBuildSource` (domain/io) has `folderOf(worktreePath)`, `size`, `packagesSize` and `delete`; `LocalSwiftBuildSource` (infrastructure) implements it with `java.nio`, reusing the size visitor of `MacDerivedDataSource`, and is wired in `EnginePorts.swiftBuilds`. A small domain class, `DerivedDataFolders`, dispatches `size`, `packagesSize`, `delete` and "read again" on the folder's kind for the use cases.
+`SwiftBuildSource` (domain/io) has `folderOf(worktreePath)`, `size`, `packagesSize` and `delete`; `FileSwiftBuildSource` (infrastructure) implements it on the `FileManager` port, so its tests run on `FakeFileManager`, and is wired in `EnginePorts.swiftBuilds`. A small domain class, `DerivedDataFolders`, dispatches `size`, `packagesSize`, `delete` and "read again" on the folder's kind for the use cases.
 
 `DerivedDataSource` isn't extended because its `delete` deliberately refuses anything that isn't a direct child of the DerivedData location, and its `folders()` scans that location; mixing worktree paths into it would weaken that guard.
 
@@ -63,6 +63,10 @@ A `.build` folder has no orphan state, so with "No quota" nothing would ever cle
 ### Output
 
 `shogun xcode` prints `.build` folders by path (`<worktree>/.build  4.0 GB  (packages 800 MB)`), since the worktree path alone would read like its DerivedData. The JSON adds `kind` to every `folders` entry, keeping the existing fields. The desktop row shows `<worktree> · .build`.
+
+### Staying within the file length caps
+
+`CommandJson.kt`, `MachineResources.kt`, `Strings.kt`, `EnglishStrings.kt` and `SpanishStrings.kt` were at their caps. Instead of raising them, the Xcode parts move to files of their own: the `xcode` JSON functions to `XcodeJson.kt`, the machine view's DerivedData models and owner attribution to `MachineDerivedData.kt`, the `.build` deletion state to `SwiftBuildCleanup.kt`, and the Xcode view's texts to an `XcodeStrings` interface that `Strings` extends, implemented by `EnglishXcodeStrings` and `SpanishXcodeStrings`, to which `EnglishStrings` and `SpanishStrings` delegate. `EveryTextTest` reads the inherited members too, so the moved texts stay checked. No cap changes.
 
 ### No new serializable class
 
