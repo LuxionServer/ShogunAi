@@ -103,7 +103,6 @@ Por orden:
     Las líneas de `core` y `cli`, las ramas de `cli`, todas las ramas de `core` a las que llega alguna entrada, y los textos y los ajustes de proyecto de la app de escritorio ya están cubiertos.
     Los worktrees y su inspector están cubiertos salvo 41 ramas de su lista, sus filas y sus barras de acciones, que quedan para el cambio de los componentes compartidos.
     La app de escritorio sube un paquete por cambio, en este orden: el shell y el icono de la barra de menús, las vistas de la máquina y los multirepos, los componentes compartidos y, por último, el cableado de la app.
-- Las comprobaciones de Gradle de `shogun doctor` y «Comprobar instalación» para un build de Gradle en una subcarpeta, como `android/` en un repositorio Flutter: hoy solo leen la raíz del repositorio.
 
 ### Orca, un segundo runner de primera clase
 
