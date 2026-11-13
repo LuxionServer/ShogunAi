@@ -3,6 +3,8 @@ package app.luxion.shogunai.cli
 import app.luxion.shogunai.domain.model.GroupRunnerOpening
 import app.luxion.shogunai.domain.model.RunnerId
 import app.luxion.shogunai.domain.model.Multirepo
+import app.luxion.shogunai.domain.model.MultirepoUnavailability
+import app.luxion.shogunai.domain.model.UnavailableMultirepo
 import app.luxion.shogunai.domain.model.RunnerOpening
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.usecase.AddedRepository
@@ -69,6 +71,21 @@ fun multirepoTrustJson(multirepo: Multirepo, approved: Boolean, changed: Boolean
     put("workspace", multirepo.workspaceRepository?.alias)
     put("env", sharedVariablesJson(multirepo))
     put("ignoredDeclaredAgent", multirepo.ignoresDeclaredAgent)
+}
+
+fun forgottenMultirepoJson(multirepo: UnavailableMultirepo): JsonObject = buildJsonObject {
+    put("path", multirepo.folder)
+    put("declaration", multirepo.declarationPath)
+    put("approved", false)
+    put("changed", true)
+    when (val reason = multirepo.reason) {
+        MultirepoUnavailability.FolderUnreachable -> put("unavailable", "folder-unreachable")
+        MultirepoUnavailability.DeclarationMissing -> put("unavailable", "declaration-missing")
+        is MultirepoUnavailability.InvalidDeclaration -> {
+            put("unavailable", "invalid-declaration")
+            put("detail", reason.detail)
+        }
+    }
 }
 
 fun sharedVariablesListJson(multirepo: Multirepo): JsonObject = buildJsonObject {

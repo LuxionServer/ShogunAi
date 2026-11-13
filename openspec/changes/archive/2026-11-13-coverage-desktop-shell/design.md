@@ -102,7 +102,7 @@ Measured on macOS after this change, with the end-to-end tests:
 | `ui/shell` and `ui/tray` | 99.38% (8 uncovered of 1,298) | 99.47% (4 uncovered of 749) |
 | whole desktop app outside composables | 96.22% (482 uncovered of 12,759) | 90.80% (718 uncovered of 7,804) |
 
-The floors go from 94 to 96 (lines) and from 87 to 90 (branches).
+The floors go from 94 to 96 (lines) and from 87 to 90 (branches). Measured again after bringing in `develop` at f4224d22: 96.22% of lines (483 uncovered of 12,766) and 90.78% of branches (723 uncovered of 7,838), so the floors stay at 96 and 90.
 
 ## Risks / Trade-offs
 
