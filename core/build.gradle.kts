@@ -75,4 +75,8 @@ tasks.named<Test>("test") {
     )
         .withPathSensitivity(PathSensitivity.RELATIVE)
         .withPropertyName("checkedSources")
+    testLogging {
+        events("failed")
+        exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+    }
 }
