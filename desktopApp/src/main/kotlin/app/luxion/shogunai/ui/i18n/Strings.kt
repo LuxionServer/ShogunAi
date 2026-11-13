@@ -406,6 +406,7 @@ interface Strings : XcodeStrings {
     val daemonBusy: String
     fun daemonIdle(since: String): String
     val daemonStateUnknown: String
+    fun daemonBuild(tasks: String?, started: String?, session: String?): String
     val daemonOwnerRemoved: String
     val stopDaemon: String
     val stopIdleDaemons: String

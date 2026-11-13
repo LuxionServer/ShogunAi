@@ -103,7 +103,6 @@ In order:
     Lines of `core` and `cli`, branches of `cli`, every branch of `core` that some input can reach, and the desktop app's texts and project settings are already covered.
     The worktrees and their inspector are covered but for 41 branches of their list, rows and action bars, left for the shared components' change.
     The desktop app goes up one package per change, in this order: the shell and the menu bar icon, the machine views and multirepos, shared components, and last the app's wiring.
-- The Gradle checks of `shogun doctor` and "Check Installation" for a Gradle build in a subfolder, such as `android/` in a Flutter repository: today they only read the repository's root.
 
 ### Orca, a second first-class runner
 
@@ -162,7 +161,6 @@ Multirepos and groups by branch are done in the CLI and the desktop app, and the
 Left out:
 
 - Carrying the multirepo agent set on this machine over when its folder moves: `shogun multirepo init` (or "Add multirepo") in the new folder registers it after reviewing it, but the local agent stays with the old entry and has to be set again.
-- Forgetting from the command line a known multirepo whose declaration can't be read (`trust --revoke` and `delete` need the declaration); today only the desktop app's "Remove" does it.
 - Associating worktrees whose branches don't match, e.g. `shogun group add <id> <worktree>`.
   It needs a design of its own: groups have no state today, and the association would reach group detection, the ports shared variables resolve against, cleanup and every group view.
 - Showing the Claude session names of a group's worktrees and of the multirepo agent in the desktop app's views; today `shogun open --herdr` and `shogun status` report them, and the app only names the sessions it opens.
@@ -188,7 +186,6 @@ Left out:
 - Showing in the desktop app a settings change refused because `settings.json` was written by a newer version, before any change first raises that file's schema version.
 - Checking the guided tour on Windows and Linux with a real installed app: creating the sample with the system's Git, and the tour's agent command, whose prompt is quoted for the shell each terminal runs.
 - Removing Cmd/Ctrl+E, kept for one release as an alias of Cmd/Ctrl+O when the shortcut moved to the default runner.
-- Showing the build that holds a busy Gradle daemon in the desktop app's Gradle view; today `shogun gradle` names it, with its client, tasks and the agent session that started it.
 - Writing the remaining state texts of the Machine views in the interface font: the Compose view still writes its leftovers title and a removed worktree as its owner in the data font.
 - Taking the system out of the domain: the 13 domain files on the architecture tests' exception list still use `java.io.File`, `java.nio.file` or `System.getProperty` directly, instead of a port or an `osName` parameter.
 - Doing less while the machine-wide state lock is held when acquiring an emulator or simulator: read devices before taking it, keep only the reservation under it, and stop, delete or create devices after releasing it.

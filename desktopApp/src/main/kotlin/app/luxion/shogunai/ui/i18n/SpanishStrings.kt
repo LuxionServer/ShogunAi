@@ -484,6 +484,8 @@ object SpanishStrings : Strings, XcodeStrings by SpanishXcodeStrings {
     override val daemonBusy = "ocupado"
     override fun daemonIdle(since: String) = "ocioso · $since"
     override val daemonStateUnknown = "estado desconocido"
+    override fun daemonBuild(tasks: String?, started: String?, session: String?) =
+        listOfNotNull(tasks?.let { "Compilando $it" } ?: "Ejecutando una build", started?.let { "empezó $it" }, session?.let { "sesión de agente $it" }).joinToString(" · ")
     override val daemonOwnerRemoved = "worktree eliminado"
     override val stopDaemon = "Parar"
     override val stopIdleDaemons = "Parar los ociosos"

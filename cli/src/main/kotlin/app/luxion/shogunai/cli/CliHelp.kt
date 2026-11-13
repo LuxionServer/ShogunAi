@@ -104,7 +104,8 @@ internal object CliHelp {
   multirepo show [--json]     Show the multirepo's name, repositories, projects, bases, defaults and agent
   multirepo trust [<folder>] [--yes | --revoke] [--json]
                               Review a declaration's name, repositories, paths and worktrees root and approve
-                              it on this machine; only approved multirepos apply. --revoke forgets it
+                              it on this machine; only approved multirepos apply. --revoke forgets it,
+                              also when the folder is a known multirepo whose declaration can't be read
   multirepo name <name> | --clear [--json]
                               Set the name the multirepo is shown with (default: its folder's name)
   multirepo add-repo <alias> <path> [--use-worktrees-root | --keep-worktrees-folder] [--json]

@@ -1,5 +1,7 @@
 package app.luxion.shogunai.domain.usecase
 
+import app.luxion.shogunai.domain.model.MultirepoUnavailability
+import app.luxion.shogunai.domain.model.UnavailableMultirepo
 import app.luxion.shogunai.domain.model.AgentLaunchConfig
 import app.luxion.shogunai.domain.model.Multirepo
 import app.luxion.shogunai.domain.model.MultirepoDeclaration
@@ -371,6 +373,17 @@ class ConfigureMultirepoUseCaseTest {
         assertTrue(world.source.known.isEmpty())
         assertEquals(world.declaration, world.source.declarations[world.folder])
         assertNull(world.resolver(world.folder).getOrThrow())
+    }
+
+    @Test
+    fun `forgetting an unavailable multirepo removes only its entry`() = runTest {
+        val unreachable = "/Volumes/External/main-multirepo"
+        world.source.known += unreachable
+
+        configure.forget(UnavailableMultirepo(unreachable, MultirepoUnavailability.FolderUnreachable)).getOrThrow()
+
+        assertEquals(listOf(world.folder), world.source.known)
+        assertEquals(world.declaration, world.source.declarations[world.folder])
     }
 
     private val apiUrl = "http://localhost:${'$'}{port:api.http}"
