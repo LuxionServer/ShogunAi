@@ -1,5 +1,6 @@
 package app.luxion.shogunai.ui.i18n
 
+import app.luxion.shogunai.domain.model.CustomPoolFailure
 import app.luxion.shogunai.domain.executor.CommandExecutionException
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.usecase.GitFailureCause
@@ -73,6 +74,7 @@ private fun technicalDetailsOf(error: Throwable): TechnicalDetails? = when (erro
     is WorktreeError.MacWindowToolFailed -> TechnicalDetails(null, null, error.detail)
     is WorktreeError.HeadlessAppStopFailed -> TechnicalDetails(null, null, error.reason.orEmpty())
     is WorktreeError.PostCreateCommandFailed -> TechnicalDetails(error.command, error.exitCode, error.errorOutput)
+    is CustomPoolFailure -> customPoolDetails(error.problem)
     is WorktreeError.InvalidRepositoryConfig -> error.detail?.let { TechnicalDetails(null, null, it) }
     is WorktreeError.LocalFileUnreadable -> error.reason?.let { TechnicalDetails(null, null, it) }
     is WorktreeError.AndroidSdkNotFound -> TechnicalDetails(null, null, error.checked.joinToString("\n"))

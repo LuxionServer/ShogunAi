@@ -7,6 +7,7 @@ import app.luxion.shogunai.domain.executor.CommandTimeouts
 import app.luxion.shogunai.domain.io.HostEnvironment
 import app.luxion.shogunai.domain.io.RepositoryApproval
 import app.luxion.shogunai.domain.io.ApprovalDecision
+import app.luxion.shogunai.domain.model.CustomPoolWait
 import app.luxion.shogunai.domain.model.DesktopTurnState
 import app.luxion.shogunai.domain.model.DesktopWait
 import app.luxion.shogunai.domain.model.DevicePlatform
@@ -291,6 +292,7 @@ class ShogunCli(
     private val readPhysicalDevices = engine.readPhysicalDevices
     private val acquirePhysicalDevice = engine.acquirePhysicalDevice
     private val releasePhysicalDevice = engine.releasePhysicalDevice
+    private val readCustomPools = engine.readCustomPools
     private val managePhysicalDevices = engine.managePhysicalDevices
 
     fun run(args: List<String>): Int = when (val parsed = parseArguments(args)) {
@@ -363,6 +365,7 @@ class ShogunCli(
             is CliCommand.GuideBlock -> guideBlock(command)
             is CliCommand.GradleStop -> gradleStop(command)
             is CliCommand.Pool -> pool(command)
+            is PoolSlotCommand -> poolSlot(command)
             is CliCommand.Project -> project(command)
             is CliCommand.App -> app(command)
             is CliCommand.Xcode -> xcode(command)
@@ -946,6 +949,7 @@ class ShogunCli(
             subject.variables.forEach { (name, template) -> append("  $name = $template\n") }
         }
         subject.envFile?.let { append("Environment file: $it\n") }
+        append(poolDeclarationLines(repository, subject.pools))
     }
 
     private fun shellLine(command: List<String>): String = ShellQuoting.posixCommand(command)
@@ -966,7 +970,7 @@ class ShogunCli(
         }
         val subject = provisioningSource.read(repository).approvalSubject
         if (subject.isEmpty) {
-            out.line("$repository declares no post-creation commands, environment variables nor environment file.")
+            out.line("$repository declares no post-creation commands, environment variables, environment file nor pools.")
             return EXIT_OK
         }
         val approved = trust.isApproved(repository, subject)
@@ -1094,6 +1098,7 @@ class ShogunCli(
             }
             val desktopRead = async { readDesktopTurn().getOrElse { DesktopTurnState(holder = null, waiting = emptyList()) } }
             val devicesRead = async { readPhysicalDevices.ifAnyHeld() }
+            val poolsRead = async { readCustomPools(config.baseRepositoryPath).getOrElse { emptyList() } }
             val basesRead = async { engine.project(config).readBaseBranches().getOrElse { emptyMap() } }
             val resolvedBasesRead = async { engine.project(config).resolveRecordedBases() }
             val mainBranch = mainBranchRead.await()
@@ -1120,6 +1125,7 @@ class ShogunCli(
                     worktree.branch?.let(bases::get),
                     listeningPorts?.get(worktree.path),
                     devices,
+                    poolsRead.await(),
                 )
             }
         }
@@ -1195,6 +1201,7 @@ class ShogunCli(
         removal.herdrFailure?.let { err.line(herdrCloseFailure(worktree.path, it)) }
         removal.orcaFailure?.let { err.line(orcaCloseFailure(worktree.path, it)) }
         removal.headlessAppFailure?.let { err.line(headlessStopFailure(worktree.path, it)) }
+        removal.poolReleaseFailures.forEach { err.line("shogun: ${it.message}") }
         val released = releaseResources.release(config, plan)
         released.stoppedEmulators.forEach { say("stopped emulator $it") }
         released.stoppedSimulators.forEach { say("stopped simulator $it") }
@@ -1412,6 +1419,7 @@ class ShogunCli(
         report.herdrFailures.forEach { err.line(herdrCloseFailure(it.path, it.error)) }
         report.orcaFailures.forEach { err.line(orcaCloseFailure(it.path, it.error)) }
         report.headlessAppFailures.forEach { err.line(headlessStopFailure(it.path, it.error)) }
+        report.poolReleaseFailures.forEach { err.line("shogun: ${it.error.message}") }
         report.composeDown?.let { down ->
             down.takenDown.forEach { say("took down Compose project $it") }
             down.failures.forEach { err.line("shogun: couldn't take down Compose project ${it.name}: ${it.detail}") }
@@ -1716,8 +1724,9 @@ class ShogunCli(
             usage.kind to if (usage.kind == ResourceKind.GRADLE_DAEMON) emptyList() else acquireResource.waiting(usage.kind)
         }
         val devices = readPhysicalDevices().getOrThrow()
+        val customPools = readCustomPools(config.baseRepositoryPath).getOrThrow()
         if (command.json) {
-            printJson(JsonObject(poolJson(usages) { waiting.getValue(it) } + ("physicalDevices" to devicePoolJson(devices))))
+            printJson(JsonObject(poolJson(usages) { waiting.getValue(it) } + ("physicalDevices" to devicePoolJson(devices)) + ("customPools" to customPoolsJson(customPools))))
             return EXIT_OK
         }
         usages.forEach { usage ->
@@ -1729,6 +1738,28 @@ class ShogunCli(
             }
         }
         devicePoolLines(devices).forEach { out.line(it) }
+        customPoolStatusLines(customPools).forEach { out.line(it) }
+        return EXIT_OK
+    }
+
+    private suspend fun poolSlot(command: PoolSlotCommand): Int {
+        val worktree = worktreeTopLevel(absolute(command.path ?: workingDirectory))
+        if (command.action == PoolSlotAction.RELEASE) {
+            val release = engine.releaseCustomPool(worktree, command.pool).getOrThrow()
+            if (command.json) printJson(poolReleaseJson(release)) else out.line(poolReleaseLine(release))
+            return EXIT_OK
+        }
+        var lastLine: String? = null
+        val wait = command.wait?.let { timeout ->
+            CustomPoolWait(timeout) { progress ->
+                val line = poolWaitProgressLine(progress)
+                if (line != lastLine) err.line(line)
+                lastLine = line
+            }
+        }
+        val acquisition = engine.acquireCustomPool(worktree, command.pool, wait).getOrThrow()
+        acquisition.waitedSeconds?.takeIf { it > 0 }?.let { err.line("waited ${Duration.ofSeconds(it).toWaitText()}") }
+        if (command.json) printJson(poolAcquisitionJson(acquisition)) else poolAcquisitionLines(acquisition).forEach { out.line(it) }
         return EXIT_OK
     }
 
@@ -1859,7 +1890,8 @@ class ShogunCli(
     }
 
     private suspend fun workflowContext(repository: String, worktree: Worktree): WorkflowContext {
-        val providers = provisioningSource.read(repository).providers
+        val provisioning = provisioningSource.read(repository)
+        val providers = provisioning.providers
         val runner = runnerInUse()
         return WorkflowContext(
             inMainCheckout = worktree.isMain,
@@ -1871,6 +1903,7 @@ class ShogunCli(
             runner = runner,
             flutterProvider = providers.flutter != null,
             flutterUsesFvm = usesFvm(fileManager, worktree.path),
+            customPools = provisioning.pools.map { it.name },
         )
     }
 
@@ -2596,6 +2629,7 @@ class ShogunCli(
         removal.herdrFailure?.let { err.line(herdrCloseFailure(worktree.path, it)) }
         removal.orcaFailure?.let { err.line(orcaCloseFailure(worktree.path, it)) }
         removal.headlessAppFailure?.let { err.line(headlessStopFailure(worktree.path, it)) }
+        removal.poolReleaseFailures.forEach { err.line("shogun: ${it.message}") }
         reportKeptBranch(worktree.branch, removal.branch)
         return EXIT_OK
     }
@@ -3013,6 +3047,7 @@ class ShogunCli(
             val worktree = worktrees.firstOrNull { sameDirectory(it.path, path) } ?: throw WorktreeError.NotAWorktree(path)
             stopHeadlessApp.beforeRemoving(worktree.path)?.let { err.line(headlessStopFailure(worktree.path, it)) }
             releaseDesktopTurn.onWorktreeRemoved(worktree.path)
+            engine.releaseCustomPool.onWorktreeRemoved(worktree.path).forEach { err.line("shogun: hook orca: ${it.message}") }
             val released = releaseResources.release(config, releaseResources.plan(config, worktree, worktrees))
             released.stoppedEmulators.forEach { out.line("stopped emulator $it") }
             released.stoppedSimulators.forEach { out.line("stopped simulator $it") }
@@ -3105,6 +3140,7 @@ class ShogunCli(
             entry.listeningPorts?.takeIf { it.isNotEmpty() }?.let { ports -> add("listening=${ports.joinToString(",") { it.port.toString() }}") }
             desktopTurnStatusNote(entry.desktop, worktree.path)?.let(::add)
             addAll(deviceStatusNotes(entry.devices, worktree.path))
+            addAll(customPoolStatusNotes(entry.pools, worktree.path))
             when {
                 worktree.isPrunable -> add("folder-missing")
                 status == null -> add(statusUnavailable(entry.statusProblem!!))

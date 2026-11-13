@@ -30,6 +30,10 @@ class FakeRepositoryProvisioningSource(
 
     override fun fingerprint(repositoryPath: String): String = currentFingerprint
 
+    fun replace(repositoryPath: String, provisioning: RepositoryProvisioning) {
+        byRepository[repositoryPath] = provisioning
+    }
+
     override fun addPatterns(
         repositoryPath: String,
         copyPatterns: List<String>,

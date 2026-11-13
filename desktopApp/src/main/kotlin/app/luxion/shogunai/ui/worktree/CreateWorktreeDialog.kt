@@ -147,6 +147,15 @@ fun ApprovalSubjectLines(subject: RepositoryApprovalSubject, strings: Strings) {
     subject.envFile?.let { envFile ->
         Text(strings.approvalEnvFile(envFile), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = Spacing.xs))
     }
+    if (subject.pools.isNotEmpty()) {
+        Text(strings.approvalPoolsTitle, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(top = Spacing.xs))
+        subject.pools.forEach { pool ->
+            Text(strings.approvalPool(pool.name, pool.max), style = MaterialTheme.typography.bodySmall)
+            Text("acquire: ${ShellQuoting.posixCommand(pool.acquireSource)}", style = ShogunTheme.typography.data)
+            pool.releaseSource?.let { Text("release: ${ShellQuoting.posixCommand(it)}", style = ShogunTheme.typography.data) }
+            pool.variables.forEach { Text("${it.name} = ${it.template.source}", style = ShogunTheme.typography.data) }
+        }
+    }
 }
 
 @Composable

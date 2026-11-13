@@ -17,6 +17,8 @@ Un provider añade soporte para un tipo de herramienta a los worktrees de un rep
 | [`desktop-app`](#app-de-compose-desktop) | Una app de Compose Desktop por worktree, ejecutada en segundo plano sin ocupar el escritorio. | macOS |
 | [`flutter`](#flutter) | Apps Flutter: `flutter pub get` en cada worktree nuevo, y agentes que ejecutan Flutter en los dispositivos de su worktree. | Todas, con Flutter |
 
+Para un recurso que ninguno cubre, un repositorio puede declarar sus propios [pools](#pools-propios).
+
 ## Detección de stacks
 
 No hace falta saber qué providers existen. ShogunAi mira los archivos de la carpeta principal del repositorio y de sus subcarpetas directas (nunca las ocultas, `build`, `node_modules` ni `Pods`) y reconoce seis stacks:
@@ -212,6 +214,42 @@ Algunos fallos solo aparecen en hardware real: la capa de un fabricante, la cám
 - **Liberar no cambia nada en el dispositivo**: la app sigue instalada y sus datos también. Eliminar un worktree libera sus dispositivos.
 - **Orca.** Obtener un dispositivo Android en un worktree abierto en Orca lo muestra en la vista de emulador del worktree, y abrir un worktree que tiene uno lo muestra en lugar de su emulador, salvo que el simulador del worktree esté arrancado. Orca aún no puede mostrar un iPhone físico.
 - **Coste.** `adb devices` solo se ejecuta cuando algo necesita los dispositivos, como mucho una vez cada 2 segundos y compartido con los estados de los emuladores, y `getprop` una vez por conexión. La app de escritorio no busca dispositivos en máquinas sin ningún dispositivo registrado y sin proyectos que declaren el provider del emulador o del simulador de iOS.
+
+## Pools propios
+
+Un repositorio cuyos worktrees comparten algo para lo que ShogunAi no tiene provider, como una base de datos por worktree, un dispositivo de pruebas, una licencia o una GPU, lo declara en `pools` de su `.shogunai.json`, sin esperar a un provider:
+
+```json
+{
+  "pools": {
+    "db": {
+      "max": 3,
+      "acquire": ["./scripts/db-up.sh", "${slot}"],
+      "release": ["./scripts/db-down.sh", "${slot}"],
+      "env": { "DATABASE_URL": "postgres://localhost/app_${slot}" }
+    }
+  }
+}
+```
+
+| Clave | Significado |
+|---|---|
+| nombre | La clave dentro de `pools`: de 1 a 32 letras minúsculas, dígitos y guiones, empezando por letra o dígito. |
+| `max` | El máximo de instancias a la vez en la máquina, un número entero de 1 a 64 (no una cadena). Cada worktree que tiene una recibe una plaza de 1 a `max`. |
+| `acquire` | Obligatorio. Un comando, como lista no vacía de cadenas que se pasa como argv, nunca a través de una shell, que se ejecuta en el worktree cuando toma o renueva una plaza. |
+| `release` | Opcional. Un comando, como `acquire`, que se ejecuta cuando el worktree devuelve su plaza, cuando otro worktree se la quita y cuando se elimina el worktree. |
+| `env` | Variables que recibe el worktree mientras tiene una plaza, con las mismas reglas de nombre que el `env` del repositorio; un nombre no puede repetir uno de `env` ni de otro pool. |
+
+Los comandos y las variables aceptan `${slot}` (el número de plaza de quien la tiene), `${worktree}` (el nombre de su carpeta) y `$$` (un `$` literal); cualquier otro marcador hace el archivo inválido. Usa la plaza para separar las instancias: el nombre de una base de datos, un desplazamiento de puerto en el script, el índice de un dispositivo.
+
+- **Aprobación.** Los comandos y las variables de los pools se ejecutan en tu máquina, así que forman parte de la [aprobación](configuration.md#aprobar-un-repositorio) única del repositorio: nada de un pool se ejecuta hasta que lo apruebas, y un pull que cambia un pool vuelve a preguntar. En un repositorio sin aprobar, `shogun pool acquire` falla nombrando `shogun trust`.
+- **Bajo demanda.** Un worktree toma una plaza con [`shogun pool acquire <nombre>`](cli.md#pool) cuando la necesita, lo que ejecuta `acquire` con su plaza; volver a ejecutarlo renueva el lease y vuelve a ejecutar `acquire`, así que el comando debe poder repetirse. `shogun pool release <nombre>` ejecuta `release` y libera la plaza. Al crear un worktree no se adquiere nada.
+- **Leases y relevo.** Las plazas tienen el mismo lease que los dispositivos (la duración de lease de la máquina, 20 minutos por defecto), protegidas mientras el agente del worktree trabaja o mientras se ejecuta un comando de la plaza. Cuando el pool está lleno, adquirir toma una plaza cuyo lease caducó, en el mismo orden que los dispositivos, ejecutando antes `release` para quien la tenía; si ese `release` falla, la conserva. Con `--wait`, el worktree espera en la cola por una plaza, por orden de llegada.
+- **Por repositorio.** Las plazas de un pool las comparten los worktrees del repositorio que lo declara; otro repositorio con un pool del mismo nombre cuenta las suyas. Para un recurso de toda la máquina, como una GPU, dale el mismo `max` en cada repositorio sabiendo que no se ven entre sí.
+- **Variables.** Mientras un worktree tiene una plaza, las variables del pool llegan a su entorno: `shogun env`, las sesiones de agente que se inicien después, los terminales y el archivo de entorno que se escriba después. Una shell que ya estaba abierta las lee con `eval "$(shogun env)"`.
+- **Eliminación.** Eliminar o limpiar un worktree ejecuta `release` por cada plaza que tiene y las libera aunque `release` falle, cosa que se informa.
+- **Estado.** `shogun pool status` lista los pools del repositorio con quién tiene cada plaza y quién espera, y `shogun status` muestra las plazas de cada worktree (`pool=db#2`). La app de escritorio aún no muestra los pools propios.
+- **Límite.** `max` es el único límite que fija un repositorio: el perfil de capacidad y las Preferencias no lo cambian.
 
 ## Capacidad
 

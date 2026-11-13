@@ -28,6 +28,7 @@ import app.luxion.shogunai.domain.io.OrcaClient
 import app.luxion.shogunai.domain.io.OrcaWorkspaceStore
 import app.luxion.shogunai.domain.io.PackageCacheSource
 import app.luxion.shogunai.domain.io.PhysicalDeviceInventoryStore
+import app.luxion.shogunai.domain.io.CustomPoolLeaseStore
 import app.luxion.shogunai.domain.io.PhysicalDeviceLeaseStore
 import app.luxion.shogunai.domain.io.PhysicalDevices
 import app.luxion.shogunai.domain.io.PortProbe
@@ -57,6 +58,7 @@ import app.luxion.shogunai.infrastructure.MacAppWindowService
 import app.luxion.shogunai.infrastructure.NioDesktopTurnStore
 import app.luxion.shogunai.infrastructure.NioDeviceWaitQueue
 import app.luxion.shogunai.infrastructure.NioPhysicalDeviceInventoryStore
+import app.luxion.shogunai.infrastructure.NioCustomPoolLeaseStore
 import app.luxion.shogunai.infrastructure.NioPhysicalDeviceLeaseStore
 import app.luxion.shogunai.infrastructure.ProcessHandleLiveness
 import app.luxion.shogunai.infrastructure.ProcessMavenDaemonSource
@@ -106,6 +108,7 @@ fun cliEnginePorts(
     ),
     deviceInventory: PhysicalDeviceInventoryStore = NioPhysicalDeviceInventoryStore(files.folder),
     deviceLeases: PhysicalDeviceLeaseStore = NioPhysicalDeviceLeaseStore(files.folder),
+    poolLeases: CustomPoolLeaseStore = NioCustomPoolLeaseStore(files.folder),
     claudeSessions: ClaudeSessionRegistry = FileClaudeSessionRegistry(
         claudeSessionsDirectory(environment.variable("CLAUDE_CONFIG_DIR"), environment.home),
     ),
@@ -148,4 +151,5 @@ fun cliEnginePorts(
     physicalDevices = physicalDevices,
     deviceInventory = deviceInventory,
     deviceLeases = deviceLeases,
+    poolLeases = poolLeases,
 )

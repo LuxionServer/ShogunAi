@@ -48,6 +48,7 @@ class ProjectEngine(
         engine.releaseDesktopTurn,
         engine.closeOrcaTerminals,
         engine.releasePhysicalDevice,
+        engine.releaseCustomPool,
     )
 
     val cleanUp = CleanUpWorktreesUseCase(
@@ -61,6 +62,7 @@ class ProjectEngine(
         engine.releaseDesktopTurn,
         engine.closeOrcaTerminals,
         engine.releasePhysicalDevice,
+        engine.releaseCustomPool,
     )
 
     fun create(approval: RepositoryApproval): CreateWorktreeUseCase = CreateWorktreeUseCase(

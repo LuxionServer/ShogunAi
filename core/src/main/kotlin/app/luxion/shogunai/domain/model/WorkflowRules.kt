@@ -23,6 +23,7 @@ enum class WorkflowCondition(val label: String) {
     DESKTOP_APP_PROVIDER("when the repository declares the desktop-app provider, on macOS"),
     FLUTTER_PROVIDER("when the repository declares the flutter provider"),
     MOBILE_PROVIDER("when the repository declares the emulator or ios-simulator provider"),
+    CUSTOM_POOLS("when the repository declares pools in .shogunai.json"),
 }
 
 data class WorkflowRule(
@@ -45,6 +46,7 @@ data class WorkflowContext(
     val runner: RunnerId = RunnerId.HERDR,
     val flutterProvider: Boolean = false,
     val flutterUsesFvm: Boolean = false,
+    val customPools: List<String> = emptyList(),
 ) {
     fun holds(condition: WorkflowCondition): Boolean = when (condition) {
         WorkflowCondition.ALWAYS -> true
@@ -57,6 +59,7 @@ data class WorkflowContext(
         WorkflowCondition.DESKTOP_APP_PROVIDER -> desktopAppProvider
         WorkflowCondition.FLUTTER_PROVIDER -> flutterProvider
         WorkflowCondition.MOBILE_PROVIDER -> emulatorProvider || simulatorProvider
+        WorkflowCondition.CUSTOM_POOLS -> customPools.isNotEmpty()
     }
 }
 
@@ -73,6 +76,7 @@ object WorkflowRules {
 
     private fun openSessionText(runner: RunnerId): String = "Open another session with `shogun open <id> --${runner.flag}`."
     private const val FLUTTER_RULE_ID = "resources.flutter"
+    private const val CUSTOM_POOLS_RULE_ID = "resources.custom-pools"
 
     val all: List<WorkflowRule> = listOf(
         WorkflowRule(
@@ -178,6 +182,15 @@ object WorkflowRules {
             inSessionStart = true,
         ),
         WorkflowRule(
+            CUSTOM_POOLS_RULE_ID,
+            WorkflowTopic.RESOURCES,
+            customPoolsRuleText(emptyList()),
+            WorkflowCondition.CUSTOM_POOLS,
+            inSessionStart = true,
+            sessionStartText = customPoolsSessionText(emptyList()),
+            onlyWhenApplicable = true,
+        ),
+        WorkflowRule(
             "resources.compose",
             WorkflowTopic.RESOURCES,
             "Start and build the worktree's Docker Compose services with `shogun compose up` (`--build` to rebuild) and `shogun compose build`, " +
@@ -233,12 +246,28 @@ object WorkflowRules {
         return WorkflowSelection(applicable.map { it.adaptedTo(context) }, inapplicable.filterNot { it.onlyWhenApplicable })
     }
 
-    private fun WorkflowRule.adaptedTo(context: WorkflowContext): WorkflowRule =
-        if (id == FLUTTER_RULE_ID) {
-            copy(text = flutterRuleText(context.flutterUsesFvm, context.emulatorProvider, context.simulatorProvider))
-        } else {
-            this
-        }
+    private fun WorkflowRule.adaptedTo(context: WorkflowContext): WorkflowRule = when (id) {
+        FLUTTER_RULE_ID -> copy(text = flutterRuleText(context.flutterUsesFvm, context.emulatorProvider, context.simulatorProvider))
+        CUSTOM_POOLS_RULE_ID -> copy(text = customPoolsRuleText(context.customPools), sessionStartText = customPoolsSessionText(context.customPools))
+        else -> this
+    }
+
+    private fun poolArgument(pools: List<String>): String = pools.singleOrNull() ?: "<name>"
+
+    private fun customPoolsRuleText(pools: List<String>): String {
+        val name = poolArgument(pools)
+        val declared = if (pools.isEmpty()) "The repository declares pools in .shogunai.json. " else "The repository declares the pools ${pools.joinToString()} in .shogunai.json. "
+        return declared +
+            "Before using one, take a slot with `shogun pool acquire $name --wait`, run in the background or with a long enough shell timeout, " +
+            "since it can wait up to 30 minutes; the slot's variables then reach `shogun env`. " +
+            "Run it again to renew the lease during long work, and free the slot with `shogun pool release $name` when done."
+    }
+
+    private fun customPoolsSessionText(pools: List<String>): String {
+        val name = poolArgument(pools)
+        return "Take a slot of the repository's pool ${pools.joinToString().ifEmpty { name }} with `shogun pool acquire $name --wait` before using it, " +
+            "run in the background, and free it with `shogun pool release $name`."
+    }
 
     private fun flutterRuleText(usesFvm: Boolean, android: Boolean, ios: Boolean): String {
         val flutter = if (usesFvm) "fvm flutter" else "flutter"

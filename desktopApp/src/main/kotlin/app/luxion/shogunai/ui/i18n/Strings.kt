@@ -612,6 +612,8 @@ interface Strings {
     val variableNameReserved: String
     val approvalVariablesTitle: String
     fun approvalEnvFile(path: String): String
+    val approvalPoolsTitle: String
+    fun approvalPool(name: String, max: Int): String
     fun variablesAwaitingApproval(names: List<String>): String
     val templateInvalidCharacters: String
     val envFileInvalidCharacters: String

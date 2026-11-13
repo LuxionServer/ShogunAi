@@ -93,7 +93,7 @@ One new `WaitQueueName.CUSTOM_POOL("custom-pool")` entry holds every custom pool
 
 ### Trust
 
-`RepositoryApprovalSubject` gains `pools: List<CustomPool>`. `JsonRepositoryTrust` adds a `pools` member to the canonical JSON only when pools are declared, with pools sorted by name and each pool's variables sorted by name, so a repository without pools keeps its digest and reordering doesn't ask again. When pools are declared and no environment is, the canonical form is used (instead of the commands-only digest) so the pools are part of it. The stored approval keeps the pools for reference, like `env`.
+`RepositoryApprovalSubject` gains `pools: List<CustomPool>`. `JsonRepositoryTrust` adds a `pools` member to the canonical JSON only when pools are declared, with pools sorted by name and each pool's variables sorted by name, so a repository without pools keeps its digest and reordering doesn't ask again. When pools are declared and no environment is, the canonical form is used (instead of the commands-only digest) so the pools are part of it. The stored approval doesn't copy the pools next to the digest: the digest is what decides, and a new optional field in the stored record would only add a serializer branch no input reaches.
 
 `isEmpty` counts pools, so `shogun trust` asks for a repository that only declares pools. The desktop app's save rule ("approved before, or declares no post-creation commands") also requires no pools. `ApprovalSubjectLines` shows each pool's name, `max`, commands and variables; the creation dialog and project settings already use it.
 
@@ -103,21 +103,23 @@ One new `WaitQueueName.CUSTOM_POOL("custom-pool")` entry holds every custom pool
 
 ### Where the code goes
 
-New files: `domain/model/CustomPool.kt` (declaration, template, lease, loss, state), `domain/model/CustomPoolErrors.kt` (the new `WorktreeError` subclasses, since `WorktreeError.kt` is at its length cap), `domain/io/CustomPoolLeaseStore.kt`, `domain/usecase/CustomPoolUseCases.kt`, `infrastructure/CustomPoolDeclarations.kt`, `infrastructure/NioCustomPoolLeaseStore.kt`, and in the CLI `CustomPoolCommand.kt` (parsing), `CustomPoolText.kt` and `CustomPoolJson.kt`.
+New files: `domain/model/CustomPool.kt` (declaration, template, lease, loss, state), `domain/model/CustomPoolErrors.kt` (one `WorktreeError` subclass, `CustomPoolFailure`, carrying a sealed `CustomPoolProblem`: unknown pool, not approved, full, wait timed out, command failed; `WorktreeError.kt` is at its length cap, and the desktop app's exhaustive error texts then need one branch per language instead of five), `domain/io/CustomPoolLeaseStore.kt`, `domain/usecase/CustomPoolUseCases.kt` (ledger, reading, variables) and `domain/usecase/CustomPoolSlotUseCases.kt` (acquire and release), `infrastructure/CustomPoolDeclarations.kt`, `infrastructure/NioCustomPoolLeaseStore.kt`, in the CLI `CustomPoolCommand.kt` (parsing, with `UsageException` made `internal` so the new file can throw it), `CustomPoolText.kt` and `CustomPoolJson.kt`, and in the desktop app `ui/i18n/CustomPoolErrorTexts.kt`.
 
 ### File length caps
 
-Three files are exactly at their cap and need one line each; their caps rise by one:
+These files are exactly at their cap and need a few lines each; their caps rise by as many:
 
 - `cli/CliCommand.kt` 1090 → 1091: `parsePool` delegates `acquire` and `release` to the new parser.
 - `cli/CommandJson.kt` 1028 → 1029: `trustJson` adds `pools`.
 - `infrastructure/RepositoryProvisioningFiles.kt` 459 → 460: `read` adds `pools`.
+- `ui/i18n/EnglishErrors.kt` 479 → 481 and `ui/i18n/SpanishErrors.kt` 500 → 502: the import and the branch of `CustomPoolFailure` in the exhaustive `when`.
+- `ui/i18n/Strings.kt` 956 → 958, `ui/i18n/EnglishStrings.kt` 1129 → 1131 and `ui/i18n/SpanishStrings.kt` 1127 → 1129: the approval's pool title and pool line.
 
 The alternative, moving existing code out of those files to make room, is a refactor outside this change and would conflict with the parallel changes editing them.
 
 ### Coverage
 
-`core` keeps 100% of lines and its maximum of missed branches. The store's serializable entries declare no default for every field, so kotlinx.serialization generates no unreachable branch; if one needs all defaults, the maximum rises by one and is stated here when implementing.
+`core` keeps 100% of lines and its maximum of missed branches, unchanged: the store's serializable entries declare no defaults, so kotlinx.serialization generates no unreachable branch, and the trust record gained no field. `cli` keeps 100% of lines and branches.
 
 ## Risks / Trade-offs
 

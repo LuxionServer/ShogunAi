@@ -41,4 +41,5 @@ data class EnginePorts(
     val physicalDevices: List<PhysicalDevices>,
     val deviceInventory: PhysicalDeviceInventoryStore,
     val deviceLeases: PhysicalDeviceLeaseStore,
+    val poolLeases: CustomPoolLeaseStore,
 )

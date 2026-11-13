@@ -6,6 +6,7 @@ import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.io.FileManager
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.WorktreeError
+import app.luxion.shogunai.domain.model.runSuspendCatching
 import app.luxion.shogunai.domain.model.sameDirectory
 import java.io.IOException
 
@@ -18,12 +19,14 @@ internal class WorktreeFolderRemoval(
     private val releaseDesktopTurn: ReleaseDesktopTurnUseCase? = null,
     private val closeOrcaTerminals: CloseOrcaTerminalsUseCase? = null,
     private val releasePhysicalDevices: ReleasePhysicalDeviceUseCase? = null,
+    private val releaseCustomPools: ReleaseCustomPoolUseCase? = null,
 ) {
     suspend fun remove(path: String, force: Boolean, workspaceId: String?, hasOrcaTerminals: Boolean): HolderClosing {
         val headlessAppFailure = stopHeadlessApp?.beforeRemoving(path)
         releaseDesktopTurn?.onWorktreeRemoved(path)
         releasePhysicalDevices?.onWorktreeRemoved(path)
-        return removeFolder(path, force, workspaceId, hasOrcaTerminals).copy(headlessAppFailure = headlessAppFailure)
+        val poolReleaseFailures = releaseCustomPools?.let { runSuspendCatching { it.onWorktreeRemoved(path) }.getOrDefault(emptyList()) }.orEmpty()
+        return removeFolder(path, force, workspaceId, hasOrcaTerminals).copy(headlessAppFailure = headlessAppFailure, poolReleaseFailures = poolReleaseFailures)
     }
 
     private suspend fun removeFolder(path: String, force: Boolean, workspaceId: String?, hasOrcaTerminals: Boolean): HolderClosing {
