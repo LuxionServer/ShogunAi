@@ -1,10 +1,9 @@
-# Spec Delta
+# build-turn Specification
 
 ## Purpose
-
 Bounds how many heavy builds run at the same time on the machine: builds take one of a limited number of build slots shared by every repository and worktree, the others wait in line, and a slot frees itself when its build ends or dies.
 
-## ADDED Requirements
+## Requirements
 
 ### Requirement: Build slots shared by the machine
 The machine SHALL have a number of build slots shared by every repository and worktree on any platform. Each slot SHALL be held by one running build, recorded with its worktree, its command, when it started and the process that runs it, outside every working tree, so it never appears in `git status`.
@@ -148,7 +147,7 @@ Before Claude Code runs a shell command, `shogun hook build-turn` SHALL deny it 
 - **THEN** the command runs and the hook prints nothing
 
 ### Requirement: The build-turn hook leaves other commands alone
-`shogun hook build-turn` SHALL print nothing and let the command run for commands that start no heavy build, for light invocations (Gradle `--stop`, `--status`, `--version`, `help` and `tasks`; Maven `--version`; `xcodebuild -version`, `-list`, `-showsdks`, `-showdestinations` and `-showBuildSettings`), for sessions outside a Git repository, when the capacity profile sets no build limit, and when it can't read its input or the settings.
+`shogun hook build-turn` SHALL print nothing and let the command run for commands that start no heavy build, for light invocations (Gradle `--stop`, `--status`, `--version` or `-v`, and only `help` or `tasks`; Maven `--version` or `-v`; `xcodebuild -version`, `-list`, `-showsdks`, `-showdestinations` and `-showBuildSettings`), for sessions outside a Git repository, when the capacity profile sets no build limit, and when it can't read its input or the settings.
 
 #### Scenario: Light invocation
 - **WHEN** the agent runs `./gradlew --stop`

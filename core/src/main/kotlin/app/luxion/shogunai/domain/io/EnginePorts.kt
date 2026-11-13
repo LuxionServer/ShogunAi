@@ -38,6 +38,8 @@ data class EnginePorts(
     val headlessLauncher: HeadlessAppLauncher,
     val appWindows: AppWindowService,
     val desktopTurns: DesktopTurnStore,
+    val buildTurns: BuildTurnStore,
+    val foregroundCommands: ForegroundCommandRunner,
     val physicalDevices: List<PhysicalDevices>,
     val deviceInventory: PhysicalDeviceInventoryStore,
     val deviceLeases: PhysicalDeviceLeaseStore,

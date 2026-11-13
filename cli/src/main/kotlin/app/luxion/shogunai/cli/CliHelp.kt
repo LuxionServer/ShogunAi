@@ -192,6 +192,8 @@ internal object CliHelp {
   hook agent-state            Claude Code UserPromptSubmit, Notification, Stop and SessionEnd hook: record the session's state
   hook desktop-turn           Claude Code PreToolUse hook: take the desktop turn before Claude's computer use or Orca's orca computer
                               acts on the desktop, or block the call while another worktree holds it
+  hook build-turn             Claude Code PreToolUse hook: block a Gradle, Maven, xcodebuild or swift build|test command run
+                              outside the build turn and tell the agent to run it with shogun build run --
   hook herdr                  Herdr plugin hook: provision worktrees on worktree.created, delete merged branches on worktree.removed
   hook orca setup|archive     Orca orca.yaml scripts: provision the worktree at ORCA_WORKTREE_PATH on setup,
                               free its emulator, simulator and idle Gradle daemons on archive
@@ -270,6 +272,13 @@ internal object CliHelp {
   desktop release [<path>] [--json]
                               Give the turn back; Claude Code's Stop and SessionEnd hooks also release it
   desktop status [--json]     Show who holds the desktop, until when, and who waits for it
+""".trimIndent(),
+        "build" to """
+  build run [--wait-timeout <minutes>] -- <command> [<arguments>]
+                              Run a heavy build in one of the machine's build slots: wait in line while they are
+                              all taken (30 minutes at most by default), run the command here, free the slot when
+                              it ends and exit with its exit code; the slots follow the capacity profile
+  build status [--json]       Show the build slots in use, the command each runs, and who waits for one
 """.trimIndent(),
         "device" to """
   device list [--all] [--json]

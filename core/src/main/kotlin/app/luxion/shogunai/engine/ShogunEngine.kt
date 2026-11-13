@@ -5,7 +5,9 @@ import app.luxion.shogunai.domain.io.EnginePorts
 import app.luxion.shogunai.domain.io.RepositoryApproval
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.SimulatorSettings
+import app.luxion.shogunai.domain.usecase.AcquireBuildSlotUseCase
 import app.luxion.shogunai.domain.usecase.AcquireDesktopTurnUseCase
+import app.luxion.shogunai.domain.usecase.BuildTurnLedger
 import app.luxion.shogunai.domain.usecase.AcquirePhysicalDeviceUseCase
 import app.luxion.shogunai.domain.usecase.AcquireWorktreeResourceUseCase
 import app.luxion.shogunai.domain.usecase.CaptureHeadlessAppUseCase
@@ -35,6 +37,7 @@ import app.luxion.shogunai.domain.usecase.PhysicalDeviceLedger
 import app.luxion.shogunai.domain.usecase.PrepareCocoaPodsUseCase
 import app.luxion.shogunai.domain.usecase.PrepareWorktreeEnvironmentUseCase
 import app.luxion.shogunai.domain.usecase.ReadAgentActivityUseCase
+import app.luxion.shogunai.domain.usecase.ReadBuildTurnUseCase
 import app.luxion.shogunai.domain.usecase.ReadDesktopTurnUseCase
 import app.luxion.shogunai.domain.usecase.ReadEmulatorStatesUseCase
 import app.luxion.shogunai.domain.usecase.ReadHeadlessAppUseCase
@@ -43,6 +46,7 @@ import app.luxion.shogunai.domain.usecase.ReadReleaseRecordUseCase
 import app.luxion.shogunai.domain.usecase.ReadResourcePoolUseCase
 import app.luxion.shogunai.domain.usecase.ReadSimulatorStatesUseCase
 import app.luxion.shogunai.domain.usecase.ReadWorktreeStatusUseCase
+import app.luxion.shogunai.domain.usecase.ReleaseBuildSlotUseCase
 import app.luxion.shogunai.domain.usecase.ReleaseDesktopTurnUseCase
 import app.luxion.shogunai.domain.usecase.ReleasePhysicalDeviceUseCase
 import app.luxion.shogunai.domain.usecase.ReleaseWorktreeResourcesUseCase
@@ -54,6 +58,7 @@ import app.luxion.shogunai.domain.usecase.ResolveFlutterPackagesUseCase
 import app.luxion.shogunai.domain.usecase.ResolveMultirepoUseCase
 import app.luxion.shogunai.domain.usecase.ResolveRepositoryUseCase
 import app.luxion.shogunai.domain.usecase.ResolveResourceLimitsUseCase
+import app.luxion.shogunai.domain.usecase.RunInBuildTurnUseCase
 import app.luxion.shogunai.domain.usecase.ResolveStartPointUseCase
 import app.luxion.shogunai.domain.usecase.ResolveWorktreeEnvironmentUseCase
 import app.luxion.shogunai.domain.usecase.RunComposeProjectUseCase
@@ -201,6 +206,21 @@ class ShogunEngine(
     val acquireDesktopTurn = AcquireDesktopTurnUseCase(desktopTurnLedger, resolveLimits::desktopTurnDuration)
     val releaseDesktopTurn = ReleaseDesktopTurnUseCase(desktopTurnLedger)
     val readDesktopTurn = ReadDesktopTurnUseCase(desktopTurnLedger)
+
+    val buildTurnLedger = BuildTurnLedger(
+        ports.buildTurns,
+        ports.environmentStateStore,
+        ports.deviceWaitQueue,
+        ports.processLiveness,
+        ::adminDirectoryOf,
+        resolveLimits::buildSlots,
+        clock = options.clock,
+        sleep = options.pauseWhileWaiting,
+    )
+    val acquireBuildSlot = AcquireBuildSlotUseCase(buildTurnLedger)
+    val releaseBuildSlot = ReleaseBuildSlotUseCase(buildTurnLedger)
+    val readBuildTurn = ReadBuildTurnUseCase(buildTurnLedger)
+    val runInBuildTurn = RunInBuildTurnUseCase(acquireBuildSlot, releaseBuildSlot, ports.foregroundCommands)
 
     val physicalDeviceLedger: PhysicalDeviceLedger = PhysicalDeviceLedger(
         ports.physicalDevices,

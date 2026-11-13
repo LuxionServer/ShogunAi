@@ -57,6 +57,8 @@ fun hostEnginePorts(
         headlessLauncher = GradleHeadlessAppLauncher(executor, files.headless.toString()),
         appWindows = MacAppWindowService(executor, files.headless.toString()),
         desktopTurns = NioDesktopTurnStore(files.folder),
+        buildTurns = NioBuildTurnStore(files.folder),
+        foregroundCommands = ProcessBuilderForegroundCommandRunner(),
         physicalDevices = listOf(
             AdbPhysicalDevices(androidSdk, sdkRepository),
             DevicectlPhysicalDevices(executor, devicectlOsName(environment.os)),

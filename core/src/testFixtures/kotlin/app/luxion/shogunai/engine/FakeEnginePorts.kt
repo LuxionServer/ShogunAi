@@ -8,7 +8,9 @@ import app.luxion.shogunai.domain.FakeClaudeSessionRegistry
 import app.luxion.shogunai.domain.FakeComposeProjectRegistry
 import app.luxion.shogunai.domain.FakeComposeProjectSource
 import app.luxion.shogunai.domain.FakeDerivedDataSource
+import app.luxion.shogunai.domain.FakeBuildTurnStore
 import app.luxion.shogunai.domain.FakeDesktopTurnStore
+import app.luxion.shogunai.domain.FakeForegroundCommandRunner
 import app.luxion.shogunai.domain.FakeDeviceWaitQueue
 import app.luxion.shogunai.domain.FakeEnvironmentStateStore
 import app.luxion.shogunai.domain.FakeFileManager
@@ -41,7 +43,9 @@ import app.luxion.shogunai.domain.io.ComposeProjectRegistry
 import app.luxion.shogunai.domain.io.ComposeProjectSource
 import app.luxion.shogunai.domain.io.DerivedDataSizeStore
 import app.luxion.shogunai.domain.io.DerivedDataSource
+import app.luxion.shogunai.domain.io.BuildTurnStore
 import app.luxion.shogunai.domain.io.DesktopTurnStore
+import app.luxion.shogunai.domain.io.ForegroundCommandRunner
 import app.luxion.shogunai.domain.io.DeviceWaitQueue
 import app.luxion.shogunai.domain.io.EnvironmentStateStore
 import app.luxion.shogunai.domain.io.FileManager
@@ -104,6 +108,8 @@ fun fakeEnginePorts(
     headlessLauncher: HeadlessAppLauncher = FakeHeadlessAppLauncher(FakeFileManager(), "$userHome/headless.pid"),
     appWindows: AppWindowService = FakeAppWindowService(),
     desktopTurns: DesktopTurnStore = FakeDesktopTurnStore(),
+    buildTurns: BuildTurnStore = FakeBuildTurnStore(),
+    foregroundCommands: ForegroundCommandRunner = FakeForegroundCommandRunner(),
     physicalDevices: List<PhysicalDevices> = emptyList(),
     deviceInventory: PhysicalDeviceInventoryStore = FakePhysicalDeviceInventoryStore(),
     deviceLeases: PhysicalDeviceLeaseStore = FakePhysicalDeviceLeaseStore(),
@@ -143,6 +149,8 @@ fun fakeEnginePorts(
     headlessLauncher = headlessLauncher,
     appWindows = appWindows,
     desktopTurns = desktopTurns,
+    buildTurns = buildTurns,
+    foregroundCommands = foregroundCommands,
     physicalDevices = physicalDevices,
     deviceInventory = deviceInventory,
     deviceLeases = deviceLeases,

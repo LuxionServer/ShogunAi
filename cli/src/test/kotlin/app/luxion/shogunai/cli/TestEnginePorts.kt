@@ -10,7 +10,10 @@ import app.luxion.shogunai.domain.io.ComposeProjectRegistry
 import app.luxion.shogunai.domain.io.ComposeProjectSource
 import app.luxion.shogunai.domain.io.DerivedDataSizeStore
 import app.luxion.shogunai.domain.io.DerivedDataSource
+import app.luxion.shogunai.domain.FakeForegroundCommandRunner
+import app.luxion.shogunai.domain.io.BuildTurnStore
 import app.luxion.shogunai.domain.io.DesktopTurnStore
+import app.luxion.shogunai.domain.io.ForegroundCommandRunner
 import app.luxion.shogunai.domain.io.DeviceWaitQueue
 import app.luxion.shogunai.domain.io.EnvironmentStateStore
 import app.luxion.shogunai.domain.io.FileManager
@@ -54,6 +57,7 @@ import app.luxion.shogunai.infrastructure.JsonComposeProjectRegistry
 import app.luxion.shogunai.infrastructure.JsonMultirepoSource
 import app.luxion.shogunai.infrastructure.JsonOrcaWorkspaceStore
 import app.luxion.shogunai.infrastructure.MacAppWindowService
+import app.luxion.shogunai.infrastructure.NioBuildTurnStore
 import app.luxion.shogunai.infrastructure.NioDesktopTurnStore
 import app.luxion.shogunai.infrastructure.NioDeviceWaitQueue
 import app.luxion.shogunai.infrastructure.NioPhysicalDeviceInventoryStore
@@ -99,6 +103,8 @@ fun cliEnginePorts(
     headlessLauncher: HeadlessAppLauncher = GradleHeadlessAppLauncher(executor, files.headless.toString()),
     appWindows: AppWindowService = MacAppWindowService(executor, files.headless.toString()),
     desktopTurns: DesktopTurnStore = NioDesktopTurnStore(files.folder),
+    buildTurns: BuildTurnStore = NioBuildTurnStore(files.folder),
+    foregroundCommands: ForegroundCommandRunner = FakeForegroundCommandRunner(),
     workingDirectory: String = environment.home,
     physicalDevices: List<PhysicalDevices> = listOf(
         AdbPhysicalDevices(androidSdk) { workingDirectory },
@@ -145,6 +151,8 @@ fun cliEnginePorts(
     headlessLauncher = headlessLauncher,
     appWindows = appWindows,
     desktopTurns = desktopTurns,
+    buildTurns = buildTurns,
+    foregroundCommands = foregroundCommands,
     physicalDevices = physicalDevices,
     deviceInventory = deviceInventory,
     deviceLeases = deviceLeases,
