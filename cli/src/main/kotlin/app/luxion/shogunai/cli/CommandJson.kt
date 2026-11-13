@@ -39,6 +39,7 @@ import app.luxion.shogunai.domain.model.ProvisionDriftState
 import app.luxion.shogunai.domain.model.ProvisionMode
 import app.luxion.shogunai.domain.model.FlutterPubGet
 import app.luxion.shogunai.domain.model.FlutterPubGetFailure
+import app.luxion.shogunai.domain.model.NodeDependencies
 import app.luxion.shogunai.domain.model.PodsPreparation
 import app.luxion.shogunai.domain.model.ProvisionedFile
 import app.luxion.shogunai.domain.model.RepositoryApprovalSubject
@@ -95,6 +96,7 @@ fun newJson(
     skippedLinks: List<String> = emptyList(),
     pods: PodsPreparation = PodsPreparation(),
     flutter: FlutterPubGet? = null,
+    node: NodeDependencies? = null,
 ): JsonObject = buildJsonObject {
     put("path", path)
     put("branch", branch)
@@ -105,6 +107,7 @@ fun newJson(
     put("skippedLinks", strings(skippedLinks))
     put("pods", podsJson(pods))
     flutter?.let { put("flutter", flutterJson(it)) }
+    node?.let { put("node", nodeJson(it)) }
 }
 
 fun flutterJson(pubGet: FlutterPubGet): JsonObject = buildJsonObject {
@@ -160,6 +163,7 @@ fun provisionJson(
     skippedLinks: List<String> = emptyList(),
     pods: PodsPreparation = PodsPreparation(),
     flutter: FlutterPubGet? = null,
+    node: NodeDependencies? = null,
 ): JsonObject = buildJsonObject {
     put("path", path)
     put("copied", strings(files.filter { it.mode == ProvisionMode.COPIED }.map { it.path }))
@@ -172,6 +176,7 @@ fun provisionJson(
     put("skippedLinks", strings(skippedLinks))
     put("pods", podsJson(pods))
     flutter?.let { put("flutter", flutterJson(it)) }
+    node?.let { put("node", nodeJson(it)) }
 }
 
 fun provisionCheckJson(path: String, drift: List<ProvisionDrift>): JsonObject = buildJsonObject {
@@ -216,6 +221,7 @@ fun trustJson(repository: String, subject: RepositoryApprovalSubject, approved: 
         },
     )
     put("envFile", subject.envFile)
+    put("nodeInstall", subject.nodeInstall)
     put("approved", approved)
     put("changed", changed)
 }
@@ -441,6 +447,7 @@ val Stack.jsonLabel: String
         Stack.MAVEN -> "maven"
         Stack.DOCKER_COMPOSE -> "docker-compose"
         Stack.FLUTTER -> "flutter"
+        Stack.NODE -> "node"
     }
 
 fun composeJson(projects: List<WorktreeComposeProject>, leftovers: List<ComposeResource> = emptyList()): JsonObject = buildJsonObject {

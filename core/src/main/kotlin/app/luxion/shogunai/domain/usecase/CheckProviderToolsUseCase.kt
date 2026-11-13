@@ -42,6 +42,7 @@ class CheckProviderToolsUseCase(
             if (providers.xcode?.cocoaPods == true) add(ProviderToolId.COCOAPODS to { commandOnPath("pod") })
             if (providers.dockerCompose != null) add(ProviderToolId.DOCKER_COMPOSE to ::dockerCompose)
             if (providers.flutter != null) add(ProviderToolId.FLUTTER to { commandOnPath(flutterCommand(fileManager, repository).first()) })
+            if (providers.node != null) nodeTools(fileManager, repository).forEach { add(it to { commandOnPath(it.id) }) }
         }
         return tools.flatMap { (tool, locate) ->
             val located = locateGuarded(locate)

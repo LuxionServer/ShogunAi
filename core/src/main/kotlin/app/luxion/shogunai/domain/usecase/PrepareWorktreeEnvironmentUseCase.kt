@@ -5,13 +5,18 @@ import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.io.FileManager
 import app.luxion.shogunai.domain.io.RepositoryProvisioningSource
 import app.luxion.shogunai.domain.model.FlutterPubGet
+import app.luxion.shogunai.domain.model.NodeDependencies
 import app.luxion.shogunai.domain.model.PodsPreparation
 import app.luxion.shogunai.domain.model.WorktreeEnvironment
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.joinPath
 import app.luxion.shogunai.domain.model.runSuspendCatching
 
-data class PreparedWorktree(val pods: PodsPreparation = PodsPreparation(), val flutter: FlutterPubGet? = null)
+data class PreparedWorktree(
+    val pods: PodsPreparation = PodsPreparation(),
+    val flutter: FlutterPubGet? = null,
+    val node: NodeDependencies? = null,
+)
 
 fun interface WorktreeEnvironmentPreparer {
     suspend fun prepare(repositoryPath: String, worktreePath: String): PreparedWorktree
@@ -26,6 +31,7 @@ class PrepareWorktreeEnvironmentUseCase(
     private val writeEnvironmentFile: WriteEnvironmentFileUseCase,
     private val pods: CocoaPodsPreparer = CocoaPodsPreparer.NONE,
     private val flutterPackages: FlutterPackagesPreparer = FlutterPackagesPreparer.NONE,
+    private val nodeDependencies: NodeDependenciesPreparer = NodeDependenciesPreparer.NONE,
 ) : WorktreeEnvironmentPreparer {
 
     override suspend fun prepare(repositoryPath: String, worktreePath: String): PreparedWorktree {
@@ -34,6 +40,7 @@ class PrepareWorktreeEnvironmentUseCase(
         return PreparedWorktree(
             pods = pods.prepare(repositoryPath, worktreePath),
             flutter = flutterPackages.prepare(repositoryPath, worktreePath),
+            node = nodeDependencies.prepare(repositoryPath, worktreePath, environment.declarationApproved),
         )
     }
 }

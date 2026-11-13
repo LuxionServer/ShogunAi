@@ -38,6 +38,6 @@ Every ShogunAi provider today targets mobile and JVM stacks, while most people r
 
 - `core`: new model and use case for Node dependencies, `RepositoryProviders.node`, stack detection, approval subject and its digest, the worktree creation and provisioning flows, provider tool checks and the workflow rules.
 - `cli`: `shogun new`, `shogun provision`, `shogun hook worktree-create`, `shogun stacks`, `shogun trust` and `shogun doctor` output.
-- `desktopApp`: the Node switch, approval lines and strings (English and Spanish), and the environment preparer wired in `AppContainer`.
+- `desktopApp`: the Node switch, approval lines and strings (English and Spanish). Worktrees created from the app get the preparation through the shared engine.
 - Docs: `docs/guide/providers.md` and `.es.md`, `docs/roadmap.md` and `.es.md`.
 - No new dependencies. Commands run as argv: `cp -c -R`, `npm`, `pnpm`, `yarn`, `bun`, `node`.

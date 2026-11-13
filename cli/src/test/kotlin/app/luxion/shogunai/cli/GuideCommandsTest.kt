@@ -3,6 +3,7 @@ package app.luxion.shogunai.cli
 import app.luxion.shogunai.engine.ShogunEngine
 import app.luxion.shogunai.domain.ScriptedShellCommandExecutor
 import app.luxion.shogunai.domain.model.FlutterProvider
+import app.luxion.shogunai.domain.model.NodeProvider
 import app.luxion.shogunai.domain.FakeAndroidSdk
 import app.luxion.shogunai.domain.FakeAppleSimulators
 import app.luxion.shogunai.domain.FakeDerivedDataSource
@@ -529,6 +530,15 @@ class GuideCommandsTest {
         assertEquals(0, cli(everything(), input = """{"cwd": "$linked"}""").run(listOf("hook", "session-start")), err.toString())
 
         assertFalse(out.contains("flutter"), out.toString())
+    }
+
+    @Test
+    fun `session-start of a node repository names its package manager`() {
+        files.writeText("$linked/pnpm-lock.yaml", "lockfileVersion: '9.0'")
+
+        assertEquals(0, cli(declaring(RepositoryProviders(node = NodeProvider)), input = """{"cwd": "$linked"}""").run(listOf("hook", "session-start")), err.toString())
+
+        assertTrue(out.contains("run `pnpm install` after `package.json` or `pnpm-lock.yaml` change"), out.toString())
     }
 
     @Test

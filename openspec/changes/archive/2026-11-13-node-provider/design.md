@@ -46,11 +46,15 @@ What a Node repository looks like to ShogunAi, and what a fresh worktree lacks.
 
 **Detection.** Node is detected when the main folder has `package.json`; its lockfiles join the evidence. Only file names are read, like the other root-only stacks. A `package.json` used only for tooling in a JVM repository also gets the suggestion; detection is only a hint with its evidence, never applied by itself.
 
-**`shogun doctor`.** Two tool ids, `NODE` (`node` on `PATH`) and `NODE_PACKAGE_MANAGER` (the manager found from the lockfile), each with an install fix (Node's site; Corepack or the manager's site). bun runs without Node, so a bun repository is checked only for `bun`. A repository without a lockfile is checked only for `node`.
+**`shogun doctor`.** A check for `node` and one for the manager found from the lockfile, each with an install fix (Node's site for `node` and npm; Corepack for pnpm and Yarn; bun's site). bun runs without Node, so a bun repository is checked only for `bun`. A repository without a lockfile is checked only for `node`.
 
 **Agent context.** A workflow rule shown for repositories that declare `node`, with the manager's name filled in: the worktree has its own `node_modules`; run `<manager> install` after `package.json` or `<lockfile>` change; never link or copy `node_modules` from another worktree; dev servers take their port from a variable declared with `${port}` instead of a fixed one.
 
-**Desktop.** `SuggestedProvider.NODE` needs a label and a switch in "Repository configuration" (English and Spanish), `RepositoryConfigDraft` carries `node`, the approval lines show the Node install, and `AppContainer` passes the preparer to the desktop's `PrepareWorktreeEnvironmentUseCase`.
+**Desktop.** `SuggestedProvider.NODE` needs a label and a switch in "Repository configuration" (English and Spanish), `RepositoryConfigDraft` carries `node`, the approval lines show the Node install; the desktop app gets the preparer through the shared `ShogunEngine` composition, so no desktop wiring is needed.
+
+**File length caps.** Everything new lives in new files (`NodeDependencies.kt`, `PrepareNodeDependenciesUseCase.kt`, the CLI's `NodeDependenciesText.kt`), but the files that list every provider need their Node lines next to Flutter's, and they were exactly at their caps: `CommandJson.kt` (1028 → 1035: the `node` field of `shogun new` and `shogun provision`, `nodeInstall` in `shogun trust --json` and the stack id), `RepositoryProvisioningFiles.kt` (459 → 464: reading, writing and the option list of `providers.node`), `Strings.kt`, `EnglishStrings.kt` and `SpanishStrings.kt` (+2 each: the switch label and the approval line) and `ProjectConfigViewModel.kt` (820 → 823: the switch setter and the suggestion branch). Splitting those files is a refactor outside this change.
+
+**Doctor tool ids per manager.** Instead of one "package manager" id, `ProviderToolId` gets `NODE`, `NPM`, `PNPM`, `YARN` and `BUN`, so each check is labelled with the tool it found and its fix names that tool.
 
 **Coverage.** No new `@Serializable` class whose fields all have defaults is added, so `core`'s maximum of missed branches doesn't change.
 

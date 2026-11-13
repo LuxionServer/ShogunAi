@@ -53,6 +53,7 @@ Status: **Started**.
 - **Maven**: JVM backends get Maven builds bounded in memory, see their Maven daemons and can stop the idle ones.
 - **Docker Compose**: JVM backends get a Docker Compose project and ports per worktree, started and built with `shogun compose up`, and cleaned up with the volumes, networks and images removed worktrees leave behind.
 - **Flutter**: repositories get `flutter pub get` in every new worktree, with their Gradle build in `android/` handled by the Gradle and emulator providers.
+- **Node**: web and backend repositories get `node_modules` in every new worktree, cloned from the base when its lockfile matches or installed with npm, pnpm, Yarn or bun once the repository is approved.
 - **Stack detection**: the app and `shogun stacks` detect a repository's stack and suggest the providers that fit, and the `local.properties`, keystores and Firebase files to link into every worktree.
 - **Local files**: they can be linked, matched by patterns and kept in sync when the base folder loses files.
 
@@ -144,6 +145,18 @@ Provisioning and bounded resources for the stacks where a fresh worktree is furt
   - Uninstalling the project's app from a device when it's released.
   - Showing a worktree's physical devices in its row of the worktree list.
   - Giving the device's name more room in the Devices view, which cuts it at the default window width.
+
+### Web stacks
+
+Preparing worktrees of web and non-JVM backend repositories, which the Node provider started:
+
+- Python virtual environments per worktree (venv, uv, Poetry), created or cloned from the base like `node_modules`.
+- A database per worktree, so parallel agents don't share or overwrite each other's data.
+- Showing the size of the package managers' caches (npm, the pnpm store, Yarn and bun) next to the other shared caches.
+- Node follow-ups:
+  - Independent Node projects in subfolders, each with its own lockfile, which today declare their installs as post-creation commands.
+  - Cloning `node_modules` on Linux with reflinks where the file system supports them; today Linux and Windows always install.
+  - Finding a Node or package manager installed with nvm or Volta from the desktop app started from Finder.
 
 ### Every agent, not only Claude Code
 

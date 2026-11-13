@@ -98,6 +98,7 @@ import app.luxion.shogunai.domain.model.HerdrPluginStatus
 import app.luxion.shogunai.domain.usecase.isLiveClaudeProcess
 import app.luxion.shogunai.domain.usecase.HerdrAgentRunner
 import app.luxion.shogunai.domain.usecase.usesFvm
+import app.luxion.shogunai.domain.usecase.findNodeProject
 import app.luxion.shogunai.domain.usecase.CheckInstallationUseCase
 import app.luxion.shogunai.domain.usecase.CheckMultireposUseCase
 import app.luxion.shogunai.domain.usecase.CheckProviderToolsUseCase
@@ -430,7 +431,7 @@ class ShogunCli(
         }
         val worktree = created.getOrThrow()
         if (command.json) {
-            printJson(newJson(worktree.path, worktree.branch, worktree.skippedPostCreateCommands, worktree.skippedVariables, null, worktree.skippedLinks, worktree.pods, worktree.flutter))
+            printJson(newJson(worktree.path, worktree.branch, worktree.skippedPostCreateCommands, worktree.skippedVariables, null, worktree.skippedLinks, worktree.pods, worktree.flutter, worktree.node))
             return EXIT_OK
         }
         out.line(worktree.path)
@@ -438,6 +439,7 @@ class ShogunCli(
         noteSkippedLinks(worktree.skippedLinks)
         podsLines(worktree.pods).forEach { err.line("shogun: $it") }
         worktree.flutter?.let { err.line("shogun: ${flutterPubGetLine(it)}") }
+        worktree.node?.let { err.line("shogun: ${nodeDependenciesLine(it)}") }
         noteSkipped(config.baseRepositoryPath, worktree.skippedPostCreateCommands, worktree.skippedVariables)
         return EXIT_OK
     }
@@ -946,6 +948,7 @@ class ShogunCli(
             subject.variables.forEach { (name, template) -> append("  $name = $template\n") }
         }
         subject.envFile?.let { append("Environment file: $it\n") }
+        if (subject.nodeInstall) append("$NODE_INSTALL_APPROVAL_LINE\n")
     }
 
     private fun shellLine(command: List<String>): String = ShellQuoting.posixCommand(command)
@@ -966,7 +969,7 @@ class ShogunCli(
         }
         val subject = provisioningSource.read(repository).approvalSubject
         if (subject.isEmpty) {
-            out.line("$repository declares no post-creation commands, environment variables nor environment file.")
+            out.line("$repository declares no post-creation commands, environment variables, environment file nor Node install.")
             return EXIT_OK
         }
         val approved = trust.isApproved(repository, subject)
@@ -1066,7 +1069,7 @@ class ShogunCli(
             printJson(
                 provisionJson(
                     worktree.path, result.files, result.skippedPostCreateCommands, result.skippedVariables, null,
-                    result.removed, result.skippedLinks, result.pods, result.flutter,
+                    result.removed, result.skippedLinks, result.pods, result.flutter, result.node,
                 ),
             )
             return EXIT_OK
@@ -1076,6 +1079,7 @@ class ShogunCli(
         result.skippedLinks.forEach { out.line("$it (skipped: symbolic link)") }
         podsLines(result.pods).forEach { out.line(it) }
         result.flutter?.let { out.line(flutterPubGetLine(it)) }
+        result.node?.let { out.line(nodeDependenciesLine(it)) }
         noteSkipped(config.baseRepositoryPath, result.skippedPostCreateCommands, result.skippedVariables)
         onProvisioned(worktree, config)
         return EXIT_OK
@@ -1871,6 +1875,8 @@ class ShogunCli(
             runner = runner,
             flutterProvider = providers.flutter != null,
             flutterUsesFvm = usesFvm(fileManager, worktree.path),
+            nodeProvider = providers.node != null,
+            nodeProject = findNodeProject(fileManager, worktree.path),
         )
     }
 
@@ -2162,6 +2168,7 @@ class ShogunCli(
         app.luxion.shogunai.domain.model.Stack.MAVEN -> "Maven"
         app.luxion.shogunai.domain.model.Stack.DOCKER_COMPOSE -> "Docker Compose"
         app.luxion.shogunai.domain.model.Stack.FLUTTER -> "Flutter"
+        app.luxion.shogunai.domain.model.Stack.NODE -> "Node"
     }
 
     private suspend fun maven(command: CliCommand.Maven): Int {
@@ -2566,6 +2573,7 @@ class ShogunCli(
                     noteSkippedLinks(it.skippedLinks, "shogun: hook worktree-create")
                     podsLines(it.pods).forEach { line -> err.line("shogun: hook worktree-create: $line") }
                     it.flutter?.let { pubGet -> err.line("shogun: hook worktree-create: ${flutterPubGetLine(pubGet)}") }
+                    it.node?.let { node -> err.line("shogun: hook worktree-create: ${nodeDependenciesLine(node)}") }
                     noteSkipped(config.baseRepositoryPath, it.skippedPostCreateCommands, it.skippedVariables, "shogun: hook worktree-create")
                 }.path
                 is WorktreeError.PostCreateCommandFailed -> {

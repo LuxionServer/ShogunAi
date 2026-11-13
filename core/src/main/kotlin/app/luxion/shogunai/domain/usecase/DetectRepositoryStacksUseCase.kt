@@ -5,6 +5,8 @@ import app.luxion.shogunai.domain.io.GRADLE_ROOT_FILES
 import app.luxion.shogunai.domain.io.GRADLE_SETTINGS_FILES
 import app.luxion.shogunai.domain.io.repositorySubfolders
 import app.luxion.shogunai.domain.model.DetectedStack
+import app.luxion.shogunai.domain.model.NODE_LOCKFILES
+import app.luxion.shogunai.domain.model.PACKAGE_JSON
 import app.luxion.shogunai.domain.model.Stack
 
 class DetectRepositoryStacksUseCase(private val fileManager: FileManager) {
@@ -20,6 +22,7 @@ class DetectRepositoryStacksUseCase(private val fileManager: FileManager) {
             stack(Stack.XCODE, evidence.filter { it.name.endsWith(XCODE_PROJECT_SUFFIX) || (it.isInRoot && it.name == PACKAGE_SWIFT) }),
             stack(Stack.MAVEN, evidence.filter { it.isInRoot && it.name in MAVEN_FILES }),
             stack(Stack.DOCKER_COMPOSE, evidence.filter { it.isInRoot && it.name in COMPOSE_FILES }),
+            stack(Stack.NODE, nodeEvidence(evidence)),
         )
     }
 
@@ -29,6 +32,12 @@ class DetectRepositoryStacksUseCase(private val fileManager: FileManager) {
     private fun gradleEvidence(evidence: List<Entry>): List<Entry> =
         evidence.filter { it.isInRoot && it.name in GRADLE_ROOT_FILES }
             .ifEmpty { evidence.filter { !it.isInRoot && it.name in GRADLE_SETTINGS_FILES } }
+
+    private fun nodeEvidence(evidence: List<Entry>): List<Entry> {
+        val root = evidence.filter { it.isInRoot }
+        if (root.none { it.name == PACKAGE_JSON }) return emptyList()
+        return root.filter { it.name == PACKAGE_JSON } + root.filter { it.name in NODE_LOCKFILES }
+    }
 
     private fun entriesOf(root: String, folder: String): List<Entry> {
         val directory = if (folder.isEmpty()) root else "$root/$folder"

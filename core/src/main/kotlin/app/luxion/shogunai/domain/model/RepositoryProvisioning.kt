@@ -27,6 +27,7 @@ data class RepositoryProviders(
     val dockerCompose: DockerComposeProvider? = null,
     val desktopApp: DesktopAppProvider? = null,
     val flutter: FlutterProvider? = null,
+    val node: NodeProvider? = null,
 )
 
 data class GradleProvider(
@@ -48,6 +49,8 @@ data class MavenProvider(val mavenMaxHeap: String? = null)
 data class DockerComposeProvider(val portVariables: List<String> = emptyList())
 
 data object FlutterProvider
+
+data object NodeProvider
 
 data class DesktopAppProvider(val module: String, val isolatedHome: Boolean = true)
 

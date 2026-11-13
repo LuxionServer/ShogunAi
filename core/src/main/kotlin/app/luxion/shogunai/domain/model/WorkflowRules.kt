@@ -22,6 +22,7 @@ enum class WorkflowCondition(val label: String) {
     COMPOSE_PROVIDER("when the repository declares the docker-compose provider"),
     DESKTOP_APP_PROVIDER("when the repository declares the desktop-app provider, on macOS"),
     FLUTTER_PROVIDER("when the repository declares the flutter provider"),
+    NODE_PROVIDER("when the repository declares the node provider"),
     MOBILE_PROVIDER("when the repository declares the emulator or ios-simulator provider"),
 }
 
@@ -45,6 +46,8 @@ data class WorkflowContext(
     val runner: RunnerId = RunnerId.HERDR,
     val flutterProvider: Boolean = false,
     val flutterUsesFvm: Boolean = false,
+    val nodeProvider: Boolean = false,
+    val nodeProject: NodeProject? = null,
 ) {
     fun holds(condition: WorkflowCondition): Boolean = when (condition) {
         WorkflowCondition.ALWAYS -> true
@@ -56,6 +59,7 @@ data class WorkflowContext(
         WorkflowCondition.COMPOSE_PROVIDER -> composeProvider
         WorkflowCondition.DESKTOP_APP_PROVIDER -> desktopAppProvider
         WorkflowCondition.FLUTTER_PROVIDER -> flutterProvider
+        WorkflowCondition.NODE_PROVIDER -> nodeProvider
         WorkflowCondition.MOBILE_PROVIDER -> emulatorProvider || simulatorProvider
     }
 }
@@ -73,6 +77,7 @@ object WorkflowRules {
 
     private fun openSessionText(runner: RunnerId): String = "Open another session with `shogun open <id> --${runner.flag}`."
     private const val FLUTTER_RULE_ID = "resources.flutter"
+    private const val NODE_RULE_ID = "resources.node"
 
     val all: List<WorkflowRule> = listOf(
         WorkflowRule(
@@ -177,6 +182,7 @@ object WorkflowRules {
             WorkflowCondition.FLUTTER_PROVIDER,
             inSessionStart = true,
         ),
+        WorkflowRule(NODE_RULE_ID, WorkflowTopic.RESOURCES, nodeRuleText(null), WorkflowCondition.NODE_PROVIDER, inSessionStart = true),
         WorkflowRule(
             "resources.compose",
             WorkflowTopic.RESOURCES,
@@ -233,12 +239,11 @@ object WorkflowRules {
         return WorkflowSelection(applicable.map { it.adaptedTo(context) }, inapplicable.filterNot { it.onlyWhenApplicable })
     }
 
-    private fun WorkflowRule.adaptedTo(context: WorkflowContext): WorkflowRule =
-        if (id == FLUTTER_RULE_ID) {
-            copy(text = flutterRuleText(context.flutterUsesFvm, context.emulatorProvider, context.simulatorProvider))
-        } else {
-            this
-        }
+    private fun WorkflowRule.adaptedTo(context: WorkflowContext): WorkflowRule = when (id) {
+        FLUTTER_RULE_ID -> copy(text = flutterRuleText(context.flutterUsesFvm, context.emulatorProvider, context.simulatorProvider))
+        NODE_RULE_ID -> copy(text = nodeRuleText(context.nodeProject))
+        else -> this
+    }
 
     private fun flutterRuleText(usesFvm: Boolean, android: Boolean, ios: Boolean): String {
         val flutter = if (usesFvm) "fvm flutter" else "flutter"
