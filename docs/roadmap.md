@@ -188,7 +188,6 @@ Left out:
 - Showing in the desktop app a settings change refused because `settings.json` was written by a newer version, before any change first raises that file's schema version.
 - Checking the guided tour on Windows and Linux with a real installed app: creating the sample with the system's Git, and the tour's agent command, whose prompt is quoted for the shell each terminal runs.
 - Removing Cmd/Ctrl+E, kept for one release as an alias of Cmd/Ctrl+O when the shortcut moved to the default runner.
-- Showing the build that holds a busy Gradle daemon in the desktop app's Gradle view; today `shogun gradle` names it, with its client, tasks and the agent session that started it.
 - Writing the remaining state texts of the Machine views in the interface font: the Compose view still writes its leftovers title and a removed worktree as its owner in the data font.
 - Taking the system out of the domain: the 13 domain files on the architecture tests' exception list still use `java.io.File`, `java.nio.file` or `System.getProperty` directly, instead of a port or an `osName` parameter.
 - Doing less while the machine-wide state lock is held when acquiring an emulator or simulator: read devices before taking it, keep only the reservation under it, and stop, delete or create devices after releasing it.

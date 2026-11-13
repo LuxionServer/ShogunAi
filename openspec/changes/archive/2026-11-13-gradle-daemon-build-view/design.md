@@ -49,3 +49,4 @@ The only lines this change adds to capped files are the new text: one declaratio
 - [Long task lists make the line wrap] → it's a secondary text under the row, so wrapping only makes that daemon's block taller; the row's cells keep their widths.
 - [The session lookup reads the session store of every saved worktree on a refresh with a traced client] → the same cost `shogun gradle` pays, and only while a build runs; failures reading one worktree's sessions are ignored by the use case.
 - [Changing `MachineUseCases.listDaemons`'s signature touches tests that build it] → their lambdas take no named parameter, so they keep compiling with the implicit parameter.
+- [The first listing can run before the saved projects' worktrees are loaded, so it finds no session] → the next refresh of the shown view passes the worktrees and adds the sessions, as checked in the running app; the tasks and start show from the first listing.
