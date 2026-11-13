@@ -31,7 +31,7 @@ See proposal.md for the motivation. The state this design starts from (develop a
 
 1. **List** (no lock): resolve the Git directories and take a `DeviceListing` of the pool (Decision 2).
 2. **Decide** (lock, no suspension): read the reservations, build the pool's usage from the listing, and compute a plan with the same rules as today: the worktree already holds a live device; the pool is full (`ResourcePoolFull`) or no port is left (`NoEmulatorPort`); or a list of victims and, for an emulator, the chosen port. A plan that ends in an error writes nothing. A plan that takes a device commits it in the same lock pass: victims' reservations released with their release records, the requester's reservation written, its old release record removed and its last use and lease touched.
-3. **Act** (no lock): stop each released emulator that `adb` still reports as running or booting, shut down and delete each released simulator that `simctl` still lists, then refresh the environment files as today.
+3. **Act** (no lock): stop each released emulator the listing showed running, shut down (when booted) and delete each released simulator that `simctl` still lists, as today's release did, then refresh the environment files as today.
 
 Because the decision block no longer calls suspending code, `withContext(Dispatchers.IO) { stateStore.withLock { … } }` runs it directly and `runBlocking` goes away.
 
@@ -61,7 +61,7 @@ Alternatives: a pending reservation recorded before creating (a new state field 
 
 ### 5. Roll back the requester's reservation, not the victims'
 
-When acting on victims or creating the simulator fails, or the coroutine is cancelled after the commit, the acquisition takes the lock once more and removes the requester's reservation if it is still the one it wrote (same port or UDID), then deletes the simulator it created. Both run in `withContext(NonCancellable)`, so a cancelled acquisition still cleans up; every command involved already has a time limit. The original error is rethrown; an error during rollback is added to it as suppressed.
+When acting on victims or creating the simulator fails, or the coroutine is cancelled after the commit, the acquisition takes the lock once more and removes the requester's reservation if it is still the one it wrote (same port or UDID), then deletes the simulator it created. Both run in `withContext(NonCancellable)`, so a cancelled acquisition still cleans up; every command involved already has a time limit. The original error is rethrown. Every lock pass of the acquisition also runs in `NonCancellable`, so a cancellation that arrives while the reservation is being written can't discard the result of a commit that happened; it is seen right after, before acting on victims, and rolled back like any other failure.
 
 Victims are not restored. Their leases had expired, which is why they were chosen. A victim whose stop or delete failed is left as an emulator running on a port no worktree reserves, or an orphan simulator, both of which the Machine views already list with an action to stop or delete them.
 
@@ -71,14 +71,14 @@ Under the lock no emulator can be stopped to probe its port again, so the second
 
 ### 7. Tests observe the lock and interleave other acquisitions
 
-- `FakeEnvironmentStateStore` exposes `held` (true while a `withLock` block runs) and an `onLock` hook run before each block; `FakeAndroidSdk` and `FakeAppleSimulators` record whether the lock was held at each call through a shared `lockProbe`. A test asserts that no device command ran under the lock, for an emulator release and for a simulator creation.
-- Races are reproduced deterministically by running another acquisition from those hooks: from `onLock` (a second worktree reserving between this one's listing and its lock), from the simulator fake's `create` (another worktree taking the last place, or the same worktree recording its simulator between the two passes), and from the SDK fake's stop (another acquisition while a victim is still being stopped).
+- `FakeEnvironmentStateStore` exposes `held` (true while a `withLock` block runs); `FakeAndroidSdk` and `FakeAppleSimulators` record, through a `lockProbe`, which device calls ran while it was held. A test asserts that none did, for an emulator release and for a simulator creation.
+- Races are reproduced deterministically by running another acquisition from one-shot hooks in the device fakes: right after a listing (another worktree reserving, or the same worktree recording its simulator, between this one's listing and its lock), from the simulator fake's `create` (another worktree taking the last place, or the same worktree recording its simulator between the two passes), and from the SDK fake's stop (another acquisition while a victim is still being stopped).
 - Rollback tests make the stop, delete or create fail or throw `CancellationException`, and check that the requester holds nothing and its created simulator is deleted.
 - The existing pool, emulator, simulator and wait tests keep passing unchanged except where Decision 2 and Decision 6 change behavior, which get their own tests.
 
 ## Risks / Trade-offs
 
-- [A listing taken before the lock is stale by the time the plan runs] → it is only used to order releasable devices and find a missing own simulator; leases and reservations come from the state files read under the lock (Decision 3), and the released device's state is read again before acting on it.
+- [A listing taken before the lock is stale by the time the plan runs] → it is only used to order releasable devices and find a missing own simulator; leases and reservations come from the state files read under the lock (Decision 3), and a released simulator is looked up again before it is deleted, and a released emulator that stopped meanwhile only makes its stop fail, which rolls the acquisition back.
 - [Between the commit and the stop, a released running emulator still runs, so the machine briefly runs one more emulator than the limit] → the requesting worktree's emulator only starts after the acquisition returns, after the stop; only another worktree that acquired meanwhile can overlap, for the length of one `adb emu kill`.
 - [A simulator created for nothing] → it is deleted after the second pass; it only happens when two acquisitions race for the last place.
 - [A failed victim stop leaves an unowned emulator or orphan simulator] → already listed with actions in the Machine views; the requester's reservation is rolled back so it can retry.

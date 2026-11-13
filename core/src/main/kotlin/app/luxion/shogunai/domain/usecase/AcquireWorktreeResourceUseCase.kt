@@ -9,15 +9,10 @@ import app.luxion.shogunai.domain.io.ProcessLiveness
 import app.luxion.shogunai.domain.io.RepositoryProvisioningSource
 import app.luxion.shogunai.domain.model.DeviceWait
 import app.luxion.shogunai.domain.model.DeviceWaitProgress
-import app.luxion.shogunai.domain.model.EMULATOR_PORT_KEY
-import app.luxion.shogunai.domain.model.FIRST_EMULATOR_PORT
-import app.luxion.shogunai.domain.model.IOS_SIMULATOR_KEY
-import app.luxion.shogunai.domain.model.LAST_EMULATOR_PORT
 import app.luxion.shogunai.domain.model.PoolHolder
 import app.luxion.shogunai.domain.model.PoolRelease
 import app.luxion.shogunai.domain.model.PoolHolderState
 import app.luxion.shogunai.domain.model.PoolReleaseReason
-import app.luxion.shogunai.domain.model.ReleaseRecord
 import app.luxion.shogunai.domain.model.ResourceKind
 import app.luxion.shogunai.domain.model.SimulatorSettings
 import app.luxion.shogunai.domain.model.WaitTicket
@@ -26,8 +21,10 @@ import app.luxion.shogunai.domain.model.normalizePath
 import app.luxion.shogunai.domain.model.queueName
 import app.luxion.shogunai.domain.model.runSuspendCatching
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import java.time.Duration
 import java.time.Instant
@@ -105,6 +102,8 @@ class AcquireWorktreeResourceUseCase(
         return waited.value.copy(waitedSeconds = waited.waitedSeconds)
     }
 
+    private val planner = DeviceReservationPlanner(stateStore, portProbe, readPool, inLine, clock)
+
     private suspend fun attempt(
         kind: ResourceKind,
         repositoryPath: String,
@@ -112,114 +111,68 @@ class AcquireWorktreeResourceUseCase(
         requested: SimulatorSettings,
         ticketId: String?,
     ): Result<ResourceAcquisition> = runSuspendCatching {
-        val directories = resolveEnvironment.directoriesOf(worktreePath)
-        val key = keyOf(kind)
-        val outcome = withContext(Dispatchers.IO) {
-            stateStore.withLock {
-                runBlocking { acquireLocked(kind, key, repositoryPath, worktreePath, directories, requested, ticketId) }
-            }
+        val request = DeviceRequest(kind, repositoryPath, worktreePath, resolveEnvironment.directoriesOf(worktreePath), ticketId)
+        val listing = readPool.listing(kind, repositoryPath)
+        val reservation = locked { planner.reserve(request, listing, simulator = null) }
+        val released = when (reservation) {
+            DeviceReservation.AlreadyHeld -> null
+            DeviceReservation.NeedsSimulator -> reserveNewSimulator(request, listing, requested)
+            is DeviceReservation.Reserved -> releaseVictims(request, reservation, created = null)
         }
-        val victims = outcome.released.mapNotNull { it.worktreePath }
-        (listOf(worktreePath).filter { outcome.acquiredNow || outcome.released.isNotEmpty() } + victims).distinct()
+        val victims = released.orEmpty().mapNotNull { it.worktreePath }
+        (listOf(worktreePath).filter { released != null } + victims).distinct()
             .forEach { refreshEnvironmentFile(repositoryPath, it) }
-        ResourceAcquisition(outcome.acquiredNow, outcome.released)
+        ResourceAcquisition(released != null, released.orEmpty())
     }
 
-    private suspend fun acquireLocked(
-        kind: ResourceKind,
-        key: String,
-        repositoryPath: String,
-        worktreePath: String,
-        directories: WorktreeGitDirectories,
+    private suspend fun reserveNewSimulator(
+        request: DeviceRequest,
+        listing: DeviceListing,
         requested: SimulatorSettings,
-        ticketId: String?,
-    ): LockedOutcome {
-        var usage = readPool.of(kind, repositoryPath)
-        val own = usage.holders.firstOrNull { normalizePath(it.adminDirectory!!) == normalizePath(directories.admin) }
-        if (own != null && !isStale(kind, own)) {
-            touch(directories.admin, key)
-            return LockedOutcome(acquiredNow = false, released = emptyList())
+    ): List<PoolRelease>? {
+        val udid = createSimulator(request, requested)
+        val reservation = try {
+            locked { planner.reserve(request, listing, udid) }
+        } catch (error: Throwable) {
+            withContext(NonCancellable) { simulators.delete(udid) }
+            throw error
         }
-        val beneficiary = "${folderName(repositoryPath)} · ${folderName(worktreePath)}"
-        if (own != null) {
-            stateStore.release(directories.admin, key)
-            usage = usage.copy(holders = usage.holders - own)
+        if (reservation !is DeviceReservation.Reserved) {
+            simulators.delete(udid)
+            return null
         }
-        val queue = inLine.liveQueue(kind.queueName)
-        val others = queue.othersThan(directories.admin)
-        if (queue.othersAheadOf(ticketId, directories.admin)) {
-            throw WorktreeError.ResourcePoolFull(kind, usage.effectiveLimit ?: usage.holders.size, usage.holders, others.size)
-        }
-        val released = mutableListOf<PoolRelease>()
-        val limit = usage.effectiveLimit
-        var remaining = usage.holders
-        while (limit != null && remaining.size >= limit) {
-            val victim = nextVictim(remaining) ?: throw WorktreeError.ResourcePoolFull(kind, limit, remaining, others.size)
-            release(victim, key, repositoryPath, beneficiary)
-            released += PoolRelease(kind, victim.worktreePath, PoolReleaseReason.MAKE_ROOM, victim.displayName)
-            remaining = remaining - victim
-        }
-        while (true) {
-            if (reserve(kind, key, repositoryPath, worktreePath, directories, requested)) break
-            val victim = nextVictim(remaining) ?: throw WorktreeError.NoEmulatorPort(FIRST_EMULATOR_PORT, LAST_EMULATOR_PORT)
-            release(victim, key, repositoryPath, beneficiary)
-            released += PoolRelease(kind, victim.worktreePath, PoolReleaseReason.MAKE_ROOM, victim.displayName)
-            remaining = remaining - victim
-        }
-        stateStore.writeReleases(directories.admin, stateStore.readReleases(directories.admin) - key)
-        touch(directories.admin, key)
-        return LockedOutcome(acquiredNow = true, released = released)
+        return releaseVictims(request, reservation, created = udid)
     }
 
-    private suspend fun reserve(
-        kind: ResourceKind,
-        key: String,
-        repositoryPath: String,
-        worktreePath: String,
-        directories: WorktreeGitDirectories,
-        requested: SimulatorSettings,
-    ): Boolean =
-        if (kind == ResourceKind.EMULATOR) {
-            reserveEmulatorPort(key, directories)
-        } else {
-            reserveSimulator(key, repositoryPath, worktreePath, directories, requested)
-        }
-
-    private fun reserveEmulatorPort(key: String, directories: WorktreeGitDirectories): Boolean {
-        val taken = stateStore.reservedPortsOnMachine(directories.common)
-        val free = (FIRST_EMULATOR_PORT..LAST_EMULATOR_PORT step 2).filter { candidate ->
-            candidate !in taken && portProbe.isFree(candidate) && portProbe.isFree(candidate + 1)
-        }
-        val previous = stateStore.readReleases(directories.admin)[key]?.previous?.let(::portOf)
-        val quarantined = recentlyReleasedPorts(directories.common, key)
-        val port = free.firstOrNull { it == previous } ?: free.firstOrNull { it !in quarantined } ?: free.firstOrNull()
-        if (port != null) {
-            stateStore.writePorts(directories.admin, stateStore.readPorts(directories.admin) + (key to port))
-        }
-        return port != null
-    }
-
-    private suspend fun reserveSimulator(
-        key: String,
-        repositoryPath: String,
-        worktreePath: String,
-        directories: WorktreeGitDirectories,
-        requested: SimulatorSettings,
-    ): Boolean {
-        val providers = provisioningSource.read(repositoryPath).providers
-        val request = contributions(requested).forRepository(repositoryPath, providers)
+    private suspend fun createSimulator(request: DeviceRequest, requested: SimulatorSettings): String {
+        val providers = provisioningSource.read(request.repositoryPath).providers
+        val resource = contributions(requested).forRepository(request.repositoryPath, providers)
             .flatMap { it.resources }
-            .first { it.key == key }
-        val udid = request.create(ResourceContext(folderName(repositoryPath), folderName(worktreePath)))
-        stateStore.writeResources(directories.admin, stateStore.readResources(directories.admin) + (key to udid))
-        return true
+            .first { it.key == request.key }
+        return resource.create(ResourceContext(folderName(request.repositoryPath), folderName(request.worktreePath)))
     }
 
-    private suspend fun release(holder: PoolHolder, key: String, repositoryPath: String, beneficiary: String) {
-        val admin = holder.adminDirectory!!
+    private suspend fun releaseVictims(
+        request: DeviceRequest,
+        reserved: DeviceReservation.Reserved,
+        created: String?,
+    ): List<PoolRelease> {
+        try {
+            currentCoroutineContext().ensureActive()
+            reserved.victims.forEach { releaseDevice(it, request.repositoryPath) }
+        } catch (error: Throwable) {
+            withContext(NonCancellable) {
+                locked { planner.undo(request, reserved) }
+                created?.let { simulators.delete(it) }
+            }
+            throw error
+        }
+        return reserved.victims.map { PoolRelease(request.kind, it.worktreePath, PoolReleaseReason.MAKE_ROOM, it.displayName) }
+    }
+
+    private suspend fun releaseDevice(holder: PoolHolder, repositoryPath: String) {
         if (holder.state == PoolHolderState.RUNNING) {
-            val serial = holder.reference!!
-            sdk.stopEmulator(sdk.locate(repositoryPath), serial)
+            sdk.stopEmulator(sdk.locate(repositoryPath), holder.reference!!)
         }
         if (holder.kind == ResourceKind.IOS_SIMULATOR) {
             val udid = holder.reference!!
@@ -228,36 +181,9 @@ class AcquireWorktreeResourceUseCase(
                 simulators.delete(udid)
             }
         }
-        stateStore.release(admin, key)
-        stateStore.writeReleases(
-            admin,
-            stateStore.readReleases(admin) + (key to ReleaseRecord(clock().toEpochMilli(), beneficiary, holder.reference)),
-        )
     }
 
-    private fun recentlyReleasedPorts(commonDirectory: String, key: String): Set<Int> {
-        val horizon = clock().toEpochMilli() - readPool.leaseDuration().toMillis()
-        return stateStore.reservationsOnMachine(commonDirectory)
-            .mapNotNull { it.releases[key] }
-            .filter { it.releasedAt > horizon }
-            .mapNotNull { it.previous?.let(::portOf) }
-            .toSet()
-    }
-
-    private fun portOf(serial: String): Int? = serial.substringAfterLast('-').toIntOrNull()
-
-    private suspend fun isStale(kind: ResourceKind, holder: PoolHolder): Boolean =
-        kind == ResourceKind.IOS_SIMULATOR && simulators.devices().none { it.udid == holder.reference }
-
-    private fun nextVictim(holders: List<PoolHolder>): PoolHolder? =
-        holders.filter { it.releaseRank != null }
-            .minWithOrNull(compareBy<PoolHolder> { it.releaseRank }.thenBy { it.lastUsed != null }.thenBy { it.lastUsed })
-
-    private fun touch(admin: String, key: String) {
-        val now = clock().toEpochMilli()
-        stateStore.writeLastUsed(admin, stateStore.readLastUsed(admin) + (key to now))
-        stateStore.writeLeases(admin, stateStore.readLeases(admin) + (key to now))
-    }
+    private suspend fun <T> locked(block: () -> T): T = withContext(NonCancellable + Dispatchers.IO) { stateStore.withLock(block) }
 
     private suspend fun refreshEnvironmentFile(repositoryPath: String, worktreePath: String) {
         runSuspendCatching {
@@ -266,9 +192,5 @@ class AcquireWorktreeResourceUseCase(
         }
     }
 
-    private fun keyOf(kind: ResourceKind): String = if (kind == ResourceKind.EMULATOR) EMULATOR_PORT_KEY else IOS_SIMULATOR_KEY
-
     private fun folderName(path: String): String = normalizePath(path).substringAfterLast('/')
-
-    private class LockedOutcome(val acquiredNow: Boolean, val released: List<PoolRelease>)
 }

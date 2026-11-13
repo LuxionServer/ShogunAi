@@ -27,6 +27,15 @@ import app.luxion.shogunai.domain.model.runSuspendCatching
 import java.time.Duration
 import java.time.Instant
 
+data class DeviceListing(
+    val kind: ResourceKind,
+    val commonDirectory: String,
+    val states: Map<String, PoolHolderState>,
+    val recordedBeforeListing: Set<String> = emptySet(),
+) {
+    fun isMissing(reference: String): Boolean = reference in recordedBeforeListing && reference !in states
+}
+
 class ReadResourcePoolUseCase(
     private val resolveEnvironment: ResolveWorktreeEnvironmentUseCase,
     private val stateStore: EnvironmentStateStore,
@@ -40,53 +49,75 @@ class ReadResourcePoolUseCase(
 ) {
     fun leaseDuration(): Duration = limits.leaseDuration()
 
+    suspend fun emulators(repositoryPath: String): PoolUsage =
+        usage(listing(ResourceKind.EMULATOR, repositoryPath) { emptyMap() })
 
-    suspend fun emulators(repositoryPath: String): PoolUsage {
-        val common = resolveEnvironment.directoriesOf(repositoryPath).common
-        val states = runSuspendCatching { sdk.deviceStates(sdk.locate(repositoryPath)) }.getOrDefault(emptyMap())
-        val holders = stateStore.reservationsOnMachine(common).mapNotNull { reservation ->
-            val port = reservation.ports[EMULATOR_PORT_KEY] ?: return@mapNotNull null
-            val serial = emulatorSerial(port)
-            val state = states[serial] ?: EmulatorState.STOPPED
-            val holderState = when (state) {
-                EmulatorState.STOPPED -> PoolHolderState.STOPPED
-                EmulatorState.BOOTING -> PoolHolderState.BOOTING
-                EmulatorState.RUNNING -> PoolHolderState.RUNNING
-            }
+    suspend fun simulators(repositoryPath: String): PoolUsage =
+        usage(listing(ResourceKind.IOS_SIMULATOR, repositoryPath) { emptyMap() })
+
+    suspend fun listing(kind: ResourceKind, repositoryPath: String): DeviceListing =
+        listing(kind, repositoryPath) { throw it }
+
+    fun usage(listing: DeviceListing): PoolUsage {
+        val kind = listing.kind
+        val key = keyOf(kind)
+        val holders = stateStore.reservationsOnMachine(listing.commonDirectory).mapNotNull { reservation ->
+            val reference = referenceOf(kind, reservation) ?: return@mapNotNull null
             holder(
-                kind = ResourceKind.EMULATOR,
+                kind = kind,
                 reservation = reservation,
-                key = EMULATOR_PORT_KEY,
-                common = common,
-                state = holderState,
-                reference = serial,
+                key = key,
+                common = listing.commonDirectory,
+                state = listing.states[reference] ?: idleState(kind),
+                reference = reference,
             )
         }
-        return usage(ResourceKind.EMULATOR, holders)
+        return usage(kind, holders)
     }
 
-    suspend fun simulators(repositoryPath: String): PoolUsage {
+    private suspend fun listing(
+        kind: ResourceKind,
+        repositoryPath: String,
+        onFailure: (Throwable) -> Map<String, PoolHolderState>,
+    ): DeviceListing {
         val common = resolveEnvironment.directoriesOf(repositoryPath).common
-        val devices = if (simulators.isSupported()) runSuspendCatching { simulators.devices() }.getOrDefault(emptyList()).associateBy { it.udid } else emptyMap()
-        val holders = stateStore.reservationsOnMachine(common).mapNotNull { reservation ->
-            val udid = reservation.resources[IOS_SIMULATOR_KEY] ?: return@mapNotNull null
-            val state = devices[udid]?.state ?: SimulatorState.SHUTDOWN
-            val holderState = when (state) {
-                SimulatorState.SHUTDOWN -> PoolHolderState.SHUTDOWN
-                SimulatorState.BOOTING -> PoolHolderState.BOOTING
-                SimulatorState.BOOTED -> PoolHolderState.BOOTED
-            }
-            holder(
-                kind = ResourceKind.IOS_SIMULATOR,
-                reservation = reservation,
-                key = IOS_SIMULATOR_KEY,
-                common = common,
-                state = holderState,
-                reference = udid,
-            )
-        }
-        return usage(ResourceKind.IOS_SIMULATOR, holders)
+        val recorded = if (kind == ResourceKind.IOS_SIMULATOR) stateStore.recordedResourcesOnMachine(common, IOS_SIMULATOR_KEY) else emptySet()
+        val states = runSuspendCatching { deviceStates(kind, repositoryPath) }.getOrElse(onFailure)
+        return DeviceListing(kind, common, states, recorded)
     }
+
+    private suspend fun deviceStates(kind: ResourceKind, repositoryPath: String): Map<String, PoolHolderState> =
+        if (kind == ResourceKind.EMULATOR) {
+            sdk.deviceStates(sdk.locate(repositoryPath)).mapValues { (_, state) ->
+                when (state) {
+                    EmulatorState.STOPPED -> PoolHolderState.STOPPED
+                    EmulatorState.BOOTING -> PoolHolderState.BOOTING
+                    EmulatorState.RUNNING -> PoolHolderState.RUNNING
+                }
+            }
+        } else if (simulators.isSupported()) {
+            simulators.devices().associate { device ->
+                device.udid to when (device.state) {
+                    SimulatorState.SHUTDOWN -> PoolHolderState.SHUTDOWN
+                    SimulatorState.BOOTING -> PoolHolderState.BOOTING
+                    SimulatorState.BOOTED -> PoolHolderState.BOOTED
+                }
+            }
+        } else {
+            emptyMap()
+        }
+
+    private fun referenceOf(kind: ResourceKind, reservation: WorktreeReservations): String? =
+        if (kind == ResourceKind.EMULATOR) {
+            reservation.ports[EMULATOR_PORT_KEY]?.let(::emulatorSerial)
+        } else {
+            reservation.resources[IOS_SIMULATOR_KEY]
+        }
+
+    private fun idleState(kind: ResourceKind): PoolHolderState =
+        if (kind == ResourceKind.EMULATOR) PoolHolderState.STOPPED else PoolHolderState.SHUTDOWN
+
+    private fun keyOf(kind: ResourceKind): String = if (kind == ResourceKind.EMULATOR) EMULATOR_PORT_KEY else IOS_SIMULATOR_KEY
 
     suspend fun gradleDaemons(worktrees: List<Worktree>?, listed: List<DaemonProcess>? = null): PoolUsage {
         val daemons = listGradleDaemons?.invoke(worktrees, listed = listed)?.getOrDefault(emptyList()).orEmpty()

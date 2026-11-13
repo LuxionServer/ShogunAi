@@ -35,8 +35,8 @@ When stopping or deleting a released device or creating the simulator fails, or 
 - **WHEN** an acquisition released a running emulator to make room and stopping it fails
 - **THEN** the acquisition fails with that error and the requesting worktree holds no console port
 
-#### Scenario: Cancelled while deleting a released simulator
-- **WHEN** an acquisition is cancelled while deleting the simulator it released
+#### Scenario: Cancelled while releasing a simulator
+- **WHEN** an acquisition is cancelled while shutting down the simulator it released
 - **THEN** the acquisition ends as cancelled, the requesting worktree holds no simulator and the simulator created for it is deleted
 
 ### Requirement: Free a console port only with a stopped emulator
