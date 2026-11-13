@@ -103,7 +103,6 @@ In order:
     Lines of `core` and `cli`, branches of `cli`, every branch of `core` that some input can reach, and the desktop app's texts and project settings are already covered.
     The worktrees and their inspector are covered but for 41 branches of their list, rows and action bars, left for the shared components' change.
     The desktop app goes up one package per change, in this order: the shell and the menu bar icon, the machine views and multirepos, shared components, and last the app's wiring.
-- The Gradle checks of `shogun doctor` and "Check Installation" for a Gradle build in a subfolder, such as `android/` in a Flutter repository: today they only read the repository's root.
 
 ### Orca, a second first-class runner
 
