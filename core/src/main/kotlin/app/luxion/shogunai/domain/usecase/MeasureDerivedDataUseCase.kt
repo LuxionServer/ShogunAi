@@ -5,7 +5,7 @@ import app.luxion.shogunai.domain.io.DerivedDataSource
 import app.luxion.shogunai.domain.model.DerivedDataFolder
 import app.luxion.shogunai.domain.model.MeasuredSize
 import app.luxion.shogunai.domain.model.RememberedSize
-import app.luxion.shogunai.domain.runSuspendCatching
+import app.luxion.shogunai.domain.model.runSuspendCatching
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow

@@ -7,7 +7,7 @@ import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.joinPath
-import app.luxion.shogunai.domain.runSuspendCatching
+import app.luxion.shogunai.domain.model.runSuspendCatching
 
 class RepairWorktreesUseCase(
     private val config: ProjectConfig,

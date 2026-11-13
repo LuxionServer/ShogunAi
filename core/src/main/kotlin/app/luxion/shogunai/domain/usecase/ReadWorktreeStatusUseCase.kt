@@ -9,7 +9,7 @@ import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.WorktreeStatus
 import app.luxion.shogunai.domain.model.readsAsMerged
-import app.luxion.shogunai.domain.runSuspendCatching
+import app.luxion.shogunai.domain.model.runSuspendCatching
 import java.time.Instant
 
 class ReadWorktreeStatusUseCase(

@@ -1,4 +1,4 @@
-package app.luxion.shogunai.domain
+package app.luxion.shogunai.domain.model
 
 import kotlin.coroutines.cancellation.CancellationException
 

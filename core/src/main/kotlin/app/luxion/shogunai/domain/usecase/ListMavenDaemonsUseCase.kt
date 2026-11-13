@@ -7,7 +7,8 @@ import app.luxion.shogunai.domain.model.DaemonState
 import app.luxion.shogunai.domain.model.MavenDaemon
 import app.luxion.shogunai.domain.model.MavenDaemonProcess
 import app.luxion.shogunai.domain.model.Worktree
-import app.luxion.shogunai.domain.runSuspendCatching
+import app.luxion.shogunai.domain.model.normalizePath
+import app.luxion.shogunai.domain.model.runSuspendCatching
 
 class ListMavenDaemonsUseCase(
     private val source: MavenDaemonSource,

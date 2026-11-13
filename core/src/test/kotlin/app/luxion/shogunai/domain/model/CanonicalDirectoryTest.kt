@@ -1,4 +1,4 @@
-package app.luxion.shogunai.domain.usecase
+package app.luxion.shogunai.domain.model
 
 import java.nio.file.Files
 import kotlin.test.assertFalse

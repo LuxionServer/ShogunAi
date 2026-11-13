@@ -5,7 +5,7 @@ import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.io.DerivedDataSource
 import app.luxion.shogunai.domain.io.FileManager
 import app.luxion.shogunai.domain.model.DerivedDataFolder
-import app.luxion.shogunai.domain.runSuspendCatching
+import app.luxion.shogunai.domain.model.runSuspendCatching
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.job

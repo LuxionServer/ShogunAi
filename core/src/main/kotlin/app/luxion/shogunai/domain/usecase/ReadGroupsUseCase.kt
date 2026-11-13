@@ -1,9 +1,11 @@
 package app.luxion.shogunai.domain.usecase
 
+import app.luxion.shogunai.domain.model.GroupWorktree
 import app.luxion.shogunai.domain.model.MainBranch
 import app.luxion.shogunai.domain.model.RunningAgent
+import app.luxion.shogunai.domain.model.WorktreeGroup
 import app.luxion.shogunai.domain.model.WorktreeStatus
-import app.luxion.shogunai.domain.runSuspendCatching
+import app.luxion.shogunai.domain.model.runSuspendCatching
 
 data class GroupWorktreeState(
     val member: GroupWorktree,

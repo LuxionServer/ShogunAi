@@ -1,4 +1,4 @@
-package app.luxion.shogunai.domain.usecase
+package app.luxion.shogunai.domain.model
 
 import java.nio.file.Path
 
@@ -20,3 +20,5 @@ private fun resolvedPath(path: String): String =
 internal fun isCaseInsensitiveFileSystem(osName: String): Boolean = osName.startsWith("Mac") || osName.startsWith("Windows")
 
 private val CASE_INSENSITIVE_FILE_SYSTEM = isCaseInsensitiveFileSystem(System.getProperty("os.name"))
+
+internal fun normalizePath(path: String): String = path.replace('\\', '/').trimEnd('/')

@@ -1,6 +1,4 @@
-package app.luxion.shogunai.domain.usecase
-
-import app.luxion.shogunai.domain.io.FileManager
+package app.luxion.shogunai.domain.io
 
 val GRADLE_SETTINGS_FILES = listOf("settings.gradle", "settings.gradle.kts")
 val GRADLE_ROOT_FILES = listOf("gradlew") + GRADLE_SETTINGS_FILES

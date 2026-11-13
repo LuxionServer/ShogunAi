@@ -2,10 +2,9 @@ package app.luxion.shogunai.domain.usecase
 
 import app.luxion.shogunai.domain.io.LauncherFiles
 import app.luxion.shogunai.domain.io.UserPathEntries
+import app.luxion.shogunai.domain.model.CommandLineToolState
 import app.luxion.shogunai.domain.model.HostOs
-import app.luxion.shogunai.domain.runSuspendCatching
-
-enum class CommandLineToolState { AVAILABLE, INSTALLED_NOT_ON_PATH, BROKEN, MISSING }
+import app.luxion.shogunai.domain.model.runSuspendCatching
 
 data class CommandLineToolStatus(
     val state: CommandLineToolState,

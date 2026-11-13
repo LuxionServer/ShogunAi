@@ -117,7 +117,7 @@ import app.luxion.shogunai.domain.usecase.GroupOrcaOpening
 import app.luxion.shogunai.domain.usecase.GroupRepositoryOutcome
 import app.luxion.shogunai.domain.usecase.GroupRepositoryResult
 import app.luxion.shogunai.domain.usecase.MultirepoMember
-import app.luxion.shogunai.domain.usecase.WorktreeGroup as BranchGroup
+import app.luxion.shogunai.domain.model.WorktreeGroup as BranchGroup
 import app.luxion.shogunai.ui.multirepo.MultirepoActions
 import app.luxion.shogunai.ui.multirepo.MultirepoNotice
 import app.luxion.shogunai.ui.multirepo.multirepoMemberships

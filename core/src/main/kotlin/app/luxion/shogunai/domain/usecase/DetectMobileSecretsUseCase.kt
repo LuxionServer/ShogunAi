@@ -11,7 +11,7 @@ import app.luxion.shogunai.domain.model.MobileSecretKind
 import app.luxion.shogunai.domain.model.MobileSecretsReport
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.WorktreeError
-import app.luxion.shogunai.domain.runSuspendCatching
+import app.luxion.shogunai.domain.model.runSuspendCatching
 
 class DetectMobileSecretsUseCase(
     private val executor: ShellCommandExecutor,

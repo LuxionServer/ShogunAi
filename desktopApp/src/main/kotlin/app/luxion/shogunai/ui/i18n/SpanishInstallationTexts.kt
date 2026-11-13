@@ -1,6 +1,6 @@
 package app.luxion.shogunai.ui.i18n
 
-import app.luxion.shogunai.domain.io.HostPathSource
+import app.luxion.shogunai.domain.model.HostPathSource
 import app.luxion.shogunai.domain.model.CheckState
 import app.luxion.shogunai.domain.model.HostOs
 import app.luxion.shogunai.domain.model.InstallationCheck
@@ -13,8 +13,8 @@ import app.luxion.shogunai.domain.model.ProviderToolId
 import app.luxion.shogunai.domain.model.ProviderToolProblem
 import app.luxion.shogunai.domain.model.UnavailableLocalFile
 import app.luxion.shogunai.domain.model.UnavailableReason
-import app.luxion.shogunai.domain.usecase.CommandLineToolState
-import app.luxion.shogunai.domain.usecase.HooksInstallState
+import app.luxion.shogunai.domain.model.CommandLineToolState
+import app.luxion.shogunai.domain.model.HooksInstallState
 
 private const val SPANISH_PREFERENCES = "Preferencias › Claude Code"
 private const val GIT_DOWNLOADS = "https://git-scm.com/downloads"

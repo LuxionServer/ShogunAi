@@ -1,6 +1,7 @@
 package app.luxion.shogunai.domain.usecase
 
 import app.luxion.shogunai.domain.FakeFileManager
+import app.luxion.shogunai.domain.model.HooksInstallState
 import app.luxion.shogunai.domain.model.WorktreeError
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -290,13 +291,6 @@ class ClaudeCodeHooksTest {
         assertEquals("/home/dev/.claude/settings.json", ClaudeCodeHooks.userSettingsPath(" ", "/home/dev"))
         assertEquals("/custom/claude/settings.json", ClaudeCodeHooks.userSettingsPath("/custom/claude/", "/home/dev"))
         assertEquals("/home/dev/projects/main-repo/.claude/settings.json", ClaudeCodeHooks.projectSettingsPath("/home/dev/projects/main-repo"))
-    }
-
-    @Test
-    fun `the sessions directory follows the Claude config directory`() {
-        assertEquals("/home/dev/.claude/sessions", ClaudeCodeHooks.claudeSessionsDirectory(null, "/home/dev"))
-        assertEquals("/home/dev/.claude/sessions", ClaudeCodeHooks.claudeSessionsDirectory("", "/home/dev"))
-        assertEquals("/custom/claude/sessions", ClaudeCodeHooks.claudeSessionsDirectory("/custom/claude/", "/home/dev"))
     }
 
     @Test

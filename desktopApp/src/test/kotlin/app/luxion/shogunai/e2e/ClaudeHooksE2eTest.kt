@@ -7,9 +7,9 @@ import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.v2.runComposeUiTest
 import app.luxion.shogunai.AppContainer
-import app.luxion.shogunai.domain.usecase.CommandLineToolState
+import app.luxion.shogunai.domain.model.CommandLineToolState
 import app.luxion.shogunai.domain.usecase.CommandLineToolStatus
-import app.luxion.shogunai.domain.usecase.HooksInstallState
+import app.luxion.shogunai.domain.model.HooksInstallState
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement

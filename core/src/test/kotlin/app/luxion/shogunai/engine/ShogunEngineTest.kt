@@ -7,6 +7,7 @@ import app.luxion.shogunai.domain.FakeRepositoryApproval
 import app.luxion.shogunai.domain.FakeRepositoryProvisioningSource
 import app.luxion.shogunai.domain.FakeRepositoryTrust
 import app.luxion.shogunai.domain.FakeShellCommandExecutor
+import app.luxion.shogunai.domain.io.EnginePorts
 import app.luxion.shogunai.domain.io.ApprovalDecision
 import app.luxion.shogunai.domain.model.DesktopAppProvider
 import app.luxion.shogunai.domain.model.GradleProvider

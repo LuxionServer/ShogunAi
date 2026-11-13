@@ -12,7 +12,8 @@ import app.luxion.shogunai.domain.model.DesktopWait
 import app.luxion.shogunai.domain.model.DesktopWaitProgress
 import app.luxion.shogunai.domain.model.WaitQueueName
 import app.luxion.shogunai.domain.model.WorktreeError
-import app.luxion.shogunai.domain.runSuspendCatching
+import app.luxion.shogunai.domain.model.normalizePath
+import app.luxion.shogunai.domain.model.runSuspendCatching
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext

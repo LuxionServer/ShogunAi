@@ -3,7 +3,7 @@ package app.luxion.shogunai.infrastructure
 import app.luxion.shogunai.domain.io.FileManager
 import app.luxion.shogunai.domain.io.PackageCacheSource
 import app.luxion.shogunai.domain.model.PackageCacheSizes
-import app.luxion.shogunai.domain.runSuspendCatching
+import app.luxion.shogunai.domain.model.runSuspendCatching
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope

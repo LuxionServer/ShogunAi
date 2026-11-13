@@ -16,7 +16,10 @@ import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.RunningAgent
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.WorktreeError
-import app.luxion.shogunai.domain.runSuspendCatching
+import app.luxion.shogunai.domain.model.canonicalDirectory
+import app.luxion.shogunai.domain.model.normalizePath
+import app.luxion.shogunai.domain.model.parseLsofWorkingDirectories
+import app.luxion.shogunai.domain.model.runSuspendCatching
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.async
@@ -291,18 +294,6 @@ fun owningWorktree(cwd: String, worktrees: List<Worktree>): Worktree? {
     return worktrees
         .filter { isInside(path, normalizePath(it.path)) }
         .maxByOrNull { normalizePath(it.path).length }
-}
-
-internal fun parseLsofWorkingDirectories(output: String): List<Pair<String, String>> {
-    val processes = mutableListOf<Pair<String, String>>()
-    var pid: String? = null
-    output.lineSequence().forEach { line ->
-        when {
-            line.startsWith("p") -> pid = line.drop(1)
-            line.startsWith("n") -> pid?.let { processes += it to line.drop(1) }
-        }
-    }
-    return processes
 }
 
 internal fun parsePsExecutables(output: String): List<Pair<String, String>> =

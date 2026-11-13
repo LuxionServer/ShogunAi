@@ -5,7 +5,8 @@ import app.luxion.shogunai.domain.model.Multirepo
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.newProject
-import app.luxion.shogunai.domain.runSuspendCatching
+import app.luxion.shogunai.domain.model.sameDirectory
+import app.luxion.shogunai.domain.model.runSuspendCatching
 import java.util.UUID
 
 sealed interface ProjectRegistration {

@@ -6,9 +6,9 @@ import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.v2.runComposeUiTest
 import app.luxion.shogunai.AppContainer
-import app.luxion.shogunai.domain.io.HostPathSource
+import app.luxion.shogunai.domain.model.HostPathSource
 import app.luxion.shogunai.domain.model.HostOs
-import app.luxion.shogunai.domain.usecase.CommandLineToolState
+import app.luxion.shogunai.domain.model.CommandLineToolState
 import app.luxion.shogunai.domain.usecase.CommandLineToolStatus
 import org.junit.Assume.assumeTrue
 import kotlin.test.BeforeTest

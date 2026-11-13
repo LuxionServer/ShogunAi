@@ -6,6 +6,7 @@ import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.io.FileManager
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.WorktreeError
+import app.luxion.shogunai.domain.model.sameDirectory
 import java.io.IOException
 
 internal class WorktreeFolderRemoval(

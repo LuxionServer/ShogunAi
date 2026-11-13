@@ -3,8 +3,10 @@ package app.luxion.shogunai.domain.usecase
 import app.luxion.shogunai.domain.io.FileManager
 import app.luxion.shogunai.domain.model.Multirepo
 import app.luxion.shogunai.domain.model.RunnerId
+import app.luxion.shogunai.domain.model.WorktreeGroup
 import app.luxion.shogunai.domain.model.flag
 import app.luxion.shogunai.domain.model.joinPath
+import app.luxion.shogunai.domain.model.sameDirectory
 
 class GroupContext(private val fileManager: FileManager) {
 

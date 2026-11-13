@@ -9,7 +9,8 @@ import app.luxion.shogunai.domain.model.DerivedDataOwner
 import app.luxion.shogunai.domain.model.DerivedDataQuotaMode
 import app.luxion.shogunai.domain.model.DerivedDataTrim
 import app.luxion.shogunai.domain.model.Worktree
-import app.luxion.shogunai.domain.runSuspendCatching
+import app.luxion.shogunai.domain.model.normalizePath
+import app.luxion.shogunai.domain.model.runSuspendCatching
 import java.time.Duration
 import java.time.Instant
 import kotlin.coroutines.cancellation.CancellationException

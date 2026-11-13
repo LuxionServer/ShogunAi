@@ -10,7 +10,8 @@ import app.luxion.shogunai.domain.model.DaemonProcess
 import app.luxion.shogunai.domain.model.DaemonState
 import app.luxion.shogunai.domain.model.GradleDaemon
 import app.luxion.shogunai.domain.model.Worktree
-import app.luxion.shogunai.domain.runSuspendCatching
+import app.luxion.shogunai.domain.model.normalizePath
+import app.luxion.shogunai.domain.model.runSuspendCatching
 
 class ListGradleDaemonsUseCase(
     private val source: GradleDaemonSource,

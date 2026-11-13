@@ -18,10 +18,10 @@ import app.luxion.shogunai.domain.model.AppLanguage
 import app.luxion.shogunai.domain.usecase.HookEntry
 import app.luxion.shogunai.domain.usecase.HookReplacement
 import app.luxion.shogunai.domain.model.HerdrPluginState
-import app.luxion.shogunai.domain.usecase.HooksInstallState
+import app.luxion.shogunai.domain.model.HooksInstallState
 import app.luxion.shogunai.domain.model.HostOs
 import app.luxion.shogunai.domain.usecase.CommandLineToolInstallation
-import app.luxion.shogunai.domain.usecase.CommandLineToolState
+import app.luxion.shogunai.domain.model.CommandLineToolState
 import app.luxion.shogunai.domain.usecase.CommandLineToolStatus
 import app.luxion.shogunai.ui.shell.HooksAction
 import app.luxion.shogunai.domain.usecase.GitFailureCause

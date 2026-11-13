@@ -19,7 +19,7 @@ import app.luxion.shogunai.domain.usecase.AddedRepository
 import app.luxion.shogunai.domain.usecase.withWorkspaceAt
 import app.luxion.shogunai.domain.usecase.MultirepoMember
 import app.luxion.shogunai.domain.usecase.RegisteredMultirepo
-import app.luxion.shogunai.domain.usecase.WorktreeGroup
+import app.luxion.shogunai.domain.model.WorktreeGroup
 import app.luxion.shogunai.ui.components.ShownErrorLog
 import app.luxion.shogunai.ui.machine.DesktopTurnWatch
 import app.luxion.shogunai.ui.machine.PhysicalDeviceActions
@@ -52,7 +52,7 @@ import app.luxion.shogunai.infrastructure.JsonUpdatePreferenceRepository
 import app.luxion.shogunai.ui.shell.ClaudeHooksState
 import app.luxion.shogunai.ui.shell.TourActions
 import app.luxion.shogunai.ui.shell.TourState
-import app.luxion.shogunai.domain.usecase.CommandLineToolState
+import app.luxion.shogunai.domain.model.CommandLineToolState
 import app.luxion.shogunai.domain.usecase.CreateTourUseCase
 import app.luxion.shogunai.domain.usecase.EndTourUseCase
 import app.luxion.shogunai.domain.usecase.TourLocation

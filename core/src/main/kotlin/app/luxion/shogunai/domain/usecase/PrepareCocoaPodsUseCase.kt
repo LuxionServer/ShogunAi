@@ -8,7 +8,7 @@ import app.luxion.shogunai.domain.model.PodsInstallNeeded
 import app.luxion.shogunai.domain.model.PodsInstallReason
 import app.luxion.shogunai.domain.model.PodsPreparation
 import app.luxion.shogunai.domain.model.joinPath
-import app.luxion.shogunai.domain.runSuspendCatching
+import app.luxion.shogunai.domain.model.runSuspendCatching
 import kotlinx.coroutines.CancellationException
 
 fun interface CocoaPodsPreparer {

@@ -1,4 +1,4 @@
-package app.luxion.shogunai.domain.usecase
+package app.luxion.shogunai.domain.io
 
 import app.luxion.shogunai.domain.FakeFileManager
 import kotlin.test.Test

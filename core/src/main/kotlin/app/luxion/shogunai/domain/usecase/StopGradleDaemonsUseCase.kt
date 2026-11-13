@@ -10,7 +10,7 @@ import app.luxion.shogunai.domain.model.DaemonState
 import app.luxion.shogunai.domain.model.DaemonStopFailure
 import app.luxion.shogunai.domain.model.DaemonStopReport
 import app.luxion.shogunai.domain.model.KeptDaemon
-import app.luxion.shogunai.domain.runSuspendCatching
+import app.luxion.shogunai.domain.model.runSuspendCatching
 
 class StopGradleDaemonsUseCase(
     private val source: GradleDaemonSource,

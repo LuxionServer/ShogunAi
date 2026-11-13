@@ -6,7 +6,7 @@ import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.usecase.AddedRepository
 import app.luxion.shogunai.domain.usecase.MultirepoMember
 import app.luxion.shogunai.domain.usecase.RegisteredMultirepo
-import app.luxion.shogunai.domain.usecase.WorktreeGroup
+import app.luxion.shogunai.domain.model.WorktreeGroup
 import java.nio.file.Path
 
 data class FolderInspection(val enclosingRepository: String?, val repositories: List<String>)

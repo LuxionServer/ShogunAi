@@ -12,6 +12,7 @@ import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.InvalidSharedEnvironment
 import app.luxion.shogunai.domain.model.SharedVariablesDeclaration
 import app.luxion.shogunai.domain.model.WorkspaceSetting
+import app.luxion.shogunai.domain.model.normalizePath
 import app.luxion.shogunai.domain.model.parseSharedEnvironment
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.MAX_MULTIREPO_NAME_LENGTH
@@ -20,7 +21,8 @@ import app.luxion.shogunai.domain.model.isValidMultirepoAlias
 import app.luxion.shogunai.domain.model.isValidMultirepoName
 import app.luxion.shogunai.domain.model.joinPath
 import app.luxion.shogunai.domain.model.relativeMultirepoPath
-import app.luxion.shogunai.domain.runSuspendCatching
+import app.luxion.shogunai.domain.model.sameDirectory
+import app.luxion.shogunai.domain.model.runSuspendCatching
 import java.util.UUID
 
 enum class WorktreesFolderProposal { ALREADY_MATCHES, ACCEPTED, DECLINED }

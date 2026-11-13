@@ -2,7 +2,8 @@ package app.luxion.shogunai.domain.usecase
 
 import app.luxion.shogunai.domain.io.FileManager
 import app.luxion.shogunai.domain.model.Worktree
-import app.luxion.shogunai.domain.runSuspendCatching
+import app.luxion.shogunai.domain.model.normalizePath
+import app.luxion.shogunai.domain.model.runSuspendCatching
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext

@@ -9,7 +9,7 @@ import app.luxion.shogunai.domain.model.PodsPreparation
 import app.luxion.shogunai.domain.model.WorktreeEnvironment
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.joinPath
-import app.luxion.shogunai.domain.runSuspendCatching
+import app.luxion.shogunai.domain.model.runSuspendCatching
 
 data class PreparedWorktree(val pods: PodsPreparation = PodsPreparation(), val flutter: FlutterPubGet? = null)
 

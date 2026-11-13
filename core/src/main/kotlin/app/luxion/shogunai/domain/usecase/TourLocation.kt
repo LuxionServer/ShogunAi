@@ -2,6 +2,7 @@ package app.luxion.shogunai.domain.usecase
 
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.joinPath
+import app.luxion.shogunai.domain.model.sameDirectory
 
 class TourLocation(home: String) {
     val root: String = joinPath(home, ".shogunai", "tour")

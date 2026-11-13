@@ -7,7 +7,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.v2.runComposeUiTest
 import app.luxion.shogunai.AppContainer
-import app.luxion.shogunai.domain.usecase.CommandLineToolState
+import app.luxion.shogunai.domain.model.CommandLineToolState
 import app.luxion.shogunai.domain.usecase.CommandLineToolStatus
 import app.luxion.shogunai.domain.usecase.TOUR_PROJECT_NAME
 import kotlin.test.Test

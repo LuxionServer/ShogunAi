@@ -6,7 +6,9 @@ import app.luxion.shogunai.domain.model.ObservedPort
 import app.luxion.shogunai.domain.model.OrcaPort
 import app.luxion.shogunai.domain.model.OrcaWorktree
 import app.luxion.shogunai.domain.model.Worktree
-import app.luxion.shogunai.domain.runSuspendCatching
+import app.luxion.shogunai.domain.model.canonicalDirectory
+import app.luxion.shogunai.domain.model.normalizePath
+import app.luxion.shogunai.domain.model.runSuspendCatching
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.TimeoutCancellationException

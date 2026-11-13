@@ -1,6 +1,7 @@
 package app.luxion.shogunai.engine
 
 import app.luxion.shogunai.domain.FakeProjectRepository
+import app.luxion.shogunai.domain.io.EnginePorts
 import app.luxion.shogunai.domain.io.ProjectRepository
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.ProjectConfig

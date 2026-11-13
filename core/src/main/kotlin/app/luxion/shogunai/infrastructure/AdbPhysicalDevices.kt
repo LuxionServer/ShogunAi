@@ -9,7 +9,7 @@ import app.luxion.shogunai.domain.model.PendingDevice
 import app.luxion.shogunai.domain.model.PhysicalDevice
 import app.luxion.shogunai.domain.model.PhysicalDeviceListing
 import app.luxion.shogunai.domain.model.SdkLocation
-import app.luxion.shogunai.domain.runSuspendCatching
+import app.luxion.shogunai.domain.model.runSuspendCatching
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 

@@ -50,8 +50,8 @@ import app.luxion.shogunai.domain.usecase.normalizeTaskId
 import app.luxion.shogunai.domain.usecase.GroupKept
 import app.luxion.shogunai.domain.usecase.GroupCreation
 import app.luxion.shogunai.domain.usecase.GroupRepositoryOutcome
+import app.luxion.shogunai.domain.model.GroupWorktree
 import app.luxion.shogunai.domain.usecase.GroupRepositoryResult
-import app.luxion.shogunai.domain.usecase.GroupWorktree
 import app.luxion.shogunai.domain.usecase.GroupWorktreeState
 import app.luxion.shogunai.domain.usecase.MultirepoMember
 import app.luxion.shogunai.domain.usecase.selectGroupCleanup
@@ -61,7 +61,7 @@ import app.luxion.shogunai.ui.multirepo.MultirepoNotice
 import app.luxion.shogunai.ui.multirepo.NewChange
 import app.luxion.shogunai.ui.multirepo.branchTypeOf
 import app.luxion.shogunai.domain.usecase.GroupState as BranchGroupState
-import app.luxion.shogunai.domain.usecase.WorktreeGroup as BranchGroup
+import app.luxion.shogunai.domain.model.WorktreeGroup as BranchGroup
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope

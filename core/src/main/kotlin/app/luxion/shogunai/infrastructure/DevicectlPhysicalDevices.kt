@@ -8,7 +8,7 @@ import app.luxion.shogunai.domain.model.DevicePlatform
 import app.luxion.shogunai.domain.model.DeviceUsability
 import app.luxion.shogunai.domain.model.PhysicalDevice
 import app.luxion.shogunai.domain.model.PhysicalDeviceListing
-import app.luxion.shogunai.domain.runSuspendCatching
+import app.luxion.shogunai.domain.model.runSuspendCatching
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject

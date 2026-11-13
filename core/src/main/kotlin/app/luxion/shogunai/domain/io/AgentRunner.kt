@@ -7,7 +7,7 @@ import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.RunnerId
 import app.luxion.shogunai.domain.model.RunnerOpening
 import app.luxion.shogunai.domain.model.Worktree
-import app.luxion.shogunai.domain.usecase.WorktreeGroup
+import app.luxion.shogunai.domain.model.WorktreeGroup
 
 interface AgentRunner {
 

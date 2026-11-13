@@ -12,7 +12,8 @@ import app.luxion.shogunai.domain.model.PodsPreparation
 import app.luxion.shogunai.domain.model.ProvisionedFile
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.WorktreeError
-import app.luxion.shogunai.domain.runSuspendCatching
+import app.luxion.shogunai.domain.model.normalizePath
+import app.luxion.shogunai.domain.model.runSuspendCatching
 
 class ProvisionWorktreeUseCase(
     private val config: ProjectConfig,

@@ -22,7 +22,7 @@ import app.luxion.shogunai.domain.model.LocalFileOrigin
 import app.luxion.shogunai.domain.model.UnavailableLocalFile
 import app.luxion.shogunai.domain.model.UnavailableReason
 import app.luxion.shogunai.domain.model.joinPath
-import app.luxion.shogunai.domain.runSuspendCatching
+import app.luxion.shogunai.domain.model.runSuspendCatching
 import java.io.IOException
 
 internal data class ProvisionedFiles(

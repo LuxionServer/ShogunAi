@@ -9,7 +9,7 @@ import app.luxion.shogunai.domain.model.DaemonStopFailure
 import app.luxion.shogunai.domain.model.KeptMavenDaemon
 import app.luxion.shogunai.domain.model.MavenDaemonProcess
 import app.luxion.shogunai.domain.model.MavenDaemonStopReport
-import app.luxion.shogunai.domain.runSuspendCatching
+import app.luxion.shogunai.domain.model.runSuspendCatching
 
 class StopMavenDaemonsUseCase(
     private val source: MavenDaemonSource,

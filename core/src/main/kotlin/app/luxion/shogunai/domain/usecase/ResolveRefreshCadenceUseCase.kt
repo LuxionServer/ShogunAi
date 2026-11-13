@@ -7,7 +7,7 @@ import app.luxion.shogunai.domain.model.BYTES_PER_GIGABYTE
 import app.luxion.shogunai.domain.model.CapacityProfile
 import app.luxion.shogunai.domain.model.RefreshCadence
 import app.luxion.shogunai.domain.model.ResourceSettings
-import app.luxion.shogunai.domain.runSuspendCatching
+import app.luxion.shogunai.domain.model.runSuspendCatching
 
 class ResolveRefreshCadenceUseCase(
     private val repository: ResourceLimitsRepository,

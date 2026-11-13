@@ -56,6 +56,27 @@ cli/src/main/kotlin/app/luxion/shogunai/cli/
 
 The domain is defined in terms of **ports** (interfaces) and doesn't know about `ProcessBuilder` or `java.nio.file` directly; that lets each port be swapped for a test double (`FakeShellCommandExecutor`, `FakeFileManager`) in use case tests, without touching disk or launching real processes.
 
+## Rules checked by the build
+
+The tests in `core/src/test/kotlin/app/luxion/shogunai/architecture/` read the sources of the three modules on every test run and fail, naming file and line, when one of these rules is broken:
+
+| Package of `core` | May import from the project |
+|---|---|
+| `domain.model` | nothing |
+| `domain.executor` | nothing |
+| `domain.io` | `domain.model`, `domain.executor` |
+| `domain.usecase` | `domain.model`, `domain.executor`, `domain.io` |
+| `infrastructure` | `domain.model`, `domain.executor`, `domain.io` |
+| `engine` | `domain.model`, `domain.executor`, `domain.io`, `domain.usecase` |
+
+- **The domain doesn't touch the system**: no `java.io.File`, `java.nio.file`, `kotlin.io.path`, `System.getProperty`, `ProcessBuilder` or `Runtime` in `domain/`.
+- **Composition roots**: in the desktop app, only `main.kt` and `AppContainer.kt` use infrastructure, and `runShogun` is the only thing it uses from the CLI; in the CLI, only `Main.kt` and `ShogunCli.kt` use infrastructure.
+- **No comments** in any Kotlin source or Gradle script.
+- **Commands as argv**: no `Runtime.exec`, and no shell interpreter named as a command.
+- **File length**: no production file over 400 lines.
+
+Some existing code doesn't follow the rules about the system, shells and length yet. Each case is on an exception list in `ArchitectureExceptions.kt`, which must match the code exactly: a new case fails, and so does an entry that no longer matches anything, so the lists can only shrink.
+
 See the detail of each layer:
 
 - [Domain layer](domain.md)

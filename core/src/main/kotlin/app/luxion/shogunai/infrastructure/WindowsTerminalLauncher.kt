@@ -6,7 +6,7 @@ import app.luxion.shogunai.domain.io.TerminalLauncher
 import app.luxion.shogunai.domain.model.TerminalId
 import app.luxion.shogunai.domain.model.TerminalLaunch
 import app.luxion.shogunai.domain.model.WorktreeError
-import app.luxion.shogunai.domain.runSuspendCatching
+import app.luxion.shogunai.domain.model.runSuspendCatching
 
 class WindowsTerminalLauncher(private val executor: ShellCommandExecutor) : TerminalLauncher {
 

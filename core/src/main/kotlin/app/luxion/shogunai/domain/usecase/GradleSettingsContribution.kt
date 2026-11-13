@@ -1,6 +1,7 @@
 package app.luxion.shogunai.domain.usecase
 
 import app.luxion.shogunai.domain.io.FileManager
+import app.luxion.shogunai.domain.io.nestedGradleBuildPaths
 import app.luxion.shogunai.domain.model.GradleProvider
 
 const val GRADLE_OPTS = "GRADLE_OPTS"

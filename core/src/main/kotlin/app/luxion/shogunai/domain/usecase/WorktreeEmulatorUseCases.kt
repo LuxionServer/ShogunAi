@@ -12,7 +12,7 @@ import app.luxion.shogunai.domain.model.WorktreeEmulator
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.chooseAvd
 import app.luxion.shogunai.domain.model.emulatorSerial
-import app.luxion.shogunai.domain.runSuspendCatching
+import app.luxion.shogunai.domain.model.runSuspendCatching
 import kotlinx.coroutines.delay
 
 class StartWorktreeEmulatorUseCase(

@@ -3,7 +3,7 @@ package app.luxion.shogunai.domain.usecase
 import app.luxion.shogunai.domain.executor.CommandTimeouts
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.model.WorktreeError
-import app.luxion.shogunai.domain.runSuspendCatching
+import app.luxion.shogunai.domain.model.runSuspendCatching
 
 class ResolveStartPointUseCase(
     private val executor: ShellCommandExecutor,

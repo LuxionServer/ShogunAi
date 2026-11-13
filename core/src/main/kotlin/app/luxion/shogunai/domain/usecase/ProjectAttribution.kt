@@ -1,6 +1,7 @@
 package app.luxion.shogunai.domain.usecase
 
 import app.luxion.shogunai.domain.model.Worktree
+import app.luxion.shogunai.domain.model.normalizePath
 
 data class ProjectWorktreeSet(val projectId: String, val worktrees: List<Worktree>?)
 

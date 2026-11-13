@@ -7,7 +7,7 @@ import app.luxion.shogunai.domain.io.FolderLauncher
 import app.luxion.shogunai.domain.model.EditorId
 import app.luxion.shogunai.domain.model.HostOs
 import app.luxion.shogunai.domain.model.WorktreeError
-import app.luxion.shogunai.domain.runSuspendCatching
+import app.luxion.shogunai.domain.model.runSuspendCatching
 import java.net.URLEncoder
 
 class CommandEditorLauncher(

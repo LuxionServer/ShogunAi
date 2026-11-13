@@ -1,7 +1,7 @@
 package app.luxion.shogunai.smoke
 
 import app.luxion.shogunai.domain.usecase.CommandLineToolStatus
-import app.luxion.shogunai.domain.usecase.HooksInstallState
+import app.luxion.shogunai.domain.model.HooksInstallState
 import app.luxion.shogunai.ui.shell.TourStep
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonNull

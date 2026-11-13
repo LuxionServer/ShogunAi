@@ -75,7 +75,7 @@ import app.luxion.shogunai.domain.usecase.AgentInstructionsBlock
 import app.luxion.shogunai.domain.usecase.ClaudeCodeHooks
 import app.luxion.shogunai.domain.usecase.GuideBlockState
 import app.luxion.shogunai.domain.usecase.GuideBlockStatus
-import app.luxion.shogunai.domain.usecase.HooksInstallState
+import app.luxion.shogunai.domain.model.HooksInstallState
 import app.luxion.shogunai.domain.usecase.HooksPreview
 import app.luxion.shogunai.domain.executor.OutputChannel
 import app.luxion.shogunai.domain.model.ComposeAction

@@ -17,7 +17,7 @@ import app.luxion.shogunai.domain.model.HideOutcome
 import app.luxion.shogunai.domain.model.MacPermission
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.gradleModuleDirectory
-import app.luxion.shogunai.domain.runSuspendCatching
+import app.luxion.shogunai.domain.model.runSuspendCatching
 import kotlinx.coroutines.delay
 import java.time.Clock
 import java.time.ZoneOffset

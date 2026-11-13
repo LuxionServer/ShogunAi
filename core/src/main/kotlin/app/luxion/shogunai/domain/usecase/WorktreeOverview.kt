@@ -6,6 +6,7 @@ import app.luxion.shogunai.domain.model.RunningAgent
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.WorktreeOrigin
 import app.luxion.shogunai.domain.model.WorktreeStatus
+import app.luxion.shogunai.domain.model.normalizePath
 import java.time.Duration
 import java.time.Instant
 
@@ -89,8 +90,6 @@ val WorktreeStatus.hasUnpushedCommits: Boolean
 
 val WorktreeStatus.isUnpushedBranch: Boolean
     get() = upstream == null && hasOwnCommits && !isNotStarted && !isMerged
-
-internal fun normalizePath(path: String): String = path.replace('\\', '/').trimEnd('/')
 
 internal fun isInside(path: String, parent: String): Boolean =
     parent.isNotEmpty() && (path == parent || path.startsWith("$parent/"))

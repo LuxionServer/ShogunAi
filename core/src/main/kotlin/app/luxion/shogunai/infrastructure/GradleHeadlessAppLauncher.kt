@@ -5,7 +5,7 @@ import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.io.HeadlessAppLauncher
 import app.luxion.shogunai.domain.model.HeadlessLaunch
 import app.luxion.shogunai.domain.model.HeadlessLaunchResult
-import app.luxion.shogunai.domain.runSuspendCatching
+import app.luxion.shogunai.domain.model.runSuspendCatching
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.nio.file.Files

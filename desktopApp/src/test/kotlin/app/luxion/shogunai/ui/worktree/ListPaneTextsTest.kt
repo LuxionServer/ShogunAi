@@ -9,7 +9,7 @@ import app.luxion.shogunai.ui.multirepo.multirepoMemberships
 import app.luxion.shogunai.domain.usecase.Activity
 import app.luxion.shogunai.domain.usecase.GroupKept
 import app.luxion.shogunai.domain.usecase.GroupKeptReason
-import app.luxion.shogunai.domain.usecase.WorktreeGroup as BranchGroup
+import app.luxion.shogunai.domain.model.WorktreeGroup as BranchGroup
 import app.luxion.shogunai.ui.i18n.EnglishStrings
 import app.luxion.shogunai.ui.theme.Status
 import app.luxion.shogunai.ui.worktree.inspector.composeStatus

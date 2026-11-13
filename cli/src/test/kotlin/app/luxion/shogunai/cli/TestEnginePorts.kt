@@ -37,9 +37,9 @@ import app.luxion.shogunai.domain.io.ProvisioningRecordStore
 import app.luxion.shogunai.domain.io.RepositoryProvisioningSource
 import app.luxion.shogunai.domain.io.RepositoryTrust
 import app.luxion.shogunai.domain.io.ResourceLimitsRepository
-import app.luxion.shogunai.domain.usecase.ClaudeCodeHooks
+import app.luxion.shogunai.domain.model.claudeSessionsDirectory
 import app.luxion.shogunai.domain.model.HostOs
-import app.luxion.shogunai.engine.EnginePorts
+import app.luxion.shogunai.domain.io.EnginePorts
 import app.luxion.shogunai.infrastructure.AdbPhysicalDevices
 import app.luxion.shogunai.infrastructure.DevicectlPhysicalDevices
 import app.luxion.shogunai.infrastructure.CliGitHubClient
@@ -107,7 +107,7 @@ fun cliEnginePorts(
     deviceInventory: PhysicalDeviceInventoryStore = NioPhysicalDeviceInventoryStore(files.folder),
     deviceLeases: PhysicalDeviceLeaseStore = NioPhysicalDeviceLeaseStore(files.folder),
     claudeSessions: ClaudeSessionRegistry = FileClaudeSessionRegistry(
-        ClaudeCodeHooks.claudeSessionsDirectory(environment.variable("CLAUDE_CONFIG_DIR"), environment.home),
+        claudeSessionsDirectory(environment.variable("CLAUDE_CONFIG_DIR"), environment.home),
     ),
 ) = EnginePorts(
     executor = executor,

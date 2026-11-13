@@ -4,6 +4,7 @@ import app.luxion.shogunai.domain.io.OrcaClient
 import app.luxion.shogunai.domain.model.OrcaEmulatorView
 import app.luxion.shogunai.domain.model.OrcaWorkspace
 import app.luxion.shogunai.domain.model.WorktreeError
+import app.luxion.shogunai.domain.model.sameDirectory
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.withTimeout

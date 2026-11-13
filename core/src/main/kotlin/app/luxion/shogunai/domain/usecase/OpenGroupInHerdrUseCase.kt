@@ -4,9 +4,11 @@ import app.luxion.shogunai.domain.io.HerdrClient
 import app.luxion.shogunai.domain.model.HerdrOpening
 import app.luxion.shogunai.domain.model.HerdrOutcome
 import app.luxion.shogunai.domain.model.Multirepo
+import app.luxion.shogunai.domain.model.WorktreeGroup
 import app.luxion.shogunai.domain.model.groupMemberSessionName
 import app.luxion.shogunai.domain.model.multirepoSessionName
-import app.luxion.shogunai.domain.runSuspendCatching
+import app.luxion.shogunai.domain.model.sameDirectory
+import app.luxion.shogunai.domain.model.runSuspendCatching
 
 sealed interface GroupTarget {
     data class Found(val group: WorktreeGroup) : GroupTarget

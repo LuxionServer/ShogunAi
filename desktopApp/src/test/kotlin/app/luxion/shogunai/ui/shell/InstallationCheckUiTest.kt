@@ -9,7 +9,7 @@ import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.v2.runComposeUiTest
-import app.luxion.shogunai.domain.io.HostPathSource
+import app.luxion.shogunai.domain.model.HostPathSource
 import app.luxion.shogunai.domain.model.AgentToolId
 import app.luxion.shogunai.domain.model.CheckState
 import app.luxion.shogunai.domain.model.HostOs
@@ -24,8 +24,8 @@ import app.luxion.shogunai.domain.model.ProviderToolProblem
 import app.luxion.shogunai.domain.model.ThemeMode
 import app.luxion.shogunai.domain.model.UnavailableLocalFile
 import app.luxion.shogunai.domain.model.UnavailableReason
-import app.luxion.shogunai.domain.usecase.CommandLineToolState
-import app.luxion.shogunai.domain.usecase.HooksInstallState
+import app.luxion.shogunai.domain.model.CommandLineToolState
+import app.luxion.shogunai.domain.model.HooksInstallState
 import app.luxion.shogunai.ui.i18n.EnglishStrings
 import app.luxion.shogunai.ui.i18n.LocalStrings
 import app.luxion.shogunai.ui.i18n.SpanishStrings

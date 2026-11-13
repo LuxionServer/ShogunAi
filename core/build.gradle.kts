@@ -67,7 +67,16 @@ kover {
 }
 
 tasks.named<Test>("test") {
-    inputs.files(fileTree(rootDir) { include("cli/src/main/**/*.kt", "desktopApp/src/main/**/*.kt") })
+    inputs.files(
+        fileTree(rootDir) {
+            include("core/src/**/*.kt", "cli/src/**/*.kt", "desktopApp/src/**/*.kt")
+            include("*.gradle.kts", "core/*.gradle.kts", "cli/*.gradle.kts", "desktopApp/*.gradle.kts")
+        },
+    )
         .withPathSensitivity(PathSensitivity.RELATIVE)
-        .withPropertyName("otherModulesSources")
+        .withPropertyName("checkedSources")
+    testLogging {
+        events("failed")
+        exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+    }
 }

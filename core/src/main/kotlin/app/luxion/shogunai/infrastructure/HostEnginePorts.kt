@@ -3,8 +3,8 @@ package app.luxion.shogunai.infrastructure
 import app.luxion.shogunai.domain.io.AndroidSdk
 import app.luxion.shogunai.domain.io.HostEnvironment
 import app.luxion.shogunai.domain.model.HostOs
-import app.luxion.shogunai.domain.usecase.ClaudeCodeHooks
-import app.luxion.shogunai.engine.EnginePorts
+import app.luxion.shogunai.domain.model.claudeSessionsDirectory
+import app.luxion.shogunai.domain.io.EnginePorts
 
 fun hostEnginePorts(
     environment: HostEnvironment,
@@ -50,7 +50,7 @@ fun hostEnginePorts(
         orcaWorkspaces = JsonOrcaWorkspaceStore(files.orcaWorkspaces),
         gitHub = CliGitHubClient(executor, findExecutable),
         agentSessions = FileAgentSessionStore(files.agentSessions),
-        claudeSessions = FileClaudeSessionRegistry(ClaudeCodeHooks.claudeSessionsDirectory(environment.variable(CLAUDE_CONFIG_DIR), home)),
+        claudeSessions = FileClaudeSessionRegistry(claudeSessionsDirectory(environment.variable(CLAUDE_CONFIG_DIR), home)),
         multirepos = JsonMultirepoSource(files.multirepos),
         deviceWaitQueue = NioDeviceWaitQueue(files.folder),
         processLiveness = ProcessHandleLiveness(),

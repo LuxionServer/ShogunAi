@@ -6,7 +6,7 @@ import app.luxion.shogunai.domain.model.PublishedRelease
 import app.luxion.shogunai.domain.model.ReleaseAsset
 import app.luxion.shogunai.domain.model.ReleaseNotes
 import app.luxion.shogunai.domain.model.WorktreeError
-import app.luxion.shogunai.domain.runSuspendCatching
+import app.luxion.shogunai.domain.model.runSuspendCatching
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json

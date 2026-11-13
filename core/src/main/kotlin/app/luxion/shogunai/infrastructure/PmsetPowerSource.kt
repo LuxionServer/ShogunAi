@@ -3,7 +3,7 @@ package app.luxion.shogunai.infrastructure
 import app.luxion.shogunai.domain.executor.CommandTimeouts
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.io.PowerSource
-import app.luxion.shogunai.domain.runSuspendCatching
+import app.luxion.shogunai.domain.model.runSuspendCatching
 
 class PmsetPowerSource(private val executor: ShellCommandExecutor) : PowerSource {
 

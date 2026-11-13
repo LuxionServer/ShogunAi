@@ -1,6 +1,7 @@
 package app.luxion.shogunai.engine
 
-import app.luxion.shogunai.domain.runSuspendCatching
+import app.luxion.shogunai.domain.model.runSuspendCatching
+import app.luxion.shogunai.domain.io.EnginePorts
 import app.luxion.shogunai.domain.io.RepositoryApproval
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.SimulatorSettings
@@ -70,7 +71,7 @@ import app.luxion.shogunai.domain.usecase.TrimDerivedDataUseCase
 import app.luxion.shogunai.domain.usecase.TrimGradleDaemonsUseCase
 import app.luxion.shogunai.domain.usecase.WriteEnvironmentFileUseCase
 import app.luxion.shogunai.domain.usecase.effectiveGradleJvmArgs
-import app.luxion.shogunai.domain.usecase.sameDirectory
+import app.luxion.shogunai.domain.model.sameDirectory
 
 class ShogunEngine(
     val ports: EnginePorts,

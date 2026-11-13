@@ -10,7 +10,7 @@ import app.luxion.shogunai.domain.io.RepositoryTrust
 import app.luxion.shogunai.domain.model.BranchType
 import app.luxion.shogunai.domain.model.REMOTE_PREFIX
 import app.luxion.shogunai.domain.model.WorktreeError
-import app.luxion.shogunai.domain.runSuspendCatching
+import app.luxion.shogunai.domain.model.runSuspendCatching
 
 enum class GroupRepositoryOutcome { CREATED, EXISTING, FAILED, SKIPPED }
 

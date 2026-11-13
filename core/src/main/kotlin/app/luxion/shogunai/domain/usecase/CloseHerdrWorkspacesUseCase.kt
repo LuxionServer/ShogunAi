@@ -3,6 +3,8 @@ package app.luxion.shogunai.domain.usecase
 import app.luxion.shogunai.domain.io.HerdrClient
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.WorktreeError
+import app.luxion.shogunai.domain.model.isInsideDirectory
+import app.luxion.shogunai.domain.model.normalizePath
 import kotlin.coroutines.cancellation.CancellationException
 
 class CloseHerdrWorkspacesUseCase(

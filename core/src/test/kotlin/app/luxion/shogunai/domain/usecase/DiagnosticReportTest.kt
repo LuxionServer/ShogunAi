@@ -1,9 +1,11 @@
 package app.luxion.shogunai.domain.usecase
 
 import app.luxion.shogunai.domain.io.DiagnosticsLog
+import app.luxion.shogunai.domain.model.CommandLineToolState
 import app.luxion.shogunai.domain.model.DiagnosticEntry
 import app.luxion.shogunai.domain.model.DiagnosticKind
 import app.luxion.shogunai.domain.model.CheckState
+import app.luxion.shogunai.domain.model.HooksInstallState
 import app.luxion.shogunai.domain.model.InstallationCheck
 import app.luxion.shogunai.domain.model.InstallationFinding
 import app.luxion.shogunai.domain.model.InstallationReport

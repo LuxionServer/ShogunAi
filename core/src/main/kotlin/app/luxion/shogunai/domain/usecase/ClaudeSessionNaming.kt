@@ -5,8 +5,9 @@ import app.luxion.shogunai.domain.io.ProcessEnvironmentReader
 import app.luxion.shogunai.domain.model.AGENT_START_SECONDS
 import app.luxion.shogunai.domain.model.ClaudeSession
 import app.luxion.shogunai.domain.model.namedClaudeCommand
+import app.luxion.shogunai.domain.model.sameDirectory
 import app.luxion.shogunai.domain.model.uniqueSessionName
-import app.luxion.shogunai.domain.runSuspendCatching
+import app.luxion.shogunai.domain.model.runSuspendCatching
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeoutOrNull

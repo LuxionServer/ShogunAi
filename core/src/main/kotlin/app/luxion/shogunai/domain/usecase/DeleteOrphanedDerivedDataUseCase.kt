@@ -4,7 +4,7 @@ import app.luxion.shogunai.domain.io.DerivedDataSource
 import app.luxion.shogunai.domain.model.DerivedDataDeletion
 import app.luxion.shogunai.domain.model.DerivedDataDeletionFailure
 import app.luxion.shogunai.domain.model.DerivedDataFolder
-import app.luxion.shogunai.domain.runSuspendCatching
+import app.luxion.shogunai.domain.model.runSuspendCatching
 import kotlin.coroutines.cancellation.CancellationException
 
 class DeleteOrphanedDerivedDataUseCase(

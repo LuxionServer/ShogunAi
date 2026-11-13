@@ -5,7 +5,7 @@ import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.model.HostOs
 import app.luxion.shogunai.domain.model.InstallChannel
 import app.luxion.shogunai.domain.model.UpdateCommands
-import app.luxion.shogunai.domain.runSuspendCatching
+import app.luxion.shogunai.domain.model.runSuspendCatching
 
 class DetectInstallChannelUseCase(
     private val os: HostOs,

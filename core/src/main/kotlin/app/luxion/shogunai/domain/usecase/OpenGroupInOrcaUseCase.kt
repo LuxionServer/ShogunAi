@@ -8,9 +8,11 @@ import app.luxion.shogunai.domain.model.OrcaOpening
 import app.luxion.shogunai.domain.model.OrcaWorkspace
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.WorktreeError
+import app.luxion.shogunai.domain.model.WorktreeGroup
 import app.luxion.shogunai.domain.model.groupMemberSessionName
 import app.luxion.shogunai.domain.model.multirepoSessionName
-import app.luxion.shogunai.domain.runSuspendCatching
+import app.luxion.shogunai.domain.model.sameDirectory
+import app.luxion.shogunai.domain.model.runSuspendCatching
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds

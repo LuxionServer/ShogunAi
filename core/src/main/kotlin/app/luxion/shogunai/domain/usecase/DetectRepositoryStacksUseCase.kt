@@ -1,6 +1,9 @@
 package app.luxion.shogunai.domain.usecase
 
 import app.luxion.shogunai.domain.io.FileManager
+import app.luxion.shogunai.domain.io.GRADLE_ROOT_FILES
+import app.luxion.shogunai.domain.io.GRADLE_SETTINGS_FILES
+import app.luxion.shogunai.domain.io.repositorySubfolders
 import app.luxion.shogunai.domain.model.DetectedStack
 import app.luxion.shogunai.domain.model.Stack
 
