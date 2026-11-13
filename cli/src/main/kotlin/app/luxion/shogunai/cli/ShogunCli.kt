@@ -337,6 +337,7 @@ class ShogunCli(
             is CliCommand.Open -> open(command)
             is CliCommand.Status -> status(command)
             is CliCommand.Base -> base(command)
+            is OverlapCommand -> overlap(command)
             is CliCommand.Clean -> clean(command)
             CliCommand.HookWorktreeCreate -> hookWorktreeCreate()
             CliCommand.HookWorktreeRemove -> hookWorktreeRemove()
@@ -1174,6 +1175,25 @@ class ShogunCli(
             return EXIT_FAILURE
         }
         if (!command.json) out.line(base)
+        return EXIT_OK
+    }
+
+    private suspend fun overlap(command: OverlapCommand): Int {
+        val config = configFor(workingDirectory)
+        val worktrees = engine.project(config).listWorktrees().getOrThrow()
+        val target = if (command.target != null) {
+            findWorktreeTarget(command.target, worktrees, config, ::canonical)
+        } else {
+            val containing = canonical(configAndWorktreeContaining(workingDirectory).second.path)
+            worktrees.first { canonical(it.path) == containing }.takeUnless { it.isMain }
+        }
+        val overlap = engine.project(config).readOverlap(worktrees, target, command.all).getOrThrow()
+        overlap.skipped.forEach { err.line(skippedLine(it)) }
+        if (command.json) {
+            printJson(overlapJson(config.baseRepositoryPath, target?.path, overlap))
+        } else {
+            overlapLines(overlap, target?.branch, scoped = target != null).forEach { out.line(it) }
+        }
         return EXIT_OK
     }
 

@@ -255,6 +255,7 @@ fun parseArguments(args: List<String>): ParsedArguments {
                 "open" -> parseOpen(arguments)
                 "status" -> parseStatus(arguments)
                 "base" -> parseBase(arguments)
+                "overlap" -> parseOverlap(arguments)
                 "clean" -> parseClean(arguments)
                 "hook" -> parseHook(arguments)
                 "hooks" -> parseHooks(arguments)
@@ -294,7 +295,7 @@ private fun isGuideReading(name: String, rest: List<String>) = name == "guide" &
 
 private fun CliCommand.withJsonOutput(json: Boolean): CliCommand = if (json) (this as JsonOutput).withJson() else this
 
-private class UsageException(override val message: String) : Exception(message)
+internal class UsageException(override val message: String) : Exception(message)
 
 private fun noArguments(name: String, rest: List<String>, command: CliCommand): CliCommand {
     rest.firstOrNull()?.let {

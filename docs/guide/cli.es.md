@@ -9,6 +9,7 @@ shogun provision ../otro-worktree  # copia los archivos declarados en un worktre
 shogun status                      # todos los worktrees con sus cambios, divergencia y si están mergeados
 shogun status --json               # lo mismo, como un documento JSON para scripts
 shogun base                        # la rama de la que se creó la rama de este worktree, la base de su pull request
+shogun overlap                     # los archivos que este worktree cambia y que otro worktree también cambia
 shogun remove TASK-123             # elimina un worktree y para su emulador y simulador
 shogun repair                      # re-enlaza los worktrees tras mover el repositorio
 shogun open TASK-123 --herdr       # abre un worktree en Herdr con su entorno y el agente del proyecto
@@ -176,6 +177,22 @@ Imprime la rama de la que se creó la rama de un worktree, sola en la salida est
 - Si no hay ninguna registrada (un worktree creado por Herdr o con `git worktree add`, o una rama anterior a que ShogunAi registrara bases), lo dice en la salida de error, sugiere `--set` y sale con `1`. Un worktree en HEAD separado no tiene rama y también sale con `1`.
 - `--set <rama>` la registra, sustituyendo el valor anterior. El valor debe ser una rama local o de un remoto, cuyo prefijo de remoto se quita (`origin/develop` se registra como `develop`); un tag o un nombre desconocido no registran nada y salen con `1`.
 - `--json` imprime `{ "path", "branch", "base" }`, con `base` a `null` (y código de salida `1`) si no hay ninguna registrada.
+
+### `overlap`
+
+```text
+shogun overlap [<task id | path | branch>] [--all] [--json]
+```
+
+Lista los archivos que más de un worktree del repositorio está cambiando a la vez, para que los cambios en paralelo lo sepan antes de que sus pull requests choquen.
+
+- Un worktree cambia un archivo cuando el archivo difiere entre su árbol de trabajo y el commit en que su rama salió de su base: los commits de la rama, las ediciones en el índice o fuera de él y los borrados, más los archivos nuevos que Git no ignora. La base es la que compara `shogun status`, la [base registrada](#base) o la rama principal; los cambios que hizo la base después de que la rama saliera de ella no cuentan.
+- Dos worktrees se solapan en un archivo cuando ambos lo cambian, sean cuales sean las líneas. Los worktrees con bases distintas se muestran juntos, cada uno con su base, porque el conflicto llega cuando una base se fusiona en la otra.
+- Dentro de un worktree enlazado, o con un destino, lista solo los archivos que comparte ese worktree; en el checkout principal, todos los solapamientos del repositorio. Cada archivo va seguido de una línea por worktree: su rama (`(detached)` si no tiene), su base y su ruta.
+- Los archivos que el repositorio espera que se editen en paralelo se omiten cuando [`.shogunai.json`](configuration.md#configuracion-del-repositorio-shogunaijson) los declara en `overlap.ignore`; `--all` los incluye.
+- Un worktree que no se puede comparar (falta su carpeta, no tiene base o Git falla al leerlo) se indica en la salida de error y los demás se comparan igualmente.
+- Sale con `0` encuentre o no solapamientos.
+- `--json` imprime `{ "repository", "worktree", "files", "skipped" }`: `worktree` es la ruta del destino o `null`, cada archivo es `{ "path", "worktrees": [{ "path", "branch", "base" }] }` y cada worktree omitido es `{ "path", "branch", "reason" }`.
 
 ### `hooks`
 

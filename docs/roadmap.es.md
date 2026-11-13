@@ -168,6 +168,14 @@ Quedaron fuera:
 - Una única sesión para todo el grupo, con un entorno combinado, como opción junto a un agente por repositorio.
 - El estado del pull request de cada repositorio de un grupo, que depende de la integración con GitHub en estudio.
 
+### Cambios en paralelo que no chocan
+
+`shogun overlap` lista los archivos que varios worktrees de un repositorio cambian a la vez, y la guía pide a los agentes consultarlo antes de su pull request.
+Lo que queda:
+
+- Una marca en la torre de control en cada worktree cuyos archivos cambia otro worktree, con los archivos y worktrees compartidos en su inspector.
+- Saber si los archivos compartidos llegarían a dar conflicto al fusionar, en vez de solo que se comparten.
+
 ### Robustez y mantenimiento
 
 - Reconocer una rama mergeada por squash tras resolver conflictos, o junto con otras ramas, cuyos cambios ya no coinciden con ningún commit de su destino, por ejemplo preguntando a GitHub si su pull request se mergeó.

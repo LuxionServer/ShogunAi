@@ -43,6 +43,13 @@ internal object CliHelp {
                               --set records it, for worktrees created by other tools or to correct it;
                               stored as branch.<branch>.gh-merge-base, which gh pr create also reads
 """.trimIndent(),
+        "overlap" to """
+  overlap [<task id | path | branch>] [--all] [--json]
+                              List the files that more than one worktree of the repository changes against
+                              its own base (commits, uncommitted and untracked changes), with each worktree's
+                              branch and base; inside a worktree or with a target, only the files it shares;
+                              --all includes the files .shogunai.json declares in overlap.ignore
+""".trimIndent(),
         "remove" to """
   remove <task id | path | branch> [--force] [--delete-branch | --force-delete-branch] [--json]
                               Remove one worktree and stop its emulator, simulator and idle Gradle daemons;

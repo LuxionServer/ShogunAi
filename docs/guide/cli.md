@@ -9,6 +9,7 @@ shogun provision ../other-worktree # copy the declared files into a worktree mad
 shogun status                      # every worktree with its changes, divergence and merged state
 shogun status --json               # the same, as one JSON document for scripts
 shogun base                        # the branch this worktree's branch was created from, its pull request's base
+shogun overlap                     # the files this worktree changes that another worktree changes too
 shogun remove TASK-123             # remove one worktree and stop its emulator and simulator
 shogun repair                      # re-link the worktrees after the repository moved
 shogun open TASK-123 --herdr       # open a worktree in Herdr with its environment and the project's agent
@@ -176,6 +177,22 @@ Prints the branch a worktree's branch was created from, alone on standard output
 - When none is recorded (a worktree created by Herdr or `git worktree add`, or a branch from before ShogunAi recorded bases), it says so on standard error, suggests `--set` and exits with `1`. A detached worktree has no branch and also exits with `1`.
 - `--set <branch>` records it, replacing any previous value. The value must be a local branch or a branch of a remote, whose remote prefix is dropped (`origin/develop` is recorded as `develop`); a tag or an unknown name records nothing and exits with `1`.
 - `--json` prints `{ "path", "branch", "base" }`, with `base` `null` (and exit code `1`) when none is recorded.
+
+### `overlap`
+
+```text
+shogun overlap [<task id | path | branch>] [--all] [--json]
+```
+
+Lists the files that more than one worktree of the repository is changing at once, so parallel changes find out before their pull requests collide.
+
+- A worktree changes a file when the file differs between its working tree and the commit where its branch left its base: the branch's commits, staged and unstaged edits and deletions, plus new files Git doesn't ignore. The base is the one `shogun status` compares with, the [recorded base](#base) or the main branch; changes the base made after the branch left it don't count.
+- Two worktrees overlap on a file when both change it, whatever the lines. Worktrees with different bases are reported together, each one with its base, since the conflict arrives when one base is merged into the other.
+- Inside a linked worktree, or with a target, it lists only the files that worktree shares; in the main checkout, every overlap of the repository. Each file is followed by one line per worktree: its branch (`(detached)` without one), its base and its path.
+- Files the repository expects to be edited in parallel are left out when [`.shogunai.json`](configuration.md#repository-configuration-shogunaijson) declares them in `overlap.ignore`; `--all` includes them.
+- A worktree that can't be compared (its folder is missing, it has no base, or Git fails to read it) is reported on standard error and the others are still compared.
+- It exits with `0` whether or not it finds overlaps.
+- `--json` prints `{ "repository", "worktree", "files", "skipped" }`: `worktree` is the target's path or `null`, each file is `{ "path", "worktrees": [{ "path", "branch", "base" }] }` and each skipped worktree is `{ "path", "branch", "reason" }`.
 
 ### `hooks`
 

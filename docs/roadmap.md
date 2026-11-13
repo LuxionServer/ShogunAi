@@ -168,6 +168,14 @@ Left out:
 - A single session for the whole group, with a combined environment, as an option next to one agent per repository.
 - The pull request state of each repository of a group, which depends on the GitHub integration under exploration.
 
+### Parallel changes that don't collide
+
+`shogun overlap` lists the files that several worktrees of a repository change at once, and the guide tells agents to check it before their pull request.
+What's left:
+
+- A mark in the control tower on each worktree whose files another worktree changes, with the shared files and worktrees in its inspector.
+- Telling whether the shared files would actually conflict when merged, instead of only that they are shared.
+
 ### Robustness and maintenance
 
 - Recognizing a branch squash-merged after resolving conflicts, or together with other branches, whose changes no longer match any commit of its target, for example by asking GitHub whether its pull request was merged.
