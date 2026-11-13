@@ -7,6 +7,7 @@ data class KnownMultirepos(
 
 data class UnavailableMultirepo(val folder: String, val reason: MultirepoUnavailability) {
     val name: String get() = folder.substringAfterLast('/').ifEmpty { folder }
+    val declarationPath: String get() = joinPath(folder, MULTIREPO_FILE_NAME)
 }
 
 sealed interface MultirepoUnavailability {

@@ -484,6 +484,8 @@ object EnglishStrings : Strings {
     override val daemonBusy = "busy"
     override fun daemonIdle(since: String) = "idle · $since"
     override val daemonStateUnknown = "state unknown"
+    override fun daemonBuild(tasks: String?, started: String?, session: String?) =
+        listOfNotNull(tasks?.let { "Building $it" } ?: "Running a build", started?.let { "started $it" }, session?.let { "agent session $it" }).joinToString(" · ")
     override val daemonOwnerRemoved = "removed worktree"
     override val stopDaemon = "Stop"
     override val stopIdleDaemons = "Stop idle daemons"

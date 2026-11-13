@@ -640,7 +640,7 @@ class MachineResources(
     }
 
     private suspend fun readGradleDaemons(): Result<List<DaemonProcess>> {
-        val listed = io { useCases.listDaemons() }
+        val listed = projects().flatMap { it.worktrees.orEmpty() }.map { it.path }.let { paths -> io { useCases.listDaemons(paths) } }
         listed.onSuccess { daemons ->
             daemonProcesses = MachineLoad.Loaded(daemons)
             loadPool(ResourceKind.GRADLE_DAEMON, daemons)

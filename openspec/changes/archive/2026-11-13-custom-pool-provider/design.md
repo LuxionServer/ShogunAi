@@ -113,7 +113,7 @@ These files are exactly at their cap and need a few lines each; their caps rise 
 - `cli/CommandJson.kt` 1028 → 1029: `trustJson` adds `pools`.
 - `infrastructure/RepositoryProvisioningFiles.kt` 459 → 460: `read` adds `pools`.
 - `ui/i18n/EnglishErrors.kt` 479 → 481 and `ui/i18n/SpanishErrors.kt` 500 → 502: the import and the branch of `CustomPoolFailure` in the exhaustive `when`.
-- `ui/i18n/Strings.kt` 956 → 958, `ui/i18n/EnglishStrings.kt` 1129 → 1131 and `ui/i18n/SpanishStrings.kt` 1127 → 1129: the approval's pool title and pool line.
+- `ui/i18n/Strings.kt`, `ui/i18n/EnglishStrings.kt` and `ui/i18n/SpanishStrings.kt`, two lines each: the approval's pool title and pool line.
 
 The alternative, moving existing code out of those files to make room, is a refactor outside this change and would conflict with the parallel changes editing them.
 

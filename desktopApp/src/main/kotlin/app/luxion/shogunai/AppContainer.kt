@@ -486,7 +486,7 @@ class AppContainer(private val hostEnvironment: HostEnvironment = SystemHostEnvi
 
 
     val machineUseCases = MachineUseCases(
-        listDaemons = { runCatching { gradleDaemonSource.list() } },
+        listDaemons = { paths -> ListGradleDaemonsUseCase(gradleDaemonSource, fileManager, ports.agentSessions)(null) { paths }.map { daemons -> daemons.map { it.process } } },
         listMavenDaemons = { runCatching { ports.mavenDaemons.list() } },
         stopMavenDaemons = { pids -> engine.stopMavenDaemons(pids) },
         listComposeProjects = { config, worktrees, root -> engine.listComposeProjects(config.baseRepositoryPath, worktrees, root) },
@@ -880,7 +880,7 @@ class ReleaseResourcesUseCases(
 }
 
 class MachineUseCases(
-    val listDaemons: suspend () -> Result<List<DaemonProcess>>,
+    val listDaemons: suspend (worktreePaths: List<String>) -> Result<List<DaemonProcess>>,
     val stopDaemons: suspend (List<Long>?) -> Result<DaemonStopReport>,
     val listDerivedData: suspend () -> Result<DerivedDataListing>,
     val measureDerivedData: (List<DerivedDataFolder>, Boolean) -> Flow<MeasuredSize>,

@@ -45,6 +45,8 @@ import app.luxion.shogunai.domain.model.RunnerOutcome
 import app.luxion.shogunai.domain.model.runnerInUse
 import app.luxion.shogunai.domain.model.MainBranch
 import app.luxion.shogunai.domain.model.Multirepo
+import app.luxion.shogunai.domain.model.MultirepoUnavailability
+import app.luxion.shogunai.domain.model.UnavailableMultirepo
 import app.luxion.shogunai.domain.model.GradleDaemon
 import app.luxion.shogunai.domain.model.HoldingBuild
 import app.luxion.shogunai.domain.model.IOS_SIMULATOR_UDID
@@ -620,6 +622,7 @@ class ShogunCli(
 
     private suspend fun trustMultirepo(configure: ConfigureMultirepoUseCase, action: MultirepoAction.Trust, json: Boolean): Int {
         val directory = absolute(action.folder ?: workingDirectory)
+        if (action.revoke) resolveMultirepo.unavailableAt(directory)?.let { return forgetUnavailableMultirepo(configure, it, json) }
         val multirepo = resolveMultirepo.nearestDeclaration(directory) ?: throw WorktreeError.MultirepoNotFound(directory)
         if (action.revoke) {
             configure.revoke(multirepo).getOrThrow()
@@ -651,6 +654,22 @@ class ShogunCli(
         }
         configure.trust(multirepo).getOrThrow()
         out.line("approved")
+        return EXIT_OK
+    }
+
+    private fun forgetUnavailableMultirepo(configure: ConfigureMultirepoUseCase, multirepo: UnavailableMultirepo, json: Boolean): Int {
+        configure.forget(multirepo).getOrThrow()
+        if (json) {
+            printJson(forgottenMultirepoJson(multirepo))
+        } else {
+            val reason = when (val unavailability = multirepo.reason) {
+                MultirepoUnavailability.FolderUnreachable -> "its folder can't be reached"
+                MultirepoUnavailability.DeclarationMissing -> "its folder has no declaration"
+                is MultirepoUnavailability.InvalidDeclaration ->
+                    "its declaration is invalid" + unavailability.detail.takeIf { it.isNotBlank() }?.let { ": ${printable(it)}" }.orEmpty()
+            }
+            out.line("forgot ${printable(multirepo.declarationPath)}; $reason")
+        }
         return EXIT_OK
     }
 
