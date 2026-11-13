@@ -28,53 +28,68 @@ class FakeAppleSimulators(
         private set
     private var pollsSinceBoot = 0
 
+    var lockProbe: () -> Boolean = { false }
+    val callsUnderLock = mutableListOf<String>()
+    var afterListing: (suspend () -> Unit)? = null
+    var onCreate: (suspend (String) -> Unit)? = null
+    var createFailure: Throwable? = null
+
+    private fun observe(call: String) {
+        calls++
+        if (lockProbe()) callsUnderLock += call
+    }
+
     override fun isSupported(): Boolean = supported
 
     override suspend fun runtimes(): List<SimulatorRuntime> {
-        calls++
+        observe("runtimes")
         return installedRuntimes
     }
 
     override suspend fun devices(): List<SimulatorDevice> {
-        calls++
+        observe("devices")
         devicesFailure?.let { throw it }
         val booting = devicesByUdid.values.filter { it.state == SimulatorState.BOOTING }
         if (booting.isNotEmpty() && ++pollsSinceBoot > bootAfterPolls) {
             booting.forEach { devicesByUdid[it.udid] = it.copy(state = SimulatorState.BOOTED) }
         }
-        return devicesByUdid.values.toList()
+        val listed = devicesByUdid.values.toList()
+        afterListing?.also { afterListing = null }?.invoke()
+        return listed
     }
 
     override suspend fun create(name: String, deviceTypeIdentifier: String, runtimeIdentifier: String): String {
-        calls++
+        observe("create")
+        createFailure?.let { throw it }
         created += Created(name, deviceTypeIdentifier, runtimeIdentifier)
         val udid = "UDID-${created.size}"
         devicesByUdid[udid] = SimulatorDevice(udid, name, SimulatorState.SHUTDOWN)
+        onCreate?.also { onCreate = null }?.invoke(udid)
         return udid
     }
 
     override suspend fun boot(udid: String) {
-        calls++
+        observe("boot")
         booted += udid
         devicesByUdid[udid]?.let { devicesByUdid[udid] = it.copy(state = SimulatorState.BOOTING) }
         pollsSinceBoot = 0
     }
 
     override suspend fun show(udid: String) {
-        calls++
+        observe("show")
         showFailure?.let { throw it }
         shown += udid
     }
 
     override suspend fun shutdown(udid: String) {
-        calls++
+        observe("shutdown")
         shutdownFailure?.let { throw it }
         shutDown += udid
         devicesByUdid[udid]?.let { devicesByUdid[udid] = it.copy(state = SimulatorState.SHUTDOWN) }
     }
 
     override suspend fun delete(udid: String) {
-        calls++
+        observe("delete")
         deleteFailure?.let { throw it }
         deleted += udid
         devicesByUdid.remove(udid)
