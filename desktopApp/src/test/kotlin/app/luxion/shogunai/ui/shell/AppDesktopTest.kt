@@ -1,6 +1,7 @@
 package app.luxion.shogunai.ui.shell
 
 import java.awt.Desktop
+import java.awt.GraphicsEnvironment
 import java.awt.desktop.AboutEvent
 import java.awt.desktop.AboutHandler
 import java.awt.desktop.AppReopenedEvent
@@ -12,6 +13,7 @@ import java.awt.desktop.QuitHandler
 import java.awt.desktop.QuitResponse
 import java.awt.desktop.SystemEventListener
 import java.net.URI
+import org.junit.Assume.assumeFalse
 import org.junit.Assume.assumeTrue
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -85,6 +87,7 @@ class AppDesktopTest {
 
     @Test
     fun `the app menu's about, settings, quit and reopening reach the app, and quitting asks it first`() {
+        assumeFalse(GraphicsEnvironment.isHeadless())
         val desktop = FakeDesktop(
             setOf(Desktop.Action.APP_ABOUT, Desktop.Action.APP_PREFERENCES, Desktop.Action.APP_QUIT_HANDLER, Desktop.Action.APP_EVENT_REOPENED),
         )

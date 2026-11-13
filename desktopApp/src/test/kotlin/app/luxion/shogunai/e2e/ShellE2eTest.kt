@@ -139,8 +139,8 @@ class ShellE2eTest {
         appContainer.projectRepository.save(project(repository))
         val strings = show(appContainer)
         awaitText("sample-app")
-        val main = WorktreeRef("sample-app", repository.absolutePath)
         awaitCondition("the worktrees to load") { board?.holder("sample-app")?.hasLoaded == true }
+        val main = WorktreeRef("sample-app", board!!.holder("sample-app")!!.worktrees.single().path)
         val actions = assertNotNull(shell?.worktreeActions)
         assertFalse(actions.hasSelection())
 
