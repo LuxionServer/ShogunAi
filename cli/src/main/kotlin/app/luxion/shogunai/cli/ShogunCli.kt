@@ -32,6 +32,7 @@ import app.luxion.shogunai.domain.model.DaemonOwner
 import app.luxion.shogunai.domain.model.DaemonProcess
 import app.luxion.shogunai.domain.model.DaemonState
 import app.luxion.shogunai.domain.model.DaemonStopReport
+import app.luxion.shogunai.domain.model.DerivedDataKind
 import app.luxion.shogunai.domain.model.DerivedDataOwner
 import app.luxion.shogunai.domain.model.EmulatorState
 import app.luxion.shogunai.domain.model.AGENT_START_SECONDS
@@ -2411,15 +2412,15 @@ class ShogunCli(
         }
         val config = configFor(workingDirectory)
         val worktrees = engine.project(config).listWorktrees().getOrThrow()
-        val listing = listDerivedData(worktrees, includeCompilationCache = provider.compilationCache, measure = DerivedDataMeasure.ALL).getOrThrow()
+        val listing = listDerivedData(worktrees, provider.compilationCache, DerivedDataMeasure.ALL, packageWorktrees = worktrees).getOrThrow()
         if (command.json) {
             printJson(xcodeJson(active = true, listing = listing))
             return EXIT_OK
         }
         listing.ofWorktrees().forEach { item ->
-            val worktree = (item.owner as DerivedDataOwner.Worktree).path
+            val label = if (item.folder.kind == DerivedDataKind.SWIFT_BUILD) item.folder.path else (item.owner as DerivedDataOwner.Worktree).path
             val packages = item.folder.packagesBytes?.takeIf { it > 0 }?.let { "  (packages ${formatMemory(it)})" }.orEmpty()
-            out.line("$worktree  ${formatMemory(item.folder.sizeOrZero())}$packages")
+            out.line("$label  ${formatMemory(item.folder.sizeOrZero())}$packages")
         }
         val orphans = listing.orphans
         out.line("orphans: ${orphans.size} (${formatMemory(orphans.sumOf { it.sizeOrZero() })})")
@@ -2439,9 +2440,14 @@ class ShogunCli(
         val repository = engine.resolveRepository(workingDirectory).getOrNull()
         val provider = repository?.let { xcodeProvider(it) }
         if (repository == null || provider == null || !derivedDataSource.isSupported()) {
-            if (command.json) printJson(xcodeCleanJson(active = false, deletion = null)) else out.line("The Xcode provider isn't active.")
+            if (command.json) {
+                printJson(if (command.swiftBuild) xcodeCleanSwiftBuildJson(false, null) else xcodeCleanJson(active = false, deletion = null))
+            } else {
+                out.line("The Xcode provider isn't active.")
+            }
             return EXIT_OK
         }
+        if (command.swiftBuild) return xcodeCleanSwiftBuilds(command)
         val deletion = deleteOrphanedDerivedData().getOrThrow()
         if (command.json) {
             printJson(xcodeCleanJson(active = true, deletion = deletion))
@@ -2460,6 +2466,29 @@ class ShogunCli(
         return if (deletion.failures.isEmpty()) EXIT_OK else EXIT_FAILURE
     }
 
+    private suspend fun xcodeCleanSwiftBuilds(command: CliCommand.XcodeClean): Int {
+        val config = configFor(workingDirectory)
+        val worktrees = engine.project(config).listWorktrees().getOrThrow().filterNot { it.isPrunable }
+        val search = AgentSearch(config.agents.map { it.agentCommand }, worktrees)
+        val active = activeWorktrees(listOf(search))
+        val deletion = engine.deleteUnusedSwiftBuilds(worktrees, active).getOrThrow()
+        if (command.json) {
+            printJson(xcodeCleanSwiftBuildJson(active = true, deletion = deletion))
+        } else {
+            if (deletion.deleted.isEmpty() && deletion.inUse.isEmpty() && deletion.failures.isEmpty()) out.line("Nothing to delete.")
+            deletion.deleted.forEach { out.line("deleted ${it.path}  ${formatMemory(it.sizeOrZero())}") }
+            if (deletion.deleted.isNotEmpty()) out.line("freed ${formatMemory(deletion.bytesFreed)}")
+            deletion.inUse.forEach { out.line("kept ${it.path}  (in use)") }
+        }
+        deletion.failures.forEach { err.line("shogun: couldn't delete ${it.path}: ${it.detail}") }
+        return if (deletion.failures.isEmpty()) EXIT_OK else EXIT_FAILURE
+    }
+
+    private suspend fun activeWorktrees(searches: List<AgentSearch>): Set<String> {
+        val agents = DetectRunningAgentsUseCase(executor, herdr, sessionStore, orca = orcaReader)(searches).getOrNull().orEmpty()
+        return agents.filterValues { running -> running.any { it.state == AgentState.WORKING || it.state == AgentState.BLOCKED } }.keys
+    }
+
     private suspend fun xcodeTrim(command: CliCommand.XcodeTrim): Int {
         val repository = engine.resolveRepository(workingDirectory).getOrNull()
         val provider = repository?.let { xcodeProvider(it) }
@@ -2471,16 +2500,17 @@ class ShogunCli(
         if (settings.quotaMode == DerivedDataQuotaMode.NONE) return noDerivedDataQuota(command, DerivedDataQuota(DerivedDataQuotaMode.NONE, null))
         val configs = (listOf(configFor(workingDirectory)) + projectRepository.list().map { it.config })
             .distinctBy { it.baseRepositoryPath.trimEnd('/') }
-        val searches = configs.mapNotNull { config ->
-            engine.project(config).listWorktrees().getOrNull()?.let { listed -> AgentSearch(config.agents.map { agent -> agent.agentCommand }, listed.filterNot { it.isPrunable }) }
+        val listed = configs.mapNotNull { config ->
+            engine.project(config).listWorktrees().getOrNull()?.let { config to AgentSearch(config.agents.map { agent -> agent.agentCommand }, it.filterNot { worktree -> worktree.isPrunable }) }
         }
+        val searches = listed.map { it.second }
         val worktrees = searches.flatMap { it.worktrees }.distinctBy { it.path.trimEnd('/') }
-        val listing = listDerivedData(worktrees, includeCompilationCache = false, measure = DerivedDataMeasure.ALL).getOrThrow()
+        val packageWorktrees = listed.filter { xcodeProvider(it.first.baseRepositoryPath) != null }.flatMap { it.second.worktrees }.distinctBy { it.path.trimEnd('/') }
+        val listing = listDerivedData(worktrees, false, DerivedDataMeasure.ALL, packageWorktrees).getOrThrow()
         val quota = engine.resolveDerivedDataQuota(settings, listing.folders.sumOf { it.folder.sizeOrZero() })
         val quotaBytes = quota.bytes ?: return noDerivedDataQuota(command, quota)
-        val agents = DetectRunningAgentsUseCase(executor, herdr, sessionStore, orca = orcaReader)(searches).getOrNull().orEmpty()
-        val active = agents.filterValues { running -> running.any { it.state == AgentState.WORKING || it.state == AgentState.BLOCKED } }.keys
-        val trim = TrimDerivedDataUseCase(derivedDataSource, listDerivedData, now)(quotaBytes, worktrees, active, command.dryRun, listing, quota.mode).getOrThrow()
+        val active = activeWorktrees(searches)
+        val trim = TrimDerivedDataUseCase(derivedDataSource, listDerivedData, ports.swiftBuilds, now)(quotaBytes, worktrees, active, command.dryRun, listing, quota.mode).getOrThrow()
         if (command.json) {
             printJson(xcodeTrimJson(active = true, trim = trim))
             trim.failures.forEach { err.line("shogun: couldn't delete ${it.path}: ${it.detail}") }

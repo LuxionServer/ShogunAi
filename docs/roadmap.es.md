@@ -129,7 +129,7 @@ Por orden:
 Provisionado y recursos acotados para los stacks en los que un worktree recién creado está más lejos de compilar:
 
 - Decir al usuario de la app de escritorio qué carpetas de un worktree nuevo aún necesitan `pod install`; hoy la app clona los pods y solo `shogun new`, `shogun provision` y el hook de creación informan de lo que falta.
-- Los paquetes de los repositorios de paquetes Swift que se compilan con `swift build` (su carpeta `.build` por worktree), que el provider de Xcode no ve.
+- Las carpetas `.build` de los paquetes Swift que no están en la carpeta principal del worktree, que el provider de Xcode aún no lee.
 - Seguimiento de Flutter:
   - Comprobar el provider de principio a fin en un proyecto real creado con `flutter create` (un worktree que compila con `flutter build apk --debug` y `flutter build ios --simulator` sin pasos manuales).
   - Mostrar el tamaño de la caché de pub (`~/.pub-cache` o `PUB_CACHE`) junto a las demás cachés compartidas.

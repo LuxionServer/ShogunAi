@@ -129,7 +129,7 @@ In order:
 Provisioning and bounded resources for the stacks where a fresh worktree is furthest from building:
 
 - Telling the desktop app's user which folders of a new worktree still need `pod install`; today the app clones the pods and only `shogun new`, `shogun provision` and the creation hook report what's missing.
-- The packages of Swift package repositories built with `swift build` (their `.build` folder per worktree), which the Xcode provider doesn't see.
+- The `.build` folders of Swift packages that aren't in the worktree's main folder, which the Xcode provider doesn't read yet.
 - Flutter follow-ups:
   - Checking the provider end to end on a real project made with `flutter create` (a worktree that builds with `flutter build apk --debug` and `flutter build ios --simulator` without manual steps).
   - Showing the size of the pub cache (`~/.pub-cache` or `PUB_CACHE`) next to the other shared caches.

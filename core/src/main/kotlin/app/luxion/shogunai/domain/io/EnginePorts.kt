@@ -24,6 +24,7 @@ data class EnginePorts(
     val composeRegistry: ComposeProjectRegistry,
     val derivedData: DerivedDataSource,
     val derivedDataSizes: DerivedDataSizeStore,
+    val swiftBuilds: SwiftBuildSource,
     val packageCaches: PackageCacheSource,
     val herdr: HerdrClient,
     val herdrConfig: HerdrConfigSource,

@@ -43,6 +43,7 @@ fun hostEnginePorts(
         composeRegistry = JsonComposeProjectRegistry(files.composeProjects),
         derivedData = MacDerivedDataSource(executor, fileManager, home),
         derivedDataSizes = JsonDerivedDataSizeStore(files.derivedDataSizes),
+        swiftBuilds = FileSwiftBuildSource(fileManager),
         packageCaches = MacPackageCacheSource(fileManager, home),
         herdr = CliHerdrClient(executor, findExecutable),
         herdrConfig = HerdrConfigFile(environment::variable, home),

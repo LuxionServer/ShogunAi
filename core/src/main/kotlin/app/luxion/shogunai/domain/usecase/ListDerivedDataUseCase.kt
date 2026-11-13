@@ -3,6 +3,7 @@ package app.luxion.shogunai.domain.usecase
 import app.luxion.shogunai.domain.io.DerivedDataSizeStore
 import app.luxion.shogunai.domain.io.DerivedDataSource
 import app.luxion.shogunai.domain.io.PackageCacheSource
+import app.luxion.shogunai.domain.io.SwiftBuildSource
 import app.luxion.shogunai.domain.model.AttributedDerivedData
 import app.luxion.shogunai.domain.model.DerivedDataListing
 import app.luxion.shogunai.domain.model.DerivedDataOwner
@@ -18,18 +19,21 @@ class ListDerivedDataUseCase(
     private val source: DerivedDataSource,
     sizes: DerivedDataSizeStore = DerivedDataSizeStore.NONE,
     private val packageCaches: PackageCacheSource = PackageCacheSource.NONE,
+    private val swiftBuilds: SwiftBuildSource = SwiftBuildSource.NONE,
 ) {
-    private val measureSizes = MeasureDerivedDataUseCase(source, sizes)
+    private val measureSizes = MeasureDerivedDataUseCase(source, sizes, swiftBuilds = swiftBuilds)
 
     suspend operator fun invoke(
         worktrees: List<Worktree>,
         includeCompilationCache: Boolean,
         measure: DerivedDataMeasure,
+        packageWorktrees: List<Worktree> = emptyList(),
     ): Result<DerivedDataListing> = runSuspendCatching {
         coroutineScope {
             val compilationCache = async { if (includeCompilationCache) source.compilationCacheBytes() else null }
             val caches = async { packageCaches.sizes() }
-            val attributed = source.folders().map { folder -> AttributedDerivedData(folder, ownerOf(folder.workspacePath, worktrees)) }
+            val attributed = source.folders().map { folder -> AttributedDerivedData(folder, ownerOf(folder.workspacePath, worktrees)) } +
+                swiftBuildsOf(packageWorktrees)
             val toMeasure = attributed.filter { entry ->
                 when (measure) {
                     DerivedDataMeasure.NONE -> false
@@ -48,6 +52,11 @@ class ListDerivedDataUseCase(
             )
         }
     }
+
+    private fun swiftBuildsOf(worktrees: List<Worktree>): List<AttributedDerivedData> =
+        worktrees.mapNotNull { worktree ->
+            swiftBuilds.folderOf(worktree.path)?.let { AttributedDerivedData(it, DerivedDataOwner.Worktree(worktree.path)) }
+        }
 
     private fun ownerOf(workspacePath: String, worktrees: List<Worktree>): DerivedDataOwner =
         if (!source.projectExists(workspacePath)) {
