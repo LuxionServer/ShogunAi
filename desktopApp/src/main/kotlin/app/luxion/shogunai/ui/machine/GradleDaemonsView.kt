@@ -21,10 +21,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import app.luxion.shogunai.domain.model.DaemonKind
 import app.luxion.shogunai.domain.model.DaemonState
 import app.luxion.shogunai.domain.model.DaemonStopReport
+import app.luxion.shogunai.domain.model.HoldingBuild
 import app.luxion.shogunai.ui.components.DisabledReason
 import app.luxion.shogunai.ui.components.InlineProgress
 import app.luxion.shogunai.ui.components.Notice
@@ -106,6 +108,12 @@ private fun LoadedDaemons(daemons: List<MachineDaemon>, machine: MachineResource
                 },
             ).toTypedArray(),
         )
+        daemon.process.holder?.let { holder ->
+            MachineSecondaryText(
+                holdingBuildText(holder, strings),
+                Modifier.padding(start = Spacing.smd).testTag("daemon-build-${daemon.process.pid}"),
+            )
+        }
     }
 }
 
@@ -147,6 +155,14 @@ private fun daemonTitle(daemon: MachineDaemon, strings: Strings): String = when 
     DaemonKind.GRADLE -> strings.gradleDaemonLabel(daemon.process.gradleVersion)
     DaemonKind.KOTLIN -> strings.kotlinDaemonLabel
 } + " · PID ${daemon.process.pid}"
+
+fun holdingBuildText(holder: HoldingBuild, strings: Strings, now: Instant = Instant.now()): String = strings.daemonBuild(
+    tasks = holder.client?.tasks?.takeIf { it.isNotEmpty() }?.joinToString(" "),
+    started = holder.startedAt?.let { relativeTime(it, now, strings) },
+    session = holder.client?.session?.let { "${it.agent} ${it.sessionId.take(SESSION_ID_SHOWN)}" },
+)
+
+private const val SESSION_ID_SHOWN = 8
 
 fun daemonStateText(daemon: MachineDaemon, strings: Strings, now: Instant = Instant.now()): String =
     when (val state = daemon.process.state) {

@@ -6,12 +6,15 @@ import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.v2.runComposeUiTest
 import app.luxion.shogunai.MachineUseCases
+import app.luxion.shogunai.domain.model.AgentSessionRef
 import app.luxion.shogunai.domain.model.DaemonKind
 import app.luxion.shogunai.domain.model.DaemonProcess
 import app.luxion.shogunai.domain.model.DaemonState
@@ -20,10 +23,13 @@ import app.luxion.shogunai.domain.model.DerivedDataListing
 import app.luxion.shogunai.domain.model.DerivedDataQuota
 import app.luxion.shogunai.domain.model.DerivedDataQuotaMode
 import app.luxion.shogunai.domain.model.DerivedDataTrim
+import app.luxion.shogunai.domain.model.GradleClient
+import app.luxion.shogunai.domain.model.HoldingBuild
 import app.luxion.shogunai.domain.model.PackageCacheSizes
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.ResourceSettings
+import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.usecase.GradleTrim
 import app.luxion.shogunai.ui.i18n.EnglishStrings
 import app.luxion.shogunai.ui.i18n.LocalStrings
@@ -39,8 +45,10 @@ import kotlin.test.assertTrue
 @OptIn(ExperimentalTestApi::class)
 class GradleDaemonsViewUiTest {
 
+    private val listedPaths = mutableListOf<List<String>>()
+
     private fun useCases(daemons: List<DaemonProcess>) = MachineUseCases(
-        listDaemons = { Result.success(daemons) },
+        listDaemons = { paths -> listedPaths += paths; Result.success(daemons) },
         stopDaemons = { Result.failure(IllegalStateException()) },
         listDerivedData = { Result.success(DerivedDataListing(emptyList(), null)) },
         measureDerivedData = { _, _ -> emptyFlow() },
@@ -64,10 +72,10 @@ class GradleDaemonsViewUiTest {
         resolveDerivedDataQuota = { _, _ -> DerivedDataQuota(DerivedDataQuotaMode.NONE, null) },
     )
 
-    private fun daemon(pid: Long, state: DaemonState) = DaemonProcess(pid, DaemonKind.GRADLE, "8.10", 0, null, state)
+    private fun daemon(pid: Long, state: DaemonState, holder: HoldingBuild? = null) = DaemonProcess(pid, DaemonKind.GRADLE, "8.10", 0, null, state, holder)
 
-    private fun project(name: String) =
-        MachineProject(Project(name, name, ProjectConfig("/home/dev/projects/$name", "/home/dev/projects", emptyList())), emptyList(), setOf(MachineResource.GRADLE_DAEMONS), gradleBuildCacheEnabled = false)
+    private fun project(name: String, worktrees: List<Worktree> = emptyList()) =
+        MachineProject(Project(name, name, ProjectConfig("/home/dev/projects/$name", "/home/dev/projects", emptyList())), worktrees, setOf(MachineResource.GRADLE_DAEMONS), gradleBuildCacheEnabled = false)
 
     private fun ComposeUiTest.showView(daemons: List<DaemonProcess>, projects: List<MachineProject> = listOf(project("main-repo"))): Job {
         val job = Job()
@@ -125,6 +133,34 @@ class GradleDaemonsViewUiTest {
         onNodeWithText("Details (3)").performClick()
         waitForIdle()
         onNodeWithText("web").assertIsDisplayed()
+        job.cancel()
+    }
+
+    @Test
+    fun `a busy daemon shows the build that holds it under its row and an idle one doesn't`() = runComposeUiTest {
+        val session = AgentSessionRef("1a2b3c4d-0000-0000-0000-000000000000", "claude", "/home/dev/projects/worktrees/TASK-123")
+        val holder = HoldingBuild("/home/dev/projects/worktrees/TASK-123", Instant.now().minusSeconds(180), GradleClient(4242, listOf(":app:assembleDebug"), session = session))
+        val job = showView(listOf(daemon(1, DaemonState.Busy, holder), daemon(2, DaemonState.Idle(Instant.now()))))
+
+        onNodeWithTag("daemon-build-1", useUnmergedTree = true)
+            .assertIsDisplayed()
+            .assertTextEquals("Building :app:assembleDebug · started 3 minutes ago · agent session claude 1a2b3c4d")
+        assertTrue(onAllNodesWithTag("daemon-build-2", useUnmergedTree = true).fetchSemanticsNodes().isEmpty())
+        job.cancel()
+    }
+
+    @Test
+    fun `the listing receives every saved project's worktrees to find agent sessions`() = runComposeUiTest {
+        val projects = listOf(
+            project("api", listOf(Worktree("/home/dev/projects/api", "main", isMain = true), Worktree("/home/dev/projects/worktrees/api/TASK-123", "feature/TASK-123"))),
+            project("web", listOf(Worktree("/home/dev/projects/web", "main", isMain = true))),
+        )
+        val job = showView(emptyList(), projects)
+
+        assertEquals(
+            listOf("/home/dev/projects/api", "/home/dev/projects/worktrees/api/TASK-123", "/home/dev/projects/web"),
+            listedPaths.first(),
+        )
         job.cancel()
     }
 }

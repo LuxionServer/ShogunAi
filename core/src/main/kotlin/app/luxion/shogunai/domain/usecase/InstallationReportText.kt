@@ -221,9 +221,11 @@ object InstallationReportText {
         }
     }
 
+    private fun forgetCommand(finding: InstallationFinding.MultirepoCheck): String = "'shogun multirepo trust ${finding.folder} --revoke'"
+
     private fun multirepoFix(finding: InstallationFinding.MultirepoCheck, problem: MultirepoProblem): String = when (problem) {
-        MultirepoProblem.DeclarationMissing -> "Restore ${finding.folder}; otherwise ShogunAi forgets it the next time it starts"
-        is MultirepoProblem.InvalidDeclaration -> "${problem.path}${problem.detail.suffix()}; correct it"
+        MultirepoProblem.DeclarationMissing -> "Restore ${finding.folder}, or forget it with ${forgetCommand(finding)}"
+        is MultirepoProblem.InvalidDeclaration -> "${problem.path}${problem.detail.suffix()}; correct it, or forget it with ${forgetCommand(finding)}"
         is MultirepoProblem.RepositoryMissing ->
             "'${problem.alias}': ${problem.path} isn't a Git repository; restore it, or change its path in ${joinPath(finding.folder, MULTIREPO_FILE_NAME)}"
         MultirepoProblem.NotTrusted -> "It isn't trusted on this machine; review it and run 'shogun multirepo trust ${finding.folder}'"

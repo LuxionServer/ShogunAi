@@ -5,6 +5,7 @@ import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.io.AndroidSdk
 import app.luxion.shogunai.domain.io.AppleSimulators
 import app.luxion.shogunai.domain.io.FileManager
+import app.luxion.shogunai.domain.io.gradleBuildFolders
 import app.luxion.shogunai.domain.executor.CommandResult
 import app.luxion.shogunai.domain.model.CheckState
 import app.luxion.shogunai.domain.model.HostOs
@@ -34,7 +35,7 @@ class CheckProviderToolsUseCase(
 
     suspend operator fun invoke(project: String, repository: String, providers: RepositoryProviders): List<InstallationCheck> {
         val tools = buildList<Pair<ProviderToolId, suspend () -> Located>> {
-            if (providers.gradle != null) add(ProviderToolId.GRADLE to { buildTool(repository, BuildTool.GRADLE) })
+            if (providers.gradle != null) add(ProviderToolId.GRADLE to { buildTool(gradleBuild(repository), BuildTool.GRADLE) })
             if (providers.maven != null) add(ProviderToolId.MAVEN to { buildTool(repository, BuildTool.MAVEN) })
             if (providers.emulator != null) add(ProviderToolId.ANDROID_SDK to { androidSdk(repository) })
             if (providers.iosSimulator != null) add(ProviderToolId.IOS_SIMULATOR to ::iosSimulators)
@@ -100,6 +101,11 @@ class CheckProviderToolsUseCase(
             "mvnw", "mvn", ".mvn/wrapper/maven-wrapper.properties", ProviderToolId.MAVEN_JAVA,
             ToolVersions::mavenDistribution, ToolVersions::mavenPrinted, JavaCompatibility::minimumJavaForMaven, { null },
         ),
+    }
+
+    private fun gradleBuild(repository: String): String {
+        val folder = gradleBuildFolders(fileManager, repository).firstOrNull()
+        return if (folder.isNullOrEmpty()) repository else joinPath(repository, folder)
     }
 
     private suspend fun buildTool(repository: String, tool: BuildTool): Located {
