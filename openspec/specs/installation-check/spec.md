@@ -128,7 +128,7 @@ The desktop app's "Check Installation…" SHALL open a window that runs the chec
 - **THEN** the hooks check passes in the window
 
 ### Requirement: Check the tools of each project's providers
-For each registered project whose base folder exists, the check SHALL read the providers its repository declares and report one check per tool they need: the Android SDK and an AVD for `emulator`, the simulators and an iOS runtime for `ios-simulator`, Xcode for `xcode` and `pod` when it declares CocoaPods, `flutter` (or `fvm`) for `flutter`, and `node` and the package manager of its lockfile for `node`. The tools of `gradle`, `maven` and `docker-compose` are checked as their own requirements say.
+For each registered project whose base folder exists, the check SHALL read the providers its repository declares and report one check per tool they need: the Android SDK and an AVD for `emulator`, simulators and an iOS runtime for `ios-simulator`, Xcode for `xcode` and `pod` when it declares CocoaPods, `flutter` (or `fvm`) for `flutter`, and `node` and its lockfile's package manager for `node`. The tools of `gradle`, `maven` and `docker-compose` follow their own requirements.
 
 #### Scenario: Tools found
 - **WHEN** a project declares `docker-compose`, `docker compose version` runs and `docker info` succeeds

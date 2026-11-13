@@ -6,7 +6,7 @@ Defines how ShogunAi inspects a repository's files to tell which stacks it uses 
 ## Requirements
 
 ### Requirement: Detect the stacks of a repository
-The system SHALL inspect the repository's main folder and its direct subfolders, reading only file names and, for Gradle build and settings files and the main folder's `pubspec.yaml`, their text, and report the stacks it finds with the files that revealed each. The stacks are Gradle, Android, Xcode, Maven, Docker Compose, Flutter and Node. Node SHALL be detected from a `package.json` in the main folder, with the main folder's lockfiles as further evidence. Folders such as `build`, `node_modules` and hidden folders SHALL NOT be inspected.
+The system SHALL inspect the repository's main folder and its direct subfolders, reading only file names and, for Gradle build and settings files and the main folder's `pubspec.yaml`, their text, and report the stacks it finds with the files that revealed each: Gradle, Android, Xcode, Maven, Docker Compose, Flutter and Node, the last only from a `package.json` in the main folder. Folders such as `build`, `node_modules` and hidden folders SHALL NOT be inspected.
 
 #### Scenario: Gradle repository
 - **WHEN** the repository has `gradlew` and `settings.gradle.kts` in its main folder
