@@ -33,6 +33,15 @@ class FakeAndroidSdk(
 
     var process = FakeEmulatorProcess()
 
+    var lockProbe: () -> Boolean = { false }
+    val callsUnderLock = mutableListOf<String>()
+    var afterListing: (suspend () -> Unit)? = null
+    var onStop: (suspend (String) -> Unit)? = null
+
+    private fun observe(call: String) {
+        if (lockProbe()) callsUnderLock += call
+    }
+
     private val location = SdkLocation("/home/dev/Android/sdk", "/home/dev/Android/sdk/emulator/emulator", "/home/dev/Android/sdk/platform-tools/adb")
 
     override fun locate(repositoryPath: String): SdkLocation {
@@ -63,11 +72,14 @@ class FakeAndroidSdk(
 
     override suspend fun deviceStates(sdk: SdkLocation): Map<String, EmulatorState> {
         stateQueries++
+        observe("deviceStates")
         val booting = states.filterValues { it == EmulatorState.BOOTING }.keys
         if (booting.isNotEmpty() && ++pollsSinceStart > bootAfterPolls) {
             booting.forEach { states[it] = EmulatorState.RUNNING }
         }
-        return states.toMap()
+        val listed = states.toMap()
+        afterListing?.also { afterListing = null }?.invoke()
+        return listed
     }
 
     override fun startEmulator(sdk: SdkLocation, avd: String, consolePort: Int, noWindow: Boolean): EmulatorProcess {
@@ -78,6 +90,8 @@ class FakeAndroidSdk(
     }
 
     override suspend fun stopEmulator(sdk: SdkLocation, serial: String) {
+        observe("stopEmulator")
+        onStop?.also { onStop = null }?.invoke(serial)
         stopFailure?.let { throw it }
         stopped += serial
         states.remove(serial)
