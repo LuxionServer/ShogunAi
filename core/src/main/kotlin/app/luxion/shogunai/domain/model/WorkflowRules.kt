@@ -109,6 +109,12 @@ object WorkflowRules {
                 "once the base is clear, or ask the person.",
         ),
         WorkflowRule(
+            "worktrees.overlap",
+            WorkflowTopic.WORKTREES,
+            "Before opening a pull request, run `shogun overlap`; if it lists files, tell the person which files " +
+                "and worktrees your change shares, since those pull requests may conflict.",
+        ),
+        WorkflowRule(
             "worktrees.handoff",
             WorkflowTopic.WORKTREES,
             "Give the person the path of the new worktree so they open a session there, and consult `shogun status` " +

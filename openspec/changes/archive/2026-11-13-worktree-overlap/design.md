@@ -49,7 +49,7 @@ With 10 worktrees that's 30 short Git reads; the cost grows linearly with the wo
 Agreed with Ciro: the base is the one `shogun status` uses, the recorded base resolved through `ResolveRecordedBasesUseCase`, or the main branch when there is none or it no longer exists; a detached worktree uses the main branch.
 Worktrees with different bases are reported together, each one shown with its base: a worktree on `epic/redesign` and one on `develop` touching the same file will collide when the epic is merged.
 The main checkout is a worktree like the others: on its base branch it only reports what it hasn't pushed and its uncommitted changes, usually nothing.
-A worktree is skipped, and listed as such with its reason, when it is prunable or bare, when no base can be resolved (no recorded base and no main branch), or when one of its Git reads fails (e.g. unrelated histories); a skipped worktree never fails the command.
+Bare entries have no working tree and are left out. A worktree is skipped, and listed as such with its reason, when it is prunable, when no base can be resolved (no recorded base and no main branch), or when one of its Git reads fails (e.g. unrelated histories); a skipped worktree never fails the command.
 
 ### Ignored files declared by the repository
 
@@ -87,6 +87,13 @@ Name: `overlap` is short, a noun like `status` and `base`, and reads as what it 
   It's built in `ProjectEngine` with one line next to `readBaseBranches`.
 - `cli/.../OverlapText.kt` with the text and JSON rendering, and the command's handler in a small function called from `ShogunCli`'s dispatch; `CliCommand.Overlap`, its parser and its help entry are added next to `Base`.
 - The rule `worktrees.overlap` goes in `WorkflowRules` right after `worktrees.pull-request-base`.
+- `OverlapCommand` is a top-level `CliCommand` in `OverlapCommand.kt` together with its parser, which reads `--json` itself, so `CliCommand.kt` only gets its line in the parser's dispatch and `UsageException` becomes `internal` instead of `private`.
+
+### File length caps
+
+`CliCommand.kt` (1090) and `RepositoryProvisioningFiles.kt` (459) are capped at their current length in `ArchitectureExceptions.kt`.
+Each grows by exactly one line, the command's entry in the parser's dispatch and the `overlapIgnore` field in `read`, so their caps go up by one (1091 and 460).
+Everything else of the command and the field lives in new files (`OverlapCommand.kt`, `OverlapDeclaration.kt`), and splitting either file is out of this change's scope while other changes edit them.
 
 ## Risks / Trade-offs
 

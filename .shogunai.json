@@ -1,5 +1,8 @@
 {
   "providers": {
     "desktop-app": { "module": ":desktopApp" }
+  },
+  "overlap": {
+    "ignore": ["docs/roadmap.md", "docs/roadmap.es.md"]
   }
 }
