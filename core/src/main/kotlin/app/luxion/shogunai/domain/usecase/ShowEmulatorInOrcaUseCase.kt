@@ -17,7 +17,7 @@ class ShowEmulatorInOrcaUseCase(
 ) {
     suspend operator fun invoke(
         worktreePath: String,
-        device: String,
+        device: String?,
         otherDeviceRunning: suspend () -> Boolean = { false },
     ): OrcaEmulatorView {
         if (!orca.isInstalled()) return OrcaEmulatorView.NotOpen
@@ -32,9 +32,10 @@ class ShowEmulatorInOrcaUseCase(
         }
     }
 
-    private suspend fun show(worktreePath: String, device: String, otherDeviceRunning: suspend () -> Boolean): OrcaEmulatorView {
+    private suspend fun show(worktreePath: String, device: String?, otherDeviceRunning: suspend () -> Boolean): OrcaEmulatorView {
         if (!orca.status().running) return OrcaEmulatorView.NotOpen
         if (orca.agentsByWorktree().none { samePath(it.path, worktreePath) }) return OrcaEmulatorView.NotOpen
+        if (device == null) return OrcaEmulatorView.Unsupported
         if (isRunning(otherDeviceRunning)) return OrcaEmulatorView.Skipped
         orca.attachEmulator(OrcaWorkspace.Worktree(worktreePath), device)
         return OrcaEmulatorView.Shown

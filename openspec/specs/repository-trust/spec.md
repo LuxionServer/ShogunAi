@@ -6,7 +6,7 @@ Makes sure the commands a repository's `.shogunai.json` asks ShogunAi to run onl
 ## Requirements
 
 ### Requirement: Approve a repository's post-creation commands
-The system SHALL keep, per machine and per repository, one approval of what the repository's `.shogunai.json` asks ShogunAi to run or apply: its post-creation commands, the variables it declares in `env` with their templates, and its `envFile`. An approval SHALL cover exactly what it was given: a different list of commands or the same commands in another order, a variable added, removed, renamed or with another template, or another `envFile`, SHALL count as not approved. A repository that declares no `env` and no `envFile` SHALL keep the approval it had of its commands. Approvals SHALL be stored under the user's ShogunAi folder, readable and writable only by the user.
+The system SHALL keep, per machine and per repository, one approval of what the repository's `.shogunai.json` asks ShogunAi to run or apply: its post-creation commands, the variables it declares in `env` with their templates, and its `envFile`. A repository that declares no `env` and no `envFile` SHALL keep the approval it had of its commands. Approvals SHALL be stored under the user's ShogunAi folder, readable and writable only by the user.
 
 #### Scenario: Approved commands
 - **WHEN** the user approved `[["npm", "install"]]` for `~/projects/main-repo` and `.shogunai.json` still declares it
@@ -37,7 +37,7 @@ The system SHALL keep, per machine and per repository, one approval of what the 
 - **THEN** the commands still count as approved
 
 ### Requirement: Ask before running unapproved commands in the desktop app
-When a creation or provisioning started from the desktop app reaches a repository that isn't approved, the app SHALL ask before preparing the worktree's environment, showing every post-creation command in full and every declared variable with its template, plus the environment file, and let the user approve them, which runs the commands and applies the variables, or skip them for this worktree. Skipping SHALL keep the worktree, without the declared variables, the environment file or the commands, and report it.
+When a creation or provisioning started from the desktop app reaches a repository that isn't approved, the app SHALL ask before preparing the worktree's environment, showing every post-creation command in full and every declared variable with its template, plus the environment file, and let the user approve them, which runs the commands and applies the variables, or skip them for this worktree.
 
 #### Scenario: Run and approve
 - **WHEN** the user creates a worktree in a repository with unapproved commands and chooses to run them
@@ -56,7 +56,7 @@ When a creation or provisioning started from the desktop app reaches a repositor
 - **THEN** the worktree has no reserved port for `PORT`, no environment file is written, and the app says the repository's configuration wasn't approved
 
 ### Requirement: Ask before running unapproved commands in the command line
-`shogun new` and `shogun provision` SHALL, when the repository isn't approved and standard input is a terminal, print its post-creation commands, its declared variables with their templates and its environment file before preparing the environment, and ask for confirmation, approving them and applying them only on an explicit yes. When they can't ask, and always in `shogun hook herdr` and `shogun hook worktree-create`, they SHALL skip them, print a note on standard error that names `shogun trust`, and otherwise succeed.
+`shogun new` and `shogun provision` SHALL, when the repository isn't approved and standard input is a terminal, print its post-creation commands, its declared variables with their templates and its environment file before preparing the environment, and ask for confirmation, approving them and applying them only on an explicit yes.
 
 #### Scenario: Interactive yes
 - **WHEN** the user runs `shogun new TASK-123` on a terminal and answers yes
@@ -123,3 +123,62 @@ When the user saves environment variables or the environment file from the deskt
 #### Scenario: Approve from settings
 - **WHEN** project settings shows a repository whose declared variables aren't approved and the user approves them
 - **THEN** the variables are delivered from then on
+
+### Requirement: An approval covers exactly what it was given
+A repository's approval SHALL cover exactly what it was given: a different list of commands or the same commands in another order, a variable added, removed, renamed or with another template, or another `envFile`, SHALL count as not approved.
+
+#### Scenario: Commands reordered
+- **WHEN** after the approval the repository declares the same commands in another order
+- **THEN** the commands count as not approved
+
+#### Scenario: Variable added
+- **WHEN** the user approved a repository declaring `{ "env": { "PORT": "${port}" } }` and a pull adds `"API_URL": "https://example.com"`
+- **THEN** the repository counts as not approved until the user approves its current commands and variables
+
+#### Scenario: Template changed
+- **WHEN** after the approval the template of `PORT` changes from `${port}` to `${port:http}`
+- **THEN** the repository counts as not approved
+
+#### Scenario: Another environment file
+- **WHEN** after the approval `envFile` changes from `.env.shogunai` to `.env.local`
+- **THEN** the repository counts as not approved
+
+### Requirement: Skip unapproved commands in the desktop app
+When the user skips an unapproved repository's commands and variables in the desktop app, the app SHALL keep the worktree, without the declared variables, the environment file or the commands, and report it.
+
+#### Scenario: Skipped commands
+- **WHEN** the user chooses to skip them
+- **THEN** the worktree is created with its files, the commands don't run, and the app says so
+
+#### Scenario: Skipped variables
+- **WHEN** the user skips a repository that declares `PORT` and `envFile`
+- **THEN** the worktree has no reserved port for `PORT`, no environment file is written, and the app says the repository's configuration wasn't approved
+
+### Requirement: Skip unapproved commands when the command line can't ask
+When `shogun new` or `shogun provision` can't ask, and always in `shogun hook herdr` and `shogun hook worktree-create`, an unapproved repository's commands and variables SHALL be skipped, with a note on standard error that names `shogun trust`, and the command SHALL otherwise succeed.
+
+#### Scenario: Herdr hook
+- **WHEN** Herdr's `worktree.created` event provisions a worktree of a repository with unapproved commands
+- **THEN** files are provisioned, the commands don't run, a note naming `shogun trust` goes to standard error, and the command exits with code 0
+
+#### Scenario: Claude Code hook
+- **WHEN** `shogun hook worktree-create` provisions a worktree of a repository whose declared variables aren't approved
+- **THEN** the worktree gets no declared variables nor environment file, and the note on standard error names `shogun trust`
+
+#### Scenario: Standard input isn't a terminal
+- **WHEN** the user runs `shogun new TASK-123` with standard input redirected in a repository with unapproved commands
+- **THEN** the worktree is created, the commands don't run, a note naming `shogun trust` goes to standard error, and the command exits with code 0
+
+### Requirement: Approvals from several processes are all kept
+Approving or revoking a repository SHALL read the latest approvals under the lock shared by the desktop app and the CLI, so approvals made at once by both are all kept.
+
+#### Scenario: App and CLI approving at once
+- **WHEN** the desktop app approves `~/projects/main-repo` while `shogun trust --yes` approves `~/projects/other-repo`
+- **THEN** both repositories count as approved afterwards
+
+### Requirement: Unreadable approvals approve nothing and are kept
+When `trust.json` can't be read, no repository SHALL count as approved, and the next approval or revocation SHALL first keep the unreadable file as `trust.json.unreadable-<timestamp>`.
+
+#### Scenario: Corrupted trust file
+- **WHEN** `trust.json` isn't valid JSON and the user approves a repository
+- **THEN** the repository is asked about before the approval, the old file is kept as `trust.json.unreadable-<timestamp>`, and the new file holds the approval

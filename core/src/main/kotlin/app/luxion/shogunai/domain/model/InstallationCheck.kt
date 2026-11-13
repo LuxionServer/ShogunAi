@@ -17,6 +17,9 @@ enum class ProviderToolId(val id: String, val displayName: String, val provider:
     GRADLE("gradle", "Gradle", "gradle"),
     GRADLE_JAVA("gradle-java", "Java for Gradle", "gradle"),
     MAVEN("maven", "Maven", "maven"),
+    GRADLE_DAEMON_JAVA("gradle-daemon-java", "Java for Gradle's daemon", "gradle"),
+    GRADLE_TOOLCHAINS("gradle-toolchains", "Java toolchains", "gradle"),
+    ANDROID_GRADLE_PLUGIN_JAVA("agp-java", "Java for the Android Gradle Plugin", "gradle"),
     MAVEN_JAVA("maven-java", "Java for Maven", "maven"),
     ANDROID_SDK("android-sdk", "Android SDK", "emulator"),
     IOS_SIMULATOR("ios-simulator", "iOS Simulator", "ios-simulator"),
@@ -35,11 +38,19 @@ sealed interface ProviderToolProblem {
     data object NoIosRuntime : ProviderToolProblem
     data class ProvidersUnreadable(val detail: String?) : ProviderToolProblem
     data class JavaHomeInvalid(val javaHome: String) : ProviderToolProblem
-    data class JavaTooOld(val java: Int, val required: Int, val toolVersion: String) : ProviderToolProblem
-    data class GradleTooOld(val java: Int, val gradle: String, val required: String) : ProviderToolProblem
+    data class JavaTooOld(val java: Int, val required: Int, val toolVersion: String, val source: JavaSource = JavaSource.ENVIRONMENT) :
+        ProviderToolProblem
+    data class GradleTooOld(val java: Int, val gradle: String, val required: String, val source: JavaSource = JavaSource.ENVIRONMENT) :
+        ProviderToolProblem
+    data class JavaNotInstalled(val versions: List<Int>, val searched: List<String>) : ProviderToolProblem
+    data class GradleJavaHomeInvalid(val javaHome: String, val propertiesFile: String) : ProviderToolProblem
+    data class DaemonCriteriaUnreadable(val path: String) : ProviderToolProblem
+    data class AndroidGradlePluginNeedsJava(val java: Int, val required: Int, val agp: String, val source: JavaSource) : ProviderToolProblem
     data class TooOld(val version: String, val minimum: String) : ProviderToolProblem
     data class DaemonNotRunning(val os: HostOs, val detail: String?) : ProviderToolProblem
 }
+
+enum class JavaSource { ENVIRONMENT, GRADLE_PROPERTY, DAEMON_CRITERIA }
 
 sealed interface MultirepoProblem {
     val blocking: Boolean get() = false
@@ -119,6 +130,8 @@ sealed interface InstallationFinding {
         val problem: ProviderToolProblem? = null,
         val installed: Int? = null,
         val version: String? = null,
+        val provisioned: Boolean = false,
+        val java: Int? = null,
     ) : InstallationFinding {
         override val id: String get() = "provider:$project:${tool.id}"
     }

@@ -89,6 +89,10 @@ private fun englishWorktreeTexts(error: WorktreeError, gitCause: GitFailureCause
                 "Fix the file. If you add or remove a project, the unreadable file is first kept next to it.",
             )
         }
+    is WorktreeError.LocalFileFromNewerVersion -> ErrorTexts(
+        "The file ${error.path} was written by a newer version of ShogunAi, so this version leaves it unchanged.",
+        "Update ShogunAi to make this change.",
+    )
     is WorktreeError.WorktreeAlreadyExists -> ErrorTexts(
         "The folder ${error.path} already exists.",
         "Use another task id, or remove the existing folder.",
@@ -198,6 +202,38 @@ private fun englishWorktreeTexts(error: WorktreeError, gitCause: GitFailureCause
     is WorktreeError.DesktopTurnHeldByOther -> ErrorTexts(
         "The desktop turn belongs to ${error.holder.displayName}.",
         "Only that worktree, or you from the Desktop view, can release it.",
+    )
+    is WorktreeError.PhysicalDeviceNotFound -> ErrorTexts(
+        "No recorded device is called \"${error.query}\".",
+        "Check its id, alias or name in the Devices view.",
+    )
+    is WorktreeError.AmbiguousPhysicalDevice -> ErrorTexts(
+        "\"${error.query}\" matches several recorded devices: ${error.candidates.joinToString { it.id }}.",
+        "Use the device's id instead.",
+    )
+    is WorktreeError.DuplicateDeviceAlias -> ErrorTexts(
+        "${error.owner.displayName} already uses the alias \"${error.alias}\".",
+        "Choose another alias.",
+    )
+    is WorktreeError.NoRecordedDeviceMatches -> ErrorTexts(
+        "No recorded device matches ${error.request.describe()}.",
+        "Connect the device once so it's recorded, or check the Devices view.",
+    )
+    WorktreeError.PhysicalDevicePlatformRequired -> ErrorTexts(
+        "Both Android and iOS devices could be acquired.",
+        "Choose the platform, a name or a model.",
+    )
+    is WorktreeError.PhysicalDeviceAlreadyHeld -> ErrorTexts(
+        "${error.held.holderName} already holds ${error.held.device.displayName}.",
+        "Release it first.",
+    )
+    is WorktreeError.PhysicalDeviceUnavailable -> ErrorTexts(
+        "${error.summary}.",
+        "Connect or release a device, or wait for one with --wait.",
+    )
+    is WorktreeError.PhysicalDeviceWaitTimedOut -> ErrorTexts(
+        "No device was free within ${error.waited.toMinutes()} min.",
+        "Release one from the Devices view, or try again later.",
     )
     is WorktreeError.AndroidSdkNotFound -> ErrorTexts(
         "The Android SDK wasn't found.",

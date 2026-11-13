@@ -58,7 +58,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 
-enum class MachineResource { GRADLE_DAEMONS, ANDROID_EMULATORS, IOS_SIMULATORS, XCODE_DERIVED_DATA, MAVEN_DAEMONS, COMPOSE_PROJECTS, DESKTOP_TURN }
+enum class MachineResource { GRADLE_DAEMONS, ANDROID_EMULATORS, IOS_SIMULATORS, XCODE_DERIVED_DATA, MAVEN_DAEMONS, COMPOSE_PROJECTS, DESKTOP_TURN, PHYSICAL_DEVICES }
 
 data class MachineProject(
     val project: Project,
@@ -79,6 +79,7 @@ data class MachineSummary(
     val quotaBytes: Long? = null,
     val quotaAutomatic: Boolean = false,
     val holder: String? = null,
+    val held: Int = 0,
 )
 
 sealed interface PoolNoticeContent {
@@ -132,6 +133,7 @@ class MachineResources(
     private val onDevicesChanged: suspend (projectId: String) -> Unit = {},
     private val cadence: suspend () -> RefreshCadence = { RefreshCadence.BALANCED },
     val desktopTurn: DesktopTurnWatch = DesktopTurnWatch.NONE,
+    val physicalDevices: PhysicalDevicesWatch = PhysicalDevicesWatch.NONE,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
     private val clock: () -> Instant = Instant::now,
 ) {
@@ -147,14 +149,21 @@ class MachineResources(
 
     val summaries: Map<MachineResource, MachineSummary>
         get() {
-            if (!desktopTurn.isActive) return providerSummaries
-            return overviewSummaries
+            val turn = if (desktopTurn.isActive) overviewSummaries.filterKeys { it == MachineResource.DESKTOP_TURN } else emptyMap()
+            return providerSummaries + turn + devicesSummary()
         }
 
     val overviewSummaries: Map<MachineResource, MachineSummary>
         get() {
             val turn = desktopTurn.state
-            return providerSummaries + (MachineResource.DESKTOP_TURN to MachineSummary(turn.waiting.size, holder = turn.holder?.displayName))
+            return providerSummaries + (MachineResource.DESKTOP_TURN to MachineSummary(turn.waiting.size, holder = turn.holder?.displayName)) + devicesSummary()
+        }
+
+    private fun devicesSummary(): Map<MachineResource, MachineSummary> =
+        if (physicalDevices.isActive) {
+            mapOf(MachineResource.PHYSICAL_DEVICES to MachineSummary(physicalDevices.connectedCount, held = physicalDevices.heldCount))
+        } else {
+            emptyMap()
         }
 
     private var daemonProcesses by mutableStateOf<MachineLoad<List<DaemonProcess>>>(MachineLoad.Loading)
@@ -257,7 +266,10 @@ class MachineResources(
 
     val visibleResources: List<MachineResource>
         get() {
-            val resources = declared + setOfNotNull(MachineResource.DESKTOP_TURN.takeIf { desktopTurn.isActive || shown == MachineResource.DESKTOP_TURN })
+            val resources = declared + setOfNotNull(
+                MachineResource.DESKTOP_TURN.takeIf { desktopTurn.isActive || shown == MachineResource.DESKTOP_TURN },
+                MachineResource.PHYSICAL_DEVICES.takeIf { physicalDevices.isActive || shown == MachineResource.PHYSICAL_DEVICES },
+            )
             return MachineResource.entries.filter { it in resources }
         }
 
@@ -475,6 +487,7 @@ class MachineResources(
             stopDerivedDataMeasuring()
         }
         desktopTurn.refresh()
+        physicalDevices.refresh()
         providerSummaries = current
         summaryFailures = failures
     }
@@ -530,6 +543,7 @@ class MachineResources(
             MachineResource.MAVEN_DAEMONS -> loadMavenDaemons()
             MachineResource.COMPOSE_PROJECTS -> loadComposeProjects()
             MachineResource.DESKTOP_TURN -> desktopTurn.refresh()
+            MachineResource.PHYSICAL_DEVICES -> physicalDevices.refresh()
         }
     }
 
@@ -976,6 +990,7 @@ fun poolKindOf(resource: MachineResource): ResourceKind? = when (resource) {
     MachineResource.MAVEN_DAEMONS -> null
     MachineResource.COMPOSE_PROJECTS -> null
     MachineResource.DESKTOP_TURN -> null
+    MachineResource.PHYSICAL_DEVICES -> null
 }
 
 private fun machineResourceOf(kind: ResourceKind): MachineResource = when (kind) {

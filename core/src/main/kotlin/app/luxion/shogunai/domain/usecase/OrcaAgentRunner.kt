@@ -28,6 +28,7 @@ class OrcaAgentRunner(
     private val pollInterval: Duration = 500.milliseconds,
     private val runningEmulator: suspend (ProjectConfig, String) -> String? = { _, _ -> null },
     private val runningSimulator: suspend (ProjectConfig, String) -> String? = { _, _ -> null },
+    private val heldPhysicalDevice: suspend (String) -> String? = { null },
 ) : AgentRunner {
 
     override val id: RunnerId = RunnerId.ORCA
@@ -46,6 +47,7 @@ class OrcaAgentRunner(
             pollInterval,
             runningEmulator = { path -> runningEmulator(config, path) },
             runningSimulator = { path -> runningSimulator(config, path) },
+            heldPhysicalDevice = heldPhysicalDevice,
         )(worktree, agent)
             .map { it.toRunnerOpening() }
 
@@ -59,7 +61,7 @@ class OrcaAgentRunner(
 }
 
 fun OrcaOpening.toRunnerOpening(): RunnerOpening =
-    RunnerOpening(RunnerId.ORCA, outcome.toRunnerOutcome(), terminalHandle, agent, sessionName, emulator, simulator, devicesSkipped)
+    RunnerOpening(RunnerId.ORCA, outcome.toRunnerOutcome(), terminalHandle, agent, sessionName, emulator, simulator, devicesSkipped, physicalDevice)
 
 fun OrcaOutcome.toRunnerOutcome(): RunnerOutcome = when (this) {
     OrcaOutcome.STARTED_AGENT -> RunnerOutcome.STARTED_AGENT

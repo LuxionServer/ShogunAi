@@ -1,5 +1,7 @@
 package app.luxion.shogunai.infrastructure
 
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import app.luxion.shogunai.domain.model.AppLanguage
 import app.luxion.shogunai.domain.model.AppVersion
 import app.luxion.shogunai.domain.model.UpdatePreferences
@@ -504,5 +506,30 @@ class JsonSettingsFileTest {
         )
 
         assertEquals(leftOut[0], leftOut[1])
+    }
+
+    @Test
+    fun `a setting this version doesn't know survives a change and the file gets its version`() {
+        storagePath.writeText("""{"themeMode": "DARK", "newOption": true}""")
+
+        languageRepository.save(AppLanguage.SPANISH)
+
+        val written = Json.parseToJsonElement(Files.readString(storagePath)).jsonObject
+        assertEquals(JsonPrimitive(true), written["newOption"])
+        assertEquals(JsonPrimitive(1), written["schemaVersion"])
+        assertEquals(ThemeMode.DARK, themeRepository.load())
+        assertEquals(AppLanguage.SPANISH, languageRepository.load())
+    }
+
+    @Test
+    fun `a file from a newer version is read but not changed`() {
+        val contents = """{"schemaVersion": 2, "themeMode": "DARK"}"""
+        storagePath.writeText(contents)
+
+        languageRepository.save(AppLanguage.SPANISH)
+
+        assertEquals(ThemeMode.DARK, themeRepository.load())
+        assertEquals(contents, Files.readString(storagePath))
+        assertNull(settingsFile.lastReadProblem)
     }
 }

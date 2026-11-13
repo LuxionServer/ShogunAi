@@ -15,6 +15,7 @@ import app.luxion.shogunai.domain.model.RunnerId
 import app.luxion.shogunai.ui.components.AgentPhase
 import app.luxion.shogunai.domain.usecase.HookEntry
 import app.luxion.shogunai.domain.usecase.HookReplacement
+import app.luxion.shogunai.domain.model.HerdrPluginState
 import app.luxion.shogunai.domain.usecase.HooksInstallState
 import app.luxion.shogunai.domain.model.HostOs
 import app.luxion.shogunai.domain.model.CheckState
@@ -244,6 +245,15 @@ interface Strings {
     val claudeHooksCancel: String
     val claudeHooksConfirm: String
     val claudeHooksNeedsTool: String
+    val herdrPluginLabel: String
+    fun herdrPluginStatus(state: HerdrPluginState): String
+    fun herdrPluginWarning(warning: String): String
+    val herdrPluginBrokenHint: String
+    val herdrPluginReinstall: String
+    val herdrPluginInstall: String
+    fun herdrPluginDialogTitle(state: HerdrPluginState): String
+    val herdrPluginDialogIntro: String
+    val herdrPluginRun: String
     val commandLineToolLabel: String
     fun commandLineToolStatus(status: CommandLineToolStatus): String
     val commandLineToolNeededByHooks: String
@@ -463,6 +473,40 @@ interface Strings {
     fun desktopWaitingLabel(position: Int): String
     val desktopTurnDetailTitle: String
     fun desktopTurnDetailWaiting(position: Int, since: String, holder: String?): String
+    val physicalDevicesTitle: String
+    val machineStatusDevices: String
+    fun physicalDevicesSummary(connected: Int, held: Int): String
+    val physicalDevicesExplanation: String
+    fun deviceConnection(network: Boolean): String
+    fun deviceLastSeen(at: String): String
+    val deviceLent: String
+    val deviceWithdrawn: String
+    val deviceFree: String
+    val deviceDisconnected: String
+    fun deviceHeldUntil(until: String): String
+    val deviceUnauthorized: String
+    val deviceOffline: String
+    val deviceUnpaired: String
+    val deviceDeveloperModeOff: String
+    val deviceConnecting: String
+    fun devicesWaitingTitle(platform: String): String
+    val releaseDevice: String
+    val withdrawDevice: String
+    val lendDevice: String
+    val renameDevice: String
+    val forgetDevice: String
+    val confirmReleaseDeviceTitle: String
+    fun confirmReleaseDeviceMessage(device: String, holder: String): String
+    val confirmWithdrawDeviceTitle: String
+    fun confirmWithdrawDeviceMessage(device: String, holder: String): String
+    val confirmForgetDeviceTitle: String
+    fun confirmForgetDeviceMessage(device: String): String
+    val renameDeviceTitle: String
+    val deviceAliasLabel: String
+    fun physicalDeviceDetailTitle(platform: String): String
+    fun deviceDetailWaiting(position: Int, since: String): String
+    fun deviceTakenFor(device: String, worktree: String, at: String): String
+    fun deviceWithdrawnAt(device: String, at: String): String
     val headlessAppRunningLabel: String
     val headlessAppDetailTitle: String
     fun headlessAppRunning(pid: Long?): String

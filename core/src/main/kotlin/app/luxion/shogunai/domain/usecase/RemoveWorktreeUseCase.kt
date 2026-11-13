@@ -4,6 +4,7 @@ import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.io.FileManager
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.WorktreeError
+import app.luxion.shogunai.domain.runSuspendCatching
 
 data class WorktreeRemoval(
     val herdrFailure: WorktreeError? = null,
@@ -20,16 +21,17 @@ class RemoveWorktreeUseCase(
     stopHeadlessApp: StopHeadlessAppUseCase? = null,
     releaseDesktopTurn: ReleaseDesktopTurnUseCase? = null,
     private val closeOrcaTerminals: CloseOrcaTerminalsUseCase? = null,
+    releasePhysicalDevices: ReleasePhysicalDeviceUseCase? = null,
 ) {
     private val folderRemoval =
-        WorktreeFolderRemoval(config, executor, fileManager, closeHerdrWorkspaces, stopHeadlessApp, releaseDesktopTurn, closeOrcaTerminals)
+        WorktreeFolderRemoval(config, executor, fileManager, closeHerdrWorkspaces, stopHeadlessApp, releaseDesktopTurn, closeOrcaTerminals, releasePhysicalDevices)
 
     suspend operator fun invoke(
         worktreePath: String,
         branchToDelete: String? = null,
         force: Boolean = false,
         forceBranchDeletion: Boolean = false,
-    ): Result<WorktreeRemoval> = runCatching {
+    ): Result<WorktreeRemoval> = runSuspendCatching {
         val workspaces = closeHerdrWorkspaces?.openWorkspaces(listOf(worktreePath)).orEmpty()
         val orcaTerminals = closeOrcaTerminals?.withTerminals(listOf(worktreePath)).orEmpty()
         val closing = folderRemoval.remove(worktreePath, force, workspaces[worktreePath], worktreePath in orcaTerminals)

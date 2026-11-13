@@ -149,6 +149,15 @@ The desktop is one machine-wide resource that agents take turns to drive with co
 - `DesktopTurnLedger` holds the `DesktopTurnStore`, the machine lock, the wait queue and the process check shared by the three use cases. `AcquireDesktopTurnUseCase` gives the turn for `ResourceSettings.desktopTurnDuration` (`desktopTurnMinutes`, 10 by default) when it is free or expired and nobody else is ahead in the `desktop` queue, renews it for its holder, and otherwise fails with `DesktopTurnTaken` or, given a `DesktopWait`, waits in line through the same `WaitInLine` loop as device acquisitions (`DesktopTurnWaitTimedOut` at the deadline). Only acquiring again renews a turn: an agent's working state doesn't.
 - `ReleaseDesktopTurnUseCase` releases the holder's turn (`DesktopTurnHeldByOther` for another worktree), `ifHeldBy` a worktree for the `Stop` and `SessionEnd` hooks, `force` for the desktop app, and `onWorktreeRemoved`, called by the worktree removal before the folder goes, which also drops that worktree's tickets. `ReadDesktopTurnUseCase` returns the `DesktopTurnState`.
 
+### Physical devices
+
+Phones and tablets connected to the machine are lent to one worktree at a time (`PhysicalDevice.kt`). They aren't a `ResourceKind`: capacity is the inventory of lent, connected devices, not a profile limit, and exclusivity can't depend on scanning every worktree's state, so they have a machine-wide lease file like the desktop turn.
+
+- `PhysicalDevice` is a device as listed now: its `DevicePlatform` (`ANDROID`, `IOS`), `identity` (`ro.serialno` or the UDID; `id` is `<platform>:<identity>`), `transport` (the `adb` serial, which changes between USB and Wi-Fi, or the UDID), `DeviceConnection` (`USB`, `NETWORK`), `DeviceUsability` (`USABLE`, `UNAUTHORIZED`, `OFFLINE`, `CONNECTING`, `UNPAIRED`, `DEVELOPER_MODE_OFF`) and its properties. A transport whose identity isn't known yet is a `PendingDevice`. `RecordedDevice` is an inventory entry: alias, properties, `lent` and `lastSeen`; `displayName` is the alias, then the marketing name, name, model and id.
+- `DeviceRequest` is what an agent asks for (platform, `name`, `model`); it's stored, encoded, in its `WaitTicket.request`, so a waiter only blocks the devices it would take. `PhysicalDeviceLease` (device, platform, holder's admin directory and path, `acquiredAt`, `renewedAt`) expires `ResourceSettings.leaseDuration` after its last renewal; `DeviceLoss` records that a worktree's device was `TAKEN` for another worktree or `WITHDRAWN` by the user, until it acquires one of that platform again.
+- `PhysicalDeviceLedger` holds the `PhysicalDevices` sources, the inventory and lease stores, the machine lock, the `android-device` and `ios-device` queues (polled every 5 seconds, since a connection has no expiry to wait for) and the agent activity. Every listing is merged into the inventory, adding new devices as lent and refreshing `lastSeen`, and written only when something changed. `variablesFor` gives a holder's `SHOGUN_ANDROID_DEVICE_SERIAL` (the current transport, or the identity while unplugged) and `SHOGUN_IOS_DEVICE_UDID` to the environment resolution, after the declared variables; `connectedAndroidSerial` tells the Orca open which device to show.
+- `AcquirePhysicalDeviceUseCase` resolves the platform, keeps or renews the worktree's own device (`PhysicalDeviceAlreadyHeld` when it doesn't match the request), and otherwise picks a free, lent, connected, usable match that no earlier waiter's request claims, or takes over an expired one by `releaseRank`, the function shared with the pools, never while its holder's agent works and never a disconnected one. Without one it fails with `NoRecordedDeviceMatches`, `PhysicalDevicePlatformRequired` or `PhysicalDeviceUnavailable`, whose `DeviceBlock`s say why each match is out of reach; given a `PhysicalDeviceWait`, it waits through `WaitInLine` (`PhysicalDeviceWaitTimedOut`). `ReleasePhysicalDeviceUseCase` releases per worktree and platform, `force`s one device for the app and handles `onWorktreeRemoved`; `ManagePhysicalDevicesUseCase` lends, withdraws (releasing and recording the loss), renames (`DuplicateDeviceAlias`) and forgets, finding a device by id, alias or name (`PhysicalDeviceNotFound`, `AmbiguousPhysicalDevice`); `ReadPhysicalDevicesUseCase` returns the `PhysicalDevicesState` (each device's `DeviceOverview` with its `HeldDevice`, the pending ones, the queues and the losses), and `ifAnyHeld` reads devices for `shogun status` only while someone holds or waits for one. `RenewWorktreeLeasesUseCase` renews a working agent's device leases with its emulator's and simulator's.
+
 ### Herdr
 
 `Herdr.kt` holds what the [Herdr port](#herdrclient) reports: `HerdrWorktreeOpening` (workspace id, its root pane id and whether Herdr already had the worktree open), `HerdrAgent` (an agent pane: the agent's `name`, its `AgentState` or `null` when Herdr reports `unknown`, the directory it works in and its pane id), `HerdrPane` (a pane: its id, workspace, directory, the `agent` Herdr detects in it and its raw `agentStatus`, `unknown` when there's none; `hasLiveAgent` is any other status, `idle` and `done` included), plus `HerdrOpening`, the outcome of opening a worktree in Herdr: its `HerdrOutcome` (`OPENED`, `STARTED_AGENT`, `FOCUSED`), the agent's pane id and the agent's name, and `HerdrPaneProcesses`, a pane's shell pid and foreground process group id, whose `atPrompt` is true when both are known and equal, i.e. the shell is at its prompt with nothing running in the foreground. `AGENT_START_SECONDS` (10) is how long an open waits for Herdr to detect a typed agent.
@@ -260,8 +269,20 @@ Use cases depend on interfaces, not implementations. This is what allows testing
 
 ```kotlin
 interface ShellCommandExecutor {
-    suspend fun execute(command: List<String>, workingDirectory: String? = null): CommandResult
-    suspend fun executeWithin(command: List<String>, timeout: Duration, workingDirectory: String? = null): CommandResult
+    suspend fun executeWithin(
+        command: List<String>,
+        timeout: Duration,
+        workingDirectory: String? = null,
+        environment: Map<String, String> = emptyMap(),
+    ): CommandResult
+
+    suspend fun executeStreaming(
+        command: List<String>,
+        timeout: Duration,
+        workingDirectory: String?,
+        environment: Map<String, String>,
+        onOutput: (OutputLine) -> Unit,
+    ): CommandResult
 }
 ```
 
@@ -269,7 +290,9 @@ The command is passed as **argv** (a list of strings), never as a string for a s
 
 `CommandResult` holds `command`, `exitCode`, `stdout`, `stderr` without interpreting their meaning — each use case decides what counts as success via `isSuccess` (`exitCode == 0`). A process that can't even start (e.g. the executable isn't in `PATH`) throws `CommandExecutionException` instead.
 
-`executeWithin` bounds a command's run: one that doesn't finish in time is stopped and throws `CommandExecutionException.TimedOut`. Read-only commands pass a limit from `CommandTimeouts` (`GIT_READ`, 30 s, for Git reads; `LISTING`, 10 s, for device, process and tool listings; `NETWORK`, 60 s, for `git fetch`); commands that may legitimately run long (creating a worktree, post-creation commands, builds) use `execute`, with no limit. Its default implementation ignores the limit, so test doubles don't have to implement it. A cancelled coroutine always stops the command, and no command ever waits for input.
+Every command runs with a time limit: one that doesn't finish in time is stopped with its children and throws `CommandExecutionException.TimedOut`. The limits come from `CommandTimeouts`: `LISTING`, 10 s, for device, process and tool listings; `GIT_READ`, 30 s, for Git reads; `NETWORK`, 60 s, for `git fetch`; `LOCAL_TOOL`, 60 s, for quick local tools (`kill`, `open`, `simctl create/shutdown/delete`, the Herdr and Orca CLIs); `LOCAL_WORK`, 5 minutes, for local Git writes (`worktree add/remove/repair`, `branch -D`), `simctl boot` and cloning `Pods`; and `INSTALL`, 30 minutes, for post-creation commands, `flutter pub get`, `docker compose` and the headless Gradle launch. `executeStreaming` also hands each output line to `onOutput` as it arrives. Neither method has a default body, so no implementation or test double can silently drop the limit or the environment; tests extend `ScriptedShellCommandExecutor` from `core`'s test fixtures, which records both. A cancelled coroutine always stops the command, and no command ever waits for input.
+
+Suspending code in `core` never swallows a cancellation: it uses `runSuspendCatching` (`runCatching` that rethrows `CancellationException`) instead of `runCatching`, and a broad `catch` either rethrows the error or follows a `catch` of `CancellationException` that does. `CancellationSourceTest` checks every `core` file that declares a suspending function.
 
 ### `HostEnvironment`
 
@@ -625,7 +648,7 @@ The multirepo agent is a local setting (`MultirepoSource.agent`/`setAgent`, `Mul
 
 ## Use cases
 
-The worktree use cases are built per project (they receive its `ProjectConfig`) and return `Result<T>` (using `runCatching`), with typed errors as `WorktreeError`. Every Git command runs from the base repository.
+The worktree use cases are built per project (they receive its `ProjectConfig`) and return `Result<T>` (using `runSuspendCatching`), with typed errors as `WorktreeError`. Every Git command runs from the base repository.
 
 ### `CreateWorktreeUseCase`
 

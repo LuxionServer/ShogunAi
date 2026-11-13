@@ -1,5 +1,8 @@
 package app.luxion.shogunai.cli
 
+import app.luxion.shogunai.engine.EngineOptions
+import app.luxion.shogunai.engine.ShogunEngine
+import app.luxion.shogunai.domain.ScriptedShellCommandExecutor
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.OrcaWorktree
 import java.time.Instant
@@ -27,7 +30,6 @@ import app.luxion.shogunai.domain.FakePortProbe
 import app.luxion.shogunai.domain.FakeProjectRepository
 import app.luxion.shogunai.domain.FakeRepositoryProvisioningSource
 import app.luxion.shogunai.domain.executor.CommandResult
-import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.model.EmulatorProvider
 import app.luxion.shogunai.domain.model.EnvironmentDeclaration
 import app.luxion.shogunai.domain.model.IosSimulatorProvider
@@ -88,8 +90,8 @@ class EnvironmentCommandsTest {
     private val daemons = FakeGradleDaemonSource()
     private val executedCommands = mutableListOf<List<String>>()
 
-    private val executor = object : ShellCommandExecutor {
-        override suspend fun execute(command: List<String>, workingDirectory: String?): CommandResult {
+    private val executor = object : ScriptedShellCommandExecutor() {
+        override suspend fun respond(command: List<String>, workingDirectory: String?): CommandResult {
             executedCommands += command
             if (command.first() == "kill") return CommandResult(command, 0, "", "")
             val inLinked = workingDirectory?.startsWith(linked) == true
@@ -123,36 +125,44 @@ class EnvironmentCommandsTest {
         trust: RepositoryTrust = FakeRepositoryTrust(approvesEverything = true),
         orca: FakeOrcaClient = FakeOrcaClient(installed = false),
     ) = ShogunCli(
-        executor = executor,
-        fileManager = FakeFileManager(existing = listOf(base, linked)),
-        projectRepository = FakeProjectRepository(if (registered) listOf(project) else emptyList()),
-        provisioningSource = provisioning,
-        daemonSource = daemons,
-        gradleUserHome = "/home/dev/.gradle",
-        environmentStateStore = store,
-        portProbe = FakePortProbe(),
-        androidSdk = androidSdk,
-        appleSimulators = appleSimulators,
-        kmpTestWiring = kmpTestWiring,
-        resourceLimits = resourceLimits,
-        machineCapacity = FakeMachineCapacity(),
-        derivedDataSource = FakeDerivedDataSource(),
-        herdrConfig = FakeHerdrConfigSource(),
-        orca = orca,
+        engine = ShogunEngine(
+            cliEnginePorts(
+                executor = executor,
+                fileManager = FakeFileManager(existing = listOf(base, linked)),
+                projectRepository = FakeProjectRepository(if (registered) listOf(project) else emptyList()),
+                provisioningSource = provisioning,
+                gradleDaemons = daemons,
+                gradleUserHome = "/home/dev/.gradle",
+                environmentStateStore = store,
+                portProbe = FakePortProbe(),
+                androidSdk = androidSdk,
+                appleSimulators = appleSimulators,
+                kmpTestWiring = kmpTestWiring,
+                resourceLimits = resourceLimits,
+                machineCapacity = FakeMachineCapacity(),
+                derivedData = FakeDerivedDataSource(),
+                herdrConfig = FakeHerdrConfigSource(),
+                orca = orca,
+                workingDirectory = workingDirectory,
+                environment = hostEnvironment(variables = environment),
+                trust = trust,
+                deviceWaitQueue = waitQueue,
+                processLiveness = FakeProcessLiveness(),
+            ),
+            EngineOptions(
+                clock = { clock },
+                pauseWhileWaiting = { pause ->
+            clock = clock.plus(pause)
+            onPause()
+        },
+            ),
+        ),
         workingDirectory = workingDirectory,
         out = out,
         err = err,
         readInput = { input },
         canonicalPath = { it.trimEnd('/') },
         environment = hostEnvironment(variables = environment),
-        trust = trust,
-        deviceWaitQueue = waitQueue,
-        processLiveness = FakeProcessLiveness(),
-        deviceClock = { clock },
-        pauseWhileWaiting = { pause ->
-            clock = clock.plus(pause)
-            onPause()
-        },
     )
 
     private fun withEmulator() = FakeRepositoryProvisioningSource(

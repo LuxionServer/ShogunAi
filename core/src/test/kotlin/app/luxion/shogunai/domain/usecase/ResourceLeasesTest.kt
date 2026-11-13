@@ -1,5 +1,12 @@
 package app.luxion.shogunai.domain.usecase
 
+import app.luxion.shogunai.domain.FakePhysicalDeviceInventoryStore
+import app.luxion.shogunai.domain.FakePhysicalDeviceLeaseStore
+import app.luxion.shogunai.domain.ScriptedShellCommandExecutor
+import app.luxion.shogunai.domain.model.DeviceLeases
+import app.luxion.shogunai.domain.model.DevicePlatform
+import app.luxion.shogunai.domain.model.PhysicalDeviceLease
+import app.luxion.shogunai.domain.model.RecordedDevice
 import app.luxion.shogunai.domain.FakeAndroidSdk
 import app.luxion.shogunai.domain.FakeEnvironmentStateStore
 import app.luxion.shogunai.domain.FakeFileManager
@@ -43,8 +50,8 @@ class ResourceLeasesTest {
     private val admin4 = tasks.getValue(task4)
     private val task5 = "/home/dev/projects/worktrees/TASK-5"
 
-    private val git = object : ShellCommandExecutor {
-        override suspend fun execute(command: List<String>, workingDirectory: String?) = FakeShellCommandExecutor.success(
+    private val git = object : ScriptedShellCommandExecutor() {
+        override suspend fun respond(command: List<String>, workingDirectory: String?) = FakeShellCommandExecutor.success(
             command,
             "${tasks[workingDirectory] ?: common}\n$common\n",
         )
@@ -315,6 +322,24 @@ class ResourceLeasesTest {
     }
 
     @Test
+    fun `a working agent's renewal also renews the physical devices its worktree holds`() = runTest {
+        val leases = FakePhysicalDeviceLeaseStore(
+            DeviceLeases(
+                listOf(
+                    PhysicalDeviceLease("android:3A281FDJH000AB", DevicePlatform.ANDROID, admin1, task1, 0, 0),
+                    PhysicalDeviceLease("ios:00008150-000A1B2C3D4E5F60", DevicePlatform.IOS, admin2, task2, 0, 0),
+                ),
+            ),
+        )
+        val renew = RenewWorktreeLeasesUseCase(pool.resolve, store, clock = { pool.now }, deviceLeases = leases)
+
+        renew(task1).getOrThrow()
+        renew(task3).getOrThrow()
+
+        assertEquals(listOf(pool.now.toEpochMilli(), 0L), leases.leases.leases.map { it.renewedAt })
+    }
+
+    @Test
     fun `an unlimited pool still waits behind another worktree in line`() = runTest {
         pool.waitQueue.write(ResourceKind.IOS_SIMULATOR, listOf(WaitTicket("ticket-3", admin3, task3, ProcessIdentity(2000, 5), pool.now.toEpochMilli())))
 
@@ -369,8 +394,8 @@ class ResourceLeasesTest {
 
     @Test
     fun `a worktree whose folders can't be resolved has no release record`() = runTest {
-        val broken = object : ShellCommandExecutor {
-            override suspend fun execute(command: List<String>, workingDirectory: String?) = FakeShellCommandExecutor.failure(command)
+        val broken = object : ScriptedShellCommandExecutor() {
+            override suspend fun respond(command: List<String>, workingDirectory: String?) = FakeShellCommandExecutor.failure(command)
         }
         val resolve = ResolveWorktreeEnvironmentUseCase(broken, source, store, FakePortProbe())
 

@@ -1,5 +1,6 @@
 package app.luxion.shogunai.domain.usecase
 
+import app.luxion.shogunai.domain.executor.CommandTimeouts
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.io.GradleDaemonSource
 import app.luxion.shogunai.domain.model.DaemonKeptReason
@@ -9,12 +10,13 @@ import app.luxion.shogunai.domain.model.DaemonState
 import app.luxion.shogunai.domain.model.DaemonStopFailure
 import app.luxion.shogunai.domain.model.DaemonStopReport
 import app.luxion.shogunai.domain.model.KeptDaemon
+import app.luxion.shogunai.domain.runSuspendCatching
 
 class StopGradleDaemonsUseCase(
     private val source: GradleDaemonSource,
     private val executor: ShellCommandExecutor,
 ) {
-    suspend operator fun invoke(pids: List<Long>? = null): Result<DaemonStopReport> = runCatching {
+    suspend operator fun invoke(pids: List<Long>? = null): Result<DaemonStopReport> = runSuspendCatching {
         val current = source.list()
         val currentByPid = current.associateBy { it.pid }
         val targets = if (pids == null) current else pids.distinct().mapNotNull { currentByPid[it] }
@@ -31,7 +33,7 @@ class StopGradleDaemonsUseCase(
                 kept += KeptDaemon(daemon.pid, daemon.kind, reason)
                 return@forEach
             }
-            val result = executor.execute(listOf("kill", daemon.pid.toString()))
+            val result = executor.executeWithin(listOf("kill", daemon.pid.toString()), CommandTimeouts.LOCAL_TOOL)
             if (result.isSuccess) {
                 stopped += daemon
             } else {

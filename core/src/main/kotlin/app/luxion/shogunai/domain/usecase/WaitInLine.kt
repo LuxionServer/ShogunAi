@@ -22,6 +22,7 @@ internal class WaitInLine(
     private val liveness: ProcessLiveness,
     private val clock: () -> Instant,
     private val sleep: suspend (Duration) -> Unit,
+    private val pollInterval: Duration = WAIT_POLL_INTERVAL,
 ) {
     fun liveQueue(queue: WaitQueueName): List<WaitTicket> {
         val tickets = waitQueue.read(queue)
@@ -47,6 +48,7 @@ internal class WaitInLine(
         blockedBy: (Throwable) -> B?,
         onWaiting: (InLine<B>) -> Instant?,
         timedOut: (waited: Duration, blocked: B) -> Throwable,
+        request: String? = null,
     ): Waited<T> {
         val started = clock()
         val first = attempt(null)
@@ -57,6 +59,7 @@ internal class WaitInLine(
             normalizePath(worktreePath),
             liveness.current(),
             started.toEpochMilli(),
+            request,
         )
         locked { waitQueue.write(queue, liveQueue(queue) + ticket) }
         try {
@@ -79,7 +82,7 @@ internal class WaitInLine(
     }
 
     private fun nextPause(now: Instant, deadline: Instant, nextExpiry: Instant?): Duration =
-        listOfNotNull(WAIT_POLL_INTERVAL, nextExpiry?.let { Duration.between(now, it) + EXPIRY_MARGIN }, Duration.between(now, deadline))
+        listOfNotNull(pollInterval, nextExpiry?.let { Duration.between(now, it) + EXPIRY_MARGIN }, Duration.between(now, deadline))
             .min()
             .coerceAtLeast(MINIMUM_WAIT_PAUSE)
 

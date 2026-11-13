@@ -38,4 +38,9 @@ class InspectorPathTest {
     fun `the worktrees folder itself is not shown as an empty path`() {
         assertEquals("~/worktrees", displayPath("/home/dev/worktrees", "/home/dev/worktrees", home))
     }
+
+    @Test
+    fun `an empty home folder never makes a path relative to it`() {
+        assertEquals("/srv/repos/main-repo", displayPath("/srv/repos/main-repo", "/srv/worktrees", ""))
+    }
 }

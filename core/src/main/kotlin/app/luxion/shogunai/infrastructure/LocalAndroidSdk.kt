@@ -9,6 +9,7 @@ import app.luxion.shogunai.domain.model.EmulatorState
 import app.luxion.shogunai.domain.model.SdkLocation
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.emulatorSerial
+import app.luxion.shogunai.domain.runSuspendCatching
 import app.luxion.shogunai.domain.usecase.nestedGradleBuildFolders
 import java.io.File
 import java.nio.file.Files
@@ -41,8 +42,16 @@ class LocalAndroidSdk(
             .map { it.trim() }
             .filter { it.isNotEmpty() && !it.startsWith("INFO") && !it.contains("|") }
 
-    override suspend fun deviceStates(sdk: SdkLocation): Map<String, EmulatorState> {
-        val devices = parseAdbDevices(run(listOf(sdk.adb, "devices")))
+    override suspend fun attachedDevices(sdk: SdkLocation): Map<String, String> =
+        parseAdbDevices(run(listOf(sdk.adb, "devices", "-l")))
+
+    override suspend fun deviceProperties(sdk: SdkLocation, serial: String): Map<String, String>? {
+        val result = executor.executeWithin(listOf(sdk.adb, "-s", serial, "shell", "getprop"), CommandTimeouts.LISTING)
+        return if (result.isSuccess) parseGetprop(result.stdout) else null
+    }
+
+    override suspend fun emulatorStates(sdk: SdkLocation, attached: Map<String, String>): Map<String, EmulatorState> {
+        val devices = attached.filterKeys { it.startsWith("emulator-") }
         val online = devices.filterValues { it == "device" }.keys
         bootedSerials.retainAll(online)
         return devices.mapValues { (serial, status) ->
@@ -118,12 +127,19 @@ fun emulatorCommand(sdk: SdkLocation, avd: String, consolePort: Int, noWindow: B
 internal fun parseAdbDevices(output: String): Map<String, String> =
     output.lineSequence()
         .map { it.trim() }
-        .filter { it.startsWith("emulator-") }
+        .filterNot { it.isEmpty() || it.startsWith("*") || it.startsWith("List of devices") }
         .mapNotNull { line ->
             val parts = line.split(Regex("\\s+"))
             if (parts.size >= 2) parts[0] to parts[1] else null
         }
         .toMap()
+
+internal fun parseGetprop(output: String): Map<String, String> =
+    output.lineSequence()
+        .mapNotNull { GETPROP_LINE.matchEntire(it.trim()) }
+        .associate { it.groupValues[1] to it.groupValues[2] }
+
+private val GETPROP_LINE = Regex("""\[([^\]]+)]: \[(.*)]""")
 
 internal fun nullDevice(separator: Char): File = File(if (separator == '\\') "NUL" else "/dev/null")
 
@@ -137,6 +153,6 @@ internal fun launchDetached(command: List<String>, log: File): EmulatorProcess {
         override val isAlive: Boolean get() = process.isAlive
 
         override fun lastLogLines(count: Int): String =
-            runCatching { log.readLines().takeLast(count).joinToString("\n") }.getOrDefault("")
+            runSuspendCatching { log.readLines().takeLast(count).joinToString("\n") }.getOrDefault("")
     }
 }

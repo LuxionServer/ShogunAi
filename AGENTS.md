@@ -17,6 +17,12 @@ Don't load all of `docs/` into context by default: search for the specific page 
 
 - Every bug fix comes with a regression test, written first and seen failing so it reproduces the bug before the fix makes it pass.
 
+## Testing integrations with real tools
+
+- Agent sessions usually run inside a Herdr pane and inherit `HERDR_SOCKET_PATH`, so any `herdr` command they run reaches the user's running server, whatever `HOME` says.
+- Never run Herdr or Orca commands that write (install, link, unlink, enable, open, close) to explore their behaviour. Read their output with read-only commands (`list`, `--json`, `--help`) and test ShogunAi's integration with fakes (`FakeHerdrClient`) and fixtures copied from that output.
+- When a fixture needs a state only a write can produce (e.g. a broken plugin), ask the user to reproduce it, or for permission with the exact command and the one that undoes it.
+
 ## Coverage
 
 Kover measures line and branch coverage of every module, and `./gradlew koverVerify` (run by the macOS job of the Tests workflow) fails below a module's rules, set in its `build.gradle.kts`.

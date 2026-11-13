@@ -1,15 +1,19 @@
 package app.luxion.shogunai.infrastructure
 
 import app.luxion.shogunai.domain.executor.CommandExecutionException
+import app.luxion.shogunai.domain.executor.CommandTimeouts
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.io.HerdrClient
 import app.luxion.shogunai.domain.model.HerdrAgent
 import app.luxion.shogunai.domain.model.HerdrPane
 import app.luxion.shogunai.domain.model.HerdrPaneProcesses
+import app.luxion.shogunai.domain.model.HerdrPlugin
+import app.luxion.shogunai.domain.model.HerdrPluginStep
 import app.luxion.shogunai.domain.model.HerdrWorkspace
 import app.luxion.shogunai.domain.model.AgentState
 import app.luxion.shogunai.domain.model.HerdrWorktreeOpening
 import app.luxion.shogunai.domain.model.WorktreeError
+import app.luxion.shogunai.domain.runSuspendCatching
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -136,6 +140,23 @@ class CliHerdrClient(
         return HerdrPaneProcesses(shellPid, foregroundProcessGroupId)
     }
 
+    override suspend fun listPlugins(): List<HerdrPlugin> {
+        val arguments = listOf("plugin", "list", "--json")
+        val plugins = run(arguments).field("plugins") as? JsonArray ?: throw unexpectedResponse(arguments)
+        return plugins.filterIsInstance<JsonObject>().mapNotNull(::plugin)
+    }
+
+    override suspend fun changePlugins(step: HerdrPluginStep) {
+        run(step.arguments)
+    }
+
+    private fun plugin(entry: JsonObject): HerdrPlugin? {
+        val id = entry.string("plugin_id") ?: return null
+        val enabled = (entry["enabled"] as? JsonPrimitive)?.takeUnless { it.isString }?.booleanOrNull ?: return null
+        val warnings = (entry["warnings"] as? JsonArray).orEmpty().mapNotNull { (it as? JsonPrimitive)?.stringOrNull() }
+        return HerdrPlugin(id, enabled, (entry["source"] as? JsonObject)?.string("kind"), entry.string("plugin_root"), warnings)
+    }
+
     private fun agentState(status: String?): AgentState? = when (status) {
         "working" -> AgentState.WORKING
         "blocked" -> AgentState.BLOCKED
@@ -156,7 +177,9 @@ class CliHerdrClient(
     private suspend fun run(arguments: List<String>): JsonObject? {
         val command = command(arguments)
         val result = try {
-            executor.execute(command)
+            executor.executeWithin(command, CommandTimeouts.LOCAL_TOOL)
+        } catch (error: CommandExecutionException.TimedOut) {
+            throw WorktreeError.HerdrCommandFailed(command, error.message)
         } catch (error: CommandExecutionException) {
             throw WorktreeError.HerdrNotInstalled
         }
@@ -169,7 +192,7 @@ class CliHerdrClient(
     }
 
     private fun parse(stdout: String): JsonObject? =
-        stdout.takeIf { it.isNotBlank() }?.let { runCatching { Json.parseToJsonElement(it) as? JsonObject }.getOrNull() }
+        stdout.takeIf { it.isNotBlank() }?.let { runSuspendCatching { Json.parseToJsonElement(it) as? JsonObject }.getOrNull() }
 
     private fun errorMessage(response: JsonObject?): String? =
         (response?.get("error") as? JsonObject)?.string("message")

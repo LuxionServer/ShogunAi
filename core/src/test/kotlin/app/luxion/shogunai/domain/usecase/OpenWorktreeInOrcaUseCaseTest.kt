@@ -8,6 +8,7 @@ import app.luxion.shogunai.domain.FakeProcessEnvironmentReader
 import app.luxion.shogunai.domain.FakeRepositoryProvisioningSource
 import app.luxion.shogunai.domain.FakeRepositoryTrust
 import app.luxion.shogunai.domain.FakeShellCommandExecutor
+import app.luxion.shogunai.domain.ScriptedShellCommandExecutor
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.io.OrcaClient
 import app.luxion.shogunai.domain.model.AgentLaunchConfig
@@ -45,8 +46,8 @@ class OpenWorktreeInOrcaUseCaseTest {
     private val known = OrcaRepo("r1", repository)
     private val visible = mapOf("r1" to listOf(OrcaWorktree(task.path, createdByOrca = false)))
 
-    private val gitExecutor = object : ShellCommandExecutor {
-        override suspend fun execute(command: List<String>, workingDirectory: String?) =
+    private val gitExecutor = object : ScriptedShellCommandExecutor() {
+        override suspend fun respond(command: List<String>, workingDirectory: String?) =
             FakeShellCommandExecutor.success(command, "$common/worktrees/TASK-8\n$common\n")
     }
 
@@ -67,6 +68,7 @@ class OpenWorktreeInOrcaUseCaseTest {
         samePath: (String, String) -> Boolean = { first, second -> first == second },
         runningEmulator: suspend (String) -> String? = { null },
         runningSimulator: suspend (String) -> String? = { null },
+        heldPhysicalDevice: suspend (String) -> String? = { null },
     ) = OpenWorktreeInOrcaUseCase(
         config,
         orca,
@@ -76,7 +78,41 @@ class OpenWorktreeInOrcaUseCaseTest {
         samePath = samePath,
         runningEmulator = runningEmulator,
         runningSimulator = runningSimulator,
+        heldPhysicalDevice = heldPhysicalDevice,
     )
+
+    @Test
+    fun `a held physical device is shown in place of the running emulator`() = runTest {
+        val orca = FakeOrcaClient(repos = listOf(known), visibleWorktrees = visible)
+
+        val opening = useCase(orca, runningEmulator = { "emulator-5556" }, heldPhysicalDevice = { path -> "R5CT10ABCDE".takeIf { path == task.path } })(task)
+            .getOrThrow()
+
+        assertEquals("R5CT10ABCDE", opening.physicalDevice)
+        assertNull(opening.emulator)
+        assertEquals(listOf("attach:${task.path}:R5CT10ABCDE", "create:${task.path}"), orca.events)
+    }
+
+    @Test
+    fun `a physical device lookup that fails leaves the running emulator shown`() = runTest {
+        val orca = FakeOrcaClient(repos = listOf(known), visibleWorktrees = visible)
+
+        val opening = useCase(orca, runningEmulator = { "emulator-5556" }, heldPhysicalDevice = { throw IllegalStateException("adb failed") })(task).getOrThrow()
+
+        assertEquals("emulator-5556", opening.emulator)
+        assertNull(opening.physicalDevice)
+    }
+
+    @Test
+    fun `a held physical device isn't shown while the simulator is booted`() = runTest {
+        val orca = FakeOrcaClient(repos = listOf(known), visibleWorktrees = visible)
+
+        val opening = useCase(orca, runningSimulator = { SIMULATOR_UDID }, heldPhysicalDevice = { "R5CT10ABCDE" })(task).getOrThrow()
+
+        assertTrue(opening.devicesSkipped)
+        assertNull(opening.physicalDevice)
+        assertTrue(orca.attachedEmulators.isEmpty())
+    }
 
     @Test
     fun `opens a focused terminal with the environment and the named agent`() = runTest {

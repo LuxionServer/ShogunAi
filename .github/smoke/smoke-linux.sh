@@ -14,6 +14,10 @@ SMOKE_HOME="/home/$SMOKE_USER"
 SESSION_PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games"
 SCRIPTS="/opt/shogun-smoke-scripts"
 APP="/opt/shogunai/bin/ShogunAi"
+PACKAGE="shogunai"
+MENUS="/etc/xdg/menus"
+MENU_ENTRY_NAME="shogunai-ShogunAi.desktop"
+MENU_ENTRY_FOLDERS=(/usr/local/share/applications /usr/share/applications)
 
 mkdir -p "$WORK/out"
 source "$SOURCE_SCRIPTS/report.sh"
@@ -26,13 +30,59 @@ collect_logs() {
 }
 trap collect_logs EXIT
 
-sudo mkdir -p /etc/xdg/menus /usr/share/applications /usr/share/desktop-directories
-sudo apt-get install --yes --no-install-recommends "$DEB" | tee "$WORK/out/apt.log" > /dev/null
+package_status() {
+  dpkg-query --show --showformat='${db:Status-Status}' "$PACKAGE" 2> /dev/null || echo not-installed
+}
+
+install_deb() {
+  local log="$1"
+  if ! sudo apt-get install --yes --no-install-recommends "$DEB" 2>&1 | tee "$WORK/out/$log" > /dev/null; then
+    cat "$WORK/out/$log" >&2
+    echo "::error::apt-get couldn't install $(basename "$DEB"); see $log." >&2
+    exit 1
+  fi
+  if [ "$(package_status)" != installed ]; then
+    echo "::error::The package $PACKAGE is $(package_status) after installing it." >&2
+    exit 1
+  fi
+  echo "ok: package $PACKAGE is installed"
+}
+
+remove_deb() {
+  local log="$1"
+  if ! sudo apt-get remove --yes "$PACKAGE" 2>&1 | tee "$WORK/out/$log" > /dev/null; then
+    cat "$WORK/out/$log" >&2
+    echo "::error::apt-get couldn't remove $PACKAGE; see $log." >&2
+    exit 1
+  fi
+  case "$(package_status)" in
+    not-installed | config-files) ;;
+    *)
+      echo "::error::The package $PACKAGE is $(package_status) after removing it." >&2
+      exit 1
+      ;;
+  esac
+  if [ -e "$APP" ]; then
+    echo "::error::Removing $PACKAGE left $APP." >&2
+    exit 1
+  fi
+  echo "ok: package $PACKAGE is removed"
+}
+
+if [ -e "$MENUS" ]; then
+  echo "::error::$MENUS already exists, so this isn't the machine to test." >&2
+  exit 1
+fi
+install_deb apt-install.log
 if [ ! -x "$APP" ]; then
   echo "::error::The .deb didn't install $APP." >&2
   exit 1
 fi
-echo "Installed $APP from $(basename "$DEB")."
+if ! grep -q "not added to the applications menu" "$WORK/out/apt-install.log"; then
+  echo "::error::Installing without $MENUS didn't warn that the app wasn't added to the applications menu." >&2
+  exit 1
+fi
+echo "Installed $APP from $(basename "$DEB") without $MENUS."
 
 STOCK="$WORK/stock-bash"
 mkdir -p "$STOCK"
@@ -112,3 +162,30 @@ echo "Running shogun new from a new login shell of $SMOKE_USER."
 CREATED="$(as_user bash -l -c "cd '$SMOKE_HOME/main-repo' && command -v shogun >&2 && shogun new smoke-cli --json")"
 echo "$CREATED"
 as_user "$SCRIPTS/check-worktree.sh" "$SMOKE_HOME/main-repo" "$(echo "$CREATED" | jq -r '.path')"
+
+echo "Removing the package from the machine without $MENUS."
+remove_deb apt-remove.log
+
+echo "Installing the package again with the menus folders a desktop has."
+sudo mkdir -p "$MENUS" /usr/share/applications /usr/share/desktop-directories
+install_deb apt-install-desktop.log
+MENU_ENTRY=""
+for FOLDER in "${MENU_ENTRY_FOLDERS[@]}"; do
+  if [ -f "$FOLDER/$MENU_ENTRY_NAME" ]; then
+    MENU_ENTRY="$FOLDER/$MENU_ENTRY_NAME"
+    break
+  fi
+done
+if [ -z "$MENU_ENTRY" ]; then
+  echo "::error::Installing on a desktop didn't add $MENU_ENTRY_NAME to ${MENU_ENTRY_FOLDERS[*]}." >&2
+  exit 1
+fi
+echo "ok: $MENU_ENTRY added"
+remove_deb apt-remove-desktop.log
+for FOLDER in "${MENU_ENTRY_FOLDERS[@]}"; do
+  if [ -e "$FOLDER/$MENU_ENTRY_NAME" ]; then
+    echo "::error::Removing the package left $FOLDER/$MENU_ENTRY_NAME." >&2
+    exit 1
+  fi
+done
+echo "ok: $MENU_ENTRY removed"

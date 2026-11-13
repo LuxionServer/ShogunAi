@@ -1,5 +1,6 @@
 package app.luxion.shogunai.domain.usecase
 
+import app.luxion.shogunai.domain.executor.CommandTimeouts
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.io.FileManager
 import app.luxion.shogunai.domain.io.RepositoryApproval
@@ -10,6 +11,7 @@ import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.REMOTE_PREFIX
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.WorktreeError
+import app.luxion.shogunai.domain.runSuspendCatching
 
 class CreateWorktreeFromBranchUseCase(
     private val config: ProjectConfig,
@@ -22,7 +24,7 @@ class CreateWorktreeFromBranchUseCase(
     private val records: ProvisioningRecordStore = ProvisioningRecordStore.NONE,
 ) {
     suspend operator fun invoke(branch: String): Result<Worktree> =
-        runCatching {
+        runSuspendCatching {
             val branchName = branch.trim()
             require(branchName.isNotEmpty()) { "Branch must not be blank" }
             if (isOptionLikeRef(branchName)) throw WorktreeError.InvalidRef(branchName)
@@ -70,8 +72,9 @@ class CreateWorktreeFromBranchUseCase(
     }
 
     private suspend fun refExists(ref: String): Boolean =
-        executor.execute(
+        executor.executeWithin(
             command = listOf("git", "show-ref", "--verify", "--quiet", ref),
+            timeout = CommandTimeouts.GIT_READ,
             workingDirectory = config.baseRepositoryPath,
         ).isSuccess
 

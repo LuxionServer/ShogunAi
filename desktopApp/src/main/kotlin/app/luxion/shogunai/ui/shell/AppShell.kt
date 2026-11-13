@@ -112,11 +112,17 @@ fun AppShell(
             multirepoActions = appContainer.multirepoActions,
             runnerInUse = { appContainer.tools.defaultRunner ?: RunnerId.HERDR },
             desktopTurn = appContainer.desktopTurn,
+            physicalDevices = appContainer.physicalDevices,
             cadence = appContainer::refreshCadence,
         )
     }
     LaunchedEffect(viewModel.memberships) { board.syncMultirepos(viewModel.memberships) }
     SideEffect { onBoardReady(board) }
+    SideEffect {
+        appContainer.declaresMobileProviders = {
+            board.machineProjects.any { MachineResource.ANDROID_EMULATORS in it.declares || MachineResource.IOS_SIMULATORS in it.declares }
+        }
+    }
     SideEffect {
         appContainer.loadedBranches = { board.machineProjects.flatMap { it.worktrees.orEmpty() }.mapNotNull { it.branch } }
     }
@@ -136,6 +142,7 @@ fun AppShell(
             pathExists = appContainer.pathExists,
             onDevicesChanged = { projectId -> board.holder(projectId)?.refreshDevices() },
             desktopTurn = appContainer.desktopTurn,
+            physicalDevices = appContainer.physicalDevices,
             cadence = appContainer::refreshCadence,
         )
     }

@@ -1,5 +1,7 @@
 package app.luxion.shogunai.cli
 
+import app.luxion.shogunai.engine.ShogunEngine
+import app.luxion.shogunai.domain.ScriptedShellCommandExecutor
 import app.luxion.shogunai.domain.model.FlutterProvider
 import app.luxion.shogunai.domain.FakeAgentSessionStore
 import app.luxion.shogunai.domain.FakeMachineCapacity
@@ -61,14 +63,14 @@ class HookCommandsTest {
     private class Executor(
         private val worktreeList: String,
         private val respondIn: (List<String>, String?) -> CommandResult? = { _, _ -> null },
-        private val respond: (List<String>) -> CommandResult? = { null },
-    ) : ShellCommandExecutor {
+        private val responder: (List<String>) -> CommandResult? = { null },
+    ) : ScriptedShellCommandExecutor() {
         val calls = mutableListOf<Pair<List<String>, String?>>()
 
-        override suspend fun execute(command: List<String>, workingDirectory: String?): CommandResult {
+        override suspend fun respond(command: List<String>, workingDirectory: String?): CommandResult {
             calls += command to workingDirectory
             respondIn(command, workingDirectory)?.let { return it }
-            respond(command)?.let { return it }
+            responder(command)?.let { return it }
             return when {
                 "--git-common-dir" in command -> CommandResult(command, 0, "/home/dev/projects/main-repo/.git\n", "")
                 command.take(3) == listOf("git", "worktree", "list") -> CommandResult(command, 0, worktreeList, "")
@@ -110,37 +112,43 @@ class HookCommandsTest {
         orca: FakeOrcaClient = FakeOrcaClient(installed = false),
         gitHub: FakeGitHubClient = FakeGitHubClient(),
     ) = ShogunCli(
-        executor = executor,
-        fileManager = FakeFileManager(existing = existing),
-        projectRepository = FakeProjectRepository(projects),
-        provisioningSource = FakeRepositoryProvisioningSource(
+        engine = ShogunEngine(
+            cliEnginePorts(
+                executor = executor,
+                fileManager = FakeFileManager(existing = existing),
+                projectRepository = FakeProjectRepository(projects),
+                provisioningSource = FakeRepositoryProvisioningSource(
             byRepository = mapOf(base to provisioning),
         ),
-        daemonSource = FakeGradleDaemonSource(),
-        gradleUserHome = "/home/dev/.gradle",
-        environmentStateStore = environmentStore,
-        portProbe = FakePortProbe(),
-        androidSdk = androidSdk,
-        appleSimulators = appleSimulators,
-        kmpTestWiring = kmpTestWiring,
-        resourceLimits = resourceLimits,
-        machineCapacity = FakeMachineCapacity(),
-        derivedDataSource = FakeDerivedDataSource(),
-        herdrConfig = FakeHerdrConfigSource(),
-        orca = orca,
-        gitHub = gitHub,
+                gradleDaemons = FakeGradleDaemonSource(),
+                gradleUserHome = "/home/dev/.gradle",
+                environmentStateStore = environmentStore,
+                portProbe = FakePortProbe(),
+                androidSdk = androidSdk,
+                appleSimulators = appleSimulators,
+                kmpTestWiring = kmpTestWiring,
+                resourceLimits = resourceLimits,
+                machineCapacity = FakeMachineCapacity(),
+                derivedData = FakeDerivedDataSource(),
+                herdrConfig = FakeHerdrConfigSource(),
+                orca = orca,
+                gitHub = gitHub,
+                workingDirectory = "/",
+                environment = hostEnvironment("/home/dev", environment),
+                herdr = herdr,
+                trust = trust,
+                agentSessions = sessionStore,
+                desktopTurns = desktopTurnStore,
+            ),
+        ),
         workingDirectory = "/",
         out = out,
         err = err,
         readInput = { input },
         canonicalPath = { it.trimEnd('/') },
         environment = hostEnvironment("/home/dev", environment),
-        herdr = herdr,
-        trust = trust,
         readAnswer = { "y" },
-        sessionStore = sessionStore,
         agentProcessId = { 4242L },
-        desktopTurnStore = desktopTurnStore,
     )
 
     private fun createInput(name: String, cwd: String = base) =

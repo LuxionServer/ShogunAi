@@ -1,12 +1,16 @@
 package app.luxion.shogunai.infrastructure
 
 import app.luxion.shogunai.domain.FakeShellCommandExecutor
+import app.luxion.shogunai.domain.ScriptedShellCommandExecutor
 import app.luxion.shogunai.domain.executor.CommandExecutionException
 import app.luxion.shogunai.domain.executor.CommandResult
+import app.luxion.shogunai.domain.executor.CommandTimeouts
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.model.HerdrAgent
 import app.luxion.shogunai.domain.model.HerdrPane
 import app.luxion.shogunai.domain.model.HerdrPaneProcesses
+import app.luxion.shogunai.domain.model.HerdrPlugin
+import app.luxion.shogunai.domain.model.HerdrPluginStep
 import app.luxion.shogunai.domain.model.HerdrWorkspace
 import app.luxion.shogunai.domain.model.AgentState
 import app.luxion.shogunai.domain.model.HerdrWorktreeOpening
@@ -62,6 +66,7 @@ class CliHerdrClientTest {
             ),
             executor.executedCommands.single(),
         )
+        assertEquals(CommandTimeouts.LOCAL_TOOL, executor.timeouts.values.single())
     }
 
     @Test
@@ -233,12 +238,21 @@ class CliHerdrClientTest {
 
     @Test
     fun `a missing binary means Herdr isn't installed`() = runTest {
-        val executor = object : ShellCommandExecutor {
-            override suspend fun execute(command: List<String>, workingDirectory: String?): CommandResult =
+        val executor = object : ScriptedShellCommandExecutor() {
+            override suspend fun respond(command: List<String>, workingDirectory: String?): CommandResult =
                 throw CommandExecutionException(command, IOException("No such file"))
         }
 
         assertFailsWith<WorktreeError.HerdrNotInstalled> { client(executor).closePane("w5:p1") }
+    }
+
+    @Test
+    fun `a Herdr command that times out is reported as failed, not as missing`() = runTest {
+        val executor = FakeShellCommandExecutor { throw CommandExecutionException.TimedOut(it, CommandTimeouts.LOCAL_TOOL) }
+
+        val error = assertFailsWith<WorktreeError.HerdrCommandFailed> { client(executor).closePane("w5:p1") }
+
+        assertTrue(error.detail.startsWith("The command did not finish within"), error.detail)
     }
 
     @Test
@@ -401,5 +415,75 @@ class CliHerdrClientTest {
         assertEquals("from stderr", assertFailsWith<WorktreeError.HerdrCommandFailed> { client(failing("", """{"error":{"message":"from stderr"}}""")).closePane("p") }.detail)
         assertEquals("exit code 2", assertFailsWith<WorktreeError.HerdrCommandFailed> { client(failing("[]", " ")).closePane("p") }.detail)
         assertFailsWith<WorktreeError.HerdrCommandFailed> { client(FakeShellCommandExecutor { FakeShellCommandExecutor.success(it, "done") }).listPanes(null) }
+    }
+
+    @Test
+    fun `a plugin linked to a deleted folder is listed with Herdr's warning`() = runTest {
+        val executor = FakeShellCommandExecutor { FakeShellCommandExecutor.success(it, fixture("plugin-list-broken-link.json")) }
+
+        val plugins = client(executor).listPlugins()
+
+        assertEquals(
+            listOf(
+                HerdrPlugin(
+                    "shogunai.worktrees",
+                    enabled = true,
+                    sourceKind = "local",
+                    root = "/home/dev/projects/worktrees/TASK-7/integrations/herdr",
+                    warnings = listOf("manifest unavailable: No such file or directory (os error 2)"),
+                ),
+            ),
+            plugins,
+        )
+        assertEquals(listOf("herdr", "plugin", "list", "--json"), executor.executedCommands.single())
+    }
+
+    @Test
+    fun `plugins are listed with their source, and entries without an id or an enabled flag are skipped`() = runTest {
+        val executor = FakeShellCommandExecutor { FakeShellCommandExecutor.success(it, fixture("plugin-list.json")) }
+
+        val plugins = client(executor).listPlugins()
+
+        assertEquals(
+            listOf(
+                HerdrPlugin(
+                    "shogunai.worktrees",
+                    enabled = true,
+                    sourceKind = "github",
+                    root = "/home/dev/.config/herdr/plugins/github-installations/shogunai.worktrees-0/checkout/integrations/herdr",
+                ),
+                HerdrPlugin("example.other", enabled = false, sourceKind = "local", root = "/home/dev/plugins/other", warnings = listOf("manifest unavailable")),
+                HerdrPlugin("example.no-source", enabled = true, sourceKind = null, root = null),
+            ),
+            plugins,
+        )
+    }
+
+    @Test
+    fun `a plugin list without plugins is unexpected and a stopped server fails with Herdr's message`() = runTest {
+        val unexpected = FakeShellCommandExecutor { FakeShellCommandExecutor.success(it, fixture("pane-close.json")) }
+        val stopped = FakeShellCommandExecutor { FakeShellCommandExecutor.success(it, fixture("server-not-running.json")) }
+
+        assertFailsWith<WorktreeError.HerdrCommandFailed> { client(unexpected).listPlugins() }
+        assertFailsWith<WorktreeError.HerdrCommandFailed> { client(stopped).listPlugins() }
+    }
+
+    @Test
+    fun `plugin changes run each step's arguments`() = runTest {
+        val executor = FakeShellCommandExecutor { FakeShellCommandExecutor.success(it, fixture("plugin-change.json")) }
+        val herdr = client(executor)
+
+        herdr.changePlugins(HerdrPluginStep.Unlink("shogunai.worktrees"))
+        herdr.changePlugins(HerdrPluginStep.Uninstall("shogunai.worktrees"))
+        herdr.changePlugins(HerdrPluginStep.Install("LuxionServer/ShogunAi/integrations/herdr"))
+
+        assertEquals(
+            listOf(
+                listOf("herdr", "plugin", "unlink", "shogunai.worktrees"),
+                listOf("herdr", "plugin", "uninstall", "shogunai.worktrees"),
+                listOf("herdr", "plugin", "install", "LuxionServer/ShogunAi/integrations/herdr", "--yes"),
+            ),
+            executor.executedCommands,
+        )
     }
 }

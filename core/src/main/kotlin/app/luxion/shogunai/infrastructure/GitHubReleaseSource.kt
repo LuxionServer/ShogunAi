@@ -6,6 +6,7 @@ import app.luxion.shogunai.domain.model.PublishedRelease
 import app.luxion.shogunai.domain.model.ReleaseAsset
 import app.luxion.shogunai.domain.model.ReleaseNotes
 import app.luxion.shogunai.domain.model.WorktreeError
+import app.luxion.shogunai.domain.runSuspendCatching
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
@@ -30,7 +31,7 @@ class GitHubReleaseSource(
 ) : ReleaseSource {
 
     override suspend fun published(): Result<List<PublishedRelease>> = withContext(Dispatchers.IO) {
-        runCatching {
+        runSuspendCatching {
             val request = HttpRequest.newBuilder(URI.create(endpoint))
                 .timeout(timeout)
                 .header("Accept", "application/vnd.github+json")
@@ -46,7 +47,7 @@ class GitHubReleaseSource(
     }
 
     private fun parse(body: String): List<PublishedRelease> {
-        val releases = runCatching { Json.parseToJsonElement(body).jsonArray }
+        val releases = runSuspendCatching { Json.parseToJsonElement(body).jsonArray }
             .getOrElse { throw WorktreeError.UpdateCheckFailed("The answer isn't a list of releases") }
         return releases.mapNotNull { (it as? JsonObject)?.toPublishedRelease() }
     }
@@ -61,9 +62,9 @@ class GitHubReleaseSource(
         return PublishedRelease(version, text("html_url") ?: DefaultReleasePage, assets, ReleaseNotes.parse(text("body")))
     }
 
-    private fun JsonObject.text(key: String): String? = runCatching { this[key]?.let { it.jsonPrimitive.contentOrNull } }.getOrNull()
+    private fun JsonObject.text(key: String): String? = runSuspendCatching { this[key]?.let { it.jsonPrimitive.contentOrNull } }.getOrNull()
 
-    private fun JsonObject.flag(key: String): Boolean = runCatching { this[key]?.let { it.jsonPrimitive.booleanOrNull } }.getOrNull() == true
+    private fun JsonObject.flag(key: String): Boolean = runSuspendCatching { this[key]?.let { it.jsonPrimitive.booleanOrNull } }.getOrNull() == true
 
     private companion object {
         const val DefaultReleasePage = "https://github.com/LuxionServer/ShogunAi/releases/latest"

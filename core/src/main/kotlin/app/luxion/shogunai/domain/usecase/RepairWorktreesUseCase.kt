@@ -1,24 +1,27 @@
 package app.luxion.shogunai.domain.usecase
 
+import app.luxion.shogunai.domain.executor.CommandTimeouts
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.io.FileManager
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.joinPath
+import app.luxion.shogunai.domain.runSuspendCatching
 
 class RepairWorktreesUseCase(
     private val config: ProjectConfig,
     private val executor: ShellCommandExecutor,
     private val fileManager: FileManager,
 ) {
-    suspend operator fun invoke(previousWorktreesRoot: String? = null): Result<List<String>> = runCatching {
+    suspend operator fun invoke(previousWorktreesRoot: String? = null): Result<List<String>> = runSuspendCatching {
         if (!fileManager.exists(config.baseRepositoryPath)) {
             throw WorktreeError.BaseRepositoryNotFound(config.baseRepositoryPath)
         }
 
-        val list = executor.execute(
+        val list = executor.executeWithin(
             command = listOf("git", "worktree", "list", "--porcelain"),
+            timeout = CommandTimeouts.GIT_READ,
             workingDirectory = config.baseRepositoryPath,
         )
         if (!list.isSuccess) {
@@ -30,8 +33,9 @@ class RepairWorktreesUseCase(
             .mapNotNull { relocatedPath(it.path, previousWorktreesRoot) }
             .filter { fileManager.exists(it) }
 
-        val repair = executor.execute(
+        val repair = executor.executeWithin(
             command = listOf("git", "worktree", "repair") + movedWorktreePaths,
+            timeout = CommandTimeouts.LOCAL_WORK,
             workingDirectory = config.baseRepositoryPath,
         )
         if (!repair.isSuccess) {

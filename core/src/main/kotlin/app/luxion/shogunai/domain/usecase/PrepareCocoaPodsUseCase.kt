@@ -1,5 +1,6 @@
 package app.luxion.shogunai.domain.usecase
 
+import app.luxion.shogunai.domain.executor.CommandTimeouts
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.io.FileManager
 import app.luxion.shogunai.domain.io.RepositoryProvisioningSource
@@ -7,6 +8,7 @@ import app.luxion.shogunai.domain.model.PodsInstallNeeded
 import app.luxion.shogunai.domain.model.PodsInstallReason
 import app.luxion.shogunai.domain.model.PodsPreparation
 import app.luxion.shogunai.domain.model.joinPath
+import app.luxion.shogunai.domain.runSuspendCatching
 import kotlinx.coroutines.CancellationException
 
 fun interface CocoaPodsPreparer {
@@ -51,8 +53,9 @@ class PrepareCocoaPodsUseCase(
     }
 
     private suspend fun trackedPodFolders(worktreePath: String): List<String> {
-        val result = executor.execute(
+        val result = executor.executeWithin(
             command = listOf("git", "ls-files", "-z", "--", ":(glob)**/$PODFILE_LOCK"),
+            timeout = CommandTimeouts.GIT_READ,
             workingDirectory = worktreePath,
         )
         if (!result.isSuccess) throw IllegalStateException(result.stderr.trim().ifEmpty { "git ls-files failed" })
@@ -70,9 +73,9 @@ class PrepareCocoaPodsUseCase(
             return PodsInstallReason.BASE_PODS_DIFFER
         }
         val worktreePods = podsPath(worktreePath, folder)
-        val clone = executor.execute(command = listOf("cp", "-c", "-R", basePods, worktreePods))
+        val clone = executor.executeWithin(command = listOf("cp", "-c", "-R", basePods, worktreePods), timeout = CommandTimeouts.LOCAL_WORK)
         if (clone.isSuccess) return null
-        runCatching { fileManager.deleteRecursively(worktreePods) }
+        runSuspendCatching { fileManager.deleteRecursively(worktreePods) }
         return PodsInstallReason.CLONE_FAILED
     }
 

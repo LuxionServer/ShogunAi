@@ -58,6 +58,7 @@ data class OrcaOpening(
     val emulator: String? = null,
     val simulator: String? = null,
     val devicesSkipped: Boolean = false,
+    val physicalDevice: String? = null,
 )
 
 sealed interface OrcaEmulatorView {
@@ -66,6 +67,8 @@ sealed interface OrcaEmulatorView {
     data object NotOpen : OrcaEmulatorView
 
     data object Skipped : OrcaEmulatorView
+
+    data object Unsupported : OrcaEmulatorView
 
     data class Failed(val message: String) : OrcaEmulatorView
 }

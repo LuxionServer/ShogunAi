@@ -6,6 +6,7 @@ import app.luxion.shogunai.domain.model.HerdrOutcome
 import app.luxion.shogunai.domain.model.Multirepo
 import app.luxion.shogunai.domain.model.groupMemberSessionName
 import app.luxion.shogunai.domain.model.multirepoSessionName
+import app.luxion.shogunai.domain.runSuspendCatching
 
 sealed interface GroupTarget {
     data class Found(val group: WorktreeGroup) : GroupTarget
@@ -45,7 +46,7 @@ class OpenMultirepoAgentInHerdrUseCase(
     private val herdr: HerdrClient,
     private val launcher: HerdrAgentLauncher = HerdrAgentLauncher(herdr),
 ) {
-    suspend operator fun invoke(multirepo: Multirepo): Result<HerdrOpening> = runCatching {
+    suspend operator fun invoke(multirepo: Multirepo): Result<HerdrOpening> = runSuspendCatching {
         val plain = herdr.listWorkspaces().filter { it.worktreePath == null }.map { it.workspaceId }.toSet()
         val open = herdr.listPanes().firstOrNull { pane ->
             pane.workspaceId in plain && pane.directory != null && sameDirectory(pane.directory, multirepo.folder)
@@ -53,10 +54,10 @@ class OpenMultirepoAgentInHerdrUseCase(
         val agent = multirepo.agent
         val sessionName = multirepoSessionName(multirepo)
         if (open != null) {
-            launcher.focusLiveAgent(open.workspaceId, multirepo.folder, sessionName)?.let { return@runCatching it }
+            launcher.focusLiveAgent(open.workspaceId, multirepo.folder, sessionName)?.let { return@runSuspendCatching it }
             val pane = launcher.reusablePane(open.workspaceId, multirepo.folder)
                 ?: herdr.splitPane(open.paneId, multirepo.folder, emptyList())
-            return@runCatching launcher.launch(
+            return@runSuspendCatching launcher.launch(
                 open.workspaceId, pane, agent.resolvedCommand(), agent.displayName, HerdrOutcome.STARTED_AGENT, sessionName, multirepo.folder,
             )
         }

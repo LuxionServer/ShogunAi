@@ -1,5 +1,7 @@
 package app.luxion.shogunai.cli
 
+import app.luxion.shogunai.engine.ShogunEngine
+import app.luxion.shogunai.domain.ScriptedShellCommandExecutor
 import app.luxion.shogunai.domain.model.FlutterProvider
 import app.luxion.shogunai.domain.FakeAndroidSdk
 import app.luxion.shogunai.domain.FakeAppleSimulators
@@ -19,7 +21,6 @@ import app.luxion.shogunai.domain.FakeProjectRepository
 import app.luxion.shogunai.domain.FakeRepositoryProvisioningSource
 import app.luxion.shogunai.domain.FakeResourceLimitsRepository
 import app.luxion.shogunai.domain.executor.CommandResult
-import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.model.CapacityProfile
 import app.luxion.shogunai.domain.model.DockerComposeProvider
 import app.luxion.shogunai.domain.model.EmulatorProvider
@@ -64,8 +65,8 @@ class GuideCommandsTest {
         branch refs/heads/feature/TASK-123
     """.trimIndent()
 
-    private val executor = object : ShellCommandExecutor {
-        override suspend fun execute(command: List<String>, workingDirectory: String?): CommandResult {
+    private val executor = object : ScriptedShellCommandExecutor() {
+        override suspend fun respond(command: List<String>, workingDirectory: String?): CommandResult {
             val inLinked = workingDirectory?.startsWith(linked) == true
             val stdout = when {
                 "--git-dir" in command -> if (inLinked) "$common/worktrees/TASK-123\n$common\n" else "$common\n$common\n"
@@ -95,29 +96,35 @@ class GuideCommandsTest {
         runner: FakeToolPreferenceRepository = FakeToolPreferenceRepository(),
         orca: FakeOrcaClient = FakeOrcaClient(installed = false),
     ) = ShogunCli(
-        executor = executor,
-        fileManager = files,
-        projectRepository = FakeProjectRepository(if (registered) listOf(project) else emptyList()),
-        provisioningSource = provisioning,
-        daemonSource = FakeGradleDaemonSource(),
-        gradleUserHome = "$home/.gradle",
-        environmentStateStore = FakeEnvironmentStateStore(),
-        portProbe = FakePortProbe(),
-        androidSdk = FakeAndroidSdk(),
-        appleSimulators = FakeAppleSimulators(),
-        kmpTestWiring = FakeKmpTestWiring(),
-        resourceLimits = FakeResourceLimitsRepository(ResourceSettings(CapacityProfile.PER_WORKTREE)),
-        machineCapacity = FakeMachineCapacity(),
-        derivedDataSource = FakeDerivedDataSource(),
-        herdrConfig = FakeHerdrConfigSource(),
-        orca = orca,
+        engine = ShogunEngine(
+            cliEnginePorts(
+                executor = executor,
+                fileManager = files,
+                projectRepository = FakeProjectRepository(if (registered) listOf(project) else emptyList()),
+                provisioningSource = provisioning,
+                gradleDaemons = FakeGradleDaemonSource(),
+                gradleUserHome = "$home/.gradle",
+                environmentStateStore = FakeEnvironmentStateStore(),
+                portProbe = FakePortProbe(),
+                androidSdk = FakeAndroidSdk(),
+                appleSimulators = FakeAppleSimulators(),
+                kmpTestWiring = FakeKmpTestWiring(),
+                resourceLimits = FakeResourceLimitsRepository(ResourceSettings(CapacityProfile.PER_WORKTREE)),
+                machineCapacity = FakeMachineCapacity(),
+                derivedData = FakeDerivedDataSource(),
+                herdrConfig = FakeHerdrConfigSource(),
+                orca = orca,
+                workingDirectory = workingDirectory,
+                environment = hostEnvironment(home, environment),
+                herdr = herdr,
+            ),
+        ),
         workingDirectory = workingDirectory,
         out = out,
         err = err,
         readInput = { input },
         canonicalPath = { it.trimEnd('/') },
         environment = hostEnvironment(home, environment),
-        herdr = herdr,
         toolPreferences = runner,
         readAnswer = { answer },
     )
@@ -207,6 +214,26 @@ class GuideCommandsTest {
 
         assertTrue(out.contains("`shogun emulator start --wait` run in the background"), out.toString())
         assertTrue(out.contains("`shogun simulator start --wait` run in the background"), out.toString())
+    }
+
+    @Test
+    fun `guide resources tells mobile repositories how to use a physical device`() {
+        assertEquals(0, cli(everything()).run(listOf("guide", "resources")))
+
+        assertTrue(out.contains("shogun device acquire"), out.toString())
+        assertTrue(out.contains("adb -s \"\$SHOGUN_ANDROID_DEVICE_SERIAL\""), out.toString())
+        assertTrue(out.contains("shogun device release"), out.toString())
+    }
+
+    @Test
+    fun `a backend repository's guide and a mobile session start have no physical device rule`() {
+        assertEquals(0, cli(declaring(RepositoryProviders(dockerCompose = DockerComposeProvider()))).run(listOf("guide", "resources")))
+        assertFalse(out.contains("shogun device"), out.toString())
+        out.setLength(0)
+
+        assertEquals(0, cli(everything(), input = """{"cwd": "$linked"}""", herdr = fakeHerdr()).run(listOf("hook", "session-start")), err.toString())
+
+        assertFalse(out.contains("shogun device"), out.toString())
     }
 
     @Test

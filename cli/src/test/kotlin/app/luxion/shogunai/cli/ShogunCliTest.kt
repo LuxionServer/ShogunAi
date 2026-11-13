@@ -1,5 +1,7 @@
 package app.luxion.shogunai.cli
 
+import app.luxion.shogunai.engine.ShogunEngine
+import app.luxion.shogunai.domain.ScriptedShellCommandExecutor
 import app.luxion.shogunai.domain.executor.CommandExecutionException
 import app.luxion.shogunai.domain.model.FlutterProvider
 import app.luxion.shogunai.domain.FakeMachineCapacity
@@ -31,6 +33,9 @@ import app.luxion.shogunai.domain.FakeEnvironmentStateStore
 import app.luxion.shogunai.domain.FakeFileManager
 import app.luxion.shogunai.domain.model.UnavailableReason
 import app.luxion.shogunai.domain.FakeHerdrClient
+import app.luxion.shogunai.domain.io.HerdrClient
+import app.luxion.shogunai.domain.model.HerdrPlugin
+import app.luxion.shogunai.domain.model.HerdrPluginStep
 import app.luxion.shogunai.domain.FakeHerdrConfigSource
 import app.luxion.shogunai.domain.FakeGitHubClient
 import app.luxion.shogunai.domain.FakeOrcaClient
@@ -85,6 +90,7 @@ import kotlinx.coroutines.delay
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -124,12 +130,12 @@ class ShogunCliTest {
         locked claude session
     """.trimIndent()
 
-    private class Executor(private val respond: (List<String>, String?) -> CommandResult?) : ShellCommandExecutor {
+    private class Executor(private val responder: (List<String>, String?) -> CommandResult?) : ScriptedShellCommandExecutor() {
         val calls = mutableListOf<Pair<List<String>, String?>>()
 
-        override suspend fun execute(command: List<String>, workingDirectory: String?): CommandResult {
+        override suspend fun respond(command: List<String>, workingDirectory: String?): CommandResult {
             calls += command to workingDirectory
-            return respond(command, workingDirectory) ?: ok(command)
+            return responder(command, workingDirectory) ?: ok(command)
         }
 
         fun ran(vararg args: String) = calls.any { it.first == args.toList() }
@@ -162,6 +168,9 @@ class ShogunCliTest {
 
     private val androidSdk = FakeAndroidSdk()
     private val appleSimulators = FakeAppleSimulators()
+    private val physicalDevices = app.luxion.shogunai.domain.FakePhysicalDevices()
+    private val deviceInventory = app.luxion.shogunai.domain.FakePhysicalDeviceInventoryStore()
+    private val deviceLeases = app.luxion.shogunai.domain.FakePhysicalDeviceLeaseStore()
     private val kmpTestWiring = FakeKmpTestWiring()
     private val out = StringBuilder()
     private val err = StringBuilder()
@@ -176,7 +185,7 @@ class ShogunCliTest {
         daemons: FakeGradleDaemonSource = FakeGradleDaemonSource(),
         derivedDataSource: FakeDerivedDataSource = FakeDerivedDataSource(),
         herdrWorktreesRoot: String = "/home/dev/.herdr/worktrees",
-        herdr: FakeHerdrClient = FakeHerdrClient(),
+        herdr: HerdrClient = FakeHerdrClient(),
         trust: FakeRepositoryTrust = FakeRepositoryTrust(),
         answer: String? = null,
         projectRepository: ProjectRepository = FakeProjectRepository(projects),
@@ -194,42 +203,51 @@ class ShogunCliTest {
         runner: app.luxion.shogunai.domain.io.ToolPreferenceRepository = FakeToolPreferenceRepository(),
         onShutdown: (Thread) -> () -> Unit = { hook -> Runtime.getRuntime().addShutdownHook(hook); { Runtime.getRuntime().removeShutdownHook(hook) } },
     ) = ShogunCli(
-        executor = executor,
-        fileManager = fileManager,
-        projectRepository = projectRepository,
-        provisioningSource = provisioning,
-        daemonSource = daemons,
-        gradleUserHome = gradleUserHome,
-        environmentStateStore = environmentStore,
-        portProbe = FakePortProbe(),
-        androidSdk = androidSdk,
-        appleSimulators = appleSimulators,
-        kmpTestWiring = kmpTestWiring,
-        resourceLimits = resourceLimits,
-        machineCapacity = FakeMachineCapacity(),
-        derivedDataSource = derivedDataSource,
-        herdrConfig = FakeHerdrConfigSource(herdrWorktreesRoot),
-        orca = orca,
-        gitHub = gitHub,
-        orcaWorkspaces = orcaWorkspaces,
+        engine = ShogunEngine(
+            cliEnginePorts(
+                executor = executor,
+                fileManager = fileManager,
+                projectRepository = projectRepository,
+                provisioningSource = provisioning,
+                gradleDaemons = daemons,
+                gradleUserHome = gradleUserHome,
+                environmentStateStore = environmentStore,
+                portProbe = FakePortProbe(),
+                androidSdk = androidSdk,
+                appleSimulators = appleSimulators,
+                kmpTestWiring = kmpTestWiring,
+                resourceLimits = resourceLimits,
+                machineCapacity = FakeMachineCapacity(),
+                derivedData = derivedDataSource,
+                herdrConfig = FakeHerdrConfigSource(herdrWorktreesRoot),
+                orca = orca,
+                gitHub = gitHub,
+                orcaWorkspaces = orcaWorkspaces,
+                workingDirectory = workingDirectory,
+                herdr = herdr,
+                trust = trust,
+                environment = hostEnvironment("/home/dev", environment),
+                agentSessions = sessionStore,
+                mavenDaemons = mavenDaemons,
+                composeProjects = composeProjects,
+                composeRegistry = composeRegistry,
+                provisioningRecords = records,
+                claudeSessions = claudeSessions,
+                packageCaches = { packageCaches },
+                physicalDevices = listOf(physicalDevices),
+                deviceInventory = deviceInventory,
+                deviceLeases = deviceLeases,
+            ),
+        ),
         workingDirectory = workingDirectory,
         out = out,
         err = err,
         canonicalPath = canonicalPath,
         now = { now },
-        herdr = herdr,
         toolPreferences = runner,
         herdrAgentStartTimeout = 100.milliseconds,
-        trust = trust,
         readAnswer = { answer },
         environment = hostEnvironment("/home/dev", environment),
-        sessionStore = sessionStore,
-        mavenDaemonSource = mavenDaemons,
-        composeSource = composeProjects,
-        composeRegistry = composeRegistry,
-        provisioningRecords = records,
-        claudeSessions = claudeSessions,
-        packageCacheSource = { packageCaches },
         isClaudeProcessAlive = { true },
         onShutdown = onShutdown,
     )
@@ -268,8 +286,8 @@ class ShogunCliTest {
 
     @Test
     fun `a shutdown while a command waits cancels it and exits with 130`() {
-        val slowGit = object : ShellCommandExecutor {
-            override suspend fun execute(command: List<String>, workingDirectory: String?): CommandResult {
+        val slowGit = object : ScriptedShellCommandExecutor() {
+            override suspend fun respond(command: List<String>, workingDirectory: String?): CommandResult {
                 delay(60_000)
                 return Executor.ok(command)
             }
@@ -953,7 +971,7 @@ class ShogunCliTest {
     @Test
     fun `gradle names the build holding a busy daemon and the session that started it`() {
         val daemons = heldDaemons(GradleClient(81234, listOf("benchRun"), listOf(81200, 700, 500)))
-        val fileManager = FakeFileManager(existing = listOf(base, merged))
+        val fileManager = FakeFileManager(existing = listOf(base, merged, appsProject.config.baseRepositoryPath))
 
         val exitCode = cli(appsExecutor(), projects = listOf(project, appsProject), fileManager = fileManager, daemons = daemons, sessionStore = heldSessions)
             .run(listOf("gradle"))
@@ -1689,17 +1707,32 @@ class ShogunCliTest {
         )
     }
 
-    private class ConcurrencyRecordingExecutor(private val delegate: ShellCommandExecutor) : ShellCommandExecutor {
+    @Test
+    fun `doctor looks tools up on the host's PATH by default`() {
+        cli(repositoryExecutor()).run(listOf("doctor"))
+
+        assertTrue("--    Herdr not found" in out.lines(), out.toString())
+    }
+
+    @Test
+    fun `status names a base repository folder that no longer exists`() {
+        val exitCode = cli(repositoryExecutor(), fileManager = FakeFileManager()).run(listOf("status"))
+
+        assertEquals(1, exitCode)
+        assertEquals("shogun: Base repository doesn't exist: $base\n", err.toString())
+    }
+
+    private class ConcurrencyRecordingExecutor(private val delegate: ScriptedShellCommandExecutor) : ScriptedShellCommandExecutor() {
         private var inFlight = 0
         var maxInFlight = 0
 
-        override suspend fun execute(command: List<String>, workingDirectory: String?): CommandResult {
-            if ("status" !in command) return delegate.execute(command, workingDirectory)
+        override suspend fun respond(command: List<String>, workingDirectory: String?): CommandResult {
+            if ("status" !in command) return delegate.respond(command, workingDirectory)
             inFlight++
             maxInFlight = maxOf(maxInFlight, inFlight)
             delay(10)
             inFlight--
-            return delegate.execute(command, workingDirectory)
+            return delegate.respond(command, workingDirectory)
         }
     }
 
@@ -2015,7 +2048,7 @@ class ShogunCliTest {
                     "uncommittedChanges": 0, "upstream": null, "mainBranch": null, "base": null,
                     "merged": false, "lastCommitAt": null, "createdAt": null
                   },
-                  "desktop": null, "listeningPorts": null
+                  "desktop": null, "devices": {"android": null, "ios": null}, "listeningPorts": null
                 },
                 {
                   "path": "$merged", "branch": "feature/TASK-1", "head": "2222222222222222222222222222222222222222",
@@ -2025,7 +2058,7 @@ class ShogunCliTest {
                     "base": {"branch": "main", "ahead": 0, "behind": 3},
                     "merged": true, "lastCommitAt": null, "createdAt": null
                   },
-                  "desktop": null, "listeningPorts": null
+                  "desktop": null, "devices": {"android": null, "ios": null}, "listeningPorts": null
                 },
                 {
                   "path": "$dirty", "branch": "worktree-spike", "head": "3333333333333333333333333333333333333333",
@@ -2035,7 +2068,7 @@ class ShogunCliTest {
                     "base": {"branch": "main", "ahead": 2, "behind": 0},
                     "merged": false, "lastCommitAt": null, "createdAt": null
                   },
-                  "desktop": null, "listeningPorts": null
+                  "desktop": null, "devices": {"android": null, "ios": null}, "listeningPorts": null
                 }
               ]
             }
@@ -2246,7 +2279,7 @@ class ShogunCliTest {
                     """.trimIndent(),
                 )
             } else {
-                runBlocking { repositoryExecutor().execute(command, directory) }
+                runBlocking { repositoryExecutor().respond(command, directory) }
             }
         }
 
@@ -3400,6 +3433,38 @@ class ShogunCliTest {
     }
 
     @Test
+    fun `open in orca shows the held physical device in place of the running emulator`() {
+        environmentStore.portsByAdminDirectory["$base/.git/worktrees/TASK-1"] = mapOf("emulator" to 5556)
+        androidSdk.states["emulator-5556"] = EmulatorState.RUNNING
+        val pixel = app.luxion.shogunai.domain.model.PhysicalDevice(
+            app.luxion.shogunai.domain.model.DevicePlatform.ANDROID, "3A281FDJH000AB", "3A281FDJH000AB", app.luxion.shogunai.domain.model.DeviceConnection.USB, model = "Pixel 8",
+        )
+        physicalDevices.connected = listOf(pixel)
+        deviceInventory.devices = listOf(app.luxion.shogunai.domain.model.RecordedDevice(pixel.id, pixel.platform, model = "Pixel 8", lastSeen = 0))
+        deviceLeases.leases = app.luxion.shogunai.domain.model.DeviceLeases(
+            listOf(app.luxion.shogunai.domain.model.PhysicalDeviceLease(pixel.id, pixel.platform, "$base/.git/worktrees/TASK-1", merged, 0, now.toEpochMilli())),
+        )
+        val provisioning = FakeRepositoryProvisioningSource(
+            byRepository = mapOf(base to RepositoryProvisioning(providers = RepositoryProviders(emulator = EmulatorProvider()))),
+        )
+        val orca = FakeOrcaClient(repos = listOf(OrcaRepo("r1", base)), visibleWorktrees = mapOf("r1" to listOf(OrcaWorktree(merged, false))))
+
+        val text = FakeOrcaClient(repos = listOf(OrcaRepo("r1", base)), visibleWorktrees = mapOf("r1" to listOf(OrcaWorktree(merged, false))))
+        assertEquals(0, cli(executorWithAdminDirectories(), provisioning = provisioning, orca = text).run(listOf("open", "TASK-1", "--orca")), err.toString())
+        assertEquals("opened $merged in Orca with Claude (terminal term_1), with 3A281FDJH000AB in its emulator view\n", out.toString())
+        out.clear()
+
+        val exitCode = cli(executorWithAdminDirectories(), provisioning = provisioning, orca = orca).run(listOf("open", "TASK-1", "--orca", "--json"))
+
+        assertEquals(0, exitCode, err.toString())
+        val json = Json.parseToJsonElement(out.toString()).jsonObject
+        assertEquals("3A281FDJH000AB", json["physicalDevice"]?.jsonPrimitive?.content)
+        assertEquals(JsonNull, json["emulator"])
+        assertEquals(listOf("attach:$merged:3A281FDJH000AB", "create:$merged"), orca.events)
+        assertTrue(androidSdk.stopped.isEmpty())
+    }
+
+    @Test
     fun `open in orca without a running emulator reports a null emulator`() {
         val orca = FakeOrcaClient(repos = listOf(OrcaRepo("r1", base)))
 
@@ -4426,7 +4491,7 @@ class ShogunCliTest {
     fun `gradle json adds the holding build of a busy daemon and null for an idle one`() {
         val daemons = heldDaemons(GradleClient(81234, listOf("benchRun"), listOf(81200, 700, 500)))
 
-        val exitCode = cli(appsExecutor(), projects = listOf(project, appsProject), fileManager = FakeFileManager(existing = listOf(base, merged)), daemons = daemons, sessionStore = heldSessions)
+        val exitCode = cli(appsExecutor(), projects = listOf(project, appsProject), fileManager = FakeFileManager(existing = listOf(base, merged, appsProject.config.baseRepositoryPath)), daemons = daemons, sessionStore = heldSessions)
             .run(listOf("gradle", "--json"))
 
         assertEquals(0, exitCode, err.toString())
@@ -4736,6 +4801,202 @@ class ShogunCliTest {
         val json = Json.parseToJsonElement(out.toString()).jsonObject
         assertEquals("missing", json.getValue("user").jsonObject.getValue("state").jsonPrimitive.content)
         assertEquals(projectSettings, json.getValue("project").jsonObject.getValue("path").jsonPrimitive.content)
+    }
+
+    private fun withoutHerdr(): HerdrClient = object : HerdrClient by FakeHerdrClient() {
+        override fun isInstalled() = false
+    }
+
+    private val brokenLink = HerdrPlugin(
+        HerdrPlugin.SHOGUN_PLUGIN_ID,
+        enabled = true,
+        sourceKind = "local",
+        root = "/home/dev/projects/worktrees/TASK-7/integrations/herdr",
+        warnings = listOf("manifest unavailable: No such file or directory (os error 2)"),
+    )
+
+    private val herdrInstall = HerdrPluginStep.Install("LuxionServer/ShogunAi/integrations/herdr")
+
+    @Test
+    fun `hooks status reports a broken Herdr plugin with its warning and the fix`() {
+        val exitCode = cli(repositoryExecutor(), herdr = FakeHerdrClient(plugins = listOf(brokenLink))).run(listOf("hooks", "status"))
+
+        assertEquals(0, exitCode, err.toString())
+        val lines = out.lines()
+        assertTrue("herdr plugin: broken  local:/home/dev/projects/worktrees/TASK-7/integrations/herdr" in lines, out.toString())
+        assertTrue("  warning: manifest unavailable: No such file or directory (os error 2)" in lines, out.toString())
+        assertTrue("  reinstall it from the repository with: shogun hooks install --herdr" in lines, out.toString())
+    }
+
+    @Test
+    fun `hooks status reports a missing, installed, disabled or unchecked Herdr plugin`() {
+        val gitHub = HerdrPlugin(HerdrPlugin.SHOGUN_PLUGIN_ID, enabled = true, sourceKind = "github", root = "/home/dev/plugins/checkout")
+        val unchecked = FakeHerdrClient(pluginsFailure = WorktreeError.HerdrCommandFailed(listOf("herdr"), "no server running"))
+        val bare = HerdrPlugin(HerdrPlugin.SHOGUN_PLUGIN_ID, enabled = false, sourceKind = null, root = null)
+
+        val outputs = listOf(FakeHerdrClient(), FakeHerdrClient(plugins = listOf(gitHub)), FakeHerdrClient(plugins = listOf(bare)), unchecked).map {
+            out.clear()
+            assertEquals(0, cli(repositoryExecutor(), herdr = it).run(listOf("hooks", "status")), err.toString())
+            out.lines().filter { line -> line.startsWith("herdr plugin:") || line.startsWith("  ") }
+        }
+
+        assertEquals(
+            listOf(
+                listOf("herdr plugin: missing", "  reinstall it from the repository with: shogun hooks install --herdr"),
+                listOf("herdr plugin: installed  github:/home/dev/plugins/checkout"),
+                listOf("herdr plugin: disabled"),
+                listOf("herdr plugin: unknown (no server running)"),
+            ),
+            outputs,
+        )
+    }
+
+    @Test
+    fun `hooks status json describes the Herdr plugin, or null without Herdr`() {
+        cli(repositoryExecutor(), herdr = FakeHerdrClient(plugins = listOf(brokenLink))).run(listOf("hooks", "status", "--json"))
+        val herdr = Json.parseToJsonElement(out.toString()).jsonObject.getValue("herdr").jsonObject
+        out.clear()
+        cli(repositoryExecutor(), herdr = withoutHerdr()).run(listOf("hooks", "status", "--json"))
+        val absent = Json.parseToJsonElement(out.toString()).jsonObject.getValue("herdr")
+        out.clear()
+        cli(repositoryExecutor(), herdr = FakeHerdrClient(pluginsFailure = WorktreeError.HerdrCommandFailed(listOf("herdr"), "no server running"))).run(listOf("hooks", "status", "--json"))
+        val unknown = Json.parseToJsonElement(out.toString()).jsonObject.getValue("herdr").jsonObject
+
+        assertEquals("broken", herdr.getValue("state").jsonPrimitive.content)
+        assertEquals("local", herdr.getValue("source").jsonPrimitive.content)
+        assertEquals(brokenLink.root, herdr.getValue("root").jsonPrimitive.content)
+        assertEquals(brokenLink.warnings, herdr.getValue("warnings").jsonArray.map { it.jsonPrimitive.content })
+        assertEquals(JsonNull, herdr.getValue("error"))
+        assertEquals(JsonNull, absent)
+        assertEquals("unknown", unknown.getValue("state").jsonPrimitive.content)
+        assertEquals("no server running", unknown.getValue("error").jsonPrimitive.content)
+        assertEquals(JsonNull, unknown.getValue("source"))
+    }
+
+    @Test
+    fun `hooks install --herdr shows the commands and reinstalls a broken link after confirming`() {
+        val herdr = FakeHerdrClient(plugins = listOf(brokenLink))
+
+        val exitCode = cli(repositoryExecutor(), herdr = herdr, answer = "y").run(listOf("hooks", "install", "--herdr"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals(listOf(HerdrPluginStep.Unlink("shogunai.worktrees"), herdrInstall), herdr.pluginSteps)
+        val lines = out.lines()
+        assertTrue("Herdr's plugin is broken; ShogunAi will run:" in lines, out.toString())
+        assertTrue("  $ herdr plugin unlink shogunai.worktrees" in lines, out.toString())
+        assertTrue("  $ herdr plugin install LuxionServer/ShogunAi/integrations/herdr --yes" in lines, out.toString())
+        assertTrue(lines.any { it.startsWith("herdr plugin: installed") }, out.toString())
+        assertTrue(err.contains("Run them? [y/N] "), err.toString())
+    }
+
+    @Test
+    fun `hooks install --herdr uninstalls a broken GitHub install and installs a missing one with yes`() {
+        val brokenGitHub = brokenLink.copy(sourceKind = "github")
+        val broken = FakeHerdrClient(plugins = listOf(brokenGitHub))
+        val missing = FakeHerdrClient()
+
+        assertEquals(0, cli(repositoryExecutor(), herdr = broken).run(listOf("hooks", "install", "--herdr", "--yes")))
+        assertEquals(0, cli(repositoryExecutor(), herdr = missing).run(listOf("hooks", "install", "--herdr", "--yes")))
+
+        assertEquals(listOf(HerdrPluginStep.Uninstall("shogunai.worktrees"), herdrInstall), broken.pluginSteps)
+        assertEquals(listOf<HerdrPluginStep>(herdrInstall), missing.pluginSteps)
+        assertFalse(err.contains("Run them?"), err.toString())
+    }
+
+    @Test
+    fun `hooks install --herdr declined runs nothing`() {
+        val herdr = FakeHerdrClient(plugins = listOf(brokenLink))
+
+        val exitCode = cli(repositoryExecutor(), herdr = herdr, answer = "n").run(listOf("hooks", "install", "--herdr"))
+
+        assertEquals(0, exitCode)
+        assertTrue(herdr.pluginSteps.isEmpty())
+        assertTrue("Nothing changed." in out.lines(), out.toString())
+    }
+
+    @Test
+    fun `hooks install --herdr runs nothing when the plugin is installed or disabled`() {
+        val installed = FakeHerdrClient(plugins = listOf(brokenLink.copy(warnings = emptyList())))
+        val disabled = FakeHerdrClient(plugins = listOf(brokenLink.copy(warnings = emptyList(), enabled = false)))
+
+        assertEquals(0, cli(repositoryExecutor(), herdr = installed).run(listOf("hooks", "install", "--herdr", "--yes")))
+        assertEquals(0, cli(repositoryExecutor(), herdr = disabled).run(listOf("hooks", "install", "--herdr", "--yes")))
+
+        assertTrue(installed.pluginSteps.isEmpty() && disabled.pluginSteps.isEmpty())
+        assertEquals(
+            listOf("Herdr's plugin is already installed", "Herdr's plugin is disabled; enable it with: herdr plugin enable shogunai.worktrees"),
+            out.lines().filter { it.isNotBlank() },
+        )
+    }
+
+    @Test
+    fun `hooks install --herdr fails when Herdr is missing, can't be checked or a command fails`() {
+        val failing = FakeHerdrClient(
+            plugins = listOf(brokenLink),
+            pluginStepFailures = mapOf(herdrInstall to WorktreeError.HerdrCommandFailed(listOf("herdr"), "network unreachable")),
+        )
+        val crashing = FakeHerdrClient(pluginStepFailures = mapOf(herdrInstall to IllegalStateException("socket closed")))
+        val unchecked = FakeHerdrClient(pluginsFailure = WorktreeError.HerdrCommandFailed(listOf("herdr"), "no server running"))
+
+        assertEquals(1, cli(repositoryExecutor(), herdr = withoutHerdr()).run(listOf("hooks", "install", "--herdr", "--yes")))
+        assertEquals(1, cli(repositoryExecutor(), herdr = failing).run(listOf("hooks", "install", "--herdr", "--yes")))
+        assertEquals(1, cli(repositoryExecutor(), herdr = crashing).run(listOf("hooks", "install", "--herdr", "--yes")))
+        assertEquals(1, cli(repositoryExecutor(), herdr = unchecked).run(listOf("hooks", "install", "--herdr", "--yes")))
+
+        assertEquals(listOf<HerdrPluginStep>(HerdrPluginStep.Unlink("shogunai.worktrees")), failing.pluginSteps)
+        assertEquals(
+            listOf(
+                "shogun: Herdr isn't installed; get it from https://herdr.dev",
+                "shogun: couldn't reinstall Herdr's plugin: network unreachable",
+                "shogun: couldn't reinstall Herdr's plugin: socket closed",
+                "shogun: couldn't check Herdr's plugin: no server running",
+            ),
+            err.lines().filter { it.isNotBlank() },
+        )
+    }
+
+    @Test
+    fun `hooks install --herdr --json previews without running and reports the result`() {
+        val previewed = FakeHerdrClient(plugins = listOf(brokenLink))
+        cli(repositoryExecutor(), herdr = previewed).run(listOf("hooks", "install", "--herdr", "--json"))
+        val preview = Json.parseToJsonElement(out.toString()).jsonObject
+        out.clear()
+        val applied = FakeHerdrClient(plugins = listOf(brokenLink))
+        cli(repositoryExecutor(), herdr = applied).run(listOf("hooks", "install", "--herdr", "--json", "--yes"))
+        val result = Json.parseToJsonElement(out.toString()).jsonObject
+        out.clear()
+        cli(repositoryExecutor(), herdr = FakeHerdrClient(plugins = listOf(brokenLink.copy(warnings = emptyList())))).run(listOf("hooks", "install", "--herdr", "--json"))
+        val unchanged = Json.parseToJsonElement(out.toString()).jsonObject
+
+        assertTrue(previewed.pluginSteps.isEmpty())
+        assertEquals(false, preview.getValue("applied").jsonPrimitive.boolean)
+        assertEquals(
+            listOf("herdr plugin unlink shogunai.worktrees", "herdr plugin install LuxionServer/ShogunAi/integrations/herdr --yes"),
+            preview.getValue("steps").jsonArray.map { it.jsonPrimitive.content },
+        )
+        assertEquals("broken", preview.getValue("herdr").jsonObject.getValue("state").jsonPrimitive.content)
+        assertEquals(true, result.getValue("applied").jsonPrimitive.boolean)
+        assertEquals("installed", result.getValue("herdr").jsonObject.getValue("state").jsonPrimitive.content)
+        assertTrue(unchanged.getValue("steps").jsonArray.isEmpty())
+        assertEquals("installed", unchanged.getValue("herdr").jsonObject.getValue("state").jsonPrimitive.content)
+    }
+
+    @Test
+    fun `hooks install --herdr says nothing more when Herdr disappears during the reinstall`() {
+        val fake = FakeHerdrClient()
+        val vanishing = object : HerdrClient by fake {
+            override fun isInstalled() = fake.pluginSteps.isEmpty()
+        }
+
+        assertEquals(0, cli(repositoryExecutor(), herdr = vanishing).run(listOf("hooks", "install", "--herdr", "--yes")))
+        assertFalse(out.lines().any { it.startsWith("herdr plugin:") }, out.toString())
+        out.clear()
+        val again = FakeHerdrClient()
+        val vanishingJson = object : HerdrClient by again {
+            override fun isInstalled() = again.pluginSteps.isEmpty()
+        }
+        cli(repositoryExecutor(), herdr = vanishingJson).run(listOf("hooks", "install", "--herdr", "--json", "--yes"))
+        assertEquals(JsonNull, Json.parseToJsonElement(out.toString()).jsonObject.getValue("herdr"))
     }
 
     @Test
@@ -5213,7 +5474,7 @@ class ShogunCliTest {
             Executor.fail(command, stderr = "ENOTFOUND", exitCode = 2)
         }.let { linking ->
             Executor { command, directory ->
-                if (installed && command.take(3) == listOf("git", "worktree", "list")) listing(command) else runBlocking { linking.execute(command, directory) }
+                if (installed && command.take(3) == listOf("git", "worktree", "list")) listing(command) else runBlocking { linking.respond(command, directory) }
             }
         }
     }
@@ -5478,7 +5739,7 @@ class ShogunCliTest {
         assertTrue(err.contains("Remove them? [y/N] "), err.toString())
         out.clear()
         val outside = Executor { command, _ -> Executor.fail(command, "fatal: not a git repository", 128) }
-        assertEquals(0, cli(outside, fileManager = files, workingDirectory = "/tmp").run(listOf("hooks", "status")), err.toString())
+        assertEquals(0, cli(outside, fileManager = files, workingDirectory = "/tmp", herdr = withoutHerdr()).run(listOf("hooks", "status")), err.toString())
         assertEquals(1, out.lines().count { it.isNotBlank() }, out.toString())
     }
 

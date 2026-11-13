@@ -11,12 +11,13 @@ import java.time.Instant
 fun StatusSection(status: WorktreeStatusState?, mainBranchName: String?) {
     val strings = LocalStrings.current
     val loaded = (status as? WorktreeStatusState.Loaded)?.status
+    val properties = loaded?.let { statusProperties(it, mainBranchName, Instant.now(), strings) }.orEmpty()
     InspectorSection(
         id = InspectorSectionId.STATUS,
         title = strings.statusTitle,
         state = statusSectionState(status, strings),
         summary = loaded?.let { statusSummary(it, strings) },
     ) {
-        loaded?.let { PropertyList(statusProperties(it, mainBranchName, Instant.now(), strings)) }
+        PropertyList(properties)
     }
 }

@@ -1,5 +1,7 @@
 package app.luxion.shogunai.cli
 
+import app.luxion.shogunai.engine.EngineOptions
+import app.luxion.shogunai.engine.ShogunEngine
 import app.luxion.shogunai.domain.FakeAndroidSdk
 import app.luxion.shogunai.domain.FakeAppleSimulators
 import app.luxion.shogunai.domain.FakeDerivedDataSource
@@ -17,6 +19,7 @@ import app.luxion.shogunai.domain.FakeProcessLiveness
 import app.luxion.shogunai.domain.FakeProjectRepository
 import app.luxion.shogunai.domain.FakeRepositoryProvisioningSource
 import app.luxion.shogunai.domain.FakeResourceLimitsRepository
+import app.luxion.shogunai.domain.ScriptedShellCommandExecutor
 import app.luxion.shogunai.domain.executor.CommandResult
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.io.DesktopTurnStore
@@ -74,8 +77,8 @@ class DesktopCommandsTest {
     private val queue = FakeDeviceWaitQueue()
     private val stateStore = FakeEnvironmentStateStore()
 
-    private val executor = object : ShellCommandExecutor {
-        override suspend fun execute(command: List<String>, workingDirectory: String?): CommandResult {
+    private val executor = object : ScriptedShellCommandExecutor() {
+        override suspend fun respond(command: List<String>, workingDirectory: String?): CommandResult {
             if (workingDirectory?.startsWith("/home/dev/projects") != true) return CommandResult(command, 128, "", "not a git repository")
             val worktree = listOf(task1, task2).firstOrNull { workingDirectory.startsWith(it) } ?: base
             val admin = when (worktree) {
@@ -95,35 +98,43 @@ class DesktopCommandsTest {
     }
 
     private fun cli(workingDirectory: String = task1, input: String = "", store: DesktopTurnStore = turnStore, git: ShellCommandExecutor = executor) = ShogunCli(
-        executor = git,
-        fileManager = FakeFileManager(existing = listOf(base, task1, task2)),
-        projectRepository = FakeProjectRepository(emptyList()),
-        provisioningSource = FakeRepositoryProvisioningSource(),
-        daemonSource = FakeGradleDaemonSource(),
-        gradleUserHome = "/home/dev/.gradle",
-        environmentStateStore = stateStore,
-        portProbe = FakePortProbe(),
-        androidSdk = FakeAndroidSdk(),
-        appleSimulators = FakeAppleSimulators(),
-        kmpTestWiring = FakeKmpTestWiring(),
-        resourceLimits = FakeResourceLimitsRepository(ResourceSettings(desktopTurnMinutes = 10)),
-        machineCapacity = FakeMachineCapacity(),
-        derivedDataSource = FakeDerivedDataSource(),
-        herdrConfig = FakeHerdrConfigSource(),
-        orca = FakeOrcaClient(installed = false),
+        engine = ShogunEngine(
+            cliEnginePorts(
+                executor = git,
+                fileManager = FakeFileManager(existing = listOf(base, task1, task2)),
+                projectRepository = FakeProjectRepository(emptyList()),
+                provisioningSource = FakeRepositoryProvisioningSource(),
+                gradleDaemons = FakeGradleDaemonSource(),
+                gradleUserHome = "/home/dev/.gradle",
+                environmentStateStore = stateStore,
+                portProbe = FakePortProbe(),
+                androidSdk = FakeAndroidSdk(),
+                appleSimulators = FakeAppleSimulators(),
+                kmpTestWiring = FakeKmpTestWiring(),
+                resourceLimits = FakeResourceLimitsRepository(ResourceSettings(desktopTurnMinutes = 10)),
+                machineCapacity = FakeMachineCapacity(),
+                derivedData = FakeDerivedDataSource(),
+                herdrConfig = FakeHerdrConfigSource(),
+                orca = FakeOrcaClient(installed = false),
+                workingDirectory = workingDirectory,
+                environment = hostEnvironment(),
+                deviceWaitQueue = queue,
+                processLiveness = FakeProcessLiveness(),
+                desktopTurns = store,
+            ),
+            EngineOptions(
+                clock = { now },
+                pauseWhileWaiting = { pause ->
+            now += pause
+            onPause.removeFirstOrNull()?.invoke()
+        },
+            ),
+        ),
         workingDirectory = workingDirectory,
         out = out,
         err = err,
         canonicalPath = { it.trimEnd('/') },
         environment = hostEnvironment(),
-        deviceWaitQueue = queue,
-        processLiveness = FakeProcessLiveness(),
-        deviceClock = { now },
-        pauseWhileWaiting = { pause ->
-            now += pause
-            onPause.removeFirstOrNull()?.invoke()
-        },
-        desktopTurnStore = store,
         readInput = { input },
     )
 
@@ -544,9 +555,9 @@ class DesktopCommandsTest {
 
     @Test
     fun `desktop-turn hook lets the command run when the worktree can't be read`() {
-        val noTopLevel = object : ShellCommandExecutor {
-            override suspend fun execute(command: List<String>, workingDirectory: String?): CommandResult =
-                if ("--show-toplevel" in command) CommandResult(command, 128, "", "fatal: not a work tree") else executor.execute(command, workingDirectory)
+        val noTopLevel = object : ScriptedShellCommandExecutor() {
+            override suspend fun respond(command: List<String>, workingDirectory: String?): CommandResult =
+                if ("--show-toplevel" in command) CommandResult(command, 128, "", "fatal: not a work tree") else executor.respond(command, workingDirectory)
         }
 
         assertEquals(0, desktopTurnHook("orca computer click --app com.example.app", git = noTopLevel))
@@ -560,30 +571,36 @@ class DesktopCommandsTest {
         val start = Instant.now()
         turnStore.turn = DesktopTurn(admin2, task2, start.toEpochMilli(), (start + Duration.ofMillis(100)).toEpochMilli())
         val realTime = ShogunCli(
-            executor = executor,
-            fileManager = FakeFileManager(existing = listOf(base, task1, task2)),
-            projectRepository = FakeProjectRepository(emptyList()),
-            provisioningSource = FakeRepositoryProvisioningSource(),
-            daemonSource = FakeGradleDaemonSource(),
-            gradleUserHome = "/home/dev/.gradle",
-            environmentStateStore = stateStore,
-            portProbe = FakePortProbe(),
-            androidSdk = FakeAndroidSdk(),
-            appleSimulators = FakeAppleSimulators(),
-            kmpTestWiring = FakeKmpTestWiring(),
-            resourceLimits = FakeResourceLimitsRepository(ResourceSettings(desktopTurnMinutes = 10)),
-            machineCapacity = FakeMachineCapacity(),
-            derivedDataSource = FakeDerivedDataSource(),
-            herdrConfig = FakeHerdrConfigSource(),
-            orca = FakeOrcaClient(installed = false),
+            engine = ShogunEngine(
+                cliEnginePorts(
+                    executor = executor,
+                    fileManager = FakeFileManager(existing = listOf(base, task1, task2)),
+                    projectRepository = FakeProjectRepository(emptyList()),
+                    provisioningSource = FakeRepositoryProvisioningSource(),
+                    gradleDaemons = FakeGradleDaemonSource(),
+                    gradleUserHome = "/home/dev/.gradle",
+                    environmentStateStore = stateStore,
+                    portProbe = FakePortProbe(),
+                    androidSdk = FakeAndroidSdk(),
+                    appleSimulators = FakeAppleSimulators(),
+                    kmpTestWiring = FakeKmpTestWiring(),
+                    resourceLimits = FakeResourceLimitsRepository(ResourceSettings(desktopTurnMinutes = 10)),
+                    machineCapacity = FakeMachineCapacity(),
+                    derivedData = FakeDerivedDataSource(),
+                    herdrConfig = FakeHerdrConfigSource(),
+                    orca = FakeOrcaClient(installed = false),
+                    workingDirectory = task1,
+                    environment = hostEnvironment(),
+                    deviceWaitQueue = queue,
+                    processLiveness = FakeProcessLiveness(),
+                    desktopTurns = turnStore,
+                ),
+            ),
             workingDirectory = task1,
             out = out,
             err = err,
             canonicalPath = { it.trimEnd('/') },
             environment = hostEnvironment(),
-            deviceWaitQueue = queue,
-            processLiveness = FakeProcessLiveness(),
-            desktopTurnStore = turnStore,
         )
 
         assertEquals(0, realTime.run(listOf("desktop", "acquire", "--wait")), err.toString())

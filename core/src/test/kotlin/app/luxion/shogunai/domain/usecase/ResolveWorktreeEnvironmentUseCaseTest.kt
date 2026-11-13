@@ -7,6 +7,7 @@ import app.luxion.shogunai.domain.FakeRepositoryProvisioningSource
 import app.luxion.shogunai.domain.FakeShellCommandExecutor
 import app.luxion.shogunai.domain.FakeAppleSimulators
 import app.luxion.shogunai.domain.FakeFileManager
+import app.luxion.shogunai.domain.ScriptedShellCommandExecutor
 import app.luxion.shogunai.domain.executor.CommandResult
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.io.FileManager
@@ -55,8 +56,8 @@ class ResolveWorktreeEnvironmentUseCaseTest {
             ),
         )
 
-    private fun gitExecutor() = object : ShellCommandExecutor {
-        override suspend fun execute(command: List<String>, workingDirectory: String?) =
+    private fun gitExecutor() = object : ScriptedShellCommandExecutor() {
+        override suspend fun respond(command: List<String>, workingDirectory: String?) =
             FakeShellCommandExecutor.success(command, "${adminDirectories.getValue(workingDirectory!!)}\n$common\n")
     }
 
@@ -66,13 +67,13 @@ class ResolveWorktreeEnvironmentUseCaseTest {
         probe: FakePortProbe = FakePortProbe(),
     ) = ResolveWorktreeEnvironmentUseCase(gitExecutor(), source, store, probe, trust = FakeRepositoryTrust(approvesEverything = true))
 
-    private class CountingGitExecutor(private val delegate: ShellCommandExecutor) :
-        ShellCommandExecutor {
+    private class CountingGitExecutor(private val delegate: ScriptedShellCommandExecutor) :
+        ScriptedShellCommandExecutor() {
         var gitReads = 0
 
-        override suspend fun execute(command: List<String>, workingDirectory: String?): CommandResult {
+        override suspend fun respond(command: List<String>, workingDirectory: String?): CommandResult {
             gitReads++
-            return delegate.execute(command, workingDirectory)
+            return delegate.respond(command, workingDirectory)
         }
     }
 
@@ -200,6 +201,24 @@ class ResolveWorktreeEnvironmentUseCaseTest {
         assertEquals(WorktreeEnvironment(), environment)
         assertEquals(0, store.locks)
         assertTrue(executor.executedCommands.isEmpty())
+    }
+
+    @Test
+    fun `held physical devices are added unless a declared variable has the same name`() = runTest {
+        val devices: suspend (String) -> List<Pair<String, String>> = { worktree ->
+            if (worktree == task) listOf("SHOGUN_ANDROID_DEVICE_SERIAL" to "R5CT10ABCDE", "SHOGUN_IOS_DEVICE_UDID" to "UDID-1") else emptyList()
+        }
+        val resolver = { source: FakeRepositoryProvisioningSource ->
+            ResolveWorktreeEnvironmentUseCase(gitExecutor(), source, FakeEnvironmentStateStore(), FakePortProbe(), trust = FakeRepositoryTrust(approvesEverything = true), deviceVariables = devices)
+        }
+
+        val plain = resolver(declaring())(repository, task).getOrThrow()
+        val overridden = resolver(declaring("SHOGUN_IOS_DEVICE_UDID" to "mine"))(repository, task).getOrThrow()
+        val none = resolver(declaring())(repository, other).getOrThrow()
+
+        assertEquals(listOf("SHOGUN_ANDROID_DEVICE_SERIAL" to "R5CT10ABCDE", "SHOGUN_IOS_DEVICE_UDID" to "UDID-1"), plain.variables)
+        assertEquals(listOf("SHOGUN_IOS_DEVICE_UDID" to "mine", "SHOGUN_ANDROID_DEVICE_SERIAL" to "R5CT10ABCDE"), overridden.variables)
+        assertEquals(WorktreeEnvironment(), none)
     }
 
     @Test

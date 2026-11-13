@@ -7,6 +7,7 @@ import app.luxion.shogunai.domain.model.AttributedDerivedData
 import app.luxion.shogunai.domain.model.DerivedDataListing
 import app.luxion.shogunai.domain.model.DerivedDataOwner
 import app.luxion.shogunai.domain.model.Worktree
+import app.luxion.shogunai.domain.runSuspendCatching
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.toList
@@ -24,7 +25,7 @@ class ListDerivedDataUseCase(
         worktrees: List<Worktree>,
         includeCompilationCache: Boolean,
         measure: DerivedDataMeasure,
-    ): Result<DerivedDataListing> = runCatching {
+    ): Result<DerivedDataListing> = runSuspendCatching {
         coroutineScope {
             val compilationCache = async { if (includeCompilationCache) source.compilationCacheBytes() else null }
             val caches = async { packageCaches.sizes() }

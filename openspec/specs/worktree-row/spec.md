@@ -6,7 +6,7 @@ Defines the layout of a worktree's row in every worktree view, so every piece of
 ## Requirements
 
 ### Requirement: Fixed cells in two lines
-A worktree's row SHALL have two lines and five cells, in this order: state badge, execution, name, Git and time. Every cell except the name SHALL have a fixed width and keep it when it has nothing to show, so the same information sits at the same position in every row of a view. The execution cell SHALL be left out of every row of a view when no row of that view has anything to show in it, and shown again in every row as soon as one has. The name cell SHALL take the remaining width and truncate with an ellipsis, showing the full text in a tooltip.
+A worktree's row SHALL have two lines and five cells, in this order: state badge, execution, name, Git and time. Every cell except the name SHALL have a fixed width and keep it when it has nothing to show, so the same information sits at the same position in every row of a view. The name cell SHALL take the remaining width and truncate with an ellipsis, showing the full text in a tooltip.
 
 #### Scenario: Rows with different information
 - **WHEN** one row has an agent, an emulator and uncommitted changes, and the next row has none of them
@@ -44,7 +44,7 @@ The state badge SHALL be a circle in the color of the worktree's state with an i
 - **THEN** its badge is an outlined neutral circle with the "new" icon, and its tooltip and accessible name say "New"
 
 ### Requirement: Execution cell
-The execution cell SHALL show the worktree's agent on its first line and its emulator or simulator on its second line. The agent SHALL be shown with the agent indicator: the agent icon colored by its state, its name and its state in the shared vocabulary (working, needs you, done, idle or running). With several agents, the most urgent one SHALL be shown with a "+N" count, and the tooltip SHALL list every agent with its state, the source of the state and when it was read. The device line SHALL show the device only while it is booting or running, colored by its state.
+The execution cell SHALL show the worktree's agent on its first line and its emulator or simulator on its second line. The agent SHALL be shown with the agent indicator: the agent icon colored by its state, its name and its state in the shared vocabulary (working, needs you, done, idle or running). The device line SHALL show the device only while it is booting or running, colored by its state.
 
 #### Scenario: Agent and emulator
 - **WHEN** Claude is blocked in a worktree whose emulator is running
@@ -89,7 +89,7 @@ When the list is too narrow to show the execution cell's labels, the cell SHALL 
 - **THEN** every row shows only the agent's icon and the device icon, Claude's icon still in the warning color, and hovering it says Claude needs you
 
 ### Requirement: Name cell
-The name cell's first line SHALL show the branch, or that the HEAD is detached, with the origin in its tooltip; for the main checkout it SHALL be followed by a neutral "main" chip. When the branch doesn't fit, its type prefix (the part up to its last `/`, such as `feature/`) SHALL be truncated before the rest, so the task id stays visible as long as it fits. Its second line SHALL only identify the row, separated by " · ": the group tag outside the multirepo view, the folder when it differs from the branch's last segment and the row isn't the main checkout, and the project's name in views spanning several projects not grouped by project, truncated last. It SHALL NOT show the origin.
+The name cell's first line SHALL show the branch, or that the HEAD is detached, with the origin in its tooltip; for the main checkout it SHALL be followed by a neutral "main" chip. When the branch doesn't fit, its type prefix (the part up to its last `/`, such as `feature/`) SHALL be truncated before the rest, so the task id stays visible as long as it fits.
 
 #### Scenario: Folder matches the branch
 - **WHEN** the branch is `feature/TASK-123` and the folder is `TASK-123`
@@ -132,7 +132,7 @@ The name cell's first line SHALL show the branch, or that the HEAD is detached, 
 - **THEN** the group tag and the folder are truncated before the project's name
 
 ### Requirement: Git cell
-The Git cell's first line SHALL show the number of uncommitted changes. Its second line SHALL show that the branch is merged, naming the branch it is merged into in the tooltip; otherwise the commits ahead of ("↑") and behind ("↓") its upstream, with their meaning in the tooltip; otherwise, for a branch with commits of its own and no upstream, a "not pushed" icon whose tooltip and accessible name say the branch isn't pushed. The second line SHALL NOT compare the branch with its base. While the status is loading, the cell SHALL show a loading indicator; when the status can't be read, a muted dash with the reason in its tooltip.
+The Git cell's first line SHALL show the number of uncommitted changes. Its second line SHALL show that the branch is merged, naming the branch it is merged into in the tooltip; otherwise the commits ahead of ("↑") and behind ("↓") its upstream, with their meaning in the tooltip; otherwise, for a branch with commits of its own and no upstream, a "not pushed" icon whose tooltip and accessible name say the branch isn't pushed. The second line SHALL NOT compare the branch with its base.
 
 #### Scenario: Changes and divergence
 - **WHEN** a worktree has 3 uncommitted changes and is 2 ahead of and 1 behind its upstream
@@ -235,3 +235,51 @@ In the worktree list, pressing Enter without modifiers SHALL focus the selected 
 #### Scenario: Focus fails
 - **WHEN** the user focuses an agent from the row and the runner reports an error
 - **THEN** the error is shown on the worktree as for "Open in Herdr" or "Open in Orca"
+
+### Requirement: The execution cell only when a row uses it
+The execution cell SHALL be left out of every row of a view when no row of that view has anything to show in it, and shown again in every row as soon as one has.
+
+#### Scenario: Unused in the view
+- **WHEN** no worktree of the view has an agent, a running device, a desktop turn or a running headless app
+- **THEN** no row of the view has an execution cell, and the name cell starts right after the state badge
+
+#### Scenario: Used again
+- **WHEN** an agent starts in one worktree of a view whose rows had no execution cell
+- **THEN** every row of the view shows the execution cell again, at the same position
+
+### Requirement: Several agents in the execution cell
+With several agents in a worktree, the execution cell SHALL show the most urgent one with a "+N" count, and its tooltip SHALL list every agent with its state, the source of the state and when it was read.
+
+#### Scenario: Most urgent agent first
+- **WHEN** a worktree has a working Codex and a blocked Claude
+- **THEN** the cell shows "Claude · needs you" with "+1", and its tooltip lists both agents with their states, where each state came from and when it was read
+
+### Requirement: Second line of the name cell
+The name cell's second line SHALL only identify the row, separated by " · ": the group tag outside the multirepo view, the folder when it differs from the branch's last segment and the row isn't the main checkout, and the project's name in views spanning several projects not grouped by project, truncated last. It SHALL NOT show the origin.
+
+#### Scenario: Folder only when it differs
+- **WHEN** the branch is `feature/TASK-123` and the folder is `task-123-wt`
+- **THEN** the second line shows `task-123-wt`
+
+#### Scenario: No origin
+- **WHEN** a worktree was created by ShogunAi
+- **THEN** its second line doesn't name the origin
+
+#### Scenario: Tag, then project
+- **WHEN** a worktree of the group `TASK-7` with `app` is listed in "Active" grouped by state
+- **THEN** its second line reads `TASK-7 · +app · <project>`, with a separator between the tag and the project
+
+#### Scenario: Project truncated last
+- **WHEN** a row in "Active" grouped by state doesn't fit its second line
+- **THEN** the group tag and the folder are truncated before the project's name
+
+### Requirement: Git cell while loading or unreadable
+While a worktree's status is loading, the Git cell SHALL show a loading indicator; when the status can't be read, a muted dash with the reason in its tooltip.
+
+#### Scenario: Loading
+- **WHEN** a worktree's status hasn't been read yet
+- **THEN** the Git cell shows a loading indicator
+
+#### Scenario: Unreadable
+- **WHEN** a worktree's status can't be read
+- **THEN** the Git cell shows a muted dash, and hovering it says the status is unavailable

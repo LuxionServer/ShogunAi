@@ -201,9 +201,13 @@ internal object CliHelp {
                               Add or remove every ShogunAi hook in Claude Code's user settings
                               (--project: the repository's .claude/settings.json); shows what changes
                               and asks first unless --yes is given
+  hooks install --herdr [--yes] [--json]
+                              Reinstall ShogunAi's Herdr plugin from the repository when it is broken
+                              or missing; shows the Herdr commands and asks first unless --yes is given
   hooks status [--json]
                               Say whether the hooks are installed, outdated or missing, in the user
-                              settings and in the current repository's
+                              settings and in the current repository's, and whether Herdr's plugin is
+                              installed, disabled, broken or missing
 """.trimIndent(),
         "doctor" to """
   doctor [--json]             Check Git, the PATH, the shogun command, Claude Code's hooks, Claude Code, Herdr,
@@ -266,6 +270,29 @@ internal object CliHelp {
   desktop release [<path>] [--json]
                               Give the turn back; Claude Code's Stop and SessionEnd hooks also release it
   desktop status [--json]     Show who holds the desktop, until when, and who waits for it
+""".trimIndent(),
+        "device" to """
+  device list [--all] [--json]
+                              List the connected Android devices, iPhones and iPads with their connection,
+                              whether they are lent to agents and who holds them; --all adds the recorded
+                              devices that aren't connected, with when they were last seen
+  device acquire [<path>] [--android|--ios] [--name <alias-or-name>] [--model <text>] [--json]
+                              Give the worktree a lent, connected physical device no other worktree holds,
+                              and print its SHOGUN_ANDROID_DEVICE_SERIAL or SHOGUN_IOS_DEVICE_UDID to export;
+                              acquiring again renews its lease; a device whose lease expired is taken over
+  device acquire [--wait] [--wait-timeout <minutes>]
+                              Wait in line until a matching device is connected and free
+                              (30 minutes at most by default) instead of failing
+  device release [<path>] [--android|--ios] [--json]
+                              Give the worktree's physical devices back, without changing anything on them
+  device status [<path>] [--json]
+                              Show the worktree's physical devices, their serial or UDID and lease, why it
+                              lost the last one, and its place in line
+  device lend|withdraw|forget <device> [--json]
+                              Lend a recorded device to agents, withdraw it (releasing it if held) or
+                              forget it; <device> is its id, alias or name
+  device rename <device> <alias> [--json]
+                              Give a recorded device an alias, unique among the recorded devices
 """.trimIndent(),
         "env" to """
   env [<path>] [--format sh|dotenv|json]

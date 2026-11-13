@@ -1,5 +1,7 @@
 package app.luxion.shogunai.cli
 
+import app.luxion.shogunai.engine.EngineOptions
+import app.luxion.shogunai.engine.ShogunEngine
 import app.luxion.shogunai.domain.FakeAndroidSdk
 import app.luxion.shogunai.domain.FakeAppWindowService
 import app.luxion.shogunai.domain.FakeAppleSimulators
@@ -16,8 +18,8 @@ import app.luxion.shogunai.domain.FakePortProbe
 import app.luxion.shogunai.domain.FakeProjectRepository
 import app.luxion.shogunai.domain.FakeRepositoryProvisioningSource
 import app.luxion.shogunai.domain.FakeResourceLimitsRepository
+import app.luxion.shogunai.domain.ScriptedShellCommandExecutor
 import app.luxion.shogunai.domain.executor.CommandResult
-import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.model.AppWindow
 import app.luxion.shogunai.domain.model.CapacityProfile
 import app.luxion.shogunai.domain.model.DesktopAppProvider
@@ -58,8 +60,8 @@ class HeadlessCommandsTest {
     private val launcher = FakeHeadlessAppLauncher(files, pidFile)
     private var windows = FakeAppWindowService()
 
-    private val executor = object : ShellCommandExecutor {
-        override suspend fun execute(command: List<String>, workingDirectory: String?): CommandResult {
+    private val executor = object : ScriptedShellCommandExecutor() {
+        override suspend fun respond(command: List<String>, workingDirectory: String?): CommandResult {
             val outside = workingDirectory?.startsWith("/home/dev/projects") != true
             if (outside) return CommandResult(command, 128, "", "not a git repository")
             val stdout = when {
@@ -82,31 +84,39 @@ class HeadlessCommandsTest {
     )
 
     private fun cli(declared: Boolean = true, workingDirectory: String = linked, input: String = "", environment: Map<String, String> = emptyMap(), provisioning: FakeRepositoryProvisioningSource = provisioning(declared)) = ShogunCli(
-        executor = executor,
-        fileManager = files,
-        projectRepository = FakeProjectRepository(emptyList()),
-        provisioningSource = provisioning,
-        daemonSource = FakeGradleDaemonSource(),
-        gradleUserHome = "/home/dev/.gradle",
-        environmentStateStore = FakeEnvironmentStateStore(),
-        portProbe = FakePortProbe(),
-        androidSdk = FakeAndroidSdk(),
-        appleSimulators = FakeAppleSimulators(),
-        kmpTestWiring = FakeKmpTestWiring(),
-        resourceLimits = FakeResourceLimitsRepository(ResourceSettings(CapacityProfile.PER_WORKTREE)),
-        machineCapacity = FakeMachineCapacity(),
-        derivedDataSource = FakeDerivedDataSource(),
-        herdrConfig = FakeHerdrConfigSource(),
-        orca = FakeOrcaClient(installed = false),
+        engine = ShogunEngine(
+            cliEnginePorts(
+                executor = executor,
+                fileManager = files,
+                projectRepository = FakeProjectRepository(emptyList()),
+                provisioningSource = provisioning,
+                gradleDaemons = FakeGradleDaemonSource(),
+                gradleUserHome = "/home/dev/.gradle",
+                environmentStateStore = FakeEnvironmentStateStore(),
+                portProbe = FakePortProbe(),
+                androidSdk = FakeAndroidSdk(),
+                appleSimulators = FakeAppleSimulators(),
+                kmpTestWiring = FakeKmpTestWiring(),
+                resourceLimits = FakeResourceLimitsRepository(ResourceSettings(CapacityProfile.PER_WORKTREE)),
+                machineCapacity = FakeMachineCapacity(),
+                derivedData = FakeDerivedDataSource(),
+                herdrConfig = FakeHerdrConfigSource(),
+                orca = FakeOrcaClient(installed = false),
+                workingDirectory = workingDirectory,
+                environment = hostEnvironment(variables = environment),
+                headlessLauncher = launcher,
+                appWindows = windows,
+            ),
+            EngineOptions(
+                pauseWhileStartingApp = {},
+            ),
+        ),
         workingDirectory = workingDirectory,
         out = out,
         err = err,
         readInput = { input },
         canonicalPath = { it.trimEnd('/') },
         environment = hostEnvironment(variables = environment),
-        headlessLauncher = launcher,
-        appWindows = windows,
-        pauseWhileStartingApp = {},
     )
 
     private fun appWindow() {
@@ -238,29 +248,35 @@ class HeadlessCommandsTest {
         appWindow()
         windows.windowAfterPolls = 1
         val realPauses = ShogunCli(
-            executor = executor,
-            fileManager = files,
-            projectRepository = FakeProjectRepository(emptyList()),
-            provisioningSource = provisioning(true),
-            daemonSource = FakeGradleDaemonSource(),
-            gradleUserHome = "/home/dev/.gradle",
-            environmentStateStore = FakeEnvironmentStateStore(),
-            portProbe = FakePortProbe(),
-            androidSdk = FakeAndroidSdk(),
-            appleSimulators = FakeAppleSimulators(),
-            kmpTestWiring = FakeKmpTestWiring(),
-            resourceLimits = FakeResourceLimitsRepository(ResourceSettings(CapacityProfile.PER_WORKTREE)),
-            machineCapacity = FakeMachineCapacity(),
-            derivedDataSource = FakeDerivedDataSource(),
-            herdrConfig = FakeHerdrConfigSource(),
-            orca = FakeOrcaClient(installed = false),
+            engine = ShogunEngine(
+                cliEnginePorts(
+                    executor = executor,
+                    fileManager = files,
+                    projectRepository = FakeProjectRepository(emptyList()),
+                    provisioningSource = provisioning(true),
+                    gradleDaemons = FakeGradleDaemonSource(),
+                    gradleUserHome = "/home/dev/.gradle",
+                    environmentStateStore = FakeEnvironmentStateStore(),
+                    portProbe = FakePortProbe(),
+                    androidSdk = FakeAndroidSdk(),
+                    appleSimulators = FakeAppleSimulators(),
+                    kmpTestWiring = FakeKmpTestWiring(),
+                    resourceLimits = FakeResourceLimitsRepository(ResourceSettings(CapacityProfile.PER_WORKTREE)),
+                    machineCapacity = FakeMachineCapacity(),
+                    derivedData = FakeDerivedDataSource(),
+                    herdrConfig = FakeHerdrConfigSource(),
+                    orca = FakeOrcaClient(installed = false),
+                    workingDirectory = linked,
+                    environment = hostEnvironment(),
+                    headlessLauncher = launcher,
+                    appWindows = windows,
+                ),
+            ),
             workingDirectory = linked,
             out = out,
             err = err,
             canonicalPath = { it.trimEnd('/') },
             environment = hostEnvironment(),
-            headlessLauncher = launcher,
-            appWindows = windows,
         )
 
         assertEquals(0, realPauses.run(listOf("headless", "start")), err.toString())

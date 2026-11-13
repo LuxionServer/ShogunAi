@@ -6,7 +6,10 @@ import java.nio.file.Path
 import java.nio.file.attribute.PosixFilePermissions
 import java.security.MessageDigest
 import kotlinx.serialization.json.JsonPrimitive
+import kotlin.concurrent.thread
 import kotlin.io.path.createDirectories
+import kotlin.io.path.listDirectoryEntries
+import kotlin.io.path.name
 import kotlin.io.path.readText
 import kotlin.io.path.writeText
 import kotlin.test.Test
@@ -170,5 +173,31 @@ class JsonRepositoryTrustTest {
         assertFalse(trust.isApproved(repository, install))
         trust.approve("$home/gone", install)
         assertTrue(trust.isApproved("$home/gone", install))
+    }
+
+    @Test
+    fun `approvals from two stores on the same file at once are all kept`() {
+        val repositories = (1..2).flatMap { writer -> (1..15).map { home.resolve("repo-$writer-$it").also { path -> path.createDirectories() }.toString() } }
+        val writers = repositories.chunked(15).map { own ->
+            thread {
+                val store = JsonRepositoryTrust(storage)
+                own.forEach { store.approve(it, install) }
+            }
+        }
+        writers.forEach { it.join() }
+
+        assertEquals(repositories, repositories.filter { trust.isApproved(it, install) })
+    }
+
+    @Test
+    fun `an unreadable store is kept before an approval replaces it`() {
+        storage.parent.createDirectories()
+        storage.writeText("{ not json")
+
+        trust.approve(repository, install)
+
+        val kept = storage.parent.listDirectoryEntries().single { it.name.startsWith("trust.json.unreadable-") }
+        assertEquals("{ not json", kept.readText())
+        assertTrue(trust.isApproved(repository, install))
     }
 }

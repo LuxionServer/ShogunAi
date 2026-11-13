@@ -1,0 +1,5 @@
+List of devices attached
+adb-R5CT10ABCDE-xYz._adb-tls-connect._tcp device product:a55xnsxx model:SM_A556B device:a55x transport_id:4
+192.168.1.30:5555      device product:sdk_gphone64_arm64 model:sdk_gphone64_arm64 device:emu64a transport_id:5
+0A1B2C3D4E             unauthorized usb:1-2 transport_id:6
+

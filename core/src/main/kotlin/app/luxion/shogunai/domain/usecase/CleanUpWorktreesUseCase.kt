@@ -1,6 +1,7 @@
 package app.luxion.shogunai.domain.usecase
 
 import app.luxion.shogunai.domain.executor.CommandResult
+import app.luxion.shogunai.domain.executor.CommandTimeouts
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.io.ComposeProjectRegistry
 import app.luxion.shogunai.domain.io.ComposeProjectSource
@@ -13,6 +14,7 @@ import app.luxion.shogunai.domain.model.RunningAgent
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.WorktreeStatus
+import app.luxion.shogunai.domain.runSuspendCatching
 import kotlin.coroutines.cancellation.CancellationException
 
 data class CleanupReport(
@@ -66,9 +68,10 @@ class CleanUpWorktreesUseCase(
     stopHeadlessApp: StopHeadlessAppUseCase? = null,
     releaseDesktopTurn: ReleaseDesktopTurnUseCase? = null,
     private val closeOrcaTerminals: CloseOrcaTerminalsUseCase? = null,
+    releasePhysicalDevices: ReleasePhysicalDeviceUseCase? = null,
 ) {
     private val folderRemoval =
-        WorktreeFolderRemoval(config, executor, fileManager, closeHerdrWorkspaces, stopHeadlessApp, releaseDesktopTurn, closeOrcaTerminals)
+        WorktreeFolderRemoval(config, executor, fileManager, closeHerdrWorkspaces, stopHeadlessApp, releaseDesktopTurn, closeOrcaTerminals, releasePhysicalDevices)
 
     suspend operator fun invoke(
         candidates: List<Worktree>,
@@ -76,7 +79,7 @@ class CleanUpWorktreesUseCase(
         deleteBranches: Boolean,
         downComposeProjects: Boolean = false,
         removeComposeVolumes: Boolean = false,
-    ): Result<CleanupReport> = runCatching {
+    ): Result<CleanupReport> = runSuspendCatching {
         val workspaces = closeHerdrWorkspaces?.openWorkspaces(candidates.map { it.path }).orEmpty()
         val orcaTerminals = closeOrcaTerminals?.withTerminals(candidates.filterNot { it.isPrunable }.map { it.path }).orEmpty()
         val keptBranches = mutableListOf<String>()
@@ -145,7 +148,7 @@ class CleanUpWorktreesUseCase(
     ): Result<Pair<ComposeDownReport, ComposeLeftoversReport>>? {
         val source = composeProjects ?: return null
         if (removed.isEmpty()) return null
-        return runCatching {
+        return runSuspendCatching {
             val names = composeProjectNamesOf(removed)
             val existing = source.list().map { it.name }.filter { it in names }
             val down = TakeDownComposeProjectsUseCase(source)(existing)
@@ -156,14 +159,14 @@ class CleanUpWorktreesUseCase(
 
     private fun composeProjectNamesOf(removed: List<Worktree>): Set<String> {
         val paths = removed.map { normalizePath(it.path) }.toSet()
-        val recorded = composeRegistry?.let { runCatching { it.entries(config.baseRepositoryPath) }.getOrDefault(emptyList()) }.orEmpty()
+        val recorded = composeRegistry?.let { runSuspendCatching { it.entries(config.baseRepositoryPath) }.getOrDefault(emptyList()) }.orEmpty()
             .filter { normalizePath(it.worktreePath) in paths }
             .map { it.project }
         return removed.map { worktreeComposeProjectName(config.baseRepositoryPath, it.path) }.toSet() + recorded
     }
 
     private suspend fun git(vararg args: String) =
-        executor.execute(listOf("git", *args), workingDirectory = config.baseRepositoryPath)
+        executor.executeWithin(listOf("git", *args), CommandTimeouts.LOCAL_WORK, workingDirectory = config.baseRepositoryPath)
 
     private fun CommandResult.toError() =
         WorktreeError.GitCommandFailed(command, exitCode, stderr)

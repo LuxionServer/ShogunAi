@@ -123,8 +123,8 @@ class MultirepoSharedEnvironmentTest {
     fun `a listing that fails without a reason is unreadable with no detail`() = runTest {
         sharing("API_URL" to "http://localhost:\${port:api.http}")
         val silent = object : ShellCommandExecutor by world.git {
-            override suspend fun executeWithin(command: List<String>, timeout: Duration, workingDirectory: String?): CommandResult =
-                if (workingDirectory == world.apiBase && command.getOrNull(1) == "worktree") throw IllegalStateException() else world.git.executeWithin(command, timeout, workingDirectory)
+            override suspend fun executeWithin(command: List<String>, timeout: Duration, workingDirectory: String?, environment: Map<String, String>): CommandResult =
+                if (workingDirectory == world.apiBase && command.getOrNull(1) == "worktree") throw IllegalStateException() else world.git.executeWithin(command, timeout, workingDirectory, environment)
         }
 
         val target = MultirepoSharedEnvironment(world.resolver, silent).forWorktree(world.appBase, world.appBase)!!.targets["api"]

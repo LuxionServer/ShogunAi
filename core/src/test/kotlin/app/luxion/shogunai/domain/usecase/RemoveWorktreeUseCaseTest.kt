@@ -1,5 +1,13 @@
 package app.luxion.shogunai.domain.usecase
 
+import app.luxion.shogunai.domain.FakePhysicalDeviceInventoryStore
+import app.luxion.shogunai.domain.FakePhysicalDeviceLeaseStore
+import app.luxion.shogunai.domain.executor.CommandTimeouts
+import app.luxion.shogunai.domain.model.DeviceLeases
+import app.luxion.shogunai.domain.model.DevicePlatform
+import app.luxion.shogunai.domain.model.PhysicalDeviceLease
+import app.luxion.shogunai.domain.model.RecordedDevice
+import java.time.Duration
 import app.luxion.shogunai.domain.FakeAppWindowService
 import app.luxion.shogunai.domain.FakeDesktopTurnStore
 import app.luxion.shogunai.domain.FakeDeviceWaitQueue
@@ -47,6 +55,7 @@ class RemoveWorktreeUseCaseTest {
 
         assertTrue(result.isSuccess)
         assertEquals(listOf(listOf("git", "worktree", "remove", worktreePath)), executor.executedCommands)
+        assertEquals(CommandTimeouts.LOCAL_WORK, executor.timeouts[listOf("git", "worktree", "remove", worktreePath)])
     }
 
     private fun headlessApp(launcher: FakeHeadlessAppLauncher, files: FakeFileManager): StopHeadlessAppUseCase {
@@ -113,6 +122,35 @@ class RemoveWorktreeUseCaseTest {
 
         assertTrue(releasedBeforeRemoval)
         assertTrue(queue.read(WaitQueueName.DESKTOP).isEmpty())
+    }
+
+
+    private fun physicalDevices(inventory: FakePhysicalDeviceInventoryStore, leases: FakePhysicalDeviceLeaseStore, queue: FakeDeviceWaitQueue) = ReleasePhysicalDeviceUseCase(
+        PhysicalDeviceLedger(
+            emptyList(), inventory, leases, FakeEnvironmentStateStore(), queue, FakeProcessLiveness(),
+            { path -> "/home/dev/projects/main-repo/.git/worktrees/${path.substringAfterLast('/')}" },
+            { Duration.ofMinutes(20) },
+            sleep = {},
+        ),
+    )
+
+    private fun pixel() = RecordedDevice("android:3A281FDJH000AB", DevicePlatform.ANDROID, lastSeen = 0)
+
+    private fun lease(admin: String, worktree: String) = PhysicalDeviceLease("android:3A281FDJH000AB", DevicePlatform.ANDROID, admin, worktree, 0, 0)
+
+    @Test
+    fun `removing a worktree releases its physical devices and drops its waits`() = runTest {
+        val admin = "/home/dev/projects/main-repo/.git/worktrees/TASK-123"
+        val inventory = FakePhysicalDeviceInventoryStore(listOf(pixel()))
+        val leases = FakePhysicalDeviceLeaseStore(DeviceLeases(listOf(lease(admin, worktreePath))))
+        val queue = FakeDeviceWaitQueue()
+        queue.write(WaitQueueName.IOS_DEVICE, listOf(WaitTicket("ticket", admin, worktreePath, ProcessIdentity(3000, 1), 0, "platform=ios")))
+
+        RemoveWorktreeUseCase(config, FakeShellCommandExecutor { success(it) }, releasePhysicalDevices = physicalDevices(inventory, leases, queue))(worktreePath)
+            .getOrThrow()
+
+        assertEquals(DeviceLeases(), leases.leases)
+        assertTrue(queue.read(WaitQueueName.IOS_DEVICE).isEmpty())
     }
 
     @Test

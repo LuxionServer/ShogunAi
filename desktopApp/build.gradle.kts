@@ -1,5 +1,6 @@
 import kotlinx.kover.gradle.plugin.dsl.CoverageUnit
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
+import org.jetbrains.compose.desktop.application.tasks.AbstractJPackageTask
 
 plugins {
     alias(libs.plugins.kotlinJvm)
@@ -143,6 +144,43 @@ tasks.withType<org.jetbrains.compose.desktop.application.tasks.AbstractJLinkTask
     }
 }
 
+tasks.withType<AbstractJPackageTask>().configureEach {
+    if (targetFormat == TargetFormat.Deb) {
+        val packageFolder = destinationDir
+        val unpackedRoot = temporaryDir
+        doLast {
+            fun run(vararg command: String) {
+                val exitCode = ProcessBuilder(*command).inheritIO().start().waitFor()
+                check(exitCode == 0) { "${command.joinToString(" ")} exited with $exitCode" }
+            }
+            val menuCommand = "xdg-desktop-menu "
+            val warnings = mapOf(
+                "postinst" to "ShogunAi: not added to the applications menu, which needs a writable /etc/xdg/menus.",
+                "prerm" to "ShogunAi: no applications menu entry to remove.",
+            )
+            packageFolder.get().asFile.listFiles { file -> file.extension == "deb" }.orEmpty().forEach { deb ->
+                val unpacked = unpackedRoot.resolve(deb.nameWithoutExtension)
+                unpacked.deleteRecursively()
+                run("dpkg-deb", "--raw-extract", deb.path, unpacked.path)
+                warnings.forEach { (script, warning) ->
+                    val file = unpacked.resolve("DEBIAN/$script")
+                    val lines = file.readLines()
+                    check(lines.any { it.startsWith(menuCommand) }) {
+                        "jpackage's $script no longer runs $menuCommand, so the .deb's maintainer scripts can't be rewritten."
+                    }
+                    file.writeText(
+                        lines.joinToString("\n", postfix = "\n") { line ->
+                            if (line.startsWith(menuCommand)) "$line || echo \"$warning\" >&2" else line
+                        },
+                    )
+                }
+                run("dpkg-deb", "--root-owner-group", "--build", unpacked.path, deb.path)
+                unpacked.deleteRecursively()
+            }
+        }
+    }
+}
+
 tasks.withType<JavaExec>().matching { it.name == "run" }.configureEach {
     (findProperty("benchmarkHome") as String?)?.let { systemProperty("user.home", it) }
     (findProperty("benchmarkJfr") as String?)?.let { recording ->
@@ -162,10 +200,10 @@ kover {
         }
         verify {
             rule("desktop app lines") {
-                minBound(91, CoverageUnit.LINE)
+                minBound(94, CoverageUnit.LINE)
             }
             rule("desktop app branches") {
-                minBound(78, CoverageUnit.BRANCH)
+                minBound(87, CoverageUnit.BRANCH)
             }
         }
     }

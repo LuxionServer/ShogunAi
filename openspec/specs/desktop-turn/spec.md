@@ -240,7 +240,7 @@ When the desktop turn is held by another worktree, or other worktrees wait for i
 - **THEN** the command doesn't run, the agent is told one worktree is waiting, and `TASK-2` stays first in line
 
 ### Requirement: The desktop-turn hook leaves other commands alone
-`shogun hook desktop-turn` SHALL print nothing and change nothing for tools other than the shell and the computer-use tools that act on the desktop, for shell commands that don't drive the desktop through Orca's computer use, and for sessions outside a Git repository. Computer-use tools that only look, such as screenshots, zoom, the cursor position, waiting, switching the display, reading the clipboard, listing applications and requesting access, SHALL run without the turn. When it can't read the turn or its input, it SHALL let the tool run, print nothing and exit with code 0.
+`shogun hook desktop-turn` SHALL print nothing and change nothing for tools other than the shell and the computer-use tools that act on the desktop, for shell commands that don't drive the desktop through Orca's computer use, and for sessions outside a Git repository. Computer-use tools that only look SHALL run without the turn. When it can't read the turn or its input, it SHALL let the tool run, print nothing and exit with code 0.
 
 #### Scenario: Read-only command
 - **WHEN** another worktree holds the turn and the agent runs `orca computer get-app-state --app com.example.app --json`
@@ -249,6 +249,10 @@ When the desktop turn is held by another worktree, or other worktrees wait for i
 #### Scenario: Screenshot while the desktop is taken
 - **WHEN** another worktree holds the turn and Claude runs `mcp__computer-use__screenshot`
 - **THEN** the screenshot runs, the hook prints nothing and the turn is unchanged
+
+#### Scenario: Other tools that only look
+- **WHEN** another worktree holds the turn and Claude zooms, reads the cursor position, waits, switches the display, reads the clipboard, lists applications or requests access
+- **THEN** the tool runs, the hook prints nothing and the turn is unchanged
 
 #### Scenario: Unrelated command
 - **WHEN** the agent runs `echo computer science`

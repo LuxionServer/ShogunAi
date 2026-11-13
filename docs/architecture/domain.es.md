@@ -149,6 +149,15 @@ El escritorio es un único recurso de toda la máquina que los agentes se turnan
 - `DesktopTurnLedger` agrupa el `DesktopTurnStore`, el bloqueo de la máquina, la cola de espera y la comprobación de procesos que comparten los tres casos de uso. `AcquireDesktopTurnUseCase` da el turno durante `ResourceSettings.desktopTurnDuration` (`desktopTurnMinutes`, 10 por defecto) cuando está libre o caducado y nadie va por delante en la cola `desktop`, lo renueva a quien lo tiene y, si no, falla con `DesktopTurnTaken` o, con un `DesktopWait`, espera en la cola con el mismo bucle `WaitInLine` que las adquisiciones de dispositivos (`DesktopTurnWaitTimedOut` al llegar al plazo). Solo volver a pedirlo renueva un turno: que el agente esté trabajando no.
 - `ReleaseDesktopTurnUseCase` libera el turno de quien lo tiene (`DesktopTurnHeldByOther` para otro worktree), `ifHeldBy` un worktree para los hooks `Stop` y `SessionEnd`, `force` para la app de escritorio, y `onWorktreeRemoved`, al que llama la eliminación del worktree antes de borrar la carpeta y que también quita los tickets de ese worktree. `ReadDesktopTurnUseCase` devuelve el `DesktopTurnState`.
 
+### Dispositivos físicos
+
+Los teléfonos y tabletas conectados a la máquina se prestan a un worktree a la vez (`PhysicalDevice.kt`). No son un `ResourceKind`: la capacidad es el inventario de dispositivos prestados y conectados, no un límite del perfil, y la exclusividad no puede depender de recorrer el estado de cada worktree, así que tienen un archivo de leases para toda la máquina, como el turno del escritorio.
+
+- `PhysicalDevice` es un dispositivo tal como aparece ahora: su `DevicePlatform` (`ANDROID`, `IOS`), `identity` (`ro.serialno` o el UDID; `id` es `<plataforma>:<identity>`), `transport` (el serial de `adb`, que cambia entre USB y Wi-Fi, o el UDID), `DeviceConnection` (`USB`, `NETWORK`), `DeviceUsability` (`USABLE`, `UNAUTHORIZED`, `OFFLINE`, `CONNECTING`, `UNPAIRED`, `DEVELOPER_MODE_OFF`) y sus propiedades. Un transporte cuya identidad aún no se conoce es un `PendingDevice`. `RecordedDevice` es una entrada del inventario: alias, propiedades, `lent` y `lastSeen`; `displayName` es el alias, y si no el nombre comercial, el nombre, el modelo y el id.
+- `DeviceRequest` es lo que pide un agente (plataforma, `name`, `model`); se guarda, codificado, en su `WaitTicket.request`, para que quien espera solo bloquee los dispositivos que se llevaría. `PhysicalDeviceLease` (dispositivo, plataforma, directorio de administración y ruta de quien lo tiene, `acquiredAt`, `renewedAt`) caduca `ResourceSettings.leaseDuration` después de su última renovación; `DeviceLoss` registra que el dispositivo de un worktree se `TAKEN` para otro worktree o lo `WITHDRAWN` el usuario, hasta que obtenga otro de esa plataforma.
+- `PhysicalDeviceLedger` reúne las fuentes `PhysicalDevices`, los stores del inventario y de los leases, el lock de la máquina, las colas `android-device` e `ios-device` (consultadas cada 5 segundos, porque una conexión no tiene caducidad que esperar) y la actividad de los agentes. Cada listado se funde con el inventario, añadiendo los dispositivos nuevos como prestados y actualizando `lastSeen`, y solo se escribe cuando algo cambió. `variablesFor` da a la resolución del entorno el `SHOGUN_ANDROID_DEVICE_SERIAL` (el transporte actual, o la identidad mientras está desenchufado) y el `SHOGUN_IOS_DEVICE_UDID` de quien los tiene, detrás de las variables declaradas; `connectedAndroidSerial` dice a la apertura en Orca qué dispositivo mostrar.
+- `AcquirePhysicalDeviceUseCase` resuelve la plataforma, conserva o renueva el dispositivo propio del worktree (`PhysicalDeviceAlreadyHeld` cuando no coincide con la petición) y, si no, elige uno libre, prestado, conectado y usable que coincida y que no reclame la petición de alguien que espera antes, o se queda uno caducado según `releaseRank`, la función compartida con los pools, nunca mientras el agente de quien lo tiene trabaja y nunca uno desconectado. Sin ninguno falla con `NoRecordedDeviceMatches`, `PhysicalDevicePlatformRequired` o `PhysicalDeviceUnavailable`, cuyos `DeviceBlock` dicen por qué cada coincidencia está fuera de alcance; con un `PhysicalDeviceWait`, espera mediante `WaitInLine` (`PhysicalDeviceWaitTimedOut`). `ReleasePhysicalDeviceUseCase` libera por worktree y plataforma, fuerza (`force`) la de un dispositivo para la app y atiende `onWorktreeRemoved`; `ManagePhysicalDevicesUseCase` presta, retira (liberando y registrando la pérdida), renombra (`DuplicateDeviceAlias`) y olvida, encontrando el dispositivo por id, alias o nombre (`PhysicalDeviceNotFound`, `AmbiguousPhysicalDevice`); `ReadPhysicalDevicesUseCase` devuelve el `PhysicalDevicesState` (el `DeviceOverview` de cada dispositivo con su `HeldDevice`, los pendientes, las colas y las pérdidas), e `ifAnyHeld` lee los dispositivos para `shogun status` solo mientras alguien tiene o espera uno. `RenewWorktreeLeasesUseCase` renueva los leases de los dispositivos de un agente que trabaja junto con los de su emulador y su simulador.
+
 ### Herdr
 
 `Herdr.kt` contiene lo que informa el [puerto de Herdr](#herdrclient): `HerdrWorktreeOpening` (id del workspace, id de su pane raíz y si Herdr ya tenía abierto el worktree), `HerdrAgent` (un pane de agente: el `name` del agente, su `AgentState` o `null` cuando Herdr informa `unknown`, el directorio en el que trabaja y el id de su pane), `HerdrPane` (un pane: su id, workspace, directorio, el `agent` que Herdr detecta en él y su `agentStatus` tal cual, `unknown` cuando no hay ninguno; `hasLiveAgent` es cualquier otro estado, `idle` y `done` incluidos), además de `HerdrOpening`, el resultado de abrir un worktree en Herdr: su `HerdrOutcome` (`OPENED`, `STARTED_AGENT`, `FOCUSED`), el id del pane del agente y el nombre del agente, y `HerdrPaneProcesses`, el pid de la shell de un pane y el id de su grupo de procesos en primer plano, cuyo `atPrompt` es verdadero cuando ambos se conocen y coinciden, es decir, la shell está en su prompt sin nada ejecutándose en primer plano. `AGENT_START_SECONDS` (10) es lo que una apertura espera a que Herdr detecte un agente escrito.
@@ -260,8 +269,20 @@ Los casos de uso dependen de interfaces, no de implementaciones. Esto es lo que 
 
 ```kotlin
 interface ShellCommandExecutor {
-    suspend fun execute(command: List<String>, workingDirectory: String? = null): CommandResult
-    suspend fun executeWithin(command: List<String>, timeout: Duration, workingDirectory: String? = null): CommandResult
+    suspend fun executeWithin(
+        command: List<String>,
+        timeout: Duration,
+        workingDirectory: String? = null,
+        environment: Map<String, String> = emptyMap(),
+    ): CommandResult
+
+    suspend fun executeStreaming(
+        command: List<String>,
+        timeout: Duration,
+        workingDirectory: String?,
+        environment: Map<String, String>,
+        onOutput: (OutputLine) -> Unit,
+    ): CommandResult
 }
 ```
 
@@ -269,7 +290,9 @@ El comando se pasa como **argv** (lista de strings), nunca como una cadena para 
 
 `CommandResult` guarda `command`, `exitCode`, `stdout` y `stderr` sin interpretar su significado — cada caso de uso decide qué cuenta como éxito con `isSuccess` (`exitCode == 0`). Un proceso que ni siquiera puede arrancar (p. ej. el ejecutable no está en el `PATH`) lanza `CommandExecutionException`.
 
-`executeWithin` acota la ejecución de un comando: si no termina a tiempo se detiene y lanza `CommandExecutionException.TimedOut`. Los comandos de solo lectura pasan un límite de `CommandTimeouts` (`GIT_READ`, 30 s, para las lecturas de Git; `LISTING`, 10 s, para los listados de dispositivos, procesos y herramientas; `NETWORK`, 60 s, para `git fetch`); los comandos que pueden tardar con motivo (crear un worktree, los comandos post-creación, las builds) usan `execute`, sin límite. Su implementación por defecto ignora el límite, así que los dobles de test no tienen que implementarlo. Una corrutina cancelada siempre detiene el comando, y ningún comando espera nunca entrada.
+Todo comando se ejecuta con un límite de tiempo: si no termina a tiempo se detiene junto con sus hijos y lanza `CommandExecutionException.TimedOut`. Los límites vienen de `CommandTimeouts`: `LISTING`, 10 s, para los listados de dispositivos, procesos y herramientas; `GIT_READ`, 30 s, para las lecturas de Git; `NETWORK`, 60 s, para `git fetch`; `LOCAL_TOOL`, 60 s, para herramientas locales rápidas (`kill`, `open`, `simctl create/shutdown/delete`, las CLI de Herdr y Orca); `LOCAL_WORK`, 5 minutos, para las escrituras locales de Git (`worktree add/remove/repair`, `branch -D`), `simctl boot` y clonar `Pods`; e `INSTALL`, 30 minutos, para los comandos post-creación, `flutter pub get`, `docker compose` y el arranque headless con Gradle. `executeStreaming` además entrega cada línea de salida a `onOutput` según llega. Ninguno de los dos métodos tiene cuerpo por defecto, así que ninguna implementación ni doble de test puede perder en silencio el límite o el entorno; los tests extienden `ScriptedShellCommandExecutor` de los test fixtures de `core`, que registra ambos. Una corrutina cancelada siempre detiene el comando, y ningún comando espera nunca entrada.
+
+El código suspendido de `core` nunca se traga una cancelación: usa `runSuspendCatching` (un `runCatching` que relanza `CancellationException`) en vez de `runCatching`, y un `catch` amplio o relanza el error o va detrás de un `catch` de `CancellationException` que lo relanza. `CancellationSourceTest` lo comprueba en cada fichero de `core` que declara una función suspendida.
 
 ### `HostEnvironment`
 
@@ -625,7 +648,7 @@ El agente del multirepo es un ajuste local (`MultirepoSource.agent`/`setAgent`, 
 
 ## Casos de uso
 
-Los casos de uso de worktrees se construyen por proyecto (reciben su `ProjectConfig`) y devuelven `Result<T>` (con `runCatching`), con errores tipados como `WorktreeError`. Todos los comandos de Git se ejecutan desde el repositorio base.
+Los casos de uso de worktrees se construyen por proyecto (reciben su `ProjectConfig`) y devuelven `Result<T>` (con `runSuspendCatching`), con errores tipados como `WorktreeError`. Todos los comandos de Git se ejecutan desde el repositorio base.
 
 ### `CreateWorktreeUseCase`
 

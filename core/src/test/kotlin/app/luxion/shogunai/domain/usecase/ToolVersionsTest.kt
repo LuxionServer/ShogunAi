@@ -61,4 +61,21 @@ class ToolVersionsTest {
 
         assertEquals(expected, (5..30).mapNotNull { java -> JavaCompatibility.firstGradleFor(java)?.let { java to it } }.toMap())
     }
+
+    @Test
+    fun `Java major version from a JDK's release file`() {
+        assertEquals(21, ToolVersions.javaReleaseMajor("IMPLEMENTOR=\"Eclipse Adoptium\"\nJAVA_VERSION=\"21.0.5\"\n"))
+        assertEquals(8, ToolVersions.javaReleaseMajor("JAVA_VERSION=\"1.8.0_412\""))
+        assertEquals(25, ToolVersions.javaReleaseMajor("JAVA_VERSION=\"25\""))
+        assertNull(ToolVersions.javaReleaseMajor("JAVA_RUNTIME_VERSION=\"21.0.5+11\""))
+    }
+
+    @Test
+    fun `Java needed by each Android Gradle Plugin version`() {
+        assertEquals(17, JavaCompatibility.minimumJavaForAndroidGradlePlugin("9.0.0"))
+        assertEquals(17, JavaCompatibility.minimumJavaForAndroidGradlePlugin("8.5.0-alpha01"))
+        assertEquals(11, JavaCompatibility.minimumJavaForAndroidGradlePlugin("7.4.2"))
+        assertEquals(8, JavaCompatibility.minimumJavaForAndroidGradlePlugin("4.2.2"))
+        assertEquals(8, JavaCompatibility.minimumJavaForAndroidGradlePlugin("unknown"))
+    }
 }

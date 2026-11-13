@@ -1,8 +1,10 @@
 package app.luxion.shogunai.infrastructure
 
 import app.luxion.shogunai.domain.FakeShellCommandExecutor
+import app.luxion.shogunai.domain.ScriptedShellCommandExecutor
 import app.luxion.shogunai.domain.executor.CommandExecutionException
 import app.luxion.shogunai.domain.executor.CommandResult
+import app.luxion.shogunai.domain.executor.CommandTimeouts
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.model.AgentActivity
 import app.luxion.shogunai.domain.model.AgentState
@@ -54,6 +56,7 @@ class CliOrcaClientTest {
 
         assertEquals(OrcaStatus(running = true, version = "1.4.243"), client(executor).status())
         assertEquals(listOf(orca, "status", "--json"), executor.executedCommands.single())
+        assertEquals(CommandTimeouts.LOCAL_TOOL, executor.timeouts.values.single())
     }
 
     @Test
@@ -91,8 +94,8 @@ class CliOrcaClientTest {
 
     @Test
     fun `start that times out reports that Orca didn't start`() = runTest {
-        val executor = object : ShellCommandExecutor {
-            override suspend fun execute(command: List<String>, workingDirectory: String?): CommandResult =
+        val executor = object : ScriptedShellCommandExecutor() {
+            override suspend fun respond(command: List<String>, workingDirectory: String?): CommandResult =
                 throw CommandExecutionException.TimedOut(command, 30.seconds)
         }
 
@@ -447,6 +450,15 @@ class CliOrcaClientTest {
         val executor = FakeShellCommandExecutor { FakeShellCommandExecutor.success(it, """{"ok": true, "result": {}}""") }
 
         assertFailsWith<WorktreeError.OrcaCommandFailed> { client(executor).repos() }
+    }
+
+    @Test
+    fun `an Orca command that times out is reported as failed, not as missing`() = runTest {
+        val executor = FakeShellCommandExecutor { throw CommandExecutionException.TimedOut(it, CommandTimeouts.LOCAL_TOOL) }
+
+        val error = assertFailsWith<WorktreeError.OrcaCommandFailed> { client(executor).repos() }
+
+        assertTrue(error.detail.startsWith("The command did not finish within"), error.detail)
     }
 
     @Test

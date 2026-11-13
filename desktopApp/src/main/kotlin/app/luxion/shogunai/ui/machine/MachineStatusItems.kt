@@ -19,6 +19,7 @@ data class MachineStatusItem(
 
 val MachineStatusOrder: List<MachineResource> = listOf(
     MachineResource.DESKTOP_TURN,
+    MachineResource.PHYSICAL_DEVICES,
     MachineResource.GRADLE_DAEMONS,
     MachineResource.ANDROID_EMULATORS,
     MachineResource.IOS_SIMULATORS,
@@ -74,6 +75,7 @@ private fun MachineResource.statusName(strings: Strings): String = when (this) {
     MachineResource.MAVEN_DAEMONS -> strings.machineStatusMaven
     MachineResource.COMPOSE_PROJECTS -> strings.machineStatusCompose
     MachineResource.DESKTOP_TURN -> strings.machineStatusDesktop
+    MachineResource.PHYSICAL_DEVICES -> strings.machineStatusDevices
 }
 
 private fun MachineSummary.figure(resource: MachineResource, strings: Strings): String? = when (resource) {
@@ -84,6 +86,7 @@ private fun MachineSummary.figure(resource: MachineResource, strings: Strings): 
     }
     MachineResource.MAVEN_DAEMONS, MachineResource.COMPOSE_PROJECTS -> count.toString()
     MachineResource.DESKTOP_TURN -> strings.desktopTurnSummary(holder, count)
+    MachineResource.PHYSICAL_DEVICES -> count.toString()
 }
 
 private fun MachineSummary.warning(resource: MachineResource, strings: Strings): String? = when {

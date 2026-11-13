@@ -1,6 +1,7 @@
 package app.luxion.shogunai.domain.usecase
 
 import app.luxion.shogunai.domain.executor.CommandResult
+import app.luxion.shogunai.domain.executor.CommandTimeouts
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.io.FileManager
 import app.luxion.shogunai.domain.model.ProjectConfig
@@ -15,10 +16,12 @@ internal class WorktreeFolderRemoval(
     private val stopHeadlessApp: StopHeadlessAppUseCase? = null,
     private val releaseDesktopTurn: ReleaseDesktopTurnUseCase? = null,
     private val closeOrcaTerminals: CloseOrcaTerminalsUseCase? = null,
+    private val releasePhysicalDevices: ReleasePhysicalDeviceUseCase? = null,
 ) {
     suspend fun remove(path: String, force: Boolean, workspaceId: String?, hasOrcaTerminals: Boolean): HolderClosing {
         val headlessAppFailure = stopHeadlessApp?.beforeRemoving(path)
         releaseDesktopTurn?.onWorktreeRemoved(path)
+        releasePhysicalDevices?.onWorktreeRemoved(path)
         return removeFolder(path, force, workspaceId, hasOrcaTerminals).copy(headlessAppFailure = headlessAppFailure)
     }
 
@@ -79,7 +82,7 @@ internal class WorktreeFolderRemoval(
     private fun worktreeLocked(path: String, failure: CommandResult) =
         WorktreeError.WorktreeLocked(path, lockReason(failure.stderr), failure.command, failure.exitCode, failure.stderr)
 
-    private suspend fun git(command: List<String>) = executor.execute(command, workingDirectory = config.baseRepositoryPath)
+    private suspend fun git(command: List<String>) = executor.executeWithin(command, CommandTimeouts.LOCAL_WORK, workingDirectory = config.baseRepositoryPath)
 
     private fun CommandResult.toError() = WorktreeError.GitCommandFailed(command, exitCode, stderr)
 }

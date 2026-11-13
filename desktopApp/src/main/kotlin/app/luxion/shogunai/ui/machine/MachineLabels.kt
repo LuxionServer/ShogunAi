@@ -2,6 +2,7 @@ package app.luxion.shogunai.ui.machine
 
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DesktopMac
+import androidx.compose.material.icons.filled.Devices
 import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.PhoneAndroid
@@ -33,6 +34,7 @@ fun MachineResource.title(strings: Strings): String = when (this) {
     MachineResource.MAVEN_DAEMONS -> strings.mavenDaemonsTitle
     MachineResource.COMPOSE_PROJECTS -> strings.composeProjectsTitle
     MachineResource.DESKTOP_TURN -> strings.desktopTurnTitle
+    MachineResource.PHYSICAL_DEVICES -> strings.physicalDevicesTitle
 }
 
 val MachineResource.icon: ImageVector
@@ -44,6 +46,7 @@ val MachineResource.icon: ImageVector
         MachineResource.MAVEN_DAEMONS -> Icons.Default.Memory
         MachineResource.COMPOSE_PROJECTS -> Icons.Default.Dns
         MachineResource.DESKTOP_TURN -> Icons.Default.DesktopMac
+        MachineResource.PHYSICAL_DEVICES -> Icons.Default.Devices
     }
 
 fun MachineSummary.text(resource: MachineResource, strings: Strings): String {
@@ -55,6 +58,7 @@ fun MachineSummary.text(resource: MachineResource, strings: Strings): String {
         MachineResource.MAVEN_DAEMONS -> "$count · ${formatSize(bytes ?: 0)}"
         MachineResource.COMPOSE_PROJECTS -> strings.composeProjectsSummary(count)
         MachineResource.DESKTOP_TURN -> if (holder == null && count == 0) strings.desktopTurnFree else strings.desktopTurnSummary(holder, count)
+        MachineResource.PHYSICAL_DEVICES -> strings.physicalDevicesSummary(count, held)
         MachineResource.XCODE_DERIVED_DATA -> when {
             calculating -> "$count · ${strings.calculating}"
             quotaBytes != null -> strings.derivedDataQuotaUsage(formatSize(bytes ?: 0), formatSize(quotaBytes), quotaAutomatic)

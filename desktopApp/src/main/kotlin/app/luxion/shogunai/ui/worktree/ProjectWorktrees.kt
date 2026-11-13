@@ -77,7 +77,7 @@ class ProjectWorktrees(
 ) {
     private var lastFingerprint: List<Pair<String, Long>>? = null
 
-    var lastReadAt: Instant? = null
+    var lastReadAt: Instant = Instant.EPOCH
         private set
 
     var worktrees by mutableStateOf<List<Worktree>>(emptyList())
@@ -104,8 +104,6 @@ class ProjectWorktrees(
     var actionErrors by mutableStateOf<Map<String, Throwable>>(emptyMap())
         private set
     private var actionRetries by mutableStateOf<Map<String, () -> Unit>>(emptyMap())
-    var errorRetry by mutableStateOf<(() -> Unit)?>(null)
-        private set
 
     val loadState: ProjectLoadState
         get() = listFailure?.let(ProjectLoadState::Failed)
@@ -283,9 +281,9 @@ class ProjectWorktrees(
     val pendingRemovalLock: WorktreeError.WorktreeLocked?
         get() = pendingRemoval?.lock
     val pendingRemovalOpenInHerdr: Boolean
-        get() = pendingRemoval?.worktree?.path in openInHerdrPaths
+        get() = pendingRemoval?.let { it.worktree.path in openInHerdrPaths } == true
     val pendingRemovalHasOrcaTerminals: Boolean
-        get() = pendingRemoval?.worktree?.path in orcaTerminalPaths
+        get() = pendingRemoval?.let { it.worktree.path in orcaTerminalPaths } == true
 
     fun refresh(remeasureSizes: Boolean = false) {
         if (isCreating) return
@@ -528,7 +526,7 @@ class ProjectWorktrees(
         val orphans = useCases.simulator.orphans().getOrDefault(knownOrphans)
         val udids = (ofRemoved + orphans.map { it.udid }).distinct()
         if (udids.isEmpty()) return 0
-        return useCases.simulator.delete(udids).getOrNull()?.size ?: 0
+        return useCases.simulator.delete(udids).getOrNull().orEmpty().size
     }
 
     fun startSimulator(worktree: Worktree) {
@@ -691,8 +689,8 @@ class ProjectWorktrees(
                 derivedDataOrphans = emptyList()
                 return@launch
             }
-            val orphans = useCases.xcode.list(listed, false, DerivedDataMeasure.ORPHANS).getOrNull()?.orphans ?: return@launch
-            if (generation == listGeneration) derivedDataOrphans = orphans
+            val listing = useCases.xcode.list(listed, false, DerivedDataMeasure.ORPHANS).getOrNull() ?: return@launch
+            if (generation == listGeneration) derivedDataOrphans = listing.orphans
         }
     }
 
@@ -734,13 +732,8 @@ class ProjectWorktrees(
         fetch: Boolean = false,
         onCreated: (Worktree) -> Unit = {},
     ) = runCreation(fetch, onCreated) {
-        val startPoint = startRef?.let { useCases.resolveStartPoint(it) }
-        val startFailure = startPoint?.exceptionOrNull()
-        if (startFailure != null) {
-            Result.failure(startFailure)
-        } else {
-            useCases.create(taskId, branchType, startPoint?.getOrNull(), useCases.resolveBaseBranch(startRef ?: "HEAD"))
-        }
+        val startPoint = startRef?.let { ref -> useCases.resolveStartPoint(ref).getOrElse { return@runCreation Result.failure(it) } }
+        useCases.create(taskId, branchType, startPoint, useCases.resolveBaseBranch(startRef ?: "HEAD"))
     }
 
     private fun runCreation(fetch: Boolean, onCreated: (Worktree) -> Unit, creation: suspend () -> Result<Worktree>) {
@@ -1003,10 +996,16 @@ class ProjectWorktrees(
     fun actionTools(strings: Strings): ActionTools = ActionTools(
         runners = tools.installedRunners,
         defaultRunner = tools.defaultRunner,
-        terminal = tools.terminalShown?.let { tools.terminalInUse?.displayName ?: strings.terminalToolLabel.lowercase() },
+        terminal = terminalLabel(strings),
         editor = tools.editorFor(useCases.tools.editorOverride)?.displayName,
         claudeDesktop = tools.claudeDesktopAvailable,
     )
+
+    private fun terminalLabel(strings: Strings): String? {
+        if (tools.terminalShown == null) return null
+        val inUse = tools.terminalInUse ?: return strings.terminalToolLabel.lowercase()
+        return inUse.displayName
+    }
 
     fun actionCatalog(worktree: Worktree, strings: Strings): WorktreeCatalog = worktreeCatalog(
         WorktreeActionContext(
@@ -1092,9 +1091,11 @@ class ProjectWorktrees(
         }
     }
 
-    private fun List<RunningAgent>.agentToFocus(): Pair<String, String>? =
-        (firstOrNull { it.waitsForUser && it.herdrPaneId != null } ?: firstOrNull { it.herdrPaneId != null })
-            ?.let { agent -> agent.herdrPaneId?.let { agent.name to it } }
+    private fun List<RunningAgent>.agentToFocus(): Pair<String, String>? {
+        val panes = mapNotNull { agent -> agent.herdrPaneId?.let { agent to it } }
+        val (agent, pane) = panes.firstOrNull { it.first.waitsForUser } ?: panes.firstOrNull() ?: return null
+        return agent.name to pane
+    }
 
 
     fun copyLastCreatedLaunchCommand() {
@@ -1153,7 +1154,7 @@ class ProjectWorktrees(
                     val stoppedEmulators = if (removedSerials.isEmpty()) {
                         0
                     } else {
-                        useCases.emulator.stopSerials(removedSerials).getOrNull()?.size ?: 0
+                        useCases.emulator.stopSerials(removedSerials).getOrNull().orEmpty().size
                     }
                     val deletedSimulators = if (deleteSimulators) {
                         deleteSimulatorsAfterCleanup(report.removed.mapNotNull { simulatorsToDelete[it] }, knownOrphans)
@@ -1167,22 +1168,22 @@ class ProjectWorktrees(
                     }
                     cleanedUp = WorktreeSuccess.CleanedUp(
                         removedCount = report.removed.size,
-                        stoppedDaemons = (daemonReport?.stopped?.size ?: 0) + (mavenDaemonReport?.stopped?.size ?: 0),
-                        keptDaemons = (daemonReport?.kept?.size ?: 0) + (mavenDaemonReport?.kept?.size ?: 0),
+                        stoppedDaemons = daemonReport?.stopped.orEmpty().size + mavenDaemonReport?.stopped.orEmpty().size,
+                        keptDaemons = daemonReport?.kept.orEmpty().size + mavenDaemonReport?.kept.orEmpty().size,
                         stoppedEmulators = stoppedEmulators,
                         deletedSimulators = deletedSimulators,
-                        deletedDerivedDataFolders = deletedDerivedData?.deleted?.size ?: 0,
+                        deletedDerivedDataFolders = deletedDerivedData?.deleted.orEmpty().size,
                         derivedDataBytesFreed = deletedDerivedData?.bytesFreed ?: 0,
-                        takenDownComposeProjects = report.composeDown?.takenDown?.size ?: 0,
-                        removedComposeResources = report.composeResources?.removed?.size ?: 0,
+                        takenDownComposeProjects = report.composeDown?.takenDown.orEmpty().size,
+                        removedComposeResources = report.composeResources?.removed.orEmpty().size,
                     )
                     herdrCloseFailures = report.herdrFailures
                     orcaCloseFailures = report.orcaFailures
                     headlessStopFailures = report.headlessAppFailures
                     cleanupIssues = report.takeIf {
                         it.failures.isNotEmpty() || it.keptBranches.isNotEmpty() ||
-                            it.composeUnavailable != null || it.composeDown?.failures?.isNotEmpty() == true ||
-                            it.composeResources?.failures?.isNotEmpty() == true
+                            it.composeUnavailable != null || it.composeDown?.failures.orEmpty().isNotEmpty() ||
+                            it.composeResources?.failures.orEmpty().isNotEmpty()
                     }
                 }
                 .onFailure { fail(it) }
@@ -1230,18 +1231,10 @@ class ProjectWorktrees(
 
     fun dismissError() {
         error = null
-        errorRetry = null
     }
 
-    private fun fail(failure: Throwable, retry: (() -> Unit)? = null) {
+    private fun fail(failure: Throwable) {
         error = failure
-        errorRetry = retry
-    }
-
-    fun retryError() {
-        val retry = errorRetry ?: return
-        dismissError()
-        retry()
     }
 
     fun dismissSuccess() {

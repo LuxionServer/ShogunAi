@@ -5,6 +5,8 @@ import app.luxion.shogunai.domain.model.ClaudeSession
 import app.luxion.shogunai.domain.model.HerdrAgent
 import app.luxion.shogunai.domain.model.HerdrPane
 import app.luxion.shogunai.domain.model.HerdrPaneProcesses
+import app.luxion.shogunai.domain.model.HerdrPlugin
+import app.luxion.shogunai.domain.model.HerdrPluginStep
 import app.luxion.shogunai.domain.model.HerdrWorkspace
 import app.luxion.shogunai.domain.model.HerdrWorktreeOpening
 
@@ -24,6 +26,9 @@ class FakeHerdrClient(
     private val agentDetectedAfterListings: Int = 0,
     private val busyPanes: Set<String> = emptySet(),
     private val unknownProcessPanes: Set<String> = emptySet(),
+    plugins: List<HerdrPlugin> = emptyList(),
+    private val pluginsFailure: Throwable? = null,
+    private val pluginStepFailures: Map<HerdrPluginStep, Throwable> = emptyMap(),
 ) : HerdrClient {
 
     data class Split(val paneId: String, val cwd: String, val environment: List<Pair<String, String>>)
@@ -40,6 +45,9 @@ class FakeHerdrClient(
     val ran = mutableListOf<Pair<String, String>>()
     val paneListings = mutableListOf<String?>()
     val processReads = mutableListOf<String>()
+    val pluginSteps = mutableListOf<HerdrPluginStep>()
+    var installedPlugins: List<HerdrPlugin> = plugins
+        private set
     private val createdPanes = mutableListOf<HerdrPane>()
     private val startingAgents = mutableMapOf<String, Pair<String, Int>>()
     private val workspacesByPath = mutableMapOf<String, String>()
@@ -171,7 +179,24 @@ class FakeHerdrClient(
             else -> HerdrPaneProcesses(SHELL_PID, SHELL_PID)
         }
     }
+
+    override suspend fun listPlugins(): List<HerdrPlugin> {
+        pluginsFailure?.let { throw it }
+        return installedPlugins
+    }
+
+    override suspend fun changePlugins(step: HerdrPluginStep) {
+        pluginStepFailures[step]?.let { throw it }
+        pluginSteps += step
+        installedPlugins = when (step) {
+            is HerdrPluginStep.Unlink -> installedPlugins.filterNot { it.id == step.pluginId }
+            is HerdrPluginStep.Uninstall -> installedPlugins.filterNot { it.id == step.pluginId }
+            is HerdrPluginStep.Install -> installedPlugins + HerdrPlugin(HerdrPlugin.SHOGUN_PLUGIN_ID, enabled = true, sourceKind = "github", root = INSTALLED_PLUGIN_ROOT)
+        }
+    }
 }
+
+private const val INSTALLED_PLUGIN_ROOT = "/home/dev/.config/herdr/plugins/github-installations/checkout"
 
 private val SESSION_NAME_ARGUMENT = Regex(" -n \\S+$")
 

@@ -11,6 +11,7 @@ import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.projectDefaultsFor
 import app.luxion.shogunai.domain.model.worktreeSessionName
+import app.luxion.shogunai.domain.runSuspendCatching
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
@@ -26,6 +27,7 @@ class OpenWorktreeInOrcaUseCase(
     pollInterval: Duration = 500.milliseconds,
     private val runningEmulator: suspend (String) -> String? = { null },
     private val runningSimulator: suspend (String) -> String? = { null },
+    private val heldPhysicalDevice: suspend (String) -> String? = { null },
 ) {
     private val launcher = OrcaAgentLauncher(orca, naming, samePath, timeout, pollInterval)
 
@@ -33,13 +35,13 @@ class OpenWorktreeInOrcaUseCase(
         worktree: Worktree,
         agent: AgentLaunchConfig = config.agentLaunchConfig,
         sessionName: String = worktreeSessionName(projectDefaultsFor(config.baseRepositoryPath).name, worktree),
-    ): Result<OrcaOpening> = runCatching {
+    ): Result<OrcaOpening> = runSuspendCatching {
         launcher.ensureRunning()
         val repo = launcher.registeredRepo(config.baseRepositoryPath)
         if (orca.worktrees(repo.id).none { samePath(it.path, worktree.path) }) orca.showExternalWorktrees(repo.id)
         val workspace = OrcaWorkspace.Worktree(worktree.path)
         val devices = showRunningDevice(workspace, worktree.path)
-        launcher.focusLiveAgent(workspace, worktree.path, sessionName)?.let { return@runCatching devices.applyTo(it) }
+        launcher.focusLiveAgent(workspace, worktree.path, sessionName)?.let { return@runSuspendCatching devices.applyTo(it) }
 
         val variables = resolveEnvironment(config.baseRepositoryPath, worktree.path).getOrThrow().variables
         launcher.start(workspace, worktree.path, agent.resolvedCommand(), agent.displayName, sessionName) { named ->
@@ -48,10 +50,12 @@ class OpenWorktreeInOrcaUseCase(
     }
 
     private suspend fun showRunningDevice(workspace: OrcaWorkspace, worktreePath: String): ShownDevices {
-        val serial = runCatching { runningEmulator(worktreePath) }.getOrNull()
-        val udid = runCatching { runningSimulator(worktreePath) }.getOrNull()
+        val serial = runSuspendCatching { runningEmulator(worktreePath) }.getOrNull()
+        val udid = runSuspendCatching { runningSimulator(worktreePath) }.getOrNull()
+        val physical = runSuspendCatching { heldPhysicalDevice(worktreePath) }.getOrNull()
         return when {
-            serial != null && udid != null -> ShownDevices(skipped = true)
+            udid != null && (serial != null || physical != null) -> ShownDevices(skipped = true)
+            physical != null -> ShownDevices(physicalDevice = attached(workspace, physical))
             serial != null -> ShownDevices(emulator = attached(workspace, serial))
             udid != null -> ShownDevices(simulator = attached(workspace, udid))
             else -> ShownDevices()
@@ -59,9 +63,15 @@ class OpenWorktreeInOrcaUseCase(
     }
 
     private suspend fun attached(workspace: OrcaWorkspace, device: String): String? =
-        runCatching { orca.attachEmulator(workspace, device) }.map { device }.getOrNull()
+        runSuspendCatching { orca.attachEmulator(workspace, device) }.map { device }.getOrNull()
 
-    private data class ShownDevices(val emulator: String? = null, val simulator: String? = null, val skipped: Boolean = false) {
-        fun applyTo(opening: OrcaOpening): OrcaOpening = opening.copy(emulator = emulator, simulator = simulator, devicesSkipped = skipped)
+    private data class ShownDevices(
+        val emulator: String? = null,
+        val simulator: String? = null,
+        val skipped: Boolean = false,
+        val physicalDevice: String? = null,
+    ) {
+        fun applyTo(opening: OrcaOpening): OrcaOpening =
+            opening.copy(emulator = emulator, simulator = simulator, devicesSkipped = skipped, physicalDevice = physicalDevice)
     }
 }

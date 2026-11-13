@@ -48,6 +48,8 @@ Estado: **Empezado**.
 - **Compose Desktop**: las apps se ejecutan ocultas en segundo plano para que los agentes las comprueben en macOS.
 - **Turno del escritorio**: los agentes se turnan para manejar el escritorio real con `shogun desktop acquire --wait`, que Claude toma por sí solo antes de que actúe su propio computer use o el de Orca, y que solo lo detiene cuando otro worktree tiene el turno.
   Quién lo tiene y la cola se ven en la torre de control y en `shogun status`.
+- **Dispositivos físicos**: los móviles y tablets Android, iPhone y iPad conectados a la máquina se registran en un inventario, se prestan a los agentes por defecto y se adquieren de un worktree en uno con `shogun device acquire`, con las mismas concesiones y la misma cola `--wait` que emuladores y simuladores.
+  Se ven en `shogun status`, en una vista Dispositivos de la torre de control y en la vista de emulador de Orca (Android).
 - **Maven**: los backends JVM obtienen compilaciones de Maven acotadas en memoria, ven sus daemons de Maven y pueden parar los ociosos.
 - **Docker Compose**: los backends JVM obtienen un proyecto de Docker Compose y puertos por worktree, que se arrancan y construyen con `shogun compose up` y se limpian junto con los volúmenes, redes e imágenes que dejan los worktrees eliminados.
 - **Flutter**: los repositorios reciben `flutter pub get` en cada worktree nuevo, con su build de Gradle en `android/` gestionado por los providers de Gradle y del emulador.
@@ -97,11 +99,11 @@ Ninguno de los dos fallos apareció en la máquina de desarrollo, cuya propia co
 Por orden:
 
 - Tests que obligan al producto a cumplirlo:
-  - Subir hasta el 100% los suelos de cobertura que exige CI: las líneas (hoy 91%) y ramas (78%) de la app de escritorio fuera de sus composables, que cubren los tests end to end.
+  - Subir hasta el 100% los suelos de cobertura que exige CI: las líneas (hoy 93%) y ramas (87%) de la app de escritorio fuera de sus composables, que cubren los tests end to end.
     Las líneas de `core` y `cli`, las ramas de `cli`, todas las ramas de `core` a las que llega alguna entrada, y los textos y los ajustes de proyecto de la app de escritorio ya están cubiertos.
-    La app de escritorio sube un paquete por cambio, en este orden: los worktrees y su inspector, el shell y el icono de la barra de menús, las vistas de la máquina y los multirepos, los componentes compartidos y, por último, el cableado de la app.
-- Lo que la prueba de humo de la app empaquetada dejó fuera: instalar el `.deb` en un equipo sin carpeta de menús del sistema (servidores, contenedores mínimos), donde hoy falla su script de post-instalación; y probar el Cask de Homebrew y el manifiesto de Scoop generados para una versión antes de publicarla, que hoy instalan los mismos `.dmg` y `.msi` que comprueba la prueba de humo.
-- El Java que `shogun doctor` y «Comprobar instalación» aún no comprueban: el que ejecuta el daemon de Gradle cuando lo elige el build (`org.gradle.java.home`, toolchains o los criterios de JVM del daemon de Gradle), y el que necesita el Android Gradle Plugin (Java 17 para AGP 8); hoy comprueban el Java que ejecutan los wrappers frente a las versiones de Gradle y Maven.
+    Los worktrees y su inspector están cubiertos salvo 41 ramas de su lista, sus filas y sus barras de acciones, que quedan para el cambio de los componentes compartidos.
+    La app de escritorio sube un paquete por cambio, en este orden: el shell y el icono de la barra de menús, las vistas de la máquina y los multirepos, los componentes compartidos y, por último, el cableado de la app.
+- Las comprobaciones de Gradle de `shogun doctor` y «Comprobar instalación» para un build de Gradle en una subcarpeta, como `android/` en un repositorio Flutter: hoy solo leen la raíz del repositorio.
 
 ### Orca, un segundo runner de primera clase
 
@@ -115,7 +117,9 @@ Por orden:
     Orca 1.4.243 acepta como padre de un worktree existente un espacio Git o de «Abrir como carpeta», pero no un folder workspace.
   - Un worktree con su emulador y su simulador en marcha a la vez mostrado en la vista de emuladores de Orca.
     Orca 1.4.243 muestra un dispositivo por worktree y apaga el simulador al que sustituye, así que por ahora ShogunAi no muestra ninguno.
+  - Un iPhone o iPad físico mostrado en la vista de emulador de Orca, cuando Orca pueda emitir uno.
 - Comprobar:
+  - Que Orca emite un dispositivo Android físico conectado por su serial de transporte, por USB y por depuración inalámbrica, y que el emulador del worktree sigue en marcha.
   - En Windows y en Linux (`orca-ide`), la ubicación de la CLI y la shell que ejecutan las terminales de Orca, que solo cubren pruebas con dobles.
   - Que Orca detecta un agente envuelto por Headroom.
   - Que los avisos de Orca y su app móvil siguen a los agentes que ShogunAi arranca en Orca.
@@ -134,6 +138,12 @@ Provisionado y recursos acotados para los stacks en los que un worktree recién 
   - Los monorrepositorios de Dart con pub workspaces o Melos, que hoy declaran su propio bootstrap como comando post-creación.
 - Decidir si la regla del inicio de sesión de ejecutar `shogun emulator start` antes de cada uso del emulador sigue haciendo falta ahora que la concesión del dispositivo se renueva mientras la sesión trabaja (una sesión larga que nunca envía un prompt aún puede perder su emulador), o si los fallos de `adb` deberían remitir a `shogun emulator start`, tras observarlo en uso.
 - Esperar un dispositivo desde la app de escritorio y mostrar en sus vistas de máquina los worktrees que esperan cada pool; hoy solo esperan `shogun emulator start --wait` y `shogun simulator start --wait`, y la app hace fallar un arranque mientras otros esperan.
+- Seguimiento de los dispositivos físicos:
+  - Comprobarlos con dispositivos reales más allá de un móvil Android por USB: depuración inalámbrica, un iPhone o iPad por USB y por la red, y enchufar un dispositivo registrado mientras un worktree lo espera.
+  - Preferir automáticamente un dispositivo físico o uno virtual, en lugar de que el agente elija entre `shogun device acquire` y `shogun emulator start`.
+  - Desinstalar la app del proyecto de un dispositivo al liberarlo.
+  - Mostrar los dispositivos físicos de un worktree en su fila de la lista de worktrees.
+  - Dar más espacio al nombre del dispositivo en la vista Dispositivos, que lo corta con el ancho de ventana por defecto.
 
 ### Todos los agentes, no solo Claude Code
 
@@ -166,19 +176,24 @@ Quedaron fuera:
 - Encontrar la causa raíz de los errores que cerraban la ventana de Preferencias, a partir de las entradas que el aislamiento deja ahora en el registro de diagnóstico, y del crash nativo visto en otra máquina que dejó un informe de diagnóstico vacío.
 - Comprobar en un Windows real que borrar y limpiar worktrees con salidas de build de más de 260 caracteres de profundidad funciona ahora (el soporte de rutas largas de Git y el borrado del resto solo están cubiertos con pruebas con dobles).
 - Sacar del hilo de la interfaz los puertos por proyecto de `ProjectWorktrees` que aún se ejecutan en el dispatcher de quien los llama (estados de emuladores y simuladores, puertos, liberar recursos), como ya hacen las vistas de la máquina.
-- Detectar un plugin de Herdr roto: una instalación enlazada a una carpeta que ya no existe deja de provisionar los worktrees de Herdr sin ningún error, así que `shogun hooks status` y la app deberían comprobar `herdr plugin list` y ofrecer reinstalarlo desde el repositorio.
+- Avisar de un plugin de Herdr roto o ausente en `shogun doctor` y la comprobación de la instalación, que hoy solo dicen si Herdr está instalado; `shogun hooks status` y la sección de hooks de los Ajustes ya lo indican y lo reinstalan.
 - Comprobar el estado de los daemons de Maven con un daemon real de mvnd 2.x: se comprobó con mvnd 1.0.6, y 2.x está cubierto por su código fuente y por tests con su argumento de log.
 - Watchers del sistema de ficheros en vez de polling para los cambios de metadatos de Git.
 - Soporte de repositorios bare con worktrees (el esquema «bare clone»), que cambia lo que significan el repositorio base y copiar desde él.
   Hoy ShogunAi los rechaza con un error específico.
 - Dividir `ProjectWorktrees.kt` y `ProjectSettingsView.kt` en holders y secciones más pequeños.
+- Dividir `ShogunCli.kt` por familias de comandos, cada una sobre el `ShogunEngine` compartido, y revisar las pocas llamadas que aún cablea distinto del motor (detección de agentes en `remove` y `clean`, daemons de Gradle con sesiones, el reloj de `xcode trim`).
+- Sacar de `AppContainer` los estados de UI y la lógica que aún viven en él (`readComposeStates`, `startEmulatorShownInOrca`…) a holders propios, construidos sobre el `ShogunEngine` compartido.
+- Pasar el resto de ficheros de `~/.shogunai` (`compose-projects.json`, `orca.json`, `derived-data-sizes.json`, estado del entorno, cola de dispositivos, turno de escritorio, sesiones de agentes, registros de aprovisionamiento y dispositivos físicos) al fichero versionado de la máquina que usan `projects.json`, `settings.json`, `trust.json` y `multirepos.json`.
+- Mostrar en la app de escritorio un cambio de ajustes rechazado porque `settings.json` lo escribió una versión más nueva, antes de que algún cambio suba por primera vez la versión de esquema de ese fichero.
 - Comprobar el recorrido guiado en Windows y Linux con una app instalada real: la creación del ejemplo con el Git del sistema, y el comando del agente del recorrido, cuyo prompt se entrecomilla para la shell que ejecuta cada terminal.
-- Un workflow que construya la web de documentación con `mkdocs build --strict` y ejecute los tests del hook del historial de cambios (`python3 -m unittest discover -s scripts/mkdocs`) en cada pull request que toque `docs/`, `mkdocs.yml`, `scripts/mkdocs/` o `.github/release-notes/`; hoy la web solo se construye en local.
-- Recuperar la recarga en vivo de `mkdocs serve`: con las versiones recientes de Click, MkDocs 1.6.1 lo arranca sin recarga en vivo, así que solo recarga con `mkdocs serve --livereload`.
-  Fijar Click en `requirements-docs.txt`, o documentar el flag, lo arregla.
 - Quitar Cmd/Ctrl+E, que se mantiene una versión como alias de Cmd/Ctrl+O desde que el atajo pasó al runner por defecto.
 - Mostrar en la vista de Gradle de la app de escritorio la build que ocupa un daemon; hoy `shogun gradle` la nombra, con su cliente, sus tareas y la sesión de agente que la lanzó.
 - Escribir en la fuente de la interfaz los textos de estado que quedan en las vistas de Máquina: la vista de Compose aún escribe el título de los restos y un worktree eliminado como dueño en la fuente de datos.
+- Hacer menos con el bloqueo de estado de la máquina tomado al adquirir un emulador o simulador: leer los dispositivos antes de tomarlo, dejar solo la reserva dentro, y parar, borrar o crear dispositivos después de soltarlo.
+  Todo comando que se lanza con el bloqueo tomado tiene ya un límite de tiempo, pero los demás procesos siguen esperando a esos comandos.
+- Un bloqueo de estado de la máquina que se pueda esperar sin ocupar un hilo, para que cancelar la adquisición de un dispositivo llegue al trabajo hecho con el bloqueo tomado.
+- Dejar pasar las cancelaciones en la herramienta de línea de comandos y en la app de escritorio como ya hace `core`, donde `runCatching` aún convierte una en un fallo corriente.
 
 ## Más adelante
 

@@ -16,6 +16,7 @@ import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.RunningAgent
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.WorktreeError
+import app.luxion.shogunai.domain.runSuspendCatching
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.async
@@ -40,14 +41,14 @@ class DetectRunningAgentsUseCase(
     suspend operator fun invoke(config: ProjectConfig, worktrees: List<Worktree>): Result<Map<String, List<RunningAgent>>> =
         invoke(listOf(AgentSearch(config.agents.map { it.agentCommand }, worktrees)))
 
-    suspend operator fun invoke(searches: List<AgentSearch>): Result<Map<String, List<RunningAgent>>> = runCatching {
+    suspend operator fun invoke(searches: List<AgentSearch>): Result<Map<String, List<RunningAgent>>> = runSuspendCatching {
         val worktrees = searches.flatMap { it.worktrees }
-        if (worktrees.isEmpty()) return@runCatching emptyMap()
+        if (worktrees.isEmpty()) return@runSuspendCatching emptyMap()
         val exact = searches.filter { it.exact }.flatMap { it.worktrees }.map { normalizePath(it.path) }.toSet()
         val (processes, herdrAgents, orcaWorktrees) = coroutineScope {
             val herdrAgents = async { readHerdrAgents() }
             val orcaWorktrees = async { orca?.read().orEmpty() }
-            val processes = runCatching { scanProcesses(searches, worktrees, exact) }
+            val processes = runSuspendCatching { scanProcesses(searches, worktrees, exact) }
             Triple(processes, herdrAgents.await(), orcaWorktrees.await())
         }
         val scan = processes.getOrDefault(ProcessScan())
@@ -116,7 +117,7 @@ class DetectRunningAgentsUseCase(
         exact: Set<String>,
     ): Map<String, List<RunningAgent>> {
         val registry = claudeSessions ?: return agents
-        val sessionsByPath = runCatching { registry.list() }.getOrDefault(emptyList())
+        val sessionsByPath = runSuspendCatching { registry.list() }.getOrDefault(emptyList())
             .filter { it.pid in claudePids }
             .mapNotNull { session -> attributedWorktree(session.cwd, worktrees, exact)?.let { it.path to session } }
             .groupBy({ it.first }, { it.second })
@@ -141,7 +142,7 @@ class DetectRunningAgentsUseCase(
         store.list(path).mapNotNull { record ->
             val live = record.pid?.let { it in claudePids } ?: (hasClaudeProcess && now() - record.updatedAt < UNKNOWN_PID_MAX_AGE_MILLIS)
             if (!live) {
-                runCatching { store.remove(path, record.sessionId) }
+                runSuspendCatching { store.remove(path, record.sessionId) }
                 return@mapNotNull null
             }
             if (record.state in setOf(AgentState.BLOCKED, AgentState.DONE) && transcriptWrittenAfter(record)) AgentState.WORKING else record.state

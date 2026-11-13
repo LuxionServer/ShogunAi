@@ -27,11 +27,20 @@ class SharedDeviceStatesAndroidSdkTest {
 
         override suspend fun listAvds(sdk: SdkLocation) = listOf("Pixel")
 
-        override suspend fun deviceStates(sdk: SdkLocation): Map<String, EmulatorState> {
+        var stateComputations = 0
+
+        override suspend fun attachedDevices(sdk: SdkLocation): Map<String, String> {
             reads++
             gate?.await()
-            return mapOf("emulator-5554" to EmulatorState.RUNNING)
+            return mapOf("emulator-5554" to "device", "R5CT10ABCDE" to "device")
         }
+
+        override suspend fun emulatorStates(sdk: SdkLocation, attached: Map<String, String>): Map<String, EmulatorState> {
+            stateComputations++
+            return attached.filterKeys { it.startsWith("emulator-") }.mapValues { EmulatorState.RUNNING }
+        }
+
+        override suspend fun deviceProperties(sdk: SdkLocation, serial: String): Map<String, String>? = mapOf("ro.serialno" to serial)
 
         override fun startEmulator(sdk: SdkLocation, avd: String, consolePort: Int, noWindow: Boolean) =
             app.luxion.shogunai.domain.FakeAndroidSdk.FakeEmulatorProcess()
@@ -93,7 +102,20 @@ class SharedDeviceStatesAndroidSdkTest {
     }
 
     @Test
+    fun `emulator states and attached devices share one adb read`() = runTest {
+        val attached = shared.attachedDevices(location)
+        val states = shared.deviceStates(location)
+        shared.deviceStates(location)
+
+        assertEquals(setOf("emulator-5554", "R5CT10ABCDE"), attached.keys)
+        assertEquals(mapOf("emulator-5554" to EmulatorState.RUNNING), states)
+        assertEquals(1, delegate.reads)
+        assertEquals(1, delegate.stateComputations)
+    }
+
+    @Test
     fun `every other call is delegated`() = runTest {
+        assertEquals(mapOf("ro.serialno" to "R5CT10ABCDE"), shared.deviceProperties(location, "R5CT10ABCDE"))
         assertEquals(listOf("Pixel"), shared.listAvds(location))
         assertEquals("/sdk", shared.locate("/repo").root)
     }

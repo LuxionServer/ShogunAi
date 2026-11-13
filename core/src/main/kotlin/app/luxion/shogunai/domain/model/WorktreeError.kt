@@ -38,6 +38,11 @@ sealed class WorktreeError(override val message: String, cause: Throwable? = nul
     class LocalFileUnreadable(val path: String, val reason: String?) :
         WorktreeError("Can't read $path" + if (reason.isNullOrBlank()) "" else ": $reason")
 
+    class LocalFileFromNewerVersion(val path: String, val version: Int, val supportedVersion: Int) : WorktreeError(
+        "$path was written by a newer version of ShogunAi (schema $version; this version supports up to $supportedVersion); " +
+            "update ShogunAi to change it",
+    )
+
     class ProjectNotRegistered(val path: String) :
         WorktreeError("No project is registered for $path")
 
@@ -139,6 +144,40 @@ sealed class WorktreeError(override val message: String, cause: Throwable? = nul
 
     class DesktopTurnHeldByOther(val holder: DesktopTurn) : WorktreeError(
         "The desktop turn belongs to ${holder.displayName}; only that worktree can release it",
+    )
+
+    class PhysicalDeviceNotFound(val query: String) :
+        WorktreeError("No recorded physical device is called \"$query\"; run 'shogun device list --all' to see them")
+
+    class AmbiguousPhysicalDevice(val query: String, val candidates: List<RecordedDevice>) : WorktreeError(
+        "\"$query\" matches several recorded devices: " +
+            candidates.joinToString { "${it.displayName} (${it.id})" } + ". Use one of their ids",
+    )
+
+    class DuplicateDeviceAlias(val alias: String, val owner: RecordedDevice) :
+        WorktreeError("The alias \"$alias\" is already used by ${owner.displayName} (${owner.id})")
+
+    class NoRecordedDeviceMatches(val request: DeviceRequest) : WorktreeError(
+        "No recorded physical device matches ${request.describe()}; run 'shogun device list --all' to see the recorded ones",
+    )
+
+    object PhysicalDevicePlatformRequired : WorktreeError(
+        "Both Android and iOS devices could be acquired; choose one with --android, --ios, --name or --model",
+    )
+
+    class PhysicalDeviceAlreadyHeld(val held: HeldDevice) : WorktreeError(
+        "${held.holderName} already holds the ${held.platformLabel()} device ${held.device.displayName}; " +
+            "release it first with 'shogun device release --${held.lease.platform.key}'",
+    )
+
+    class PhysicalDeviceUnavailable(val request: DeviceRequest, val blocks: List<DeviceBlock>, val waiting: Int) : WorktreeError(
+        deviceUnavailableSummary(request, blocks, waiting) + ". Wait for one with --wait",
+    ) {
+        val summary: String get() = deviceUnavailableSummary(request, blocks, waiting)
+    }
+
+    class PhysicalDeviceWaitTimedOut(val waited: Duration, val blocked: PhysicalDeviceUnavailable) : WorktreeError(
+        "Waited ${waited.toWaitText()} for ${blocked.request.describe()}: ${blocked.summary}",
     )
 
     class AndroidSdkNotFound(val checked: List<String>) :
@@ -391,3 +430,32 @@ private fun PoolHolder.protectionNote(): String {
         HolderProtection.LEASED -> ", lease until ${leaseExpiresAt?.toLocalClockTime()}"
     }
 }
+
+private fun HeldDevice.platformLabel(): String = lease.platform.label
+
+private fun deviceUnavailableSummary(request: DeviceRequest, blocks: List<DeviceBlock>, waiting: Int): String {
+    val reasons = blocks.map { block ->
+        when (block) {
+            is DeviceBlock.Held -> "${block.device.device.displayName} is held by ${block.device.holderName}" + block.device.holdNote()
+            is DeviceBlock.Disconnected -> "${block.device.displayName} isn't connected (last seen ${Instant.ofEpochMilli(block.device.lastSeen).toLastSeenText()}); connect it"
+            is DeviceBlock.Withdrawn -> "${block.device.displayName} isn't lent to agents"
+            is DeviceBlock.Unusable -> "${block.device.displayName} can't be used yet: ${block.usability.note}"
+        }
+    }
+    val queue = when (waiting) {
+        0 -> emptyList()
+        1 -> listOf("1 worktree is waiting for one")
+        else -> listOf("$waiting worktrees are waiting for one")
+    }
+    val all = reasons + queue
+    return "Couldn't acquire ${request.describe()}" + if (all.isEmpty()) "" else ": " + all.joinToString("; ")
+}
+
+private fun HeldDevice.holdNote(): String = buildString {
+    if (agentState == AgentState.WORKING) append(", agent working") else append(" until ${expiresAt.toLocalClockTime()}")
+    if (!isConnected) append(", disconnected")
+}
+
+fun Instant.toLastSeenText(): String = LAST_SEEN.format(this)
+
+private val LAST_SEEN = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm").withZone(java.time.ZoneId.systemDefault())

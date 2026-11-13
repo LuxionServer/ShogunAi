@@ -43,6 +43,24 @@ class FakeAndroidSdk(
 
     override suspend fun listAvds(sdk: SdkLocation): List<String> = avds
 
+    var physical: MutableMap<String, String> = mutableMapOf()
+    var properties: MutableMap<String, Map<String, String>> = mutableMapOf()
+    val propertyQueries = mutableListOf<String>()
+    var attachedQueries = 0
+        private set
+
+    override suspend fun attachedDevices(sdk: SdkLocation): Map<String, String> {
+        attachedQueries++
+        return states.mapValues { if (it.value == EmulatorState.RUNNING) "device" else "offline" } + physical
+    }
+
+    override suspend fun emulatorStates(sdk: SdkLocation, attached: Map<String, String>): Map<String, EmulatorState> = deviceStates(sdk)
+
+    override suspend fun deviceProperties(sdk: SdkLocation, serial: String): Map<String, String>? {
+        propertyQueries += serial
+        return properties[serial]
+    }
+
     override suspend fun deviceStates(sdk: SdkLocation): Map<String, EmulatorState> {
         stateQueries++
         val booting = states.filterValues { it == EmulatorState.BOOTING }.keys

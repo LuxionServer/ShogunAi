@@ -276,4 +276,25 @@ class JsonMultirepoSourceTest {
         Files.createDirectories(registry)
         assertEquals(emptyList(), source.knownFolders())
     }
+
+    @Test
+    fun `an unreadable registry is kept before the next write replaces it`() {
+        Files.createDirectories(registry.parent)
+        registry.writeText("garbage")
+
+        source.remember(folder.toString())
+
+        val kept = Files.list(registry.parent).use { entries -> entries.toList() }.single { it.fileName.toString().startsWith("multirepos.json.unreadable-") }
+        assertEquals("garbage", kept.readText())
+        assertEquals(listOf(folder.toString()), source.knownFolders())
+    }
+
+    @Test
+    fun `a registry from a newer version can't be changed`() {
+        Files.createDirectories(registry.parent)
+        registry.writeText("""{"schemaVersion": 2, "multirepos": []}""")
+
+        assertFailsWith<WorktreeError.LocalFileFromNewerVersion> { source.remember(folder.toString()) }
+        assertEquals(emptyList(), source.knownFolders())
+    }
 }

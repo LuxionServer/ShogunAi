@@ -123,7 +123,7 @@ class LocalAndroidSdkTest {
     fun `reports emulators as running, booting or offline`() = runTest {
         val executor = FakeShellCommandExecutor { command ->
             when {
-                command == listOf("/sdk/platform-tools/adb", "devices") -> FakeShellCommandExecutor.success(
+                command == listOf("/sdk/platform-tools/adb", "devices", "-l") -> FakeShellCommandExecutor.success(
                     command,
                     "* daemon started successfully\nList of devices attached\nemulator-5554\tdevice\nemulator-5556\tdevice\nemulator-5558\toffline\nR58M123\tdevice\n\n",
                 )
@@ -150,7 +150,43 @@ class LocalAndroidSdkTest {
 
         sdk(executor = executor).deviceStates(location)
 
-        assertEquals(CommandTimeouts.LISTING, executor.timeouts[listOf("/sdk/platform-tools/adb", "devices")])
+        assertEquals(CommandTimeouts.LISTING, executor.timeouts[listOf("/sdk/platform-tools/adb", "devices", "-l")])
+    }
+
+    @Test
+    fun `lists every attached device with its state`() = runTest {
+        val executor = FakeShellCommandExecutor { command ->
+            FakeShellCommandExecutor.success(
+                command,
+                "List of devices attached\nR5CT10ABCDE            device usb:1-1 product:a55xnsxx model:SM_A556B device:a55x transport_id:3\n" +
+                    "adb-R5CT10ABCDE-xYz._adb-tls-connect._tcp device product:a55xnsxx model:SM_A556B device:a55x transport_id:4\n" +
+                    "0A1B2C3D4E            unauthorized usb:1-2 transport_id:5\n\n",
+            )
+        }
+
+        assertEquals(
+            mapOf("R5CT10ABCDE" to "device", "adb-R5CT10ABCDE-xYz._adb-tls-connect._tcp" to "device", "0A1B2C3D4E" to "unauthorized"),
+            sdk(executor = executor).attachedDevices(location),
+        )
+    }
+
+    @Test
+    fun `reads a device's properties in one getprop call`() = runTest {
+        val executor = FakeShellCommandExecutor { command ->
+            if (command.last() == "getprop" && command.contains("R5CT10ABCDE")) {
+                FakeShellCommandExecutor.success(command, "[ro.serialno]: [R5CT10ABCDE]\n[ro.product.model]: [SM-A556B]\n[ro.empty]: []\nnoise\n")
+            } else {
+                FakeShellCommandExecutor.failure(command)
+            }
+        }
+        val android = sdk(executor = executor)
+
+        assertEquals(
+            mapOf("ro.serialno" to "R5CT10ABCDE", "ro.product.model" to "SM-A556B", "ro.empty" to ""),
+            android.deviceProperties(location, "R5CT10ABCDE"),
+        )
+        assertEquals(null, android.deviceProperties(location, "0A1B2C3D4E"))
+        assertEquals(listOf("/sdk/platform-tools/adb", "-s", "R5CT10ABCDE", "shell", "getprop"), executor.executedCommands.first())
     }
 
     @Test

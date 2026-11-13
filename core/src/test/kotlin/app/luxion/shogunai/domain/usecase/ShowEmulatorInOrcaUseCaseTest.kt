@@ -30,6 +30,13 @@ class ShowEmulatorInOrcaUseCaseTest {
     }
 
     @Test
+    fun `a device Orca can't stream is reported as unsupported only when the worktree is open`() = runTest {
+        assertEquals(OrcaEmulatorView.Unsupported, useCase(FakeOrcaClient(psRows = listed))(worktree, null))
+        assertEquals(OrcaEmulatorView.NotOpen, useCase(FakeOrcaClient(psRows = emptyList()))(worktree, null))
+        assertEquals(OrcaEmulatorView.NotOpen, useCase(FakeOrcaClient(installed = false))(worktree, null))
+    }
+
+    @Test
     fun `a worktree open in Orca shows its simulator by UDID`() = runTest {
         val orca = FakeOrcaClient(psRows = listed)
 

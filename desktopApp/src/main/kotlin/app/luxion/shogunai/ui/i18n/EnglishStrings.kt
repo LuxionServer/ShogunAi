@@ -17,6 +17,7 @@ import app.luxion.shogunai.domain.model.ProvisionDriftState
 import app.luxion.shogunai.domain.model.AppLanguage
 import app.luxion.shogunai.domain.usecase.HookEntry
 import app.luxion.shogunai.domain.usecase.HookReplacement
+import app.luxion.shogunai.domain.model.HerdrPluginState
 import app.luxion.shogunai.domain.usecase.HooksInstallState
 import app.luxion.shogunai.domain.model.HostOs
 import app.luxion.shogunai.domain.usecase.CommandLineToolInstallation
@@ -235,6 +236,22 @@ object EnglishStrings : Strings {
     override val claudeHooksCancel = "Cancel"
     override val claudeHooksConfirm = "Apply"
     override val claudeHooksNeedsTool = "Install the command-line tool first"
+    override val herdrPluginLabel = "Herdr plugin"
+    override fun herdrPluginStatus(state: HerdrPluginState) = when (state) {
+        HerdrPluginState.INSTALLED -> "ShogunAi's Herdr plugin is installed"
+        HerdrPluginState.DISABLED -> "ShogunAi's Herdr plugin is disabled in Herdr"
+        HerdrPluginState.BROKEN -> "ShogunAi's Herdr plugin is broken"
+        HerdrPluginState.MISSING -> "ShogunAi's Herdr plugin isn't installed"
+        HerdrPluginState.UNKNOWN -> "Couldn't check ShogunAi's Herdr plugin"
+    }
+    override fun herdrPluginWarning(warning: String) = "Herdr says: $warning"
+    override val herdrPluginBrokenHint = "Herdr can't load it, so the worktrees it creates aren't provisioned."
+    override val herdrPluginReinstall = "Reinstall"
+    override val herdrPluginInstall = "Install"
+    override fun herdrPluginDialogTitle(state: HerdrPluginState) =
+        if (state == HerdrPluginState.BROKEN) "Reinstall the Herdr plugin" else "Install the Herdr plugin"
+    override val herdrPluginDialogIntro = "ShogunAi will run these Herdr commands to install it from its repository:"
+    override val herdrPluginRun = "Run"
     override val commandLineToolLabel = "Command-line tool"
     override fun commandLineToolStatus(status: CommandLineToolStatus) = when (status.state) {
         CommandLineToolState.AVAILABLE -> "The shogun command is available"
@@ -580,6 +597,43 @@ object EnglishStrings : Strings {
     override val desktopTurnDetailTitle = "Desktop turn"
     override fun desktopTurnDetailWaiting(position: Int, since: String, holder: String?) =
         "Waiting for the desktop, #$position since $since" + (if (holder == null) "" else ", behind $holder")
+    override val physicalDevicesTitle = "Devices"
+    override val machineStatusDevices = "Devices"
+    override fun physicalDevicesSummary(connected: Int, held: Int) = "$connected connected · $held held"
+    override val physicalDevicesExplanation =
+        "Phones and tablets connected by USB or on the network, lent to agents one worktree at a time with shogun device acquire. Withdraw a personal phone so no agent can use it."
+    override fun deviceConnection(network: Boolean) = if (network) "Network" else "USB"
+    override fun deviceLastSeen(at: String) = "Last seen $at"
+    override val deviceLent = "Lent"
+    override val deviceWithdrawn = "Withdrawn"
+    override val deviceFree = "Free"
+    override val deviceDisconnected = "Disconnected"
+    override fun deviceHeldUntil(until: String) = "Lease until $until"
+    override val deviceUnauthorized = "Allow USB debugging on the device"
+    override val deviceOffline = "Offline"
+    override val deviceUnpaired = "Not paired with this Mac"
+    override val deviceDeveloperModeOff = "Turn on developer mode"
+    override val deviceConnecting = "Connecting"
+    override fun devicesWaitingTitle(platform: String) = "Waiting for an $platform device"
+    override val releaseDevice = "Release"
+    override val withdrawDevice = "Withdraw"
+    override val lendDevice = "Lend"
+    override val renameDevice = "Rename"
+    override val forgetDevice = "Forget"
+    override val confirmReleaseDeviceTitle = "Release the device?"
+    override fun confirmReleaseDeviceMessage(device: String, holder: String) =
+        "$holder will no longer hold $device, and the next worktree waiting for one can acquire it. Nothing changes on the device."
+    override val confirmWithdrawDeviceTitle = "Withdraw the device?"
+    override fun confirmWithdrawDeviceMessage(device: String, holder: String) =
+        "$holder holds $device. Withdrawing it releases it, and no agent can acquire it until you lend it again."
+    override val confirmForgetDeviceTitle = "Forget the device?"
+    override fun confirmForgetDeviceMessage(device: String) = "$device leaves the list with its alias. If it's connected again, it comes back as a new, lent device."
+    override val renameDeviceTitle = "Rename the device"
+    override val deviceAliasLabel = "Alias"
+    override fun physicalDeviceDetailTitle(platform: String) = "$platform device"
+    override fun deviceDetailWaiting(position: Int, since: String) = "Waiting, number $position since $since"
+    override fun deviceTakenFor(device: String, worktree: String, at: String) = "$device was taken for $worktree at $at"
+    override fun deviceWithdrawnAt(device: String, at: String) = "$device was withdrawn at $at"
     override val headlessAppRunningLabel = "App in the background"
     override val headlessAppDetailTitle = "Background app"
     override fun headlessAppRunning(pid: Long?) = if (pid == null) "Running" else "Running (process $pid)"

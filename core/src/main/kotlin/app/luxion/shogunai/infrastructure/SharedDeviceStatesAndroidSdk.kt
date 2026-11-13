@@ -18,17 +18,22 @@ class SharedDeviceStatesAndroidSdk(
     private val reads = mutableMapOf<String, Read>()
 
     override suspend fun deviceStates(sdk: SdkLocation): Map<String, EmulatorState> = mutex.withLock {
-        val cached = reads[sdk.adb]
-        if (cached != null && Duration.between(cached.at, clock()) < window) return cached.states
-        val states = delegate.deviceStates(sdk)
-        reads[sdk.adb] = Read(states, clock())
-        states
+        val read = currentRead(sdk)
+        read.states ?: delegate.emulatorStates(sdk, read.attached).also { reads[sdk.adb] = read.copy(states = it) }
     }
+
+    override suspend fun attachedDevices(sdk: SdkLocation): Map<String, String> = mutex.withLock { currentRead(sdk).attached }
 
     override suspend fun stopEmulator(sdk: SdkLocation, serial: String) {
         mutex.withLock { reads.remove(sdk.adb) }
         delegate.stopEmulator(sdk, serial)
     }
 
-    private data class Read(val states: Map<String, EmulatorState>, val at: Instant)
+    private suspend fun currentRead(sdk: SdkLocation): Read {
+        val cached = reads[sdk.adb]
+        if (cached != null && Duration.between(cached.at, clock()) < window) return cached
+        return Read(delegate.attachedDevices(sdk), null, clock()).also { reads[sdk.adb] = it }
+    }
+
+    private data class Read(val attached: Map<String, String>, val states: Map<String, EmulatorState>?, val at: Instant)
 }

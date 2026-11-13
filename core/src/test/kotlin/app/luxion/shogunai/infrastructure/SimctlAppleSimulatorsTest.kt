@@ -1,6 +1,7 @@
 package app.luxion.shogunai.infrastructure
 
 import app.luxion.shogunai.domain.FakeShellCommandExecutor
+import app.luxion.shogunai.domain.executor.CommandTimeouts
 import app.luxion.shogunai.domain.model.SimulatorDevice
 import app.luxion.shogunai.domain.model.SimulatorState
 import app.luxion.shogunai.domain.model.WorktreeError
@@ -114,6 +115,10 @@ class SimctlAppleSimulatorsTest {
         assertFalse(executor.executed("open", "-b", "com.apple.dt.Devices"))
         assertTrue(executor.executed("xcrun", "simctl", "shutdown", "NEW-UDID"))
         assertTrue(executor.executed("xcrun", "simctl", "delete", "NEW-UDID"))
+        assertEquals(CommandTimeouts.LOCAL_WORK, executor.timeouts[listOf("xcrun", "simctl", "boot", "NEW-UDID")])
+        assertEquals(CommandTimeouts.LOCAL_TOOL, executor.timeouts[listOf("xcrun", "simctl", "shutdown", "NEW-UDID")])
+        assertEquals(CommandTimeouts.LOCAL_TOOL, executor.timeouts[listOf("xcrun", "simctl", "delete", "NEW-UDID")])
+        assertEquals(CommandTimeouts.LOCAL_TOOL, executor.timeouts[listOf("open", "-b", "com.apple.iphonesimulator", "--args", "-CurrentDeviceUDID", "NEW-UDID")])
     }
 
     @Test

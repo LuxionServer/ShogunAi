@@ -2,9 +2,19 @@ package app.luxion.shogunai.ui.i18n
 
 import app.luxion.shogunai.domain.model.AgentState
 import app.luxion.shogunai.domain.model.DesktopTurn
+import app.luxion.shogunai.domain.model.DeviceBlock
+import app.luxion.shogunai.domain.model.DevicePlatform
+import app.luxion.shogunai.domain.model.DeviceRequest
+import app.luxion.shogunai.domain.model.HeldDevice
+import app.luxion.shogunai.domain.model.InstallationFinding
+import app.luxion.shogunai.domain.model.PhysicalDeviceLease
 import app.luxion.shogunai.domain.model.PoolHolder
 import app.luxion.shogunai.domain.model.PoolHolderState
+import app.luxion.shogunai.domain.model.ProviderToolId
+import app.luxion.shogunai.domain.model.ProviderToolProblem
+import app.luxion.shogunai.domain.model.RecordedDevice
 import app.luxion.shogunai.domain.model.ResourceKind
+import app.luxion.shogunai.domain.model.WorktreeError
 import java.io.IOException
 import java.time.Duration
 import java.time.Instant
@@ -23,6 +33,16 @@ object TextSamples {
         PoolHolder(ResourceKind.EMULATOR, "/worktrees/TASK-91", "/projects/main-repo/.git/worktrees/TASK-91", PoolHolderState.RUNNING, false, null, leaseExpiresAt = Instant.EPOCH),
     )
 
+    private val recordedDevice = RecordedDevice("android:R5CT10ABCDE", DevicePlatform.ANDROID, alias = "a55", model = "SM-A556B", lastSeen = 0L)
+
+    private val heldDevice = HeldDevice(
+        recordedDevice,
+        PhysicalDeviceLease(recordedDevice.id, DevicePlatform.ANDROID, "/projects/main-repo/.git/worktrees/TASK-1", "/worktrees/TASK-1", 0L, 0L),
+        null,
+        Instant.EPOCH,
+        null,
+    )
+
     private val fixed: Map<KClass<*>, List<Any>> = mapOf(
         Int::class to listOf(0, 1, 2),
         Long::class to listOf(0L, 1L, 2L),
@@ -30,7 +50,32 @@ object TextSamples {
         Duration::class to listOf(Duration.ofMinutes(30)),
         Throwable::class to listOf(IOException("‹cause›"), IOException()),
         DesktopTurn::class to listOf(DesktopTurn("/projects/main-repo/.git/worktrees/TASK-1", "/worktrees/TASK-1", 0L, 60_000L)),
+        RecordedDevice::class to listOf(recordedDevice),
+        HeldDevice::class to listOf(heldDevice),
+        DeviceRequest::class to listOf(DeviceRequest(DevicePlatform.ANDROID, name = "a55")),
+        WorktreeError.PhysicalDeviceUnavailable::class to listOf(
+            WorktreeError.PhysicalDeviceUnavailable(DeviceRequest(DevicePlatform.ANDROID), listOf(DeviceBlock.Disconnected(recordedDevice)), 1),
+        ),
     )
+
+    private val providerTools: List<InstallationFinding.ProviderTool> by lazy {
+        val problems = ProviderToolProblem::class.sealedSubclasses.flatMap { instancesOf(it, "problem").orEmpty() }
+        val locations = listOf("‹location›", null)
+        val counts = listOf(0, 1, 2, null)
+        ProviderToolId.entries.flatMap { tool ->
+            val failing = problems.flatMap { problem -> locations.map { InstallationFinding.ProviderTool("‹project›", tool, it, problem as ProviderToolProblem) } }
+            val passing = locations.flatMap { location ->
+                counts.flatMap { installed ->
+                    listOf("‹version›", null).flatMap { version ->
+                        listOf(true, false).flatMap { provisioned ->
+                            counts.map { java -> InstallationFinding.ProviderTool("‹project›", tool, location, null, installed, version, provisioned, java) }
+                        }
+                    }
+                }
+            }
+            failing + passing
+        }
+    }
 
     fun of(type: KType, label: String = "value"): List<Any?>? {
         val values = nonNullOf(type, label) ?: return null
@@ -68,6 +113,7 @@ object TextSamples {
 
     private fun instancesOf(type: KClass<*>, label: String): List<Any>? {
         type.objectInstance?.let { return listOf(it) }
+        if (type == InstallationFinding.ProviderTool::class) return providerTools
         val constructor = type.primaryConstructor ?: return null
         val types = constructor.parameters.map { it.type }
         if (types.any { of(it) == null }) return null

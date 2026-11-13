@@ -90,6 +90,10 @@ private fun spanishWorktreeTexts(error: WorktreeError, gitCause: GitFailureCause
                 "Corrige el archivo. Si añades o quitas un proyecto, el archivo ilegible se conserva antes a su lado.",
             )
         }
+    is WorktreeError.LocalFileFromNewerVersion -> ErrorTexts(
+        "El archivo ${error.path} lo escribió una versión más nueva de ShogunAi, así que esta versión no lo modifica.",
+        "Actualiza ShogunAi para hacer este cambio.",
+    )
     is WorktreeError.WorktreeAlreadyExists -> ErrorTexts(
         "La carpeta ${error.path} ya existe.",
         "Usa otro id de tarea, o elimina la carpeta existente.",
@@ -199,6 +203,38 @@ private fun spanishWorktreeTexts(error: WorktreeError, gitCause: GitFailureCause
     is WorktreeError.DesktopTurnHeldByOther -> ErrorTexts(
         "El turno del escritorio es de ${error.holder.displayName}.",
         "Solo ese worktree, o tú desde la vista Escritorio, puede liberarlo.",
+    )
+    is WorktreeError.PhysicalDeviceNotFound -> ErrorTexts(
+        "Ningún dispositivo registrado se llama \"${error.query}\".",
+        "Comprueba su id, alias o nombre en la vista Dispositivos.",
+    )
+    is WorktreeError.AmbiguousPhysicalDevice -> ErrorTexts(
+        "\"${error.query}\" coincide con varios dispositivos registrados: ${error.candidates.joinToString { it.id }}.",
+        "Usa el id del dispositivo.",
+    )
+    is WorktreeError.DuplicateDeviceAlias -> ErrorTexts(
+        "${error.owner.displayName} ya usa el alias \"${error.alias}\".",
+        "Elige otro alias.",
+    )
+    is WorktreeError.NoRecordedDeviceMatches -> ErrorTexts(
+        "Ningún dispositivo registrado coincide con ${error.request.describe()}.",
+        "Conecta el dispositivo una vez para que quede registrado, o revisa la vista Dispositivos.",
+    )
+    WorktreeError.PhysicalDevicePlatformRequired -> ErrorTexts(
+        "Se podían obtener dispositivos Android e iOS.",
+        "Elige la plataforma, un nombre o un modelo.",
+    )
+    is WorktreeError.PhysicalDeviceAlreadyHeld -> ErrorTexts(
+        "${error.held.holderName} ya tiene ${error.held.device.displayName}.",
+        "Libéralo primero.",
+    )
+    is WorktreeError.PhysicalDeviceUnavailable -> ErrorTexts(
+        "Ningún dispositivo que coincida está libre: los que hay están desconectados, retirados, sin permisos o en uso.",
+        "Conecta o libera un dispositivo, o espera uno con --wait.",
+    )
+    is WorktreeError.PhysicalDeviceWaitTimedOut -> ErrorTexts(
+        "Ningún dispositivo quedó libre en ${error.waited.toMinutes()} min.",
+        "Libera uno desde la vista Dispositivos, o inténtalo más tarde.",
     )
     is WorktreeError.AndroidSdkNotFound -> ErrorTexts(
         "No se encontró el SDK de Android.",
