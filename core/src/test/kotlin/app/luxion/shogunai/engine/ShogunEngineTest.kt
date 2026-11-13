@@ -40,7 +40,10 @@ class ShogunEngineTest {
         val commands = mutableListOf<List<String>>()
 
         override suspend fun respond(command: List<String>, workingDirectory: String?) =
-            FakeShellCommandExecutor.success(command, "$admin\n$common\n").also { commands += command }
+            FakeShellCommandExecutor.success(command, stdoutFor(command)).also { commands += command }
+
+        private fun stdoutFor(command: List<String>) =
+            if ("--is-bare-repository" in command) "$common\nfalse\n" else "$admin\n$common\n"
     }
 
     private fun provisioning(providers: RepositoryProviders) = FakeRepositoryProvisioningSource(
@@ -108,6 +111,7 @@ class ShogunEngineTest {
         val engine = ShogunEngine(fakeEnginePorts(executor = gitExecutor))
 
         assertIs<CustomPoolFailure>(engine.acquireCustomPool(task, "db").exceptionOrNull())
+        assertFalse(gitExecutor.commands.any { it.take(2) == listOf("git", "config") })
         assertEquals(emptyList(), engine.customPoolLedger.variablesFor(task))
         assertEquals(emptyList(), engine.readCustomPools(repository).getOrThrow())
         assertEquals(emptyList(), engine.releaseCustomPool.onWorktreeRemoved(task))
