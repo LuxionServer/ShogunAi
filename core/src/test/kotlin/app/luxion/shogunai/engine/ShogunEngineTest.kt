@@ -9,6 +9,7 @@ import app.luxion.shogunai.domain.FakeRepositoryTrust
 import app.luxion.shogunai.domain.FakeShellCommandExecutor
 import app.luxion.shogunai.domain.io.EnginePorts
 import app.luxion.shogunai.domain.io.ApprovalDecision
+import app.luxion.shogunai.domain.model.CustomPoolFailure
 import app.luxion.shogunai.domain.model.DesktopAppProvider
 import app.luxion.shogunai.domain.model.GradleProvider
 import app.luxion.shogunai.domain.model.ProjectConfig
@@ -39,7 +40,10 @@ class ShogunEngineTest {
         val commands = mutableListOf<List<String>>()
 
         override suspend fun respond(command: List<String>, workingDirectory: String?) =
-            FakeShellCommandExecutor.success(command, "$admin\n$common\n").also { commands += command }
+            FakeShellCommandExecutor.success(command, stdoutFor(command)).also { commands += command }
+
+        private fun stdoutFor(command: List<String>) =
+            if ("--is-bare-repository" in command) "$common\nfalse\n" else "$admin\n$common\n"
     }
 
     private fun provisioning(providers: RepositoryProviders) = FakeRepositoryProvisioningSource(
@@ -100,6 +104,17 @@ class ShogunEngineTest {
 
         assertTrue(engine.readDesktopTurn().isSuccess)
         assertTrue(engine.readPhysicalDevices().isSuccess)
+    }
+
+    @Test
+    fun `custom pools resolve the worktree's repository and start empty`() = runTest {
+        val engine = ShogunEngine(fakeEnginePorts(executor = gitExecutor))
+
+        assertIs<CustomPoolFailure>(engine.acquireCustomPool(task, "db").exceptionOrNull())
+        assertFalse(gitExecutor.commands.any { it.take(2) == listOf("git", "config") })
+        assertEquals(emptyList(), engine.customPoolLedger.variablesFor(task))
+        assertEquals(emptyList(), engine.readCustomPools(repository).getOrThrow())
+        assertEquals(emptyList(), engine.releaseCustomPool.onWorktreeRemoved(task))
     }
 
     @Test

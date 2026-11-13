@@ -294,7 +294,7 @@ private fun isGuideReading(name: String, rest: List<String>) = name == "guide" &
 
 private fun CliCommand.withJsonOutput(json: Boolean): CliCommand = if (json) (this as JsonOutput).withJson() else this
 
-private class UsageException(override val message: String) : Exception(message)
+internal class UsageException(override val message: String) : Exception(message)
 
 private fun noArguments(name: String, rest: List<String>, command: CliCommand): CliCommand {
     rest.firstOrNull()?.let {
@@ -594,9 +594,10 @@ private fun parseApp(rest: List<String>): CliCommand.App {
 }
 
 private fun parsePool(rest: List<String>): CliCommand {
-    val name = rest.firstOrNull() ?: throw UsageException("'pool' needs an action: status or trim")
+    val name = rest.firstOrNull() ?: throw UsageException("'pool' needs an action: status, trim, acquire or release")
+    if (name in POOL_SLOT_ACTIONS) return parsePoolSlot(rest)
     val action = PoolAction.entries.firstOrNull { it.name.equals(name, ignoreCase = true) }
-        ?: throw UsageException("unknown action '$name' for 'pool', expected status or trim")
+        ?: throw UsageException("unknown action '$name' for 'pool', expected status, trim, acquire or release")
     rest.drop(1).firstOrNull()?.let { throw UsageException("'pool $name' takes no arguments, got '$it'") }
     return CliCommand.Pool(action)
 }

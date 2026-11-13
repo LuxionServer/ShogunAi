@@ -17,6 +17,8 @@ A provider adds support for one kind of tooling to a repository's worktrees. A r
 | [`desktop-app`](#compose-desktop-app) | A Compose Desktop app per worktree, run in the background without taking the desktop. | macOS |
 | [`flutter`](#flutter) | Flutter apps: `flutter pub get` in every new worktree, and agents running Flutter on their worktree's devices. | Any with Flutter |
 
+For a resource none of them covers, a repository can declare its own [custom pools](#custom-pools).
+
 ## Detecting stacks
 
 You don't have to know which providers exist. ShogunAi looks at the files of the repository's main folder and its direct subfolders (never hidden folders, `build`, `node_modules` or `Pods`) and recognises six stacks:
@@ -212,6 +214,42 @@ Some bugs only show on real hardware: a manufacturer's skin, the camera, Bluetoo
 - **Releasing changes nothing on the device**: the app stays installed and its data stays. Removing a worktree releases its devices.
 - **Orca.** Acquiring an Android device in a worktree open in Orca shows it in the worktree's emulator view, and opening a worktree that holds one shows it instead of its emulator, unless the worktree's simulator is booted. Orca can't show a physical iPhone yet.
 - **Cost.** `adb devices` runs only when something needs the devices, once every 2 seconds at most, shared with the emulator states, and `getprop` once per connection. The desktop app doesn't look for devices on machines with no recorded device and no project declaring the emulator or iOS simulator provider.
+
+## Custom pools
+
+A repository whose worktrees share something ShogunAi has no provider for, such as a database per worktree, a test device, a licence or a GPU, declares it under `pools` in its `.shogunai.json`, without waiting for a provider:
+
+```json
+{
+  "pools": {
+    "db": {
+      "max": 3,
+      "acquire": ["./scripts/db-up.sh", "${slot}"],
+      "release": ["./scripts/db-down.sh", "${slot}"],
+      "env": { "DATABASE_URL": "postgres://localhost/app_${slot}" }
+    }
+  }
+}
+```
+
+| Key | Meaning |
+|---|---|
+| name | The key under `pools`: 1 to 32 lowercase letters, digits and hyphens, starting with a letter or digit. |
+| `max` | The most instances at once on the machine, a whole number from 1 to 64 (not a string). Each holder gets a slot from 1 to `max`. |
+| `acquire` | Required. One command, as a non-empty list of strings given as argv, never through a shell, run in the worktree when it takes or renews a slot. |
+| `release` | Optional. One command, as for `acquire`, run when the worktree gives its slot back, when another worktree takes it over and when the worktree is removed. |
+| `env` | Variables the worktree gets while it holds a slot, with the same name rules as the repository's `env`; a name can't repeat one of `env` or of another pool. |
+
+Commands and variables accept `${slot}` (the holder's slot number), `${worktree}` (its folder name) and `$$` (a literal `$`); any other placeholder makes the file invalid. Use the slot to keep instances apart: a database name, a port offset in the script, a device index.
+
+- **Approval.** The pools' commands and variables run on your machine, so they are part of the repository's single [approval](configuration.md#approving-a-repository): nothing of a pool runs until you approve it, and a pull that changes a pool asks again. An unapproved repository's `shogun pool acquire` fails naming `shogun trust`.
+- **On demand.** A worktree takes a slot with [`shogun pool acquire <name>`](cli.md#pool) when it needs it, which runs `acquire` with its slot; running it again renews the lease and runs `acquire` again, so make the command safe to repeat. `shogun pool release <name>` runs `release` and frees the slot. Nothing is acquired when a worktree is created.
+- **Leases and taking over.** Slots have the same lease as devices (the machine's lease duration, 20 minutes by default), protected while the worktree's agent works or while a command of the slot runs. When the pool is full, acquiring takes over a slot whose lease expired, in the same order as devices, running `release` for its holder first; if that `release` fails, the holder keeps it. With `--wait`, the worktree waits in line for a slot, first in, first out.
+- **Per repository.** A pool's slots are shared by the worktrees of the repository that declares it; another repository with a pool of the same name counts its own. For a resource of the whole machine, such as a GPU, give it the same `max` in each repository knowing they don't see each other.
+- **Variables.** While a worktree holds a slot, the pool's variables reach its environment: `shogun env`, agent sessions started afterwards, terminals and the environment file written afterwards. A shell that was already open reads them with `eval "$(shogun env)"`.
+- **Removal.** Removing or cleaning up a worktree runs `release` for each slot it holds and frees them even if `release` fails, which is reported.
+- **Status.** `shogun pool status` lists the repository's pools with their holders and waiters, and `shogun status` shows each worktree's slots (`pool=db#2`). The desktop app doesn't show custom pools yet.
+- **Limit.** `max` is the only limit a repository sets: the capacity profile and Preferences don't change it.
 
 ## Capacity
 

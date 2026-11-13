@@ -76,4 +76,5 @@ data class HolderClosing(
     val headlessAppFailure: WorktreeError? = null,
     val closedOrcaTerminals: Boolean = false,
     val orcaFailure: WorktreeError? = null,
+    val poolReleaseFailures: List<WorktreeError> = emptyList(),
 )

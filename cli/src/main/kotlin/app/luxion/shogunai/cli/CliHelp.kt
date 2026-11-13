@@ -179,6 +179,13 @@ internal object CliHelp {
   pool status [--json]        Show the emulator, iOS simulator and Gradle daemon pools: the limit of the
                               machine's capacity profile, how many are in use and which worktree holds each
   pool trim [--json]          Stop idle Gradle daemons, longest idle first, until they are within the limit
+  pool acquire <name> [<path>] [--wait] [--wait-timeout <minutes>] [--json]
+                              Take a slot of a pool declared under "pools" in .shogunai.json and run its
+                              acquire command; running it again renews the lease. When the pool is full and
+                              no slot has an expired lease, wait in line with --wait (30 minutes at most, or
+                              --wait-timeout); `pool status` also lists the repository's pools
+  pool release <name> [<path>] [--json]
+                              Run the pool's release command and free the worktree's slot
 """.trimIndent(),
         "xcode" to """
   xcode [--json]              List Xcode DerivedData and Swift .build folders of the worktrees, orphans and compilation cache

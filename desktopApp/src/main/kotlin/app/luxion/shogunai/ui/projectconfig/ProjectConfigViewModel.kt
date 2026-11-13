@@ -783,7 +783,7 @@ class ProjectConfigViewModel(
 
     private fun writeAndApproveEnvironment() {
         val before = runCatching { provisioningSource.read(baseRepositoryPath).approvalSubject }.getOrNull()
-        val approveSaved = before != null && (before.commands.isEmpty() || trust.isApproved(baseRepositoryPath, before))
+        val approveSaved = before != null && (before.commands.isEmpty() && before.pools.isEmpty() || trust.isApproved(baseRepositoryPath, before))
         provisioningSource.write(baseRepositoryPath, pendingRepositoryEdit(), repositoryFingerprint)
         if (!approveSaved) return
         runCatching { provisioningSource.read(baseRepositoryPath).approvalSubject }.getOrNull()

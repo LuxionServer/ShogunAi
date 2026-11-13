@@ -20,6 +20,7 @@ Status: **Available**.
 - Worktree provisioning defined in the repository (`.shogunai.json`).
 - A `shogun` command that the desktop app, agents and their hooks all use.
 - A per-worktree environment (reserved ports and variables) delivered to each agent's shell.
+- Resources a repository declares itself in `.shogunai.json` and shares between its worktrees, with leases and a queue.
 - JSON output on every command, for scripts.
 
 ### Control tower
@@ -167,6 +168,17 @@ Left out:
 - Showing the Claude session names of a group's worktrees and of the multirepo agent in the desktop app's views; today `shogun open --herdr` and `shogun status` report them, and the app only names the sessions it opens.
 - A single session for the whole group, with a combined environment, as an option next to one agent per repository.
 - The pull request state of each repository of a group, which depends on the GitHub integration under exploration.
+
+### Custom pools
+
+Follow-ups of the pools a repository declares in `.shogunai.json`:
+
+- A per-machine setting that lowers a pool's `max`, from Preferences and the CLI.
+- Showing custom pools in the desktop app: the machine views, the worktree detail and its row, and releasing a slot from there.
+- Reporting a failed `release` when a worktree is removed from the desktop app; today only `shogun remove` and `shogun clean` print it.
+- Ports in pool templates (`${port}` and `${port:<key>}`).
+- Pools shared by several repositories, for resources of the whole machine such as a GPU or a licence.
+- Acquiring a slot automatically when a worktree is created.
 
 ### Robustness and maintenance
 

@@ -23,6 +23,7 @@ import app.luxion.shogunai.domain.FakeMavenDaemonSource
 import app.luxion.shogunai.domain.FakeMultirepoSource
 import app.luxion.shogunai.domain.FakeOrcaClient
 import app.luxion.shogunai.domain.FakePhysicalDeviceInventoryStore
+import app.luxion.shogunai.domain.FakeCustomPoolLeaseStore
 import app.luxion.shogunai.domain.FakePhysicalDeviceLeaseStore
 import app.luxion.shogunai.domain.FakePortProbe
 import app.luxion.shogunai.domain.FakeProcessLiveness
@@ -59,6 +60,7 @@ import app.luxion.shogunai.domain.io.OrcaClient
 import app.luxion.shogunai.domain.io.OrcaWorkspaceStore
 import app.luxion.shogunai.domain.io.PackageCacheSource
 import app.luxion.shogunai.domain.io.PhysicalDeviceInventoryStore
+import app.luxion.shogunai.domain.io.CustomPoolLeaseStore
 import app.luxion.shogunai.domain.io.PhysicalDeviceLeaseStore
 import app.luxion.shogunai.domain.io.PhysicalDevices
 import app.luxion.shogunai.domain.io.PortProbe
@@ -109,6 +111,7 @@ fun fakeEnginePorts(
     physicalDevices: List<PhysicalDevices> = emptyList(),
     deviceInventory: PhysicalDeviceInventoryStore = FakePhysicalDeviceInventoryStore(),
     deviceLeases: PhysicalDeviceLeaseStore = FakePhysicalDeviceLeaseStore(),
+    poolLeases: CustomPoolLeaseStore = FakeCustomPoolLeaseStore(),
 ): EnginePorts = EnginePorts(
     executor = executor,
     fileManager = fileManager,
@@ -149,4 +152,5 @@ fun fakeEnginePorts(
     physicalDevices = physicalDevices,
     deviceInventory = deviceInventory,
     deviceLeases = deviceLeases,
+    poolLeases = poolLeases,
 )

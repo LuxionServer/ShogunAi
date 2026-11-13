@@ -40,6 +40,14 @@ class NioDeviceWaitQueueTest {
     }
 
     @Test
+    fun `custom pool waiters share one queue and keep their pool in the request`() {
+        queue.write(WaitQueueName.CUSTOM_POOL, listOf(ticket("TASK-3", 3).copy(request = "/home/dev/projects/main-repo/.git\ndb")))
+
+        assertEquals(listOf("/home/dev/projects/main-repo/.git\ndb"), queue.read(WaitQueueName.CUSTOM_POOL).map { it.request })
+        assertTrue("\"custom-pool\"" in machine.resolve(NioDeviceWaitQueue.QUEUE_FILE_NAME).toFile().readText())
+    }
+
+    @Test
     fun `the desktop queue lives next to the device queues`() {
         queue.write(ResourceKind.EMULATOR, listOf(ticket("TASK-2", 1)))
         queue.write(WaitQueueName.DESKTOP, listOf(ticket("TASK-5", 2)))

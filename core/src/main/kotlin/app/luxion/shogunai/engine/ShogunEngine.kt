@@ -6,7 +6,11 @@ import app.luxion.shogunai.domain.io.RepositoryApproval
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.SimulatorSettings
 import app.luxion.shogunai.domain.usecase.AcquireDesktopTurnUseCase
+import app.luxion.shogunai.domain.usecase.AcquireCustomPoolUseCase
 import app.luxion.shogunai.domain.usecase.AcquirePhysicalDeviceUseCase
+import app.luxion.shogunai.domain.usecase.CustomPoolLedger
+import app.luxion.shogunai.domain.usecase.ReadCustomPoolsUseCase
+import app.luxion.shogunai.domain.usecase.ReleaseCustomPoolUseCase
 import app.luxion.shogunai.domain.usecase.AcquireWorktreeResourceUseCase
 import app.luxion.shogunai.domain.usecase.CaptureHeadlessAppUseCase
 import app.luxion.shogunai.domain.usecase.CheckGradleBuildCacheUseCase
@@ -115,7 +119,7 @@ class ShogunEngine(
         ports.trust,
         ports.composeRegistry,
         sharedEnvironment,
-        deviceVariables = { worktree -> physicalDeviceLedger.variablesFor(worktree) },
+        deviceVariables = { worktree -> physicalDeviceLedger.variablesFor(worktree) + customPoolLedger.variablesFor(worktree) },
     )
 
     private suspend fun adminDirectoryOf(worktreePath: String): String = resolveEnvironment.directoriesOf(worktreePath).admin
@@ -220,6 +224,26 @@ class ShogunEngine(
     val acquirePhysicalDevice = AcquirePhysicalDeviceUseCase(physicalDeviceLedger)
     val releasePhysicalDevice = ReleasePhysicalDeviceUseCase(physicalDeviceLedger)
     val managePhysicalDevices = ManagePhysicalDevicesUseCase(physicalDeviceLedger)
+
+    val customPoolLedger: CustomPoolLedger = CustomPoolLedger(
+        provisioningSource,
+        ports.trust,
+        ports.poolLeases,
+        ports.environmentStateStore,
+        ports.deviceWaitQueue,
+        ports.processLiveness,
+        resolveEnvironment::directoriesOf,
+        { worktree -> resolveRepository(worktree).getOrThrow() },
+        executor,
+        fileManager::isDirectory,
+        resolveLimits::leaseDuration,
+        agentActivity = readAgentActivity::invoke,
+        clock = options.clock,
+        sleep = options.pauseWhileWaiting,
+    )
+    val readCustomPools = ReadCustomPoolsUseCase(customPoolLedger)
+    val acquireCustomPool = AcquireCustomPoolUseCase(customPoolLedger)
+    val releaseCustomPool = ReleaseCustomPoolUseCase(customPoolLedger)
 
     val orcaReader = OrcaWorktreeReader(ports.orca, ports.orcaWorkspaces, ports.userHome)
     val closeOrcaTerminals = CloseOrcaTerminalsUseCase(ports.orca)
