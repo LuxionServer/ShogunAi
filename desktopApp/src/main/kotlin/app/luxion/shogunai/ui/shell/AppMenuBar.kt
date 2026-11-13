@@ -35,17 +35,18 @@ fun FrameWindowScope.AppMenuBar(
     onCopyDiagnosticReport: () -> Unit,
     onAbout: () -> Unit,
     onQuit: () -> Unit,
+    mac: Boolean = isMacOs,
 ) {
     MenuBar {
         Menu(strings.menuFile) {
-            onNewWorktree?.let { Item(strings.newWorktree, shortcut = shortcut(Key.N), onClick = it) }
-            onSave?.let { Item(strings.menuSave, shortcut = shortcut(Key.S), onClick = it) }
-            Item(strings.addProject, shortcut = shortcut(Key.N, shift = true), onClick = onAddProject)
-            if (!isMacOs) {
+            onNewWorktree?.let { Item(strings.newWorktree, shortcut = menuShortcut(Key.N, false, mac), onClick = it) }
+            onSave?.let { Item(strings.menuSave, shortcut = menuShortcut(Key.S, false, mac), onClick = it) }
+            Item(strings.addProject, shortcut = menuShortcut(Key.N, true, mac), onClick = onAddProject)
+            if (!mac) {
                 Separator()
-                Item(strings.menuPreferences, shortcut = shortcut(Key.Comma), onClick = onPreferences)
+                Item(strings.menuPreferences, shortcut = menuShortcut(Key.Comma, false, mac), onClick = onPreferences)
                 Separator()
-                Item(strings.menuQuit, shortcut = shortcut(Key.Q), onClick = onQuit)
+                Item(strings.menuQuit, shortcut = menuShortcut(Key.Q, false, mac), onClick = onQuit)
             }
         }
         if (worktreeMenu != null) {
@@ -55,7 +56,7 @@ fun FrameWindowScope.AppMenuBar(
                     if (spec.isDestructive) Separator()
                     Item(
                         spec.label,
-                        shortcut = spec.shortcut?.let(::keyShortcut),
+                        shortcut = spec.shortcut?.let { keyShortcut(it, mac) },
                         enabled = actsOnSelection && spec.isAvailable,
                         onClick = { onWorktreeAction(spec.id) },
                     )
@@ -64,27 +65,27 @@ fun FrameWindowScope.AppMenuBar(
             }
         }
         Menu(strings.menuView) {
-            onShowActive?.let { Item(strings.menuActive, shortcut = shortcut(Key.One), onClick = it) }
-            onShowAll?.let { Item(strings.menuAllWorktrees, shortcut = shortcut(Key.Two), onClick = it) }
-            onFind?.let { Item(strings.menuFind, shortcut = shortcut(Key.F), onClick = it) }
-            Item(strings.menuCommandPalette, shortcut = shortcut(Key.K), onClick = onCommandPalette)
-            Item(strings.reload, shortcut = shortcut(Key.R), onClick = onReload)
-            Item(strings.menuToggleSidebar, shortcut = shortcut(Key.Backslash), onClick = onToggleSidebar)
+            onShowActive?.let { Item(strings.menuActive, shortcut = menuShortcut(Key.One, false, mac), onClick = it) }
+            onShowAll?.let { Item(strings.menuAllWorktrees, shortcut = menuShortcut(Key.Two, false, mac), onClick = it) }
+            onFind?.let { Item(strings.menuFind, shortcut = menuShortcut(Key.F, false, mac), onClick = it) }
+            Item(strings.menuCommandPalette, shortcut = menuShortcut(Key.K, false, mac), onClick = onCommandPalette)
+            Item(strings.reload, shortcut = menuShortcut(Key.R, false, mac), onClick = onReload)
+            Item(strings.menuToggleSidebar, shortcut = menuShortcut(Key.Backslash, false, mac), onClick = onToggleSidebar)
         }
         Menu(strings.menuHelp) {
             Item(strings.tourMenuItem, onClick = onTour)
             Item(strings.menuCheckForUpdates, onClick = onCheckForUpdates)
             Item(strings.menuCheckInstallation, onClick = onCheckInstallation)
             Item(strings.menuCopyDiagnosticReport, onClick = onCopyDiagnosticReport)
-            if (!isMacOs) Item(strings.menuAbout, onClick = onAbout)
+            if (!mac) Item(strings.menuAbout, onClick = onAbout)
         }
     }
 }
 
-fun keyShortcut(shortcut: ActionShortcut): KeyShortcut? =
-    menuKeys[shortcut.key]?.let { shortcut(it, shortcut.shift) }
+fun keyShortcut(shortcut: ActionShortcut, mac: Boolean = isMacOs): KeyShortcut? =
+    menuKeys[shortcut.key]?.let { menuShortcut(it, shortcut.shift, mac) }
 
 private val menuKeys = mapOf("O" to Key.O, "C" to Key.C, "⌫" to Key.Backspace, "N" to Key.N, "R" to Key.R)
 
-private fun shortcut(key: Key, shift: Boolean = false) =
-    KeyShortcut(key, ctrl = !isMacOs, meta = isMacOs, shift = shift)
+private fun menuShortcut(key: Key, shift: Boolean, mac: Boolean) =
+    KeyShortcut(key, ctrl = !mac, meta = mac, shift = shift)

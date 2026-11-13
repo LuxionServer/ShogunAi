@@ -3,6 +3,7 @@ package app.luxion.shogunai.ui.shell
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import app.luxion.shogunai.domain.io.MachineCapacity
 import app.luxion.shogunai.domain.io.ResourceLimitsRepository
 import app.luxion.shogunai.domain.model.CapacityProfile
 import app.luxion.shogunai.domain.model.DerivedDataQuotaMode
@@ -144,21 +145,19 @@ class ResourcePreferences(
             }
 
         val NONE = ResourcePreferences(
-            repository = object : ResourceLimitsRepository {
-                override fun load() = ResourceSettings()
-                override fun save(settings: ResourceSettings) = Unit
-            },
-            resolveLimits = ResolveResourceLimitsUseCase(
-                repository = object : ResourceLimitsRepository {
-                    override fun load() = ResourceSettings()
-                    override fun save(settings: ResourceSettings) = Unit
-                },
-                capacity = object : app.luxion.shogunai.domain.io.MachineCapacity {
-                    override fun totalMemoryBytes(): Long? = null
-                    override fun cores(): Int = 1
-                },
-            ),
+            repository = NoResourceLimits,
+            resolveLimits = ResolveResourceLimitsUseCase(repository = NoResourceLimits, capacity = NoMachineCapacity),
             showsSimulators = false,
         )
     }
+}
+
+internal object NoResourceLimits : ResourceLimitsRepository {
+    override fun load() = ResourceSettings()
+    override fun save(settings: ResourceSettings) = Unit
+}
+
+internal object NoMachineCapacity : MachineCapacity {
+    override fun totalMemoryBytes(): Long? = null
+    override fun cores(): Int = 1
 }
