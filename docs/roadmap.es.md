@@ -20,6 +20,7 @@ Estado: **Disponible**.
 - Provisionado de worktrees definido en el repositorio (`.shogunai.json`).
 - Un comando `shogun` que usan la app de escritorio, los agentes y sus hooks.
 - Un entorno por worktree (puertos reservados y variables) que llega a la shell de cada agente.
+- Recursos que un repositorio declara él mismo en `.shogunai.json` y reparte entre sus worktrees, con leases y cola.
 - Salida JSON en todos los comandos, para scripts.
 
 ### Torre de control
@@ -186,6 +187,17 @@ Queda fuera:
 - Mostrar los builds en marcha y la cola de builds en la torre de control, con un campo de huecos de build para el perfil Personalizado en Preferencias (hasta entonces Personalizado usa el número del Automático), y pasar los errores del turno de build a los que la app describe.
 - Dar peso a los builds según su tamaño, para que compilar un módulo no ocupe el mismo hueco que una ejecución completa de tests, y reconocer más invocaciones ligeras que `--version`, `--stop`, `help` y `tasks`.
 - Los builds que lanzan scripts o agentes sin los hooks de Claude Code, a los que hoy solo llega la guía.
+
+### Pools propios
+
+Seguimiento de los pools que un repositorio declara en `.shogunai.json`:
+
+- Un ajuste por máquina que baje el `max` de un pool, desde las Preferencias y la CLI.
+- Mostrar los pools propios en la app de escritorio: las vistas de la máquina, el detalle del worktree y su fila, y liberar una plaza desde ahí.
+- Informar de un `release` fallido al eliminar un worktree desde la app de escritorio; hoy solo lo imprimen `shogun remove` y `shogun clean`.
+- Puertos en las plantillas de los pools (`${port}` y `${port:<clave>}`).
+- Pools compartidos por varios repositorios, para recursos de toda la máquina como una GPU o una licencia.
+- Adquirir una plaza automáticamente al crear un worktree.
 
 ### Robustez y mantenimiento
 

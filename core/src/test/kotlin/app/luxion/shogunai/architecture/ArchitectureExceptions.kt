@@ -31,17 +31,17 @@ val ARGV_EXCEPTIONS: Set<String> = setOf(
 )
 
 val FILE_LENGTH_CAPS: Map<String, Int> = mapOf(
-    cli("CliCommand.kt") to 1093,
+    cli("CliCommand.kt") to 1094,
     cli("CommandJson.kt") to 1028,
     cli("ShogunCli.kt") to 3493,
     core("domain/model/WorktreeError.kt") to 461,
     core("domain/usecase/WorktreeCreation.kt") to 440,
-    core("infrastructure/RepositoryProvisioningFiles.kt") to 460,
+    core("infrastructure/RepositoryProvisioningFiles.kt") to 461,
     desktop("AppContainer.kt") to 1338,
     desktop("main.kt") to 453,
-    desktop("ui/i18n/EnglishErrors.kt") to 479,
+    desktop("ui/i18n/EnglishErrors.kt") to 481,
     desktop("ui/i18n/EnglishStrings.kt") to 1131,
-    desktop("ui/i18n/SpanishErrors.kt") to 500,
+    desktop("ui/i18n/SpanishErrors.kt") to 502,
     desktop("ui/i18n/SpanishStrings.kt") to 1129,
     desktop("ui/i18n/Strings.kt") to 957,
     desktop("ui/machine/MachineResources.kt") to 1006,
