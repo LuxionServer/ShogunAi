@@ -139,4 +139,25 @@ class ArchitectureRulesTest {
             FileLength.violations(tree(large, grown, capped, shrunk, test), caps),
         )
     }
+
+    @Test
+    fun `files directly in an exempt folder have no length limit, and exemptions fail once stale`() {
+        fun lines(count: Int) = "val a = 1\n".repeat(count)
+        val i18n = "desktopApp/src/main/kotlin/app/luxion/shogunai/ui/i18n"
+        val table = main("$i18n/EnglishStrings.kt", lines(1200))
+        val nested = main("$i18n/nested/Logic.kt", lines(450))
+        val short = main("desktopApp/src/main/kotlin/app/luxion/shogunai/ui/shell/Short.kt", lines(10))
+        val caps = mapOf("$i18n/EnglishStrings.kt" to 1200, "$i18n/Gone.kt" to 500)
+        val exempt = mapOf(i18n to "translation tables", "desktopApp/src/main/kotlin/app/luxion/shogunai/ui/shell" to "reason", "desktopApp/src/main/kotlin/app/luxion/shogunai/ui/gone" to "reason")
+        assertEquals(
+            listOf(
+                "$i18n/nested/Logic.kt: has 450 lines, over its cap of 400",
+                "$i18n/EnglishStrings.kt: is in an exempt folder, remove it from the file length caps",
+                "$i18n/Gone.kt: is in an exempt folder, remove it from the file length caps",
+                "desktopApp/src/main/kotlin/app/luxion/shogunai/ui/shell: has no file over 400 lines, remove it from the file length exemptions",
+                "desktopApp/src/main/kotlin/app/luxion/shogunai/ui/gone: has no file over 400 lines, remove it from the file length exemptions",
+            ),
+            FileLength.violations(tree(table, nested, short), caps, exempt),
+        )
+    }
 }

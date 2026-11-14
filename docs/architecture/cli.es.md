@@ -47,7 +47,9 @@ Cada comando parte de un directorio (el actual, o la ruta que se pasa a `provisi
 
 ## Estructura
 
-- `CliCommand.kt` — `parseArguments(args)` convierte los argumentos en un `CliCommand` sellado o en un error de uso. Escrito a mano: una docena de comandos con una veintena de opciones, cada uno con sus pequeñas reglas (`--from` no con `--branch`, `--avd` solo con `start`, alias como `-y`), no justifican una librería de parsing ni su coste de arranque.
+- `CliCommand.kt` declara el `CliCommand` sellado, y `CliArguments.kt` tiene `parseArguments(args)`, que convierte los argumentos en un `CliCommand` o en un error de uso pasando cada nombre de comando a su parser.
+  Los parsers están agrupados por familia de comandos (`WorktreeArguments.kt`, `ToolArguments.kt`, `HookArguments.kt`, `DeviceArguments.kt`, `MultirepoArguments.kt`), y los comandos más recientes declaran su tipo y su parser en un fichero propio (`OverlapCommand.kt`, `BuildCommand.kt`), así que un comando nuevo solo añade una línea al reparto.
+  Escrito a mano: una docena de comandos con una veintena de opciones, cada uno con sus pequeñas reglas (`--from` no con `--branch`, `--avd` solo con `start`, alias como `-y`), no justifican una librería de parsing ni su coste de arranque.
 - `ShogunCli.kt` — `ShogunCli(engine, workingDirectory, out, err…).run(args): Int` ejecuta un comando. Recibe el `ShogunEngine` con los casos de uso ya cableados, más lo que solo usa la línea de comandos (flujos de salida, la pregunta en el terminal, el canal de órdenes y el bloqueo de la app, `CommandLineTool`), así que `ShogunCliTest` prueba cada comando con un motor construido con los test fixtures de `core` y buffers de texto.
 - `Main.kt` — `main` y `runShogun(args)` construyen los puertos reales con `hostEnginePorts` (el directorio de trabajo como carpeta desde la que los dispositivos físicos localizan el SDK de Android, sin compartir lecturas del estado de los emuladores), el motor sobre ellos y `ShogunCli`. Ver [Un único grafo de composición](overview.md#un-unico-grafo-de-composicion).
 
