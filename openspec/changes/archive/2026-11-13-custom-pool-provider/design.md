@@ -109,11 +109,11 @@ New files: `domain/model/CustomPool.kt` (declaration, template, lease, loss, sta
 
 These files are exactly at their cap and need a few lines each; their caps rise by as many:
 
-- `cli/CliCommand.kt` 1090 → 1091: `parsePool` delegates `acquire` and `release` to the new parser.
-- `cli/CommandJson.kt` 1028 → 1029: `trustJson` adds `pools`.
-- `infrastructure/RepositoryProvisioningFiles.kt` 459 → 460: `read` adds `pools`.
+- `cli/CliCommand.kt` 1091 → 1092: `parsePool` delegates `acquire` and `release` to the new parser.
+- `infrastructure/RepositoryProvisioningFiles.kt` 460 → 461: `read` adds `pools`.
 - `ui/i18n/EnglishErrors.kt` 479 → 481 and `ui/i18n/SpanishErrors.kt` 500 → 502: the import and the branch of `CustomPoolFailure` in the exhaustive `when`.
-- `ui/i18n/Strings.kt`, `ui/i18n/EnglishStrings.kt` and `ui/i18n/SpanishStrings.kt`, two lines each: the approval's pool title and pool line.
+
+`cli/CommandJson.kt` (`trustJson` adds `pools`) and the approval's two pool lines in `ui/i18n/Strings.kt`, `ui/i18n/EnglishStrings.kt` and `ui/i18n/SpanishStrings.kt` fit under their caps, since the base branch moved code out of those files.
 
 The alternative, moving existing code out of those files to make room, is a refactor outside this change and would conflict with the parallel changes editing them.
 
