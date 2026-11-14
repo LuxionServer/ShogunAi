@@ -290,7 +290,7 @@ fun WorktreeStatus.mergedInto(mainBranchName: String?): String? = when {
 }
 
 private fun activeEmulator(emulator: WorktreeEmulator?): EmulatorState? = when (emulator?.state) {
-    EmulatorState.BOOTING, EmulatorState.RUNNING -> emulator.state
+    EmulatorState.BOOTING, EmulatorState.RUNNING, EmulatorState.UNRESPONSIVE -> emulator.state
     else -> null
 }
 

@@ -10,7 +10,7 @@ data class EmulatorSettings(
 
 data class SdkLocation(val root: String, val emulator: String, val adb: String)
 
-enum class EmulatorState { STOPPED, BOOTING, RUNNING }
+enum class EmulatorState { STOPPED, BOOTING, RUNNING, UNRESPONSIVE }
 
 data class WorktreeEmulator(val serial: String, val state: EmulatorState)
 

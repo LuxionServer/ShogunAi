@@ -29,6 +29,7 @@ data class OutputLine(val channel: OutputChannel, val text: String)
 object CommandTimeouts {
     val GIT_READ: Duration = 30.seconds
     val LISTING: Duration = 10.seconds
+    val DEVICE_PROBE: Duration = 5.seconds
     val NETWORK: Duration = 60.seconds
     val LOCAL_TOOL: Duration = 60.seconds
     val LOCAL_WORK: Duration = 5.minutes

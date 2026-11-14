@@ -93,6 +93,15 @@ class StringsTest {
     }
 
     @Test
+    fun `a full pool names an unresponsive holder in both languages`() {
+        val hung = listOf(poolHolders.first().copy(state = PoolHolderState.UNRESPONSIVE))
+        val error = WorktreeError.ResourcePoolFull(ResourceKind.EMULATOR, 1, hung)
+
+        assertTrue(EnglishStrings.describe(error).summary.contains("api · TASK-1 (unresponsive)"))
+        assertTrue(SpanishStrings.describe(error).summary.contains("api · TASK-1 (no responde)"))
+    }
+
+    @Test
     fun `a full pool says how many worktrees wait and a timed-out wait names the holders`() {
         val full = WorktreeError.ResourcePoolFull(ResourceKind.EMULATOR, 2, poolHolders, waiting = 2)
 
@@ -224,6 +233,8 @@ class StringsTest {
         WorktreeError.NoAvdAvailable,
         WorktreeError.EmulatorBootTimeout("emulator-5556", 180),
         WorktreeError.EmulatorExitedEarly("emulator-5556", "PANIC: Broken AVD system path"),
+        WorktreeError.EmulatorUnresponsive("emulator-5556", 180),
+        WorktreeError.EmulatorDidNotExit("emulator-5556", 5556),
         WorktreeError.AndroidToolFailed(listOf("adb", "devices"), 1, "adb: device offline"),
         WorktreeError.NoIosRuntime,
         WorktreeError.SimulatorBootTimeout("ShogunAi · main-repo · TASK-123", 120),
@@ -365,6 +376,8 @@ class StringsTest {
             WorktreeError.BranchAlreadyCheckedOut("feature/TASK-123", "~/projects/TASK-123") to "~/projects/TASK-123",
             WorktreeError.NoEmulatorPort(5554, 5584) to "5584",
             WorktreeError.EmulatorBootTimeout("emulator-5556", 180) to "emulator-5556",
+            WorktreeError.EmulatorUnresponsive("emulator-5560", 180) to "emulator-5560",
+            WorktreeError.EmulatorDidNotExit("emulator-5560", 5560) to "5560",
             WorktreeError.EnvironmentFileTracked(".env") to ".env",
             WorktreeError.WorktreeLocked("~/projects/TASK-123", "orca-create-preparation:v1", emptyList(), 128, "") to "orca-create-preparation:v1",
         )

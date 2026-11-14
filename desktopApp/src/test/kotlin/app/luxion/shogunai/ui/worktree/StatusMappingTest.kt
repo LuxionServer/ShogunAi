@@ -48,8 +48,8 @@ class StatusMappingTest {
     @Test
     fun `a running device is a success and a booting one is in progress`() {
         assertEquals(
-            listOf(Status.SUCCESS, Status.INFO, Status.NEUTRAL),
-            listOf(EmulatorState.RUNNING, EmulatorState.BOOTING, EmulatorState.STOPPED).map { it.status() },
+            listOf(Status.SUCCESS, Status.INFO, Status.NEUTRAL, Status.WARNING),
+            listOf(EmulatorState.RUNNING, EmulatorState.BOOTING, EmulatorState.STOPPED, EmulatorState.UNRESPONSIVE).map { it.status() },
         )
         assertEquals(
             listOf(Status.SUCCESS, Status.INFO, Status.NEUTRAL),
@@ -60,16 +60,16 @@ class StatusMappingTest {
     @Test
     fun `device state labels are translated in sentence case`() {
         assertEquals(
-            listOf("Stopped", "Booting", "Running"),
-            listOf(EmulatorState.STOPPED, EmulatorState.BOOTING, EmulatorState.RUNNING).map { emulatorStateLabel(it, EnglishStrings) },
+            listOf("Stopped", "Booting", "Running", "Not responding"),
+            EmulatorState.entries.map { emulatorStateLabel(it, EnglishStrings) },
         )
         assertEquals(
             listOf("Shut down", "Booting", "Booted"),
             listOf(SimulatorState.SHUTDOWN, SimulatorState.BOOTING, SimulatorState.BOOTED).map { simulatorStateLabel(it, EnglishStrings) },
         )
         assertEquals(
-            listOf("Parado", "Arrancando", "En marcha"),
-            listOf(EmulatorState.STOPPED, EmulatorState.BOOTING, EmulatorState.RUNNING).map { emulatorStateLabel(it, SpanishStrings) },
+            listOf("Parado", "Arrancando", "En marcha", "No responde"),
+            EmulatorState.entries.map { emulatorStateLabel(it, SpanishStrings) },
         )
     }
 }

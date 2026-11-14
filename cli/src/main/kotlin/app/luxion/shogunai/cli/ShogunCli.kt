@@ -1705,6 +1705,7 @@ class ShogunCli(
         acquisition?.releases.orEmpty().forEach { err.line("released the emulator of ${releasedName(it)} to make room") }
         reportWaited(acquisition)
         if (emulator != null) reportOrcaView("emulator", emulator.serial, orcaView)
+        if (emulator?.state == EmulatorState.UNRESPONSIVE) err.line(unresponsiveEmulatorHint(emulator.serial))
         val released = if (emulator == null) readReleaseRecord(worktree.path, ResourceKind.EMULATOR) else null
         if (command.json) {
             printJson(emulatorJson(worktree.path, emulator, acquisition, released, orcaView))

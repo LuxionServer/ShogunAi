@@ -1,5 +1,6 @@
 package app.luxion.shogunai.infrastructure
 
+import app.luxion.shogunai.domain.executor.CommandExecutionException
 import app.luxion.shogunai.domain.executor.CommandTimeouts
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.io.AndroidSdk
@@ -15,6 +16,8 @@ import java.io.File
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.ConcurrentHashMap
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 
 class LocalAndroidSdk(
     private val executor: ShellCommandExecutor,
@@ -46,7 +49,7 @@ class LocalAndroidSdk(
         parseAdbDevices(run(listOf(sdk.adb, "devices", "-l")))
 
     override suspend fun deviceProperties(sdk: SdkLocation, serial: String): Map<String, String>? {
-        val result = executor.executeWithin(listOf(sdk.adb, "-s", serial, "shell", "getprop"), CommandTimeouts.LISTING)
+        val result = executor.executeWithin(listOf(sdk.adb, "-s", serial, "shell", "getprop"), CommandTimeouts.DEVICE_PROBE)
         return if (result.isSuccess) parseGetprop(result.stdout) else null
     }
 
@@ -54,15 +57,14 @@ class LocalAndroidSdk(
         val devices = attached.filterKeys { it.startsWith("emulator-") }
         val online = devices.filterValues { it == "device" }.keys
         bootedSerials.retainAll(online)
+        val probed = coroutineScope {
+            (online - bootedSerials).associateWith { serial -> async { probeBoot(sdk, serial) } }.mapValues { it.value.await() }
+        }
         return devices.mapValues { (serial, status) ->
             when {
                 status != "device" -> EmulatorState.BOOTING
                 serial in bootedSerials -> EmulatorState.RUNNING
-                bootCompleted(sdk, serial) -> {
-                    bootedSerials.add(serial)
-                    EmulatorState.RUNNING
-                }
-                else -> EmulatorState.BOOTING
+                else -> probed.getValue(serial)
             }
         }
     }
@@ -74,12 +76,22 @@ class LocalAndroidSdk(
 
     override suspend fun stopEmulator(sdk: SdkLocation, serial: String) {
         bootedSerials.remove(serial)
-        run(listOf(sdk.adb, "-s", serial, "emu", "kill"))
+        try {
+            run(listOf(sdk.adb, "-s", serial, "emu", "kill"))
+        } catch (error: CommandExecutionException.TimedOut) {
+            throw WorktreeError.EmulatorDidNotExit(serial, serial.removePrefix("emulator-").toInt())
+        }
     }
 
-    private suspend fun bootCompleted(sdk: SdkLocation, serial: String): Boolean {
-        val result = executor.executeWithin(listOf(sdk.adb, "-s", serial, "shell", "getprop", "sys.boot_completed"), CommandTimeouts.LISTING)
-        return result.isSuccess && result.stdout.trim() == "1"
+    private suspend fun probeBoot(sdk: SdkLocation, serial: String): EmulatorState {
+        val result = try {
+            executor.executeWithin(listOf(sdk.adb, "-s", serial, "shell", "getprop", "sys.boot_completed"), CommandTimeouts.DEVICE_PROBE)
+        } catch (error: CommandExecutionException.TimedOut) {
+            return EmulatorState.UNRESPONSIVE
+        }
+        if (!result.isSuccess || result.stdout.trim() != "1") return EmulatorState.BOOTING
+        bootedSerials.add(serial)
+        return EmulatorState.RUNNING
     }
 
     private suspend fun run(command: List<String>): String {

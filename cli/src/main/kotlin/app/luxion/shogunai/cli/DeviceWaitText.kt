@@ -33,3 +33,6 @@ internal fun ordinal(position: Int): String {
     }
     return "$position$suffix"
 }
+
+internal fun unresponsiveEmulatorHint(serial: String): String =
+    "shogun: $serial isn't answering adb; wait and check again, or restart it with `shogun emulator stop` and `shogun emulator start`"
