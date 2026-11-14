@@ -16,6 +16,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import app.luxion.shogunai.domain.model.DerivedDataFolder
+import app.luxion.shogunai.domain.model.DerivedDataKind
+import app.luxion.shogunai.ui.components.DangerButton
+import app.luxion.shogunai.ui.components.NeutralTextButton
+import app.luxion.shogunai.ui.components.ShogunDialog
 import app.luxion.shogunai.ui.components.DangerTextButton
 import app.luxion.shogunai.ui.components.InlineProgress
 import app.luxion.shogunai.ui.components.Notice
@@ -32,12 +36,16 @@ import java.time.Instant
 fun XcodeDerivedDataView(machine: MachineResources, onOpenWorktree: (String, String) -> Unit) {
     val strings = LocalStrings.current
     var confirmingDelete by remember { mutableStateOf(false) }
+    var confirmingSwiftBuilds by remember { mutableStateOf(false) }
     MachineViewFrame(strings.xcodeDerivedDataTitle) {
         MachineErrorNotice(machine.error, machine::dismissError, machine.errorRetry?.let { { machine.retryError() } })
         when (val state = machine.derivedData) {
             MachineLoad.Loading -> InlineProgress()
             MachineLoad.Unavailable -> MachineSecondaryText(strings.xcodeDerivedDataUnavailable)
-            is MachineLoad.Loaded -> LoadedDerivedData(state.value, machine, onOpenWorktree) { confirmingDelete = true }
+            is MachineLoad.Loaded -> {
+                LoadedDerivedData(state.value, machine, onOpenWorktree) { confirmingDelete = true }
+                SwiftBuilds(state.value, machine.swiftBuilds) { confirmingSwiftBuilds = true }
+            }
         }
         machine.derivedDataTrimReport?.let { report ->
             Notice(
@@ -49,6 +57,13 @@ fun XcodeDerivedDataView(machine: MachineResources, onOpenWorktree: (String, Str
                 val worktree = (entry.owner as? app.luxion.shogunai.domain.model.DerivedDataOwner.Worktree)?.path?.substringAfterLast('/')
                 MachineDataText(listOfNotNull(entry.folder.workspacePath.substringAfterLast('/'), worktree).joinToString(" · "))
             }
+        }
+        machine.swiftBuilds.report?.let { report ->
+            Notice(
+                kind = NoticeKind.SUCCESS,
+                message = strings.swiftBuildsDeleted(report.deleted.size, formatSize(report.bytesFreed), report.inUse.size),
+                onDismiss = machine.swiftBuilds::dismissReport,
+            )
         }
         machine.derivedDataDeletionReport?.let { report ->
             Notice(
@@ -69,7 +84,43 @@ fun XcodeDerivedDataView(machine: MachineResources, onOpenWorktree: (String, Str
             onDismiss = { confirmingDelete = false },
         )
     }
+    if (confirmingSwiftBuilds) {
+        val builds = swiftBuildsOf(machine.derivedData)
+        ShogunDialog(
+            title = strings.confirmDeleteUnusedSwiftBuildsTitle,
+            onDismissRequest = { confirmingSwiftBuilds = false },
+            confirm = {
+                DangerButton(onClick = { confirmingSwiftBuilds = false; machine.swiftBuilds.deleteUnused() }) { Text(strings.deleteUnusedSwiftBuilds) }
+            },
+            dismiss = { NeutralTextButton(onClick = { confirmingSwiftBuilds = false }) { Text(strings.cancel) } },
+        ) {
+            Text(strings.confirmDeleteUnusedSwiftBuilds(builds.size, totalSize(builds.map { it.folder.sizeBytes })?.let(::formatSize)))
+        }
+    }
 }
+
+@Composable
+private fun SwiftBuilds(folders: List<MachineDerivedData>, cleanup: SwiftBuildCleanup, onDelete: () -> Unit) {
+    val strings = LocalStrings.current
+    val builds = folders.filter { it.folder.kind == DerivedDataKind.SWIFT_BUILD }
+    if (builds.isEmpty()) return
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        MachineDataText(strings.swiftBuildsSummary(builds.size, totalSize(builds.map { it.folder.sizeBytes })?.let(::formatSize) ?: strings.calculating))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            if (cleanup.isDeleting) InlineProgress(modifier = Modifier.padding(end = Spacing.sm))
+            ListActionReason(swiftBuildDeleteBlock(cleanup.isDeleting, strings), "swift-builds-reason") { enabled ->
+                DangerTextButton(onClick = onDelete, enabled = enabled) { Text(strings.deleteUnusedSwiftBuilds) }
+            }
+        }
+    }
+}
+
+private fun swiftBuildsOf(state: MachineLoad<List<MachineDerivedData>>): List<MachineDerivedData> =
+    (state as? MachineLoad.Loaded)?.value.orEmpty().filter { it.folder.kind == DerivedDataKind.SWIFT_BUILD }
 
 @Composable
 private fun LoadedDerivedData(
@@ -136,7 +187,8 @@ private fun LoadedDerivedData(
 }
 
 private fun folderLabel(folder: DerivedDataFolder, strings: Strings): String {
-    val name = folder.workspacePath.substringAfterLast('/')
+    val worktree = folder.workspacePath.substringAfterLast('/')
+    val name = if (folder.kind == DerivedDataKind.SWIFT_BUILD) strings.swiftBuildFolder(worktree) else worktree
     val packages = folder.packagesBytes?.takeIf { it > 0 } ?: return name
     return strings.derivedDataWithPackages(name, formatSize(packages))
 }

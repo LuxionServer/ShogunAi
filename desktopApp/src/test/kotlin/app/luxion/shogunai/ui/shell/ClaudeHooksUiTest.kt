@@ -248,4 +248,37 @@ class ClaudeHooksUiTest {
         ClaudeCodeHooks(files).install(path)
         assertFalse(state().suggestsInstalling)
     }
+
+    @Test
+    fun `the tool the app installed can be removed from Settings`() = runComposeUiTest {
+        val appLauncher = "/Applications/ShogunAi.app/Contents/MacOS/ShogunAi"
+        launcherFiles.links["/usr/local/bin/shogun"] = appLauncher
+        launcherFiles.others += appLauncher
+        val state = state(tool(found = null))
+        setContent {
+            CompositionLocalProvider(LocalStrings provides EnglishStrings) {
+                MaterialTheme { Column { ClaudeHooksSection(state) } }
+            }
+        }
+
+        onNodeWithText(EnglishStrings.commandLineToolRemove).performClick()
+        waitUntil { state.toolStatus?.installedByApp == false }
+
+        assertTrue(launcherFiles.links.isEmpty())
+        onNodeWithText(EnglishStrings.commandLineToolRemove).assertDoesNotExist()
+    }
+
+    @Test
+    fun `a broken tool the app installed is offered for repair`() = runComposeUiTest {
+        launcherFiles.links["/usr/local/bin/shogun"] = "/Applications/ShogunAi.app/Contents/MacOS/ShogunAi"
+        val state = state(tool(found = null))
+        setContent {
+            CompositionLocalProvider(LocalStrings provides EnglishStrings) {
+                MaterialTheme { Column { ClaudeHooksSection(state) } }
+            }
+        }
+
+        onNodeWithText(EnglishStrings.commandLineToolRepair).assertIsDisplayed()
+        onNodeWithText(EnglishStrings.commandLineToolInstall).assertDoesNotExist()
+    }
 }

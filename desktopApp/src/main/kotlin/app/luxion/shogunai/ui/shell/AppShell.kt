@@ -33,7 +33,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import app.luxion.shogunai.domain.model.RunnerId
 import app.luxion.shogunai.AppContainer
 import app.luxion.shogunai.domain.model.GroupedView
 import app.luxion.shogunai.domain.model.Project
@@ -47,7 +46,6 @@ import app.luxion.shogunai.ui.components.FocusRingWidth
 import app.luxion.shogunai.ui.components.NeutralTextButton
 import app.luxion.shogunai.ui.components.PrimaryButton
 import app.luxion.shogunai.ui.components.Spacing
-import app.luxion.shogunai.ui.actions.ActionId
 import app.luxion.shogunai.ui.actions.menuBarEntries
 import app.luxion.shogunai.ui.actions.paletteEntries
 import app.luxion.shogunai.ui.components.ErrorFixActions
@@ -61,7 +59,6 @@ import app.luxion.shogunai.ui.machine.MachineResources
 import app.luxion.shogunai.ui.machine.machineStatusItems
 import app.luxion.shogunai.ui.palette.CommandPalette
 import app.luxion.shogunai.ui.palette.PaletteAction
-import app.luxion.shogunai.ui.palette.PaletteCommand
 import app.luxion.shogunai.ui.palette.buildPaletteIndex
 import app.luxion.shogunai.ui.palette.platformShortcutLabel
 import app.luxion.shogunai.ui.palette.pruneRecent
@@ -110,7 +107,7 @@ fun AppShell(
             onWorktreeUsed = { ref -> viewModel.recordWorktree(ref.projectId, ref.path) },
             inactivity = inactivity,
             multirepoActions = appContainer.multirepoActions,
-            runnerInUse = { appContainer.tools.defaultRunner ?: RunnerId.HERDR },
+            runnerInUse = { runnerInUse(appContainer.tools) },
             desktopTurn = appContainer.desktopTurn,
             physicalDevices = appContainer.physicalDevices,
             cadence = appContainer::refreshCadence,
@@ -119,12 +116,8 @@ fun AppShell(
     LaunchedEffect(viewModel.memberships) { board.syncMultirepos(viewModel.memberships) }
     SideEffect { onBoardReady(board) }
     SideEffect {
-        appContainer.declaresMobileProviders = {
-            board.machineProjects.any { MachineResource.ANDROID_EMULATORS in it.declares || MachineResource.IOS_SIMULATORS in it.declares }
-        }
-    }
-    SideEffect {
-        appContainer.loadedBranches = { board.machineProjects.flatMap { it.worktrees.orEmpty() }.mapNotNull { it.branch } }
+        appContainer.declaresMobileProviders = { declaresMobileProviders(board.machineProjects) }
+        appContainer.loadedBranches = { loadedBranches(board.machineProjects) }
     }
     LaunchedEffect(viewModel.projects) { board.syncCatalog(viewModel.projects) }
     viewModel.projects.forEach { project ->
@@ -178,11 +171,7 @@ fun AppShell(
     BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
-            .folderDropTarget(folderDrop) { folder ->
-                dropScope.launch {
-                    if (appContainer.multirepoSetup.belongsToRepository(folder)) viewModel.addProject(folder) else viewModel.addMultirepo(folder)
-                }
-            }
+            .folderDropTarget(folderDrop) { folder -> dropScope.launch { openDroppedFolder(folder, appContainer.multirepoSetup::belongsToRepository, viewModel) } }
             .then(
                 if (folderDrop.hovering) {
                     Modifier.border(FocusRingWidth, ShogunTheme.colors.accent)
@@ -212,22 +201,7 @@ fun AppShell(
                     onRemoveProject = { projectPendingRemoval = it },
                     onAddProject = viewModel::addProject,
                     onToggle = viewModel::toggleSidebar,
-                    multirepos = viewModel.memberships.map { membership ->
-                        val members = viewModel.projects.filter { it.id in membership.aliases }
-                        SidebarMultirepo(
-                            folder = membership.folder,
-                            name = membership.name,
-                            projects = members,
-                            activity = members.fold(
-                                ProjectActivity(board.multirepoWaitingCountOf(membership.folder), board.multirepoAgentsOf(membership.folder).map { it.name }),
-                            ) { total, project ->
-                                total + ProjectActivity(board.waitingCountOf(project.id), board.agentNamesOf(project.id))
-                            },
-                            collapsed = membership.folder in viewModel.collapsedMultirepos,
-                            labels = multirepoChildLabels(membership),
-                            needsReview = !membership.multirepo.approved,
-                        )
-                    } + viewModel.unavailableMultirepos.map { unavailableSidebarFolder(it, it.folder in viewModel.collapsedMultirepos) },
+                    multirepos = sidebarMultirepos(viewModel, board),
                     selectedMultirepo = viewModel.destination?.referencedMultirepo,
                     onSelectMultirepo = { viewModel.selectMultirepo(it) },
                     onToggleMultirepo = viewModel::toggleMultirepoCollapsed,
@@ -245,7 +219,7 @@ fun AppShell(
                     appContainer.updates.notice?.let { UpdateNotice(appContainer.updates, Modifier.padding(Spacing.md)) }
                     LaunchedEffect(Unit) { appContainer.claudeHooks.refresh() }
                     ClaudeHooksNotice(appContainer.claudeHooks, board.hasClaudeWithoutState, Modifier.padding(Spacing.md))
-                    tourProjectShown(appContainer, viewModel)?.let { project ->
+                    tourProjectShown(viewModel.destination, viewModel.projects, appContainer.tourLocation::isTour)?.let { project ->
                         TourBanner(
                             state = appContainer.tour,
                             project = project,
@@ -257,7 +231,7 @@ fun AppShell(
                     Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
                         val fixActions = remember(viewModel, onOpenPreferences) {
                             ErrorFixActions(
-                                openProjectSettings = { projectId -> viewModel.projects.firstOrNull { it.id == projectId }?.let(viewModel::editProject) },
+                                openProjectSettings = { projectId -> openProjectSettings(viewModel, projectId) },
                                 openPreferences = onOpenPreferences,
                             )
                         }
@@ -349,9 +323,9 @@ private fun PaletteHost(
     val clipboard = LocalClipboard.current
     val scope = rememberCoroutineScope()
     val copySelectedPath: () -> Unit = {
-        board.selectedWorktree?.worktree?.path?.let { path ->
+        board.selectedWorktree?.let { selected ->
             scope.launch {
-                clipboard.copyText(path)
+                clipboard.copyText(selected.worktree.path)
                 messages.show(strings.copied)
             }
         }
@@ -378,34 +352,6 @@ private fun PaletteHost(
         },
         onDismiss = viewModel::closePalette,
     )
-}
-
-private fun runPaletteAction(
-    action: PaletteAction,
-    viewModel: ShellViewModel,
-    board: WorktreeBoard,
-    onOpenPreferences: () -> Unit,
-    copySelectedPath: () -> Unit,
-    onCopied: () -> Unit,
-) {
-    when (action) {
-        is PaletteAction.Open -> viewModel.navigate(action.destination)
-        is PaletteAction.SelectWorktree -> viewModel.navigate(ShellDestination.All()) {
-            board.revealInAllWorktrees(action.ref)
-        }
-        is PaletteAction.CopyLaunchCommand -> board.copyLaunchCommand(action.ref, onCopied)
-        is PaletteAction.RunSelected -> if (action.id == ActionId.CopyPath) copySelectedPath() else board.performOnSelected(action.id, action.agent)
-        is PaletteAction.NewWorktreeIn -> viewModel.navigate(ShellDestination.All(projectFilter = action.projectId)) {
-            board.openCreateDialog(action.projectId)
-        }
-        is PaletteAction.Run -> when (action.command) {
-            PaletteCommand.ADD_PROJECT -> viewModel.addProject()
-            PaletteCommand.CLEAN_UP -> viewModel.navigate(ShellDestination.All()) { board.openCleanup() }
-            PaletteCommand.RELOAD -> viewModel.reload()
-            PaletteCommand.TOGGLE_SIDEBAR -> viewModel.toggleSidebar()
-            PaletteCommand.OPEN_PREFERENCES -> onOpenPreferences()
-        }
-    }
 }
 
 @Composable
@@ -576,11 +522,6 @@ private fun RemoveProjectDialog(project: Project, onConfirm: () -> Unit, onDismi
     ) {
         Text(strings.removeProjectMessage(project.name))
     }
-}
-
-private fun tourProjectShown(appContainer: AppContainer, viewModel: ShellViewModel): Project? {
-    val projectId = (viewModel.destination as? ShellDestination.All)?.projectFilter ?: return null
-    return viewModel.projects.firstOrNull { it.id == projectId }?.takeIf(appContainer.tourLocation::isTour)
 }
 
 private val CatalogCheckInterval = 5.seconds

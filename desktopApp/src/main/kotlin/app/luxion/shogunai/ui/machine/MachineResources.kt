@@ -103,14 +103,6 @@ data class MachineComposeProject(val projectId: String, val entry: WorktreeCompo
 
 data class MachineComposeLeftover(val projectId: String, val resource: ComposeResource)
 
-data class MachineDerivedData(val folder: DerivedDataFolder, val owner: MachineDerivedDataOwner)
-
-sealed interface MachineDerivedDataOwner {
-    data class Project(val owner: ProjectOwner) : MachineDerivedDataOwner
-    data object Orphaned : MachineDerivedDataOwner
-    data object UnavailableVolume : MachineDerivedDataOwner
-}
-
 data class MachineEmulator(
     val projectId: String,
     val worktreePath: String,
@@ -208,6 +200,13 @@ class MachineResources(
         private set
     var isDeletingDerivedData by mutableStateOf(false)
         private set
+    val swiftBuilds = SwiftBuildCleanup(
+        scope,
+        deleteUnused = { io { useCases.deleteUnusedSwiftBuilds(xcodeDeclaring()) } },
+        afterDeletion = { loadDerivedData() },
+        onFailure = { failure, retry -> fail(DERIVED_DATA_KEY, failure, retry) },
+    )
+
     var derivedDataDeletionReport by mutableStateOf<DerivedDataDeletion?>(null)
         private set
     var derivedDataTrimReport by mutableStateOf<DerivedDataTrim?>(null)
@@ -704,7 +703,7 @@ class MachineResources(
 
     private suspend fun loadDerivedData(remeasure: Boolean = false) {
         sizeJob?.cancel()
-        val listing = io { useCases.listDerivedData() }
+        val listing = io { useCases.listDerivedData(xcodeDeclaring()) }
         derivedDataSizes = emptyMap()
         derivedDataPackageSizes = emptyMap()
         compilationCacheSize = null
@@ -751,8 +750,7 @@ class MachineResources(
                 derivedDataTrim = null
                 return
             }
-            val declaring = projects().filter { MachineResource.XCODE_DERIVED_DATA in it.declares }
-            io { useCases.trimDerivedData(quota, declaring, measured) }
+            io { useCases.trimDerivedData(quota, xcodeDeclaring(), measured) }
                 .onSuccess { trim ->
                     derivedDataTrim = trim
                     if (trim.released.isNotEmpty() || trim.failures.isNotEmpty()) derivedDataTrimReport = trim
@@ -767,6 +765,8 @@ class MachineResources(
             isTrimmingDerivedData = false
         }
     }
+
+    private fun xcodeDeclaring(): List<MachineProject> = projects().filter { MachineResource.XCODE_DERIVED_DATA in it.declares }
 
     private fun reloadDerivedData() {
         scope.launch { loadDerivedData() }
@@ -959,17 +959,6 @@ class MachineResources(
         if (process.kind != DaemonKind.GRADLE) return null
         val directory = process.lastBuildDirectory ?: return null
         return attributeToProjects(directory, sets, pathExists)
-    }
-
-    private fun derivedOwnerOf(
-        owner: DerivedDataOwner,
-        folder: DerivedDataFolder,
-        sets: List<ProjectWorktreeSet>,
-    ): MachineDerivedDataOwner = when (owner) {
-        DerivedDataOwner.Orphaned -> MachineDerivedDataOwner.Orphaned
-        DerivedDataOwner.UnavailableVolume -> MachineDerivedDataOwner.UnavailableVolume
-        is DerivedDataOwner.Worktree, DerivedDataOwner.OtherProject ->
-            MachineDerivedDataOwner.Project(attributeToProjects(folder.workspacePath, sets) { true })
     }
 
     companion object {

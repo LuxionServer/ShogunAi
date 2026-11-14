@@ -48,6 +48,8 @@ Status: **Started**.
 - **Compose Desktop**: apps run hidden in the background for agents to check on macOS.
 - **Desktop turn**: agents take turns to drive the real desktop with `shogun desktop acquire --wait`, which Claude takes by itself before its own computer use or Orca's acts, only stopping when another worktree holds it.
   The holder and the queue show in the control tower and `shogun status`.
+- **Build turn**: heavy builds (Gradle, Maven, `xcodebuild`, `swift build` and `swift test`) take one of the machine's build slots with `shogun build run --`, and wait in line when they are all taken.
+  Claude's hook turns away a heavy build run outside the turn, the number of slots follows the capacity profile, and the running builds and the queue show in `shogun build status` and `shogun status`.
 - **Physical devices**: Android phones and tablets, iPhones and iPads connected to the machine are recorded in an inventory, lent to agents by default and acquired one worktree at a time with `shogun device acquire`, under the same leases and `--wait` queue as emulators and simulators.
   They show in `shogun status`, a Devices view in the control tower and Orca's emulator view (Android).
 - **Maven**: JVM backends get Maven builds bounded in memory, see their Maven daemons and can stop the idle ones.
@@ -99,10 +101,11 @@ Neither showed up on the developer's machine, whose own setup hides them.
 In order:
 
 - Tests that hold the product to it:
-  - Raising the coverage floors that CI enforces up to 100%: the lines (93% today) and branches (87%) of the desktop app outside its composables, which the end-to-end tests cover.
+  - Raising the coverage floors that CI enforces up to 100%: the lines (96% today) and branches (90%) of the desktop app outside its composables, which the end-to-end tests cover.
     Lines of `core` and `cli`, branches of `cli`, every branch of `core` that some input can reach, and the desktop app's texts and project settings are already covered.
     The worktrees and their inspector are covered but for 41 branches of their list, rows and action bars, left for the shared components' change.
-    The desktop app goes up one package per change, in this order: the shell and the menu bar icon, the machine views and multirepos, shared components, and last the app's wiring.
+    The shell and the menu bar icon are covered but for 8 lines and 4 branches, mostly of its windows and the update check, left for the app's wiring change.
+    The desktop app goes up one package per change, in this order: the machine views and multirepos, shared components, and last the app's wiring.
 
 ### Orca, a second first-class runner
 
@@ -129,7 +132,7 @@ In order:
 Provisioning and bounded resources for the stacks where a fresh worktree is furthest from building:
 
 - Telling the desktop app's user which folders of a new worktree still need `pod install`; today the app clones the pods and only `shogun new`, `shogun provision` and the creation hook report what's missing.
-- The packages of Swift package repositories built with `swift build` (their `.build` folder per worktree), which the Xcode provider doesn't see.
+- The `.build` folders of Swift packages that aren't in the worktree's main folder, which the Xcode provider doesn't read yet.
 - Flutter follow-ups:
   - Checking the provider end to end on a real project made with `flutter create` (a worktree that builds with `flutter build apk --debug` and `flutter build ios --simulator` without manual steps).
   - Showing the size of the pub cache (`~/.pub-cache` or `PUB_CACHE`) next to the other shared caches.
@@ -166,6 +169,23 @@ Left out:
 - Showing the Claude session names of a group's worktrees and of the multirepo agent in the desktop app's views; today `shogun open --herdr` and `shogun status` report them, and the app only names the sessions it opens.
 - A single session for the whole group, with a combined environment, as an option next to one agent per repository.
 - The pull request state of each repository of a group, which depends on the GitHub integration under exploration.
+
+### Parallel changes that don't collide
+
+`shogun overlap` lists the files that several worktrees of a repository change at once, and the guide tells agents to check it before their pull request.
+What's left:
+
+- A mark in the control tower on each worktree whose files another worktree changes, with the shared files and worktrees in its inspector.
+- Telling whether the shared files would actually conflict when merged, instead of only that they are shared.
+
+### The build turn everywhere
+
+The build turn bounds how many heavy builds run at once from the command line and Claude's hooks.
+Left out:
+
+- Showing the running builds and the build queue in the control tower, with a build slots field for the Custom profile in Preferences (Custom uses the Automatic number until then), and moving the build turn's errors under the ones the app describes.
+- Weighing builds by size, so a single-module compile doesn't take the same slot as a full test run, and learning more light invocations than `--version`, `--stop`, `help` and `tasks`.
+- Builds started by scripts or by agents without Claude Code's hooks, which only the guide reaches today.
 
 ### Robustness and maintenance
 

@@ -13,6 +13,7 @@ import app.luxion.shogunai.domain.usecase.ListBranchesUseCase
 import app.luxion.shogunai.domain.usecase.ListWorktreesUseCase
 import app.luxion.shogunai.domain.usecase.ProvisionWorktreeUseCase
 import app.luxion.shogunai.domain.usecase.ReadBaseBranchesUseCase
+import app.luxion.shogunai.domain.usecase.ReadWorktreeOverlapUseCase
 import app.luxion.shogunai.domain.usecase.RemoveWorktreeUseCase
 import app.luxion.shogunai.domain.usecase.RepairWorktreesUseCase
 import app.luxion.shogunai.domain.usecase.ResolveMainBranchUseCase
@@ -33,6 +34,7 @@ class ProjectEngine(
     val resolveMainBranch = ResolveMainBranchUseCase(config, executor)
     val resolveRecordedBases = ResolveRecordedBasesUseCase(config, executor)
     val readBaseBranches = ReadBaseBranchesUseCase(config, executor)
+    val readOverlap = ReadWorktreeOverlapUseCase(config, executor, ports.provisioningSource)
     val setBaseBranch = SetBaseBranchUseCase(config, executor)
     val deleteBranch = DeleteBranchUseCase(config, executor)
     val repair = RepairWorktreesUseCase(config, executor, fileManager)

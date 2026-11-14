@@ -149,6 +149,16 @@ The desktop is one machine-wide resource that agents take turns to drive with co
 - `DesktopTurnLedger` holds the `DesktopTurnStore`, the machine lock, the wait queue and the process check shared by the three use cases. `AcquireDesktopTurnUseCase` gives the turn for `ResourceSettings.desktopTurnDuration` (`desktopTurnMinutes`, 10 by default) when it is free or expired and nobody else is ahead in the `desktop` queue, renews it for its holder, and otherwise fails with `DesktopTurnTaken` or, given a `DesktopWait`, waits in line through the same `WaitInLine` loop as device acquisitions (`DesktopTurnWaitTimedOut` at the deadline). Only acquiring again renews a turn: an agent's working state doesn't.
 - `ReleaseDesktopTurnUseCase` releases the holder's turn (`DesktopTurnHeldByOther` for another worktree), `ifHeldBy` a worktree for the `Stop` and `SessionEnd` hooks, `force` for the desktop app, and `onWorktreeRemoved`, called by the worktree removal before the folder goes, which also drops that worktree's tickets. `ReadDesktopTurnUseCase` returns the `DesktopTurnState`.
 
+### Build turn
+
+Heavy builds take one of a limited number of machine-wide build slots (`BuildTurn.kt`). Like the desktop turn, they aren't a `ResourceKind`: there is nothing to release to make room, only a count to respect.
+
+- `BuildSlot` is a running build: its worktree's Git admin directory and path, the command, `since` and the `ProcessIdentity` of the `shogun build run` process that holds it. A slot whose process no longer runs counts as free, so slots never expire by time. `BuildTurnState` is the limit (`null` for no limit), the live slots and the live `WaitTicket`s of the `build` queue.
+- `buildSlotsFor` turns the capacity profile into the number of slots: Light 1, Balanced 2, One per worktree `null`, and Automatic (also used by Custom until it has a field of its own) one per 16 GB and at most one per 4 cores, between 1 and 4. `ResolveResourceLimitsUseCase.buildSlots()` applies it to the machine settings.
+- `BuildTurnLedger` holds the `BuildTurnStore`, the machine lock, the wait queue and the process check. `AcquireBuildSlotUseCase` records a slot when one is free and no other worktree is ahead in the `build` queue, and otherwise waits in line through the same `WaitInLine` loop as devices and the desktop, reporting `BuildWaitProgress` and failing with `BuildTurnError.WaitTimedOut` at the deadline. `RunInBuildTurnUseCase` acquires, runs the command through the `ForegroundCommandRunner` port and always releases the slot (`ReleaseBuildSlotUseCase`), also when cancelled. `ReadBuildTurnUseCase` returns the `BuildTurnState`.
+- `BuildTurnError` is a sealed class of its own (`SlotsTaken`, `WaitTimedOut`) rather than a `WorktreeError`, since the desktop app never runs builds and every `WorktreeError` must be described in its languages.
+- `HeavyBuildCommand.unwrappedBuilds` finds, in a shell command, the segments that start a heavy build outside `shogun build run` (Gradle, Maven, `xcodebuild`, `swift build|test`, minus their light invocations) for the `build-turn` hook.
+
 ### Physical devices
 
 Phones and tablets connected to the machine are lent to one worktree at a time (`PhysicalDevice.kt`). They aren't a `ResourceKind`: capacity is the inventory of lent, connected devices, not a profile limit, and exclusivity can't depend on scanning every worktree's state, so they have a machine-wide lease file like the desktop turn.
@@ -560,6 +570,19 @@ interface DerivedDataSource {
 
 Everything the Xcode provider needs from Xcode's DerivedData: whether the host is macOS, the project folders in the current location without their sizes (never Xcode's shared caches, which have no `info.plist`), the size of one folder measured on demand and cancellable, the size of the shared compilation cache (`null` when it doesn't exist), whether a workspace still exists or sits on an unmounted volume, and deleting one folder.
 
+### `SwiftBuildSource`
+
+```kotlin
+interface SwiftBuildSource {
+    fun folderOf(worktreePath: String): DerivedDataFolder?
+    suspend fun size(folder: DerivedDataFolder): Long
+    suspend fun packagesSize(folder: DerivedDataFolder): Long
+    suspend fun delete(folder: DerivedDataFolder)
+}
+```
+
+The `.build` folder of a Swift package worktree, as a `DerivedDataFolder` of kind `SWIFT_BUILD` whose `workspacePath` is the worktree, so listing, measuring, remembering sizes and the quota treat it like a DerivedData folder. `DerivedDataFolders` dispatches size, packages size, deletion and the fresh read before a release on the folder's kind.
+
 ### `TerminalLauncher` / `EditorLauncher` / `FolderLauncher` / `ToolDetector`
 
 ```kotlin
@@ -889,6 +912,8 @@ Used on macOS when the repository declares the Xcode provider:
 
 - `ListDerivedDataUseCase(worktrees, includeCompilationCache, measure)` attributes every folder from `DerivedDataSource`: a workspace that doesn't exist is `UnavailableVolume` if its volume isn't mounted, otherwise `Orphaned`; an existing one belongs to the worktree with the longest path containing it (`owningWorktree`, the same rule as running agents and Gradle daemons), otherwise to `OtherProject`. `measure` says which folders get their size: `NONE`, `ORPHANS` or `ALL`. Orphans are machine-wide: once its project is gone, a folder can't be used by anything, whichever tool created it.
 - `DeleteOrphanedDerivedDataUseCase` lists the folders again, keeps those still orphaned, checks each workspace once more right before deleting it (a project restored in the meantime keeps its folder), measures each orphan that has no size yet so `bytesFreed` is right, and returns a `DerivedDataDeletion`; one failure doesn't stop the rest. A removed worktree's folder is orphaned by definition, so a cleanup only runs this use case after the removals.
+- `ListDerivedDataUseCase` also takes `packageWorktrees`, the worktrees of repositories declaring the Xcode provider, and adds each one's `.build` folder (`SwiftBuildSource.folderOf`) owned by that worktree, never orphaned. `TrimDerivedDataUseCase` releases those folders with the worktrees' DerivedData, in the same order and under the same in-use rule (`isWorktreeFolderInUse`), reading them again before deleting.
+- `DeleteUnusedSwiftBuildsUseCase` deletes the `.build` folders of the given worktrees that are not in use, measuring each one and reading it again before deleting it, and returns a `SwiftBuildDeletion` with the deleted, the kept in use and the failures.
 - `PrepareCocoaPodsUseCase` (a `CocoaPodsPreparer`) runs from `PrepareWorktreeEnvironmentUseCase` after the environment file, so every creation and provisioning flow gets it, and returns a `PodsPreparation` (`cloned`, `installNeeded` with a `PodsInstallReason`, `error`) carried in `PreparedWorktree` to `Worktree.pods` and `ProvisionResult.pods`. With `XcodeProvider.cocoaPods` on macOS, it lists the tracked `Podfile.lock` files with `git ls-files`, and for each folder without `Pods` clones the base's `Pods` with `cp -c -R` when its `Manifest.lock` has the same content; it never throws, so pods can't roll a worktree back.
 - `xcodeCompilationCacheContribution` is the provider's environment contribution when `XcodeProvider.compilationCache` is set, on macOS (`MachineProviderContributions`): a resource `xcode-compilation-cache` whose `create` writes `~/.shogunai/xcode/compilation-cache.xcconfig` (`COMPILATION_CACHE_ENABLE_CACHING` and Swift and Clang prefix mapping, five `KEY = YES` lines) and whose `exists` checks the file holds that content, plus the variable `XCODE_XCCONFIG_FILE=<path>`. Being a resource, it's only written when resolving with reservation and is re-created if deleted; the file is the same for every repository on the machine. An `XCODE_XCCONFIG_FILE` declared in `env` wins.
 

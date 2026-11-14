@@ -87,7 +87,7 @@ sealed interface CliCommand {
     data class Xcode(val json: Boolean = false) : CliCommand, JsonOutput {
         override fun withJson() = copy(json = true)
     }
-    data class XcodeClean(val json: Boolean = false) : CliCommand, JsonOutput {
+    data class XcodeClean(val swiftBuild: Boolean = false, val json: Boolean = false) : CliCommand, JsonOutput {
         override fun withJson() = copy(json = true)
     }
     data class XcodeTrim(val dryRun: Boolean = false, val json: Boolean = false) : CliCommand, JsonOutput {
@@ -255,6 +255,7 @@ fun parseArguments(args: List<String>): ParsedArguments {
                 "open" -> parseOpen(arguments)
                 "status" -> parseStatus(arguments)
                 "base" -> parseBase(arguments)
+                "overlap" -> parseOverlap(arguments)
                 "clean" -> parseClean(arguments)
                 "hook" -> parseHook(arguments)
                 "hooks" -> parseHooks(arguments)
@@ -273,6 +274,7 @@ fun parseArguments(args: List<String>): ParsedArguments {
                 "simulator" -> parseSimulator(arguments)
                 "headless" -> parseHeadless(arguments)
                 "desktop" -> parseDesktop(arguments)
+                "build" -> parseBuild(arguments)
                 "device" -> parseDevice(arguments)
                 else -> throw UsageException("unknown command '$name'")
             }.withJsonOutput(json),
@@ -294,7 +296,7 @@ private fun isGuideReading(name: String, rest: List<String>) = name == "guide" &
 
 private fun CliCommand.withJsonOutput(json: Boolean): CliCommand = if (json) (this as JsonOutput).withJson() else this
 
-private class UsageException(override val message: String) : Exception(message)
+internal class UsageException(override val message: String) : Exception(message)
 
 private fun noArguments(name: String, rest: List<String>, command: CliCommand): CliCommand {
     rest.firstOrNull()?.let {
@@ -543,8 +545,8 @@ private fun parseXcode(rest: List<String>): CliCommand {
         return CliCommand.XcodeTrim(dryRun = flags.isNotEmpty())
     }
     if (subcommand != "clean") throw UsageException("unknown subcommand '$subcommand' for 'xcode', expected clean or trim")
-    rest.drop(1).firstOrNull()?.let { throw UsageException("'xcode clean' takes no arguments, got '$it'") }
-    return CliCommand.XcodeClean()
+    rest.drop(1).firstOrNull { it != "--swift-build" }?.let { throw UsageException("unknown argument '$it' for 'xcode clean', expected --swift-build") }
+    return CliCommand.XcodeClean(swiftBuild = rest.size > 1)
 }
 
 private fun parseGradle(rest: List<String>): CliCommand {
@@ -611,12 +613,13 @@ private fun parseHook(rest: List<String>): CliCommand {
         "herdr" -> CliCommand.HookHerdr
         "agent-state" -> CliCommand.HookAgentState
         "desktop-turn" -> CliCommand.HookDesktopTurn
+        "build-turn" -> HookBuildTurn
         else -> throw UsageException("unknown hook '$event', expected $HOOK_EVENTS")
     }
     return noArguments("hook $event", rest.drop(1), command)
 }
 
-private const val HOOK_EVENTS = "worktree-create, worktree-remove, session-start, agent-state, desktop-turn, herdr or orca"
+private const val HOOK_EVENTS = "worktree-create, worktree-remove, session-start, agent-state, desktop-turn, build-turn, herdr or orca"
 
 enum class OrcaHookAction { SETUP, ARCHIVE }
 
@@ -916,7 +919,7 @@ private fun parseEmulator(rest: List<String>): CliCommand.Emulator {
     return CliCommand.Emulator(action, path, avd, noWindow, wait = wait.duration)
 }
 
-private class DeviceWaitOptions {
+internal class DeviceWaitOptions {
     var requested = false
     private var minutes = DEFAULT_DEVICE_WAIT_MINUTES
 
@@ -951,7 +954,7 @@ private fun parseEnv(rest: List<String>): CliCommand.Env {
     return CliCommand.Env(path, format)
 }
 
-private fun ArrayDeque<String>.valueOf(option: String): String {
+internal fun ArrayDeque<String>.valueOf(option: String): String {
     val value = removeFirstOrNull()
     if (value == null || value.startsWith("-")) throw UsageException("$option needs a value")
     return value

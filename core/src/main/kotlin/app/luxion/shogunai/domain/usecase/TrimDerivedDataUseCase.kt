@@ -1,9 +1,11 @@
 package app.luxion.shogunai.domain.usecase
 
 import app.luxion.shogunai.domain.io.DerivedDataSource
+import app.luxion.shogunai.domain.io.SwiftBuildSource
 import app.luxion.shogunai.domain.model.AttributedDerivedData
 import app.luxion.shogunai.domain.model.DerivedDataDeletionFailure
 import app.luxion.shogunai.domain.model.DerivedDataFolder
+import app.luxion.shogunai.domain.model.DerivedDataKind
 import app.luxion.shogunai.domain.model.DerivedDataListing
 import app.luxion.shogunai.domain.model.DerivedDataOwner
 import app.luxion.shogunai.domain.model.DerivedDataQuotaMode
@@ -11,15 +13,17 @@ import app.luxion.shogunai.domain.model.DerivedDataTrim
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.normalizePath
 import app.luxion.shogunai.domain.model.runSuspendCatching
-import java.time.Duration
 import java.time.Instant
 import kotlin.coroutines.cancellation.CancellationException
 
 class TrimDerivedDataUseCase(
     private val source: DerivedDataSource,
     private val list: ListDerivedDataUseCase,
+    swiftBuilds: SwiftBuildSource = SwiftBuildSource.NONE,
     private val now: () -> Instant = Instant::now,
 ) {
+    private val folders = DerivedDataFolders(source, swiftBuilds)
+
     suspend operator fun invoke(
         quotaBytes: Long?,
         worktrees: List<Worktree>,
@@ -46,7 +50,7 @@ class TrimDerivedDataUseCase(
             if (usage <= quotaBytes) break
             if (!dryRun && !stillReleasable(candidate, worktrees, active)) continue
             try {
-                if (!dryRun) source.delete(candidate.folder)
+                if (!dryRun) folders.delete(candidate.folder)
                 released += candidate
                 usage -= candidate.folder.sizeBytes ?: 0L
             } catch (error: CancellationException) {
@@ -66,22 +70,17 @@ class TrimDerivedDataUseCase(
     }
 
     private suspend fun stillReleasable(candidate: AttributedDerivedData, worktrees: List<Worktree>, active: Set<String>): Boolean {
-        val current = source.folders().firstOrNull { it.path == candidate.folder.path } ?: return false
+        val current = folders.current(candidate.folder) ?: return false
         val candidateOwner = candidate.owner
         if (candidateOwner !is DerivedDataOwner.Worktree) return !source.projectExists(current.workspacePath)
-        return ownerOf(current, worktrees) == candidateOwner && !isInUse(candidateOwner, active, current.lastAccessed)
+        val sameOwner = current.kind == DerivedDataKind.SWIFT_BUILD || ownerOf(current, worktrees) == candidateOwner
+        return sameOwner && !isInUse(candidateOwner, active, current.lastAccessed)
     }
 
     private fun ownerOf(folder: DerivedDataFolder, worktrees: List<Worktree>): DerivedDataOwner? =
         if (!source.projectExists(folder.workspacePath)) null
         else owningWorktree(folder.workspacePath, worktrees)?.let { DerivedDataOwner.Worktree(it.path) }
 
-    private fun isInUse(owner: DerivedDataOwner.Worktree, active: Set<String>, lastAccessed: Instant?): Boolean {
-        if (normalizePath(owner.path) in active) return true
-        return lastAccessed != null && Duration.between(lastAccessed, now()) < IN_USE_GRACE
-    }
-
-    private companion object {
-        private val IN_USE_GRACE: Duration = Duration.ofHours(1)
-    }
+    private fun isInUse(owner: DerivedDataOwner.Worktree, active: Set<String>, lastAccessed: Instant?): Boolean =
+        isWorktreeFolderInUse(owner.path, active, lastAccessed, now())
 }

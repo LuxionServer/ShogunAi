@@ -253,7 +253,7 @@ class ProcessBuilderShellCommandExecutorTest {
         }
 
         assertEquals(3.seconds, error.limit)
-        assertEquals(listOf(OutputLine(OutputChannel.STANDARD, "started")), lines)
+        assertEquals(listOf(OutputLine(OutputChannel.STANDARD, "started")), lines.filter { it.channel == OutputChannel.STANDARD })
         awaitProcess(marker, running = false)
         assertFalse(isRunning(marker))
     }

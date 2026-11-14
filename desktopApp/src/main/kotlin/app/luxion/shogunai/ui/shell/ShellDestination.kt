@@ -33,7 +33,7 @@ sealed interface ShellDestination {
 
     fun storageKey(): String? = when (this) {
         Active -> ACTIVE_KEY
-        is All -> projectFilter?.let { PROJECT_PREFIX + it } ?: ALL_KEY
+        is All -> if (projectFilter == null) ALL_KEY else PROJECT_PREFIX + projectFilter
         MachineOverview -> MACHINE_KEY
         is Machine -> MACHINE_PREFIX + resource.name
         is MultirepoView -> MULTIREPO_PREFIX + folder

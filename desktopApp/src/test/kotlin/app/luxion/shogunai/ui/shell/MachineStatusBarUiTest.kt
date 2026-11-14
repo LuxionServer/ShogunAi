@@ -62,6 +62,17 @@ class MachineStatusBarUiTest {
     }
 
     @Test
+    fun `a selected item without anything to flag is shown as selected`() = runComposeUiTest {
+        setContent {
+            MaterialTheme {
+                MachineStatusBar(items, selected = MachineResource.XCODE_DERIVED_DATA, compact = false, onSelect = {})
+            }
+        }
+
+        onNodeWithTag("machine-status-XCODE_DERIVED_DATA").assertIsSelected()
+    }
+
+    @Test
     fun `at the bottom of the window the tooltip opens above the item and lets the click through`() = runComposeUiTest {
         var selected by mutableStateOf<MachineResource?>(null)
         setContent {

@@ -20,11 +20,10 @@ internal fun singleDirectory(files: List<File>): String? =
     files.singleOrNull()?.takeIf { it.isDirectory }?.path
 
 @Suppress("UNCHECKED_CAST")
-private fun Transferable.droppedDirectory(): String? =
-    runCatching {
-        if (!isDataFlavorSupported(DataFlavor.javaFileListFlavor)) return null
-        singleDirectory(getTransferData(DataFlavor.javaFileListFlavor) as List<File>)
-    }.getOrNull()
+internal fun droppedDirectory(transferable: Transferable): String? {
+    if (!transferable.isDataFlavorSupported(DataFlavor.javaFileListFlavor)) return null
+    return singleDirectory(transferable.getTransferData(DataFlavor.javaFileListFlavor) as List<File>)
+}
 
 class FolderDropState {
     var hovering by mutableStateOf(false)
@@ -34,28 +33,39 @@ class FolderDropState {
 @Composable
 fun rememberFolderDropState(): FolderDropState = remember { FolderDropState() }
 
-@OptIn(ExperimentalFoundationApi::class, ExperimentalComposeUiApi::class)
-fun Modifier.folderDropTarget(state: FolderDropState, onDrop: (String) -> Unit): Modifier =
-    dragAndDropTarget(
-        shouldStartDragAndDrop = { event: DragAndDropEvent -> event.awtTransferable.droppedDirectory() != null },
-        target = object : DragAndDropTarget {
-            override fun onEntered(event: DragAndDropEvent) {
-                state.hovering = true
-            }
+@OptIn(ExperimentalComposeUiApi::class)
+internal class FolderDropTarget(
+    private val state: FolderDropState,
+    private val onDrop: (String) -> Unit,
+    private val transferableOf: (DragAndDropEvent) -> Transferable = DragAndDropEvent::awtTransferable,
+) : DragAndDropTarget {
 
-            override fun onExited(event: DragAndDropEvent) {
-                state.hovering = false
-            }
+    fun accepts(event: DragAndDropEvent): Boolean = directoryOf(event) != null
 
-            override fun onEnded(event: DragAndDropEvent) {
-                state.hovering = false
-            }
+    override fun onEntered(event: DragAndDropEvent) {
+        state.hovering = true
+    }
 
-            override fun onDrop(event: DragAndDropEvent): Boolean {
-                state.hovering = false
-                val folder = event.awtTransferable.droppedDirectory() ?: return false
-                onDrop(folder)
-                return true
-            }
-        },
-    )
+    override fun onExited(event: DragAndDropEvent) {
+        state.hovering = false
+    }
+
+    override fun onEnded(event: DragAndDropEvent) {
+        state.hovering = false
+    }
+
+    override fun onDrop(event: DragAndDropEvent): Boolean {
+        state.hovering = false
+        val folder = directoryOf(event) ?: return false
+        onDrop(folder)
+        return true
+    }
+
+    private fun directoryOf(event: DragAndDropEvent): String? = runCatching { droppedDirectory(transferableOf(event)) }.getOrNull()
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+fun Modifier.folderDropTarget(state: FolderDropState, onDrop: (String) -> Unit): Modifier {
+    val target = FolderDropTarget(state, onDrop)
+    return dragAndDropTarget(shouldStartDragAndDrop = target::accepts, target = target)
+}

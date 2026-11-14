@@ -43,6 +43,7 @@ fun hostEnginePorts(
         composeRegistry = JsonComposeProjectRegistry(files.composeProjects),
         derivedData = MacDerivedDataSource(executor, fileManager, home),
         derivedDataSizes = JsonDerivedDataSizeStore(files.derivedDataSizes),
+        swiftBuilds = FileSwiftBuildSource(fileManager),
         packageCaches = MacPackageCacheSource(fileManager, home),
         herdr = CliHerdrClient(executor, findExecutable),
         herdrConfig = HerdrConfigFile(environment::variable, home),
@@ -57,6 +58,8 @@ fun hostEnginePorts(
         headlessLauncher = GradleHeadlessAppLauncher(executor, files.headless.toString()),
         appWindows = MacAppWindowService(executor, files.headless.toString()),
         desktopTurns = NioDesktopTurnStore(files.folder),
+        buildTurns = NioBuildTurnStore(files.folder),
+        foregroundCommands = ProcessBuilderForegroundCommandRunner(),
         physicalDevices = listOf(
             AdbPhysicalDevices(androidSdk, sdkRepository),
             DevicectlPhysicalDevices(executor, devicectlOsName(environment.os)),

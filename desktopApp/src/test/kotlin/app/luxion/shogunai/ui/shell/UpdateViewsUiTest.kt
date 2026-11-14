@@ -247,6 +247,16 @@ class UpdateViewsUiTest {
     }
 
     @Test
+    fun `skipping without a notice remembers nothing`() {
+        val state = state(Result.success(available()))
+
+        state.skipVersion()
+
+        assertNull(state.notice)
+        assertNull(preferences.preferences.skippedVersion)
+    }
+
+    @Test
     fun `skipping the version hides the notice and remembers it`() = runComposeUiTest {
         val state = state(Result.success(available(InstallChannel.HOMEBREW, UpdateAction.RunCommand("brew upgrade --cask shogunai"))))
         runBlocking { state.checkInBackground() }

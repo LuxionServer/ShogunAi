@@ -4,7 +4,7 @@ import app.luxion.shogunai.domain.model.RepositoryConfigIssue
 import kotlin.reflect.KFunction
 import kotlin.reflect.KType
 import kotlin.reflect.full.declaredMemberFunctions
-import kotlin.reflect.full.declaredMemberProperties
+import kotlin.reflect.full.memberProperties
 import kotlin.reflect.typeOf
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -20,7 +20,7 @@ class EveryTextTest {
 
     @Test
     fun `every text property has content in every language`() {
-        val blank = Strings::class.declaredMemberProperties.flatMap { property ->
+        val blank = Strings::class.memberProperties.flatMap { property ->
             languages.filter { strings -> (property.get(strings) as? String)?.isBlank() == true }
                 .map { "${it.language} ${property.name}" }
         }
@@ -39,7 +39,7 @@ class EveryTextTest {
 
     @Test
     fun `every text function can be sampled`() {
-        val unsampled = Strings::class.declaredMemberFunctions
+        val unsampled = (Strings::class.declaredMemberFunctions + XcodeStrings::class.declaredMemberFunctions)
             .filter { function -> function.valueParameters().any { TextSamples.of(it) == null } }
             .map { it.name }
 
@@ -71,7 +71,7 @@ class EveryTextTest {
     }
 
     private fun sampledFunctions() =
-        Strings::class.declaredMemberFunctions.filter { it.name !in describedByEveryErrorTest }
+        (Strings::class.declaredMemberFunctions + XcodeStrings::class.declaredMemberFunctions).filter { it.name !in describedByEveryErrorTest }
 
     private fun problemsOf(function: KFunction<*>, arguments: List<Any?>): List<String> = languages.flatMap { strings ->
         val text = function.call(strings, *arguments.toTypedArray()) as String?

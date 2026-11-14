@@ -8,7 +8,10 @@ data class DerivedDataFolder(
     val sizeBytes: Long?,
     val lastAccessed: Instant?,
     val packagesBytes: Long? = null,
+    val kind: DerivedDataKind = DerivedDataKind.XCODE,
 )
+
+enum class DerivedDataKind { XCODE, SWIFT_BUILD }
 
 data class RememberedSize(val sizeBytes: Long, val lastAccessed: Instant, val packagesBytes: Long? = null)
 
@@ -44,6 +47,14 @@ data class DerivedDataDeletionFailure(val path: String, val detail: String)
 
 data class DerivedDataDeletion(
     val deleted: List<DerivedDataFolder> = emptyList(),
+    val failures: List<DerivedDataDeletionFailure> = emptyList(),
+) {
+    val bytesFreed: Long get() = deleted.sumOf { it.sizeBytes ?: 0L }
+}
+
+data class SwiftBuildDeletion(
+    val deleted: List<DerivedDataFolder> = emptyList(),
+    val inUse: List<DerivedDataFolder> = emptyList(),
     val failures: List<DerivedDataDeletionFailure> = emptyList(),
 ) {
     val bytesFreed: Long get() = deleted.sumOf { it.sizeBytes ?: 0L }

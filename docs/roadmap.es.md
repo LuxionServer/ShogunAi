@@ -48,6 +48,8 @@ Estado: **Empezado**.
 - **Compose Desktop**: las apps se ejecutan ocultas en segundo plano para que los agentes las comprueben en macOS.
 - **Turno del escritorio**: los agentes se turnan para manejar el escritorio real con `shogun desktop acquire --wait`, que Claude toma por sí solo antes de que actúe su propio computer use o el de Orca, y que solo lo detiene cuando otro worktree tiene el turno.
   Quién lo tiene y la cola se ven en la torre de control y en `shogun status`.
+- **Turno de build**: los builds pesados (Gradle, Maven, `xcodebuild`, `swift build` y `swift test`) toman uno de los huecos de build de la máquina con `shogun build run --`, y esperan en cola cuando están todos ocupados.
+  El hook de Claude rechaza un build pesado lanzado fuera del turno, el número de huecos sigue el perfil de capacidad, y los builds en marcha y la cola se ven en `shogun build status` y en `shogun status`.
 - **Dispositivos físicos**: los móviles y tablets Android, iPhone y iPad conectados a la máquina se registran en un inventario, se prestan a los agentes por defecto y se adquieren de un worktree en uno con `shogun device acquire`, con las mismas concesiones y la misma cola `--wait` que emuladores y simuladores.
   Se ven en `shogun status`, en una vista Dispositivos de la torre de control y en la vista de emulador de Orca (Android).
 - **Maven**: los backends JVM obtienen compilaciones de Maven acotadas en memoria, ven sus daemons de Maven y pueden parar los ociosos.
@@ -99,10 +101,11 @@ Ninguno de los dos fallos apareció en la máquina de desarrollo, cuya propia co
 Por orden:
 
 - Tests que obligan al producto a cumplirlo:
-  - Subir hasta el 100% los suelos de cobertura que exige CI: las líneas (hoy 93%) y ramas (87%) de la app de escritorio fuera de sus composables, que cubren los tests end to end.
+  - Subir hasta el 100% los suelos de cobertura que exige CI: las líneas (hoy 96%) y ramas (90%) de la app de escritorio fuera de sus composables, que cubren los tests end to end.
     Las líneas de `core` y `cli`, las ramas de `cli`, todas las ramas de `core` a las que llega alguna entrada, y los textos y los ajustes de proyecto de la app de escritorio ya están cubiertos.
     Los worktrees y su inspector están cubiertos salvo 41 ramas de su lista, sus filas y sus barras de acciones, que quedan para el cambio de los componentes compartidos.
-    La app de escritorio sube un paquete por cambio, en este orden: el shell y el icono de la barra de menús, las vistas de la máquina y los multirepos, los componentes compartidos y, por último, el cableado de la app.
+    El shell y el icono de la barra de menús están cubiertos salvo 8 líneas y 4 ramas, sobre todo de sus ventanas y de la comprobación de actualizaciones, que quedan para el cambio del cableado de la app.
+    La app de escritorio sube un paquete por cambio, en este orden: las vistas de la máquina y los multirepos, los componentes compartidos y, por último, el cableado de la app.
 
 ### Orca, un segundo runner de primera clase
 
@@ -129,7 +132,7 @@ Por orden:
 Provisionado y recursos acotados para los stacks en los que un worktree recién creado está más lejos de compilar:
 
 - Decir al usuario de la app de escritorio qué carpetas de un worktree nuevo aún necesitan `pod install`; hoy la app clona los pods y solo `shogun new`, `shogun provision` y el hook de creación informan de lo que falta.
-- Los paquetes de los repositorios de paquetes Swift que se compilan con `swift build` (su carpeta `.build` por worktree), que el provider de Xcode no ve.
+- Las carpetas `.build` de los paquetes Swift que no están en la carpeta principal del worktree, que el provider de Xcode aún no lee.
 - Seguimiento de Flutter:
   - Comprobar el provider de principio a fin en un proyecto real creado con `flutter create` (un worktree que compila con `flutter build apk --debug` y `flutter build ios --simulator` sin pasos manuales).
   - Mostrar el tamaño de la caché de pub (`~/.pub-cache` o `PUB_CACHE`) junto a las demás cachés compartidas.
@@ -166,6 +169,23 @@ Quedaron fuera:
 - Mostrar en las vistas de la app de escritorio los nombres de las sesiones de Claude de los worktrees de un grupo y del agente del multirepo; hoy los informan `shogun open --herdr` y `shogun status`, y la app solo nombra las sesiones que abre.
 - Una única sesión para todo el grupo, con un entorno combinado, como opción junto a un agente por repositorio.
 - El estado del pull request de cada repositorio de un grupo, que depende de la integración con GitHub en estudio.
+
+### Cambios en paralelo que no chocan
+
+`shogun overlap` lista los archivos que varios worktrees de un repositorio cambian a la vez, y la guía pide a los agentes consultarlo antes de su pull request.
+Lo que queda:
+
+- Una marca en la torre de control en cada worktree cuyos archivos cambia otro worktree, con los archivos y worktrees compartidos en su inspector.
+- Saber si los archivos compartidos llegarían a dar conflicto al fusionar, en vez de solo que se comparten.
+
+### El turno de build en todas partes
+
+El turno de build acota cuántos builds pesados corren a la vez desde la línea de comandos y los hooks de Claude.
+Queda fuera:
+
+- Mostrar los builds en marcha y la cola de builds en la torre de control, con un campo de huecos de build para el perfil Personalizado en Preferencias (hasta entonces Personalizado usa el número del Automático), y pasar los errores del turno de build a los que la app describe.
+- Dar peso a los builds según su tamaño, para que compilar un módulo no ocupe el mismo hueco que una ejecución completa de tests, y reconocer más invocaciones ligeras que `--version`, `--stop`, `help` y `tasks`.
+- Los builds que lanzan scripts o agentes sin los hooks de Claude Code, a los que hoy solo llega la guía.
 
 ### Robustez y mantenimiento
 

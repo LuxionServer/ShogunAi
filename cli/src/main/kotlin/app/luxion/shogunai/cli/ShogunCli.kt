@@ -7,6 +7,7 @@ import app.luxion.shogunai.domain.executor.CommandTimeouts
 import app.luxion.shogunai.domain.io.HostEnvironment
 import app.luxion.shogunai.domain.io.RepositoryApproval
 import app.luxion.shogunai.domain.io.ApprovalDecision
+import app.luxion.shogunai.domain.model.BuildTurnState
 import app.luxion.shogunai.domain.model.DesktopTurnState
 import app.luxion.shogunai.domain.model.DesktopWait
 import app.luxion.shogunai.domain.model.DevicePlatform
@@ -32,6 +33,7 @@ import app.luxion.shogunai.domain.model.DaemonOwner
 import app.luxion.shogunai.domain.model.DaemonProcess
 import app.luxion.shogunai.domain.model.DaemonState
 import app.luxion.shogunai.domain.model.DaemonStopReport
+import app.luxion.shogunai.domain.model.DerivedDataKind
 import app.luxion.shogunai.domain.model.DerivedDataOwner
 import app.luxion.shogunai.domain.model.EmulatorState
 import app.luxion.shogunai.domain.model.AGENT_START_SECONDS
@@ -289,6 +291,7 @@ class ShogunCli(
     private val acquireDesktopTurn = engine.acquireDesktopTurn
     private val releaseDesktopTurn = engine.releaseDesktopTurn
     private val readDesktopTurn = engine.readDesktopTurn
+    private val buildTurn = BuildTurnCommands(engine, workingDirectory, { out.line(it) }, { err.line(it) }, readInput, ::worktreeTopLevel)
     private val physicalDevices = engine.physicalDeviceLedger
     private val readPhysicalDevices = engine.readPhysicalDevices
     private val acquirePhysicalDevice = engine.acquirePhysicalDevice
@@ -336,6 +339,7 @@ class ShogunCli(
             is CliCommand.Open -> open(command)
             is CliCommand.Status -> status(command)
             is CliCommand.Base -> base(command)
+            is OverlapCommand -> overlap(command)
             is CliCommand.Clean -> clean(command)
             CliCommand.HookWorktreeCreate -> hookWorktreeCreate()
             CliCommand.HookWorktreeRemove -> hookWorktreeRemove()
@@ -353,6 +357,7 @@ class ShogunCli(
             is CliCommand.Simulator -> simulator(command)
             is CliCommand.Headless -> headless(command)
             is CliCommand.Desktop -> desktop(command)
+            is BuildCommand -> buildTurn.run(command)
             is CliCommand.Device -> device(command)
             is CliCommand.SimulatorGradleInit -> simulatorGradleInit(command)
             CliCommand.HookSessionStart -> hookSessionStart()
@@ -360,6 +365,7 @@ class ShogunCli(
             is CliCommand.HookOrca -> hookOrca(command.action)
             CliCommand.HookAgentState -> hookAgentState()
             CliCommand.HookDesktopTurn -> hookDesktopTurn()
+            HookBuildTurn -> buildTurn.hook()
             is CliCommand.Hooks -> hooks(command)
             is CliCommand.Guide -> guide(command)
             is CliCommand.GuideBlock -> guideBlock(command)
@@ -1112,6 +1118,7 @@ class ShogunCli(
                 engine.detectRunningAgents(config, worktrees.filterNot { it.isPrunable }).getOrNull().orEmpty()
             }
             val desktopRead = async { readDesktopTurn().getOrElse { DesktopTurnState(holder = null, waiting = emptyList()) } }
+            val buildsRead = async { engine.readBuildTurn().getOrElse { BuildTurnState.EMPTY } }
             val devicesRead = async { readPhysicalDevices.ifAnyHeld() }
             val basesRead = async { engine.project(config).readBaseBranches().getOrElse { emptyMap() } }
             val resolvedBasesRead = async { engine.project(config).resolveRecordedBases() }
@@ -1125,6 +1132,7 @@ class ShogunCli(
             }.awaitAll()
             val agents = agentsRead.await()
             val desktop = desktopRead.await()
+            val builds = buildsRead.await()
             val devices = devicesRead.await()
             val bases = basesRead.await()
             val listeningPorts = orcaReader.ports(worktrees)
@@ -1139,6 +1147,7 @@ class ShogunCli(
                     worktree.branch?.let(bases::get),
                     listeningPorts?.get(worktree.path),
                     devices,
+                    builds,
                 )
             }
         }
@@ -1173,6 +1182,25 @@ class ShogunCli(
             return EXIT_FAILURE
         }
         if (!command.json) out.line(base)
+        return EXIT_OK
+    }
+
+    private suspend fun overlap(command: OverlapCommand): Int {
+        val config = configFor(workingDirectory)
+        val worktrees = engine.project(config).listWorktrees().getOrThrow()
+        val target = if (command.target != null) {
+            findWorktreeTarget(command.target, worktrees, config, ::canonical)
+        } else {
+            val containing = canonical(configAndWorktreeContaining(workingDirectory).second.path)
+            worktrees.first { canonical(it.path) == containing }.takeUnless { it.isMain }
+        }
+        val overlap = engine.project(config).readOverlap(worktrees, target, command.all).getOrThrow()
+        overlap.skipped.forEach { err.line(skippedLine(it)) }
+        if (command.json) {
+            printJson(overlapJson(config.baseRepositoryPath, target?.path, overlap))
+        } else {
+            overlapLines(overlap, target?.branch, scoped = target != null).forEach { out.line(it) }
+        }
         return EXIT_OK
     }
 
@@ -2411,15 +2439,15 @@ class ShogunCli(
         }
         val config = configFor(workingDirectory)
         val worktrees = engine.project(config).listWorktrees().getOrThrow()
-        val listing = listDerivedData(worktrees, includeCompilationCache = provider.compilationCache, measure = DerivedDataMeasure.ALL).getOrThrow()
+        val listing = listDerivedData(worktrees, provider.compilationCache, DerivedDataMeasure.ALL, packageWorktrees = worktrees).getOrThrow()
         if (command.json) {
             printJson(xcodeJson(active = true, listing = listing))
             return EXIT_OK
         }
         listing.ofWorktrees().forEach { item ->
-            val worktree = (item.owner as DerivedDataOwner.Worktree).path
+            val label = if (item.folder.kind == DerivedDataKind.SWIFT_BUILD) item.folder.path else (item.owner as DerivedDataOwner.Worktree).path
             val packages = item.folder.packagesBytes?.takeIf { it > 0 }?.let { "  (packages ${formatMemory(it)})" }.orEmpty()
-            out.line("$worktree  ${formatMemory(item.folder.sizeOrZero())}$packages")
+            out.line("$label  ${formatMemory(item.folder.sizeOrZero())}$packages")
         }
         val orphans = listing.orphans
         out.line("orphans: ${orphans.size} (${formatMemory(orphans.sumOf { it.sizeOrZero() })})")
@@ -2439,9 +2467,14 @@ class ShogunCli(
         val repository = engine.resolveRepository(workingDirectory).getOrNull()
         val provider = repository?.let { xcodeProvider(it) }
         if (repository == null || provider == null || !derivedDataSource.isSupported()) {
-            if (command.json) printJson(xcodeCleanJson(active = false, deletion = null)) else out.line("The Xcode provider isn't active.")
+            if (command.json) {
+                printJson(if (command.swiftBuild) xcodeCleanSwiftBuildJson(false, null) else xcodeCleanJson(active = false, deletion = null))
+            } else {
+                out.line("The Xcode provider isn't active.")
+            }
             return EXIT_OK
         }
+        if (command.swiftBuild) return xcodeCleanSwiftBuilds(command)
         val deletion = deleteOrphanedDerivedData().getOrThrow()
         if (command.json) {
             printJson(xcodeCleanJson(active = true, deletion = deletion))
@@ -2460,6 +2493,29 @@ class ShogunCli(
         return if (deletion.failures.isEmpty()) EXIT_OK else EXIT_FAILURE
     }
 
+    private suspend fun xcodeCleanSwiftBuilds(command: CliCommand.XcodeClean): Int {
+        val config = configFor(workingDirectory)
+        val worktrees = engine.project(config).listWorktrees().getOrThrow().filterNot { it.isPrunable }
+        val search = AgentSearch(config.agents.map { it.agentCommand }, worktrees)
+        val active = activeWorktrees(listOf(search))
+        val deletion = engine.deleteUnusedSwiftBuilds(worktrees, active).getOrThrow()
+        if (command.json) {
+            printJson(xcodeCleanSwiftBuildJson(active = true, deletion = deletion))
+        } else {
+            if (deletion.deleted.isEmpty() && deletion.inUse.isEmpty() && deletion.failures.isEmpty()) out.line("Nothing to delete.")
+            deletion.deleted.forEach { out.line("deleted ${it.path}  ${formatMemory(it.sizeOrZero())}") }
+            if (deletion.deleted.isNotEmpty()) out.line("freed ${formatMemory(deletion.bytesFreed)}")
+            deletion.inUse.forEach { out.line("kept ${it.path}  (in use)") }
+        }
+        deletion.failures.forEach { err.line("shogun: couldn't delete ${it.path}: ${it.detail}") }
+        return if (deletion.failures.isEmpty()) EXIT_OK else EXIT_FAILURE
+    }
+
+    private suspend fun activeWorktrees(searches: List<AgentSearch>): Set<String> {
+        val agents = DetectRunningAgentsUseCase(executor, herdr, sessionStore, orca = orcaReader)(searches).getOrNull().orEmpty()
+        return agents.filterValues { running -> running.any { it.state == AgentState.WORKING || it.state == AgentState.BLOCKED } }.keys
+    }
+
     private suspend fun xcodeTrim(command: CliCommand.XcodeTrim): Int {
         val repository = engine.resolveRepository(workingDirectory).getOrNull()
         val provider = repository?.let { xcodeProvider(it) }
@@ -2471,16 +2527,17 @@ class ShogunCli(
         if (settings.quotaMode == DerivedDataQuotaMode.NONE) return noDerivedDataQuota(command, DerivedDataQuota(DerivedDataQuotaMode.NONE, null))
         val configs = (listOf(configFor(workingDirectory)) + projectRepository.list().map { it.config })
             .distinctBy { it.baseRepositoryPath.trimEnd('/') }
-        val searches = configs.mapNotNull { config ->
-            engine.project(config).listWorktrees().getOrNull()?.let { listed -> AgentSearch(config.agents.map { agent -> agent.agentCommand }, listed.filterNot { it.isPrunable }) }
+        val listed = configs.mapNotNull { config ->
+            engine.project(config).listWorktrees().getOrNull()?.let { config to AgentSearch(config.agents.map { agent -> agent.agentCommand }, it.filterNot { worktree -> worktree.isPrunable }) }
         }
+        val searches = listed.map { it.second }
         val worktrees = searches.flatMap { it.worktrees }.distinctBy { it.path.trimEnd('/') }
-        val listing = listDerivedData(worktrees, includeCompilationCache = false, measure = DerivedDataMeasure.ALL).getOrThrow()
+        val packageWorktrees = listed.filter { xcodeProvider(it.first.baseRepositoryPath) != null }.flatMap { it.second.worktrees }.distinctBy { it.path.trimEnd('/') }
+        val listing = listDerivedData(worktrees, false, DerivedDataMeasure.ALL, packageWorktrees).getOrThrow()
         val quota = engine.resolveDerivedDataQuota(settings, listing.folders.sumOf { it.folder.sizeOrZero() })
         val quotaBytes = quota.bytes ?: return noDerivedDataQuota(command, quota)
-        val agents = DetectRunningAgentsUseCase(executor, herdr, sessionStore, orca = orcaReader)(searches).getOrNull().orEmpty()
-        val active = agents.filterValues { running -> running.any { it.state == AgentState.WORKING || it.state == AgentState.BLOCKED } }.keys
-        val trim = TrimDerivedDataUseCase(derivedDataSource, listDerivedData, now)(quotaBytes, worktrees, active, command.dryRun, listing, quota.mode).getOrThrow()
+        val active = activeWorktrees(searches)
+        val trim = TrimDerivedDataUseCase(derivedDataSource, listDerivedData, ports.swiftBuilds, now)(quotaBytes, worktrees, active, command.dryRun, listing, quota.mode).getOrThrow()
         if (command.json) {
             printJson(xcodeTrimJson(active = true, trim = trim))
             trim.failures.forEach { err.line("shogun: couldn't delete ${it.path}: ${it.detail}") }
@@ -3123,6 +3180,7 @@ class ShogunCli(
             entry.agents.takeIf { it.isNotEmpty() }?.let { agents -> add("agents=${agents.joinToString(",") { agentLabel(it) }}") }
             entry.listeningPorts?.takeIf { it.isNotEmpty() }?.let { ports -> add("listening=${ports.joinToString(",") { it.port.toString() }}") }
             desktopTurnStatusNote(entry.desktop, worktree.path)?.let(::add)
+            buildStatusNote(entry.builds, worktree.path)?.let(::add)
             addAll(deviceStatusNotes(entry.devices, worktree.path))
             when {
                 worktree.isPrunable -> add("folder-missing")

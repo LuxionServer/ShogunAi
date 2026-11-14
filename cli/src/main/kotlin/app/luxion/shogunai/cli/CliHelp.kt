@@ -43,6 +43,13 @@ internal object CliHelp {
                               --set records it, for worktrees created by other tools or to correct it;
                               stored as branch.<branch>.gh-merge-base, which gh pr create also reads
 """.trimIndent(),
+        "overlap" to """
+  overlap [<task id | path | branch>] [--all] [--json]
+                              List the files that more than one worktree of the repository changes against
+                              its own base (commits, uncommitted and untracked changes), with each worktree's
+                              branch and base; inside a worktree or with a target, only the files it shares;
+                              --all includes the files .shogunai.json declares in overlap.ignore
+""".trimIndent(),
         "remove" to """
   remove <task id | path | branch> [--force] [--delete-branch | --force-delete-branch] [--json]
                               Remove one worktree and stop its emulator, simulator and idle Gradle daemons;
@@ -181,10 +188,12 @@ internal object CliHelp {
   pool trim [--json]          Stop idle Gradle daemons, longest idle first, until they are within the limit
 """.trimIndent(),
         "xcode" to """
-  xcode [--json]              List Xcode DerivedData folders of the worktrees, orphans and compilation cache
+  xcode [--json]              List Xcode DerivedData and Swift .build folders of the worktrees, orphans and compilation cache
   xcode clean [--json]        Delete orphaned Xcode DerivedData folders on the machine
+  xcode clean --swift-build [--json]
+                              Delete the .build folders of the worktrees not in use instead
   xcode trim [--dry-run] [--json]
-                              Release DerivedData folders until it is within the quota in Preferences (automatic by default)
+                              Release DerivedData and .build folders until they are within the quota in Preferences (automatic by default)
 """.trimIndent(),
         "hook" to """
   hook worktree-create        Claude Code WorktreeCreate hook: create and provision the worktree, print its path
@@ -193,6 +202,8 @@ internal object CliHelp {
   hook agent-state            Claude Code UserPromptSubmit, Notification, Stop and SessionEnd hook: record the session's state
   hook desktop-turn           Claude Code PreToolUse hook: take the desktop turn before Claude's computer use or Orca's orca computer
                               acts on the desktop, or block the call while another worktree holds it
+  hook build-turn             Claude Code PreToolUse hook: block a Gradle, Maven, xcodebuild or swift build|test command run
+                              outside the build turn and tell the agent to run it with shogun build run --
   hook herdr                  Herdr plugin hook: provision worktrees on worktree.created, delete merged branches on worktree.removed
   hook orca setup|archive     Orca orca.yaml scripts: provision the worktree at ORCA_WORKTREE_PATH on setup,
                               free its emulator, simulator and idle Gradle daemons on archive
@@ -271,6 +282,13 @@ internal object CliHelp {
   desktop release [<path>] [--json]
                               Give the turn back; Claude Code's Stop and SessionEnd hooks also release it
   desktop status [--json]     Show who holds the desktop, until when, and who waits for it
+""".trimIndent(),
+        "build" to """
+  build run [--wait-timeout <minutes>] -- <command> [<arguments>]
+                              Run a heavy build in one of the machine's build slots: wait in line while they are
+                              all taken (30 minutes at most by default), run the command here, free the slot when
+                              it ends and exit with its exit code; the slots follow the capacity profile
+  build status [--json]       Show the build slots in use, the command each runs, and who waits for one
 """.trimIndent(),
         "device" to """
   device list [--all] [--json]

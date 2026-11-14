@@ -149,6 +149,16 @@ El escritorio es un único recurso de toda la máquina que los agentes se turnan
 - `DesktopTurnLedger` agrupa el `DesktopTurnStore`, el bloqueo de la máquina, la cola de espera y la comprobación de procesos que comparten los tres casos de uso. `AcquireDesktopTurnUseCase` da el turno durante `ResourceSettings.desktopTurnDuration` (`desktopTurnMinutes`, 10 por defecto) cuando está libre o caducado y nadie va por delante en la cola `desktop`, lo renueva a quien lo tiene y, si no, falla con `DesktopTurnTaken` o, con un `DesktopWait`, espera en la cola con el mismo bucle `WaitInLine` que las adquisiciones de dispositivos (`DesktopTurnWaitTimedOut` al llegar al plazo). Solo volver a pedirlo renueva un turno: que el agente esté trabajando no.
 - `ReleaseDesktopTurnUseCase` libera el turno de quien lo tiene (`DesktopTurnHeldByOther` para otro worktree), `ifHeldBy` un worktree para los hooks `Stop` y `SessionEnd`, `force` para la app de escritorio, y `onWorktreeRemoved`, al que llama la eliminación del worktree antes de borrar la carpeta y que también quita los tickets de ese worktree. `ReadDesktopTurnUseCase` devuelve el `DesktopTurnState`.
 
+### Turno de build
+
+Los builds pesados toman uno de un número limitado de huecos de build de la máquina (`BuildTurn.kt`). Como el turno del escritorio, no son un `ResourceKind`: no hay nada que liberar para hacer sitio, solo un número que respetar.
+
+- `BuildSlot` es un build en marcha: el directorio de administración Git y la ruta de su worktree, el comando, `since` y la `ProcessIdentity` del proceso `shogun build run` que lo ocupa. Un hueco cuyo proceso ya no corre cuenta como libre, así que los huecos nunca caducan por tiempo. `BuildTurnState` es el límite (`null` sin límite), los huecos vivos y los `WaitTicket` vivos de la cola `build`.
+- `buildSlotsFor` convierte el perfil de capacidad en el número de huecos: Ligero 1, Equilibrado 2, Uno por worktree `null`, y Automático (que también usa Personalizado hasta tener un campo propio) uno por cada 16 GB y como mucho uno por cada 4 núcleos, entre 1 y 4. `ResolveResourceLimitsUseCase.buildSlots()` lo aplica a los ajustes de la máquina.
+- `BuildTurnLedger` reúne el `BuildTurnStore`, el bloqueo de la máquina, la cola de espera y la comprobación de procesos. `AcquireBuildSlotUseCase` registra un hueco cuando hay uno libre y ningún otro worktree va delante en la cola `build`, y si no espera en la cola con el mismo bucle `WaitInLine` que los dispositivos y el escritorio, informando de `BuildWaitProgress` y fallando con `BuildTurnError.WaitTimedOut` al vencer el plazo. `RunInBuildTurnUseCase` adquiere, ejecuta el comando a través del puerto `ForegroundCommandRunner` y siempre libera el hueco (`ReleaseBuildSlotUseCase`), también si se cancela. `ReadBuildTurnUseCase` devuelve el `BuildTurnState`.
+- `BuildTurnError` es una sealed class propia (`SlotsTaken`, `WaitTimedOut`) en lugar de un `WorktreeError`, porque la app de escritorio nunca lanza builds y todo `WorktreeError` tiene que describirse en sus idiomas.
+- `HeavyBuildCommand.unwrappedBuilds` encuentra, en un comando de shell, los segmentos que lanzan un build pesado fuera de `shogun build run` (Gradle, Maven, `xcodebuild`, `swift build|test`, salvo sus invocaciones ligeras) para el hook `build-turn`.
+
 ### Dispositivos físicos
 
 Los teléfonos y tabletas conectados a la máquina se prestan a un worktree a la vez (`PhysicalDevice.kt`). No son un `ResourceKind`: la capacidad es el inventario de dispositivos prestados y conectados, no un límite del perfil, y la exclusividad no puede depender de recorrer el estado de cada worktree, así que tienen un archivo de leases para toda la máquina, como el turno del escritorio.
@@ -560,6 +570,19 @@ interface DerivedDataSource {
 
 Todo lo que el provider de Xcode necesita de los DerivedData de Xcode: si el sistema es macOS, las carpetas de proyecto de la ubicación actual sin su tamaño (nunca las cachés compartidas de Xcode, que no tienen `info.plist`), el tamaño de una carpeta medido bajo demanda y cancelable, el tamaño de la caché de compilación compartida (`null` si no existe), si un workspace sigue existiendo o está en un volumen no montado, y borrar una carpeta.
 
+### `SwiftBuildSource`
+
+```kotlin
+interface SwiftBuildSource {
+    fun folderOf(worktreePath: String): DerivedDataFolder?
+    suspend fun size(folder: DerivedDataFolder): Long
+    suspend fun packagesSize(folder: DerivedDataFolder): Long
+    suspend fun delete(folder: DerivedDataFolder)
+}
+```
+
+La carpeta `.build` de un worktree de un paquete Swift, como un `DerivedDataFolder` de tipo `SWIFT_BUILD` cuyo `workspacePath` es el worktree, de modo que el listado, la medición, los tamaños recordados y la cuota la tratan como una carpeta de DerivedData. `DerivedDataFolders` reparte según el tipo de la carpeta el tamaño, el de los paquetes, el borrado y la relectura antes de liberarla.
+
 ### `TerminalLauncher` / `EditorLauncher` / `FolderLauncher` / `ToolDetector`
 
 ```kotlin
@@ -889,6 +912,8 @@ Se usan en macOS cuando el repositorio declara el provider de Xcode:
 
 - `ListDerivedDataUseCase(worktrees, includeCompilationCache, measure)` atribuye cada carpeta de `DerivedDataSource`: un workspace que no existe es `UnavailableVolume` si su volumen no está montado y, si no, `Orphaned`; uno que existe pertenece al worktree de ruta más larga que lo contiene (`owningWorktree`, la misma regla que los agentes en ejecución y los daemons de Gradle) y, si no, a `OtherProject`. `measure` indica a qué carpetas se les mide el tamaño: `NONE`, `ORPHANS` o `ALL`. Las huérfanas son de toda la máquina: cuando su proyecto ya no existe, nada puede usar la carpeta, la creara la herramienta que la creara.
 - `DeleteOrphanedDerivedDataUseCase` vuelve a listar las carpetas, se queda con las que siguen huérfanas, comprueba cada workspace otra vez justo antes de borrar (un proyecto restaurado entretanto conserva su carpeta), mide cada huérfana que aún no tiene tamaño para que `bytesFreed` sea correcto y devuelve un `DerivedDataDeletion`; un fallo no detiene el resto. La carpeta de un worktree eliminado es huérfana por definición, así que la limpieza solo ejecuta este caso de uso después de eliminar.
+- `ListDerivedDataUseCase` recibe también `packageWorktrees`, los worktrees de los repositorios que declaran el provider de Xcode, y añade la carpeta `.build` de cada uno (`SwiftBuildSource.folderOf`) como de ese worktree, nunca huérfana. `TrimDerivedDataUseCase` libera esas carpetas junto al DerivedData de los worktrees, en el mismo orden y con la misma regla de uso (`isWorktreeFolderInUse`), leyéndolas de nuevo antes de borrarlas.
+- `DeleteUnusedSwiftBuildsUseCase` borra las carpetas `.build` de los worktrees dados que no están en uso, midiendo cada una y leyéndola de nuevo antes de borrarla, y devuelve un `SwiftBuildDeletion` con las borradas, las conservadas por estar en uso y los fallos.
 - `PrepareCocoaPodsUseCase` (un `CocoaPodsPreparer`) se ejecuta desde `PrepareWorktreeEnvironmentUseCase` después del fichero de entorno, así que lo reciben todos los flujos de creación y provisión, y devuelve un `PodsPreparation` (`cloned`, `installNeeded` con un `PodsInstallReason`, `error`) que `PreparedWorktree` lleva a `Worktree.pods` y `ProvisionResult.pods`. Con `XcodeProvider.cocoaPods` en macOS, lista los `Podfile.lock` versionados con `git ls-files` y, para cada carpeta sin `Pods`, clona el `Pods` de la base con `cp -c -R` cuando su `Manifest.lock` tiene el mismo contenido; nunca lanza excepciones, así que los pods no pueden deshacer un worktree.
 - `xcodeCompilationCacheContribution` es la contribución al entorno del provider cuando `XcodeProvider.compilationCache` está activo, en macOS (`MachineProviderContributions`): un recurso `xcode-compilation-cache` cuyo `create` escribe `~/.shogunai/xcode/compilation-cache.xcconfig` (`COMPILATION_CACHE_ENABLE_CACHING` y prefix mapping de Swift y Clang, cinco líneas `KEY = YES`) y cuyo `exists` comprueba que el fichero tiene ese contenido, más la variable `XCODE_XCCONFIG_FILE=<ruta>`. Al ser un recurso, solo se escribe al resolver con reserva y se vuelve a crear si se borra; el fichero es el mismo para todos los repositorios de la máquina. Un `XCODE_XCCONFIG_FILE` declarado en `env` gana.
 

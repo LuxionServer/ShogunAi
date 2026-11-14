@@ -31,6 +31,11 @@ class TrayPreferencesTest {
     }
 
     @Test
+    fun `a system without a tray supports no icon`() {
+        assertFalse(isTrayIconSupported(systemTraySupported = false, runsHeadless = false))
+    }
+
+    @Test
     fun `by default the icon is shown and closing the window quits`() {
         val preferences = preferences()
 

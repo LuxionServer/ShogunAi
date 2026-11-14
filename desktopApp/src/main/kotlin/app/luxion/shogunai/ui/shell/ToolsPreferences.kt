@@ -26,7 +26,7 @@ class ToolsPreferences(
         private set
 
     val installedRunners: List<RunnerId>
-        get() = detected?.runners?.let { installed -> RunnerId.entries.filter { it in installed } } ?: RunnerId.entries
+        get() = detected?.let { tools -> RunnerId.entries.filter { it in tools.runners } } ?: RunnerId.entries
 
     val defaultRunner: RunnerId?
         get() = (chosenRunner ?: RunnerId.HERDR).takeIf { it in installedRunners } ?: installedRunners.firstOrNull()
@@ -64,18 +64,19 @@ class ToolsPreferences(
     }
 
     companion object {
-        val NONE = ToolsPreferences(
-            repository = object : ToolPreferenceRepository {
-                override fun loadTerminal(): TerminalId? = null
-                override fun saveTerminal(terminal: TerminalId?) = Unit
-                override fun loadEditor(): EditorId? = null
-                override fun saveEditor(editor: EditorId?) = Unit
-                override fun loadRunner(): RunnerId? = null
-                override fun saveRunner(runner: RunnerId?) = Unit
-            },
-            detector = object : ToolDetector {
-                override suspend fun detect() = DetectedTools()
-            },
-        )
+        val NONE = ToolsPreferences(repository = NoToolPreferences, detector = NoToolDetector)
     }
+}
+
+internal object NoToolPreferences : ToolPreferenceRepository {
+    override fun loadTerminal(): TerminalId? = null
+    override fun saveTerminal(terminal: TerminalId?) = Unit
+    override fun loadEditor(): EditorId? = null
+    override fun saveEditor(editor: EditorId?) = Unit
+    override fun loadRunner(): RunnerId? = null
+    override fun saveRunner(runner: RunnerId?) = Unit
+}
+
+internal object NoToolDetector : ToolDetector {
+    override suspend fun detect() = DetectedTools()
 }
