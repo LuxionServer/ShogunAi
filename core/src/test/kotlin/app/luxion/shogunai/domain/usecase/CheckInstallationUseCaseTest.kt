@@ -63,7 +63,11 @@ class CheckInstallationUseCaseTest {
           "SessionEnd": [{"hooks": [{"type": "command", "command": "shogun hook agent-state"}]}],
           "PreToolUse": [
             {"matcher": "Bash", "hooks": [{"type": "command", "command": "shogun hook desktop-turn", "if": "Bash(*computer *)"}]},
-            {"matcher": "${ClaudeComputerUse.hookMatcher}", "hooks": [{"type": "command", "command": "shogun hook desktop-turn"}]}
+            {"matcher": "${ClaudeComputerUse.hookMatcher}", "hooks": [{"type": "command", "command": "shogun hook desktop-turn"}]},
+            {"matcher": "Bash", "hooks": [{"type": "command", "command": "shogun hook build-turn", "if": "Bash(*gradle*)"}]},
+            {"matcher": "Bash", "hooks": [{"type": "command", "command": "shogun hook build-turn", "if": "Bash(*mvn*)"}]},
+            {"matcher": "Bash", "hooks": [{"type": "command", "command": "shogun hook build-turn", "if": "Bash(*xcodebuild*)"}]},
+            {"matcher": "Bash", "hooks": [{"type": "command", "command": "shogun hook build-turn", "if": "Bash(*swift *)"}]}
           ]
         }}
     """.trimIndent()

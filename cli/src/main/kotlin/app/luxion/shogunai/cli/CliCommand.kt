@@ -274,6 +274,7 @@ fun parseArguments(args: List<String>): ParsedArguments {
                 "simulator" -> parseSimulator(arguments)
                 "headless" -> parseHeadless(arguments)
                 "desktop" -> parseDesktop(arguments)
+                "build" -> parseBuild(arguments)
                 "device" -> parseDevice(arguments)
                 else -> throw UsageException("unknown command '$name'")
             }.withJsonOutput(json),
@@ -612,12 +613,13 @@ private fun parseHook(rest: List<String>): CliCommand {
         "herdr" -> CliCommand.HookHerdr
         "agent-state" -> CliCommand.HookAgentState
         "desktop-turn" -> CliCommand.HookDesktopTurn
+        "build-turn" -> HookBuildTurn
         else -> throw UsageException("unknown hook '$event', expected $HOOK_EVENTS")
     }
     return noArguments("hook $event", rest.drop(1), command)
 }
 
-private const val HOOK_EVENTS = "worktree-create, worktree-remove, session-start, agent-state, desktop-turn, herdr or orca"
+private const val HOOK_EVENTS = "worktree-create, worktree-remove, session-start, agent-state, desktop-turn, build-turn, herdr or orca"
 
 enum class OrcaHookAction { SETUP, ARCHIVE }
 
@@ -917,7 +919,7 @@ private fun parseEmulator(rest: List<String>): CliCommand.Emulator {
     return CliCommand.Emulator(action, path, avd, noWindow, wait = wait.duration)
 }
 
-private class DeviceWaitOptions {
+internal class DeviceWaitOptions {
     var requested = false
     private var minutes = DEFAULT_DEVICE_WAIT_MINUTES
 
@@ -952,7 +954,7 @@ private fun parseEnv(rest: List<String>): CliCommand.Env {
     return CliCommand.Env(path, format)
 }
 
-private fun ArrayDeque<String>.valueOf(option: String): String {
+internal fun ArrayDeque<String>.valueOf(option: String): String {
     val value = removeFirstOrNull()
     if (value == null || value.startsWith("-")) throw UsageException("$option needs a value")
     return value

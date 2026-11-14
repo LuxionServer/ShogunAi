@@ -1,8 +1,10 @@
 package app.luxion.shogunai.engine
 
 import app.luxion.shogunai.domain.ScriptedShellCommandExecutor
+import app.luxion.shogunai.domain.FakeBuildTurnStore
 import app.luxion.shogunai.domain.FakeDerivedDataSource
 import app.luxion.shogunai.domain.FakeFileManager
+import app.luxion.shogunai.domain.FakeForegroundCommandRunner
 import app.luxion.shogunai.domain.FakeRepositoryApproval
 import app.luxion.shogunai.domain.FakeRepositoryProvisioningSource
 import app.luxion.shogunai.domain.FakeRepositoryTrust
@@ -100,6 +102,20 @@ class ShogunEngineTest {
 
         assertTrue(engine.readDesktopTurn().isSuccess)
         assertTrue(engine.readPhysicalDevices().isSuccess)
+    }
+
+    @Test
+    fun `a build runs in a slot of the build turn and gives it back`() = runTest {
+        val runner = FakeForegroundCommandRunner(exitCode = 0)
+        val slots = FakeBuildTurnStore()
+        val engine = ShogunEngine(fakeEnginePorts(executor = gitExecutor, buildTurns = slots, foregroundCommands = runner))
+
+        val run = engine.runInBuildTurn("/home/dev/projects/main-repo", "/home/dev/projects/main-repo", listOf("./gradlew", "test")).getOrThrow()
+
+        assertEquals(0, run.exitCode)
+        assertEquals(listOf("./gradlew", "test"), runner.runs.single().first)
+        assertTrue(slots.slots.isEmpty())
+        assertTrue(engine.readBuildTurn().getOrThrow().running.isEmpty())
     }
 
     @Test

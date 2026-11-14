@@ -2048,7 +2048,7 @@ class ShogunCliTest {
                     "uncommittedChanges": 0, "upstream": null, "mainBranch": null, "base": null,
                     "merged": false, "lastCommitAt": null, "createdAt": null
                   },
-                  "desktop": null, "devices": {"android": null, "ios": null}, "listeningPorts": null
+                  "desktop": null, "build": null, "devices": {"android": null, "ios": null}, "listeningPorts": null
                 },
                 {
                   "path": "$merged", "branch": "feature/TASK-1", "head": "2222222222222222222222222222222222222222",
@@ -2058,7 +2058,7 @@ class ShogunCliTest {
                     "base": {"branch": "main", "ahead": 0, "behind": 3},
                     "merged": true, "lastCommitAt": null, "createdAt": null
                   },
-                  "desktop": null, "devices": {"android": null, "ios": null}, "listeningPorts": null
+                  "desktop": null, "build": null, "devices": {"android": null, "ios": null}, "listeningPorts": null
                 },
                 {
                   "path": "$dirty", "branch": "worktree-spike", "head": "3333333333333333333333333333333333333333",
@@ -2068,7 +2068,7 @@ class ShogunCliTest {
                     "base": {"branch": "main", "ahead": 2, "behind": 0},
                     "merged": false, "lastCommitAt": null, "createdAt": null
                   },
-                  "desktop": null, "devices": {"android": null, "ios": null}, "listeningPorts": null
+                  "desktop": null, "build": null, "devices": {"android": null, "ios": null}, "listeningPorts": null
                 }
               ]
             }
@@ -2595,7 +2595,7 @@ class ShogunCliTest {
         cli(repositoryExecutor()).run(listOf("help"))
 
         val hookLines = out.lines().filter { it.trimStart().startsWith("hook ") }
-        assertEquals(7, hookLines.size)
+        assertEquals(8, hookLines.size)
         assertEquals(1, hookLines.map { it.indexOf("  ", it.indexOf("hook") + 5).let { gap -> it.substring(gap).indexOfFirst { c -> c != ' ' } + gap } }.distinct().size)
     }
 
