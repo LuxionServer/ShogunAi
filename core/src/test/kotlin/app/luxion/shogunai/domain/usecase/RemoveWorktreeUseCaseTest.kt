@@ -1,6 +1,13 @@
 package app.luxion.shogunai.domain.usecase
 
+import app.luxion.shogunai.domain.FakeCustomPoolLeaseStore
+import app.luxion.shogunai.domain.io.CustomPoolLeaseStore
+import java.io.IOException
 import app.luxion.shogunai.domain.FakePhysicalDeviceInventoryStore
+import app.luxion.shogunai.domain.customPoolRelease
+import app.luxion.shogunai.domain.dbLease
+import app.luxion.shogunai.domain.model.CustomPoolFailure
+import app.luxion.shogunai.domain.model.CustomPoolLeases
 import app.luxion.shogunai.domain.FakePhysicalDeviceLeaseStore
 import app.luxion.shogunai.domain.executor.CommandTimeouts
 import app.luxion.shogunai.domain.model.DeviceLeases
@@ -151,6 +158,34 @@ class RemoveWorktreeUseCaseTest {
 
         assertEquals(DeviceLeases(), leases.leases)
         assertTrue(queue.read(WaitQueueName.IOS_DEVICE).isEmpty())
+    }
+
+    @Test
+    fun `removing a worktree releases its custom pool slots before the folder and reports a failing release`() = runTest {
+        val leases = FakeCustomPoolLeaseStore(CustomPoolLeases(listOf(dbLease(config.baseRepositoryPath, worktreePath))))
+        val executor = FakeShellCommandExecutor { if (it.first() == "./scripts/db-down.sh") failure(it) else success(it) }
+
+        val removal = RemoveWorktreeUseCase(config, executor, releaseCustomPools = customPoolRelease(config.baseRepositoryPath, executor, leases))(worktreePath)
+            .getOrThrow()
+
+        assertEquals(listOf("./scripts/db-down.sh", "1"), executor.executedCommands.first())
+        assertEquals(CustomPoolLeases(), leases.leases)
+        assertIs<CustomPoolFailure>(removal.poolReleaseFailures.single())
+    }
+
+    @Test
+    fun `a pool store that fails doesn't stop the removal`() = runTest {
+        val broken = object : CustomPoolLeaseStore {
+            override fun read() = CustomPoolLeases(listOf(dbLease(config.baseRepositoryPath, worktreePath)))
+            override fun write(leases: CustomPoolLeases) = throw IOException("read-only file system")
+        }
+        val executor = FakeShellCommandExecutor { success(it) }
+
+        val removal = RemoveWorktreeUseCase(config, executor, releaseCustomPools = customPoolRelease(config.baseRepositoryPath, executor, broken))(worktreePath)
+            .getOrThrow()
+
+        assertEquals(emptyList(), removal.poolReleaseFailures)
+        assertTrue(executor.executedCommands.any { it.take(3) == listOf("git", "worktree", "remove") })
     }
 
     @Test

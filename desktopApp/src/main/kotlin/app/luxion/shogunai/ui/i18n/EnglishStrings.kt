@@ -712,6 +712,8 @@ object EnglishStrings : Strings, XcodeStrings by EnglishXcodeStrings {
     override val variableNameReserved = "This name is reserved because it changes how other tools behave, so it can't be declared."
     override val approvalVariablesTitle = "Environment variables"
     override fun approvalEnvFile(path: String) = "Environment file: $path"
+    override val approvalPoolsTitle = "Pools"
+    override fun approvalPool(name: String, max: Int) = "$name, at most $max at once"
     override val approvalNodeInstall = "Installs Node dependencies with the repository's package manager (npm ci, pnpm, yarn or bun install)"
     override fun variablesAwaitingApproval(names: List<String>) =
         "Awaiting approval: ${names.joinToString(", ")}. Approve them in project settings or with shogun trust."

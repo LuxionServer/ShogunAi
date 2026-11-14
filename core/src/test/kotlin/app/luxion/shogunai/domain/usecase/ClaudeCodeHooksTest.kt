@@ -108,21 +108,53 @@ class ClaudeCodeHooksTest {
     fun `the desktop turn hook runs only for shell commands mentioning computer`() {
         hooks.install(path).getOrThrow()
 
-        val group = preToolUseGroups().single { it.getValue("matcher").jsonPrimitive.content == "Bash" }
+        val group = preToolUseGroups().single { it.isBash() && it.shogunCommand() == DESKTOP_TURN }
         val hook = group.getValue("hooks").jsonArray.single().jsonObject
-        assertEquals("Bash", group.getValue("matcher").jsonPrimitive.content)
-        assertEquals("shogun hook desktop-turn", hook.getValue("command").jsonPrimitive.content)
         assertEquals("Bash(*computer *)", hook.getValue("if").jsonPrimitive.content)
+    }
+
+    @Test
+    fun `the build turn hooks run only for shell commands mentioning a build tool`() {
+        hooks.install(path).getOrThrow()
+
+        val groups = preToolUseGroups().filter { it.shogunCommand() == BUILD_TURN }
+        assertTrue(groups.all { it.isBash() })
+        assertEquals(
+            listOf("Bash(*gradle*)", "Bash(*mvn*)", "Bash(*xcodebuild*)", "Bash(*swift *)"),
+            groups.map { it.getValue("hooks").jsonArray.single().jsonObject.getValue("if").jsonPrimitive.content },
+        )
+    }
+
+    @Test
+    fun `an installation from before the build turn is outdated and gets its hooks`() {
+        hooks.install(path).getOrThrow()
+        val previous = written().getValue("hooks").jsonObject.let { all ->
+            JsonObject(mapOf("hooks" to JsonObject(all + ("PreToolUse" to JsonArray(preToolUseGroups().filter { it.shogunCommand() != BUILD_TURN })))))
+        }
+        settings(previous.toString())
+
+        val status = hooks.status(path).getOrThrow()
+        val preview = hooks.install(path).getOrThrow()
+
+        assertEquals(HooksInstallState.OUTDATED, status.state)
+        assertEquals(listOf("PreToolUse"), status.events)
+        assertEquals(List(4) { HookEntry("PreToolUse", BUILD_TURN) }, preview.added)
+        assertTrue(preview.replaced.isEmpty() && preview.removed.isEmpty())
+        assertEquals(List(2) { DESKTOP_TURN } + List(4) { BUILD_TURN }, commands(written(), "PreToolUse"))
     }
 
     private fun preToolUseGroups(): List<JsonObject> =
         written().getValue("hooks").jsonObject.getValue("PreToolUse").jsonArray.map { it.jsonObject }
 
+    private fun JsonObject.isBash(): Boolean = this["matcher"]?.jsonPrimitive?.content == "Bash"
+
+    private fun JsonObject.shogunCommand(): String = getValue("hooks").jsonArray.single().jsonObject.getValue("command").jsonPrimitive.content
+
     @Test
     fun `the desktop turn hook also runs for Claude's acting computer-use tools`() {
         hooks.install(path).getOrThrow()
 
-        val group = preToolUseGroups().single { it.getValue("matcher").jsonPrimitive.content != "Bash" }
+        val group = preToolUseGroups().single { !it.isBash() }
         val hook = group.getValue("hooks").jsonArray.single().jsonObject
         val matcher = Regex(group.getValue("matcher").jsonPrimitive.content)
         assertEquals("shogun hook desktop-turn", hook.getValue("command").jsonPrimitive.content)
@@ -136,7 +168,7 @@ class ClaudeCodeHooksTest {
     fun `the previous version's PreToolUse hook is outdated and gets the computer-use hook`() {
         hooks.install(path).getOrThrow()
         val previous = written().getValue("hooks").jsonObject.let { all ->
-            val bashOnly = JsonArray(preToolUseGroups().filter { it.getValue("matcher").jsonPrimitive.content == "Bash" })
+            val bashOnly = JsonArray(preToolUseGroups().filter { it.isBash() && it.shogunCommand() == DESKTOP_TURN })
             JsonObject(mapOf("hooks" to JsonObject(all + ("PreToolUse" to bashOnly))))
         }
         settings(previous.toString())
@@ -146,21 +178,21 @@ class ClaudeCodeHooksTest {
 
         assertEquals(HooksInstallState.OUTDATED, status.state)
         assertEquals(listOf("PreToolUse"), status.events)
-        assertEquals(listOf(HookEntry("PreToolUse", "shogun hook desktop-turn")), preview.added)
+        assertEquals(listOf(HookEntry("PreToolUse", DESKTOP_TURN)) + List(4) { HookEntry("PreToolUse", BUILD_TURN) }, preview.added)
         assertTrue(preview.replaced.isEmpty() && preview.removed.isEmpty())
-        assertEquals(1, preToolUseGroups().count { it.getValue("matcher").jsonPrimitive.content == "Bash" })
-        assertEquals(2, preToolUseGroups().size)
+        assertEquals(5, preToolUseGroups().count { it.isBash() })
+        assertEquals(6, preToolUseGroups().size)
         assertEquals(HooksInstallState.INSTALLED, hooks.status(path).getOrThrow().state)
     }
 
     @Test
-    fun `uninstalling removes both PreToolUse hooks and keeps the others`() {
+    fun `uninstalling removes every PreToolUse hook of ShogunAi and keeps the others`() {
         settings("""{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"lint-check"}]}]}}""")
         hooks.install(path).getOrThrow()
 
         val preview = hooks.uninstall(path).getOrThrow()
 
-        assertEquals(2, preview.removed.count { it.event == "PreToolUse" })
+        assertEquals(6, preview.removed.count { it.event == "PreToolUse" })
         assertEquals(listOf("lint-check"), commands(written(), "PreToolUse"))
     }
 
@@ -177,8 +209,8 @@ class ClaudeCodeHooksTest {
 
         assertEquals(HooksInstallState.OUTDATED, status.state)
         assertEquals(listOf("PreToolUse"), status.events)
-        assertEquals(List(2) { HookEntry("PreToolUse", "shogun hook desktop-turn") }, preview.added)
-        assertEquals(List(2) { "shogun hook desktop-turn" }, commands(written(), "PreToolUse"))
+        assertEquals(List(2) { HookEntry("PreToolUse", DESKTOP_TURN) } + List(4) { HookEntry("PreToolUse", BUILD_TURN) }, preview.added)
+        assertEquals(List(2) { DESKTOP_TURN } + List(4) { BUILD_TURN }, commands(written(), "PreToolUse"))
     }
 
     @Test
@@ -194,7 +226,7 @@ class ClaudeCodeHooksTest {
         val preview = hooks.install(path).getOrThrow()
 
         assertEquals(listOf(HookReplacement("PreToolUse", listOf("shogun hook desktop-turn"), "shogun hook desktop-turn")), preview.replaced)
-        assertEquals(listOf("lint-check", "shogun hook desktop-turn", "shogun hook desktop-turn"), commands(written(), "PreToolUse"))
+        assertEquals(listOf("lint-check") + List(2) { DESKTOP_TURN } + List(4) { BUILD_TURN }, commands(written(), "PreToolUse"))
         val shogunHook = preToolUseGroups()[1].getValue("hooks").jsonArray.single().jsonObject
         assertEquals("Bash(*computer *)", shogunHook.getValue("if").jsonPrimitive.content)
         assertEquals(HooksInstallState.INSTALLED, hooks.status(path).getOrThrow().state)
@@ -347,5 +379,10 @@ class ClaudeCodeHooksTest {
 
         val error = assertIs<WorktreeError.InvalidClaudeSettings>(hooks.status(path).exceptionOrNull())
         assertFalse(error.detail.contains("\n"))
+    }
+
+    private companion object {
+        const val DESKTOP_TURN = "shogun hook desktop-turn"
+        const val BUILD_TURN = "shogun hook build-turn"
     }
 }

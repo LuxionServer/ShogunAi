@@ -3,6 +3,7 @@ package app.luxion.shogunai.ui.i18n
 import app.luxion.shogunai.domain.model.AGENT_START_SECONDS
 import app.luxion.shogunai.domain.model.ORCA_START_SECONDS
 import app.luxion.shogunai.domain.executor.CommandExecutionException
+import app.luxion.shogunai.domain.model.CustomPoolFailure
 import app.luxion.shogunai.domain.model.HolderProtection
 import app.luxion.shogunai.domain.model.PoolHolder
 import app.luxion.shogunai.domain.model.PoolHolderState
@@ -231,6 +232,7 @@ private fun englishWorktreeTexts(error: WorktreeError, gitCause: GitFailureCause
         "${error.summary}.",
         "Connect or release a device, or wait for one with --wait.",
     )
+    is CustomPoolFailure -> englishCustomPoolTexts(error.problem)
     is WorktreeError.PhysicalDeviceWaitTimedOut -> ErrorTexts(
         "No device was free within ${error.waited.toMinutes()} min.",
         "Release one from the Devices view, or try again later.",

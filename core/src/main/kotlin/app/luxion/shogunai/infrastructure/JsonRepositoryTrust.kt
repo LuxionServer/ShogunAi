@@ -53,7 +53,7 @@ class JsonRepositoryTrust(
     }
 
     private fun digestOf(subject: RepositoryApprovalSubject): String {
-        val canonical = if (subject.declaresEnvironment || subject.nodeInstall) canonicalOf(subject) else Json.encodeToString(subject.commands)
+        val canonical = if (subject.declaresEnvironment || subject.pools.isNotEmpty() || subject.nodeInstall) canonicalOf(subject) else Json.encodeToString(subject.commands)
         return MessageDigest.getInstance("SHA-256").digest(canonical.toByteArray()).joinToString("") { "%02x".format(it) }
     }
 
@@ -63,10 +63,10 @@ class JsonRepositoryTrust(
             subject.variables.sortedBy { it.first }.map { (name, template) -> JsonArray(listOf(JsonPrimitive(name), JsonPrimitive(template))) },
         )
         val envFile: JsonElement = if (subject.envFile != null) JsonPrimitive(subject.envFile) else JsonNull
-        val fields = linkedMapOf("commands" to commands, "env" to variables, "envFile" to envFile)
-        if (subject.nodeInstall) fields["nodeInstall"] = JsonPrimitive(true)
-        val canonical = JsonObject(fields)
-        return Json.encodeToString(JsonElement.serializer(), canonical)
+        val members = linkedMapOf("commands" to commands, "env" to variables, "envFile" to envFile)
+        poolsJsonOf(subject.pools)?.let { members["pools"] = it }
+        if (subject.nodeInstall) members["nodeInstall"] = JsonPrimitive(true)
+        return Json.encodeToString(JsonElement.serializer(), JsonObject(members))
     }
 
     @Serializable

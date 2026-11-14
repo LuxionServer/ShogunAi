@@ -1,5 +1,6 @@
 package app.luxion.shogunai.ui.i18n
 
+import app.luxion.shogunai.domain.model.CustomPoolFailure
 import app.luxion.shogunai.domain.model.AGENT_START_SECONDS
 import app.luxion.shogunai.domain.model.ORCA_START_SECONDS
 import app.luxion.shogunai.domain.model.MacPermission
@@ -232,6 +233,7 @@ private fun spanishWorktreeTexts(error: WorktreeError, gitCause: GitFailureCause
         "Ningún dispositivo que coincida está libre: los que hay están desconectados, retirados, sin permisos o en uso.",
         "Conecta o libera un dispositivo, o espera uno con --wait.",
     )
+    is CustomPoolFailure -> spanishCustomPoolTexts(error.problem)
     is WorktreeError.PhysicalDeviceWaitTimedOut -> ErrorTexts(
         "Ningún dispositivo quedó libre en ${error.waited.toMinutes()} min.",
         "Libera uno desde la vista Dispositivos, o inténtalo más tarde.",

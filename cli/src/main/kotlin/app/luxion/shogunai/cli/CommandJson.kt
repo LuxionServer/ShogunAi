@@ -216,6 +216,7 @@ fun trustJson(repository: String, subject: RepositoryApprovalSubject, approved: 
         },
     )
     put("envFile", subject.envFile)
+    put("pools", trustPoolsJson(subject.pools))
     put("nodeInstall", subject.nodeInstall)
     put("approved", approved)
     put("changed", changed)

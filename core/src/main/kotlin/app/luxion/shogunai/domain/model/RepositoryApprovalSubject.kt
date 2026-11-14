@@ -4,9 +4,10 @@ data class RepositoryApprovalSubject(
     val commands: List<List<String>> = emptyList(),
     val variables: List<Pair<String, String>> = emptyList(),
     val envFile: String? = null,
+    val pools: List<CustomPool> = emptyList(),
     val nodeInstall: Boolean = false,
 ) {
-    val isEmpty: Boolean get() = commands.isEmpty() && variables.isEmpty() && envFile == null && !nodeInstall
+    val isEmpty: Boolean get() = commands.isEmpty() && variables.isEmpty() && envFile == null && pools.isEmpty() && !nodeInstall
 
     val declaresEnvironment: Boolean get() = variables.isNotEmpty() || envFile != null
 
@@ -18,5 +19,6 @@ val RepositoryProvisioning.approvalSubject: RepositoryApprovalSubject
         commands = postCreateCommands,
         variables = environment.variables.map { it.name to it.source },
         envFile = environment.envFile,
+        pools = pools,
         nodeInstall = providers.node != null,
     )

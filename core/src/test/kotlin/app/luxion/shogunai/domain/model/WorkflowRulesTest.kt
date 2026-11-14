@@ -199,4 +199,21 @@ class WorkflowRulesTest {
         assertEquals(WorkflowRules.all.size, ids(WorkflowRules.all).toSet().size)
         WorkflowRules.all.forEach { assertTrue(it.id.startsWith(it.topic.id + "."), it.id) }
     }
+
+    @Test
+    fun `the repository's pools are named in the session hint and the guide only when declared`() {
+        val one = worktree.copy(customPools = listOf("db"))
+        val two = worktree.copy(customPools = listOf("db", "gpu"))
+
+        val hint = WorkflowRules.sessionStartLines(one).single { "shogun pool" in it }
+        val rule = WorkflowRules.rulesFor(two, WorkflowTopic.RESOURCES).applicable.single { it.id == "resources.custom-pools" }
+
+        assertTrue("`shogun pool acquire db --wait`" in hint && "`shogun pool release db`" in hint)
+        assertTrue("the pools db, gpu" in rule.text && "`shogun pool acquire <name> --wait`" in rule.text)
+        assertTrue("pool db, gpu" in rule.sessionStartText.orEmpty())
+        assertTrue(WorkflowRules.sessionStartLines(worktree).none { "shogun pool" in it })
+        assertFalse("resources.custom-pools" in ids(WorkflowRules.rulesFor(worktree).inapplicable))
+        val generic = WorkflowRules.all.single { it.id == "resources.custom-pools" }
+        assertTrue(generic.text.startsWith("The repository declares pools") && "<name>" in generic.sessionStartText.orEmpty())
+    }
 }
