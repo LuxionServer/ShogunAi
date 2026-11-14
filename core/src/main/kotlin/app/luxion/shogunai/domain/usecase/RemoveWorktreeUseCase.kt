@@ -11,6 +11,7 @@ data class WorktreeRemoval(
     val branch: BranchDeletion? = null,
     val headlessAppFailure: WorktreeError? = null,
     val orcaFailure: WorktreeError? = null,
+    val poolReleaseFailures: List<WorktreeError> = emptyList(),
 )
 
 class RemoveWorktreeUseCase(
@@ -22,9 +23,11 @@ class RemoveWorktreeUseCase(
     releaseDesktopTurn: ReleaseDesktopTurnUseCase? = null,
     private val closeOrcaTerminals: CloseOrcaTerminalsUseCase? = null,
     releasePhysicalDevices: ReleasePhysicalDeviceUseCase? = null,
+    releaseCustomPools: ReleaseCustomPoolUseCase? = null,
 ) {
-    private val folderRemoval =
-        WorktreeFolderRemoval(config, executor, fileManager, closeHerdrWorkspaces, stopHeadlessApp, releaseDesktopTurn, closeOrcaTerminals, releasePhysicalDevices)
+    private val folderRemoval = WorktreeFolderRemoval(
+        config, executor, fileManager, closeHerdrWorkspaces, stopHeadlessApp, releaseDesktopTurn, closeOrcaTerminals, releasePhysicalDevices, releaseCustomPools,
+    )
 
     suspend operator fun invoke(
         worktreePath: String,
@@ -42,7 +45,7 @@ class RemoveWorktreeUseCase(
             ?: if (closing.closedOrcaTerminals) null else closeOrcaTerminals?.close(orcaTerminals, listOf(worktreePath)).orEmpty().firstOrNull()?.error
 
         val branch = branchToDelete?.let { deleteBranch(it, forceBranchDeletion) }
-        WorktreeRemoval(herdrFailure, branch, closing.headlessAppFailure, orcaFailure)
+        WorktreeRemoval(herdrFailure, branch, closing.headlessAppFailure, orcaFailure, closing.poolReleaseFailures)
     }
 
     private suspend fun deleteBranch(branch: String, forced: Boolean): BranchDeletion {

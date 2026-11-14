@@ -1,5 +1,7 @@
 package app.luxion.shogunai.ui.projectconfig
 
+import app.luxion.shogunai.domain.model.CustomPool
+import app.luxion.shogunai.domain.model.parsePoolTemplate
 import app.luxion.shogunai.domain.model.DetectedStack
 import app.luxion.shogunai.SimulatorSetup
 import app.luxion.shogunai.domain.FakeProjectRepository
@@ -480,6 +482,19 @@ class ProjectConfigEdgeCasesTest {
 
         assertEquals(setOf(basePath), approved.approvals.keys)
         assertTrue(notApproved.approvals.isEmpty())
+    }
+
+    @Test
+    fun `a save never approves pools the user didn't see`() {
+        val pool = CustomPool("db", 1, listOf(parsePoolTemplate("./scripts/db-up.sh")))
+        val withPool = environmentProvisioning.copy(pools = listOf(pool))
+        val trust = FakeRepositoryTrust()
+        val viewModel = viewModel(source = FakeRepositoryProvisioningSource(byRepository = mapOf(basePath to withPool)), trust = trust)
+
+        viewModel.setFlutterEnabled(true)
+
+        assertIs<SaveOutcome.Saved>(viewModel.submit(previewConfirmed = true))
+        assertTrue(trust.approvals.isEmpty())
     }
 
     @Test
