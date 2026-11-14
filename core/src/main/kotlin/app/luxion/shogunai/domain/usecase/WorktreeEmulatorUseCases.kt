@@ -37,7 +37,7 @@ class StartWorktreeEmulatorUseCase(
         val environment = resolveEnvironment(config.baseRepositoryPath, worktreePath, reserve = false).getOrThrow()
         val port = environment.ports.getValue(EMULATOR_PORT_KEY)
         val serial = emulatorSerial(port)
-        val current = sdk.deviceStates(location)[serial]
+        val current = sdk.deviceStates(location, setOf(serial))[serial]
         if (current == EmulatorState.RUNNING) {
             return@runSuspendCatching DeviceStart(WorktreeEmulator(serial, EmulatorState.RUNNING), acquisition)
         }
@@ -49,16 +49,25 @@ class StartWorktreeEmulatorUseCase(
             null
         }
         var waited = 0L
-        while (sdk.deviceStates(location)[serial] != EmulatorState.RUNNING) {
+        var state = sdk.deviceStates(location, setOf(serial))[serial]
+        while (state != EmulatorState.RUNNING) {
             if (process != null && !process.isAlive) {
                 throw WorktreeError.EmulatorExitedEarly(serial, process.lastLogLines(LOG_TAIL_LINES))
             }
-            if (waited >= timeoutMs) throw WorktreeError.EmulatorBootTimeout(serial, timeoutMs / 1000)
+            if (waited >= timeoutMs) throw bootTimeout(serial, state)
             pause(pollIntervalMs)
             waited += pollIntervalMs
+            state = sdk.deviceStates(location, setOf(serial))[serial]
         }
         DeviceStart(WorktreeEmulator(serial, EmulatorState.RUNNING), acquisition)
     }
+
+    private fun bootTimeout(serial: String, state: EmulatorState?): WorktreeError =
+        if (state == EmulatorState.UNRESPONSIVE) {
+            WorktreeError.EmulatorUnresponsive(serial, timeoutMs / 1000)
+        } else {
+            WorktreeError.EmulatorBootTimeout(serial, timeoutMs / 1000)
+        }
 
     companion object {
         const val POLL_INTERVAL_MS = 2_000L
@@ -82,7 +91,7 @@ class StopWorktreeEmulatorUseCase(
     suspend fun stopSerials(config: ProjectConfig, serials: List<String>): List<WorktreeEmulator> {
         if (serials.isEmpty()) return emptyList()
         val location = sdk.locate(config.baseRepositoryPath)
-        val running = sdk.deviceStates(location)
+        val running = sdk.deviceStates(location, serials.toSet())
         return serials.map { serial ->
             if (serial in running) sdk.stopEmulator(location, serial)
             WorktreeEmulator(serial, EmulatorState.STOPPED)
@@ -104,7 +113,7 @@ class ReadEmulatorStatesUseCase(
                     ?.let { worktree.path to emulatorSerial(it) }
             }.toMap()
             if (serials.isEmpty()) return@runSuspendCatching emptyMap()
-            val states = sdk.deviceStates(sdk.locate(config.baseRepositoryPath))
+            val states = sdk.deviceStates(sdk.locate(config.baseRepositoryPath), serials.values.toSet())
             serials.mapValues { (_, serial) -> WorktreeEmulator(serial, states[serial] ?: EmulatorState.STOPPED) }
         }
 

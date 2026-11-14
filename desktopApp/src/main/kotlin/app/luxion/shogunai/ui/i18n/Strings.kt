@@ -391,6 +391,7 @@ interface Strings : XcodeStrings {
     val emulatorStopped: String
     val emulatorBooting: String
     val emulatorRunning: String
+    val emulatorUnresponsive: String
     val startEmulator: String
     val stopEmulator: String
     val alsoStopEmulators: String
@@ -476,6 +477,7 @@ interface Strings : XcodeStrings {
     val deviceUnpaired: String
     val deviceDeveloperModeOff: String
     val deviceConnecting: String
+    val deviceUnresponsive: String
     fun devicesWaitingTitle(platform: String): String
     val releaseDevice: String
     val withdrawDevice: String

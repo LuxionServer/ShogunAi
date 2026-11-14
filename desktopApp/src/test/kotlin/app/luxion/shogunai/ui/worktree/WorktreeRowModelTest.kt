@@ -148,12 +148,14 @@ class WorktreeRowModelTest {
         val booting = model(emulator = WorktreeEmulator("emulator-5556", EmulatorState.BOOTING))
         val running = model(emulator = WorktreeEmulator("emulator-5556", EmulatorState.RUNNING))
         val stopped = model(emulator = WorktreeEmulator("emulator-5556", EmulatorState.STOPPED))
+        val unresponsive = model(emulator = WorktreeEmulator("emulator-5556", EmulatorState.UNRESPONSIVE))
         val bootedSimulator = model(simulator = WorktreeSimulator("ABCD-EFGH", "iPhone 16", SimulatorState.BOOTED))
         val shutdownSimulator = model(simulator = WorktreeSimulator("ABCD-EFGH", "iPhone 16", SimulatorState.SHUTDOWN))
 
         assertEquals(Status.INFO, booting.execution.device?.status)
         assertEquals(Status.SUCCESS, running.execution.device?.status)
         assertNull(stopped.execution.device)
+        assertEquals(Status.WARNING, unresponsive.execution.device?.status)
         assertTrue(bootedSimulator.execution.device!!.isSimulator)
         assertNull(shutdownSimulator.execution.device)
     }

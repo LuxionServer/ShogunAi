@@ -190,6 +190,12 @@ sealed class WorktreeError(override val message: String, cause: Throwable? = nul
     class EmulatorBootTimeout(val serial: String, val seconds: Long) :
         WorktreeError("$serial didn't finish booting within $seconds s; it's still starting")
 
+    class EmulatorUnresponsive(val serial: String, val seconds: Long) :
+        WorktreeError("$serial is running but hasn't answered adb for $seconds s. Wait and run `shogun emulator start` again, or restart it with `shogun emulator stop` and `shogun emulator start`")
+
+    class EmulatorDidNotExit(val serial: String, val consolePort: Int) :
+        WorktreeError("$serial didn't answer the request to exit. End its emulator process, the one started on port $consolePort, and run `shogun emulator start` again")
+
     class EmulatorExitedEarly(val serial: String, val lastLogLines: String) :
         WorktreeError(
             "The emulator process of $serial exited before it finished booting" +
@@ -385,7 +391,6 @@ sealed class WorktreeError(override val message: String, cause: Throwable? = nul
 
     class TourAlreadyExists(val path: String) :
         WorktreeError("The tour's folder already exists: $path")
-
 }
 
 private fun List<PoolHolder>.holderList(): String =
@@ -416,12 +421,6 @@ private fun desktopQueueNote(waiting: Int): String =
     if (waiting == 1) "1 worktree is waiting for the desktop first" else "$waiting worktrees are waiting for the desktop first"
 
 private fun DesktopTurn.expiryClockTime(): String = Instant.ofEpochMilli(expiresAt).toLocalClockTime()
-
-fun Duration.toWaitText(): String = when {
-    toMinutes() >= 1 && toSecondsPart() == 0 -> "${toMinutes()} min"
-    toMinutes() >= 1 -> "${toMinutes()} min ${toSecondsPart()} s"
-    else -> "$seconds s"
-}
 
 private fun PoolHolder.protectionNote(): String {
     val protection = protection ?: return ""
@@ -455,7 +454,3 @@ private fun HeldDevice.holdNote(): String = buildString {
     if (agentState == AgentState.WORKING) append(", agent working") else append(" until ${expiresAt.toLocalClockTime()}")
     if (!isConnected) append(", disconnected")
 }
-
-fun Instant.toLastSeenText(): String = LAST_SEEN.format(this)
-
-private val LAST_SEEN = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm").withZone(java.time.ZoneId.systemDefault())
