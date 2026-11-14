@@ -87,7 +87,7 @@ sealed interface CliCommand {
     data class Xcode(val json: Boolean = false) : CliCommand, JsonOutput {
         override fun withJson() = copy(json = true)
     }
-    data class XcodeClean(val json: Boolean = false) : CliCommand, JsonOutput {
+    data class XcodeClean(val swiftBuild: Boolean = false, val json: Boolean = false) : CliCommand, JsonOutput {
         override fun withJson() = copy(json = true)
     }
     data class XcodeTrim(val dryRun: Boolean = false, val json: Boolean = false) : CliCommand, JsonOutput {
@@ -255,6 +255,7 @@ fun parseArguments(args: List<String>): ParsedArguments {
                 "open" -> parseOpen(arguments)
                 "status" -> parseStatus(arguments)
                 "base" -> parseBase(arguments)
+                "overlap" -> parseOverlap(arguments)
                 "clean" -> parseClean(arguments)
                 "hook" -> parseHook(arguments)
                 "hooks" -> parseHooks(arguments)
@@ -544,8 +545,8 @@ private fun parseXcode(rest: List<String>): CliCommand {
         return CliCommand.XcodeTrim(dryRun = flags.isNotEmpty())
     }
     if (subcommand != "clean") throw UsageException("unknown subcommand '$subcommand' for 'xcode', expected clean or trim")
-    rest.drop(1).firstOrNull()?.let { throw UsageException("'xcode clean' takes no arguments, got '$it'") }
-    return CliCommand.XcodeClean()
+    rest.drop(1).firstOrNull { it != "--swift-build" }?.let { throw UsageException("unknown argument '$it' for 'xcode clean', expected --swift-build") }
+    return CliCommand.XcodeClean(swiftBuild = rest.size > 1)
 }
 
 private fun parseGradle(rest: List<String>): CliCommand {

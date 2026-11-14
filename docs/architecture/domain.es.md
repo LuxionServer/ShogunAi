@@ -570,6 +570,19 @@ interface DerivedDataSource {
 
 Todo lo que el provider de Xcode necesita de los DerivedData de Xcode: si el sistema es macOS, las carpetas de proyecto de la ubicación actual sin su tamaño (nunca las cachés compartidas de Xcode, que no tienen `info.plist`), el tamaño de una carpeta medido bajo demanda y cancelable, el tamaño de la caché de compilación compartida (`null` si no existe), si un workspace sigue existiendo o está en un volumen no montado, y borrar una carpeta.
 
+### `SwiftBuildSource`
+
+```kotlin
+interface SwiftBuildSource {
+    fun folderOf(worktreePath: String): DerivedDataFolder?
+    suspend fun size(folder: DerivedDataFolder): Long
+    suspend fun packagesSize(folder: DerivedDataFolder): Long
+    suspend fun delete(folder: DerivedDataFolder)
+}
+```
+
+La carpeta `.build` de un worktree de un paquete Swift, como un `DerivedDataFolder` de tipo `SWIFT_BUILD` cuyo `workspacePath` es el worktree, de modo que el listado, la medición, los tamaños recordados y la cuota la tratan como una carpeta de DerivedData. `DerivedDataFolders` reparte según el tipo de la carpeta el tamaño, el de los paquetes, el borrado y la relectura antes de liberarla.
+
 ### `TerminalLauncher` / `EditorLauncher` / `FolderLauncher` / `ToolDetector`
 
 ```kotlin
@@ -899,6 +912,8 @@ Se usan en macOS cuando el repositorio declara el provider de Xcode:
 
 - `ListDerivedDataUseCase(worktrees, includeCompilationCache, measure)` atribuye cada carpeta de `DerivedDataSource`: un workspace que no existe es `UnavailableVolume` si su volumen no está montado y, si no, `Orphaned`; uno que existe pertenece al worktree de ruta más larga que lo contiene (`owningWorktree`, la misma regla que los agentes en ejecución y los daemons de Gradle) y, si no, a `OtherProject`. `measure` indica a qué carpetas se les mide el tamaño: `NONE`, `ORPHANS` o `ALL`. Las huérfanas son de toda la máquina: cuando su proyecto ya no existe, nada puede usar la carpeta, la creara la herramienta que la creara.
 - `DeleteOrphanedDerivedDataUseCase` vuelve a listar las carpetas, se queda con las que siguen huérfanas, comprueba cada workspace otra vez justo antes de borrar (un proyecto restaurado entretanto conserva su carpeta), mide cada huérfana que aún no tiene tamaño para que `bytesFreed` sea correcto y devuelve un `DerivedDataDeletion`; un fallo no detiene el resto. La carpeta de un worktree eliminado es huérfana por definición, así que la limpieza solo ejecuta este caso de uso después de eliminar.
+- `ListDerivedDataUseCase` recibe también `packageWorktrees`, los worktrees de los repositorios que declaran el provider de Xcode, y añade la carpeta `.build` de cada uno (`SwiftBuildSource.folderOf`) como de ese worktree, nunca huérfana. `TrimDerivedDataUseCase` libera esas carpetas junto al DerivedData de los worktrees, en el mismo orden y con la misma regla de uso (`isWorktreeFolderInUse`), leyéndolas de nuevo antes de borrarlas.
+- `DeleteUnusedSwiftBuildsUseCase` borra las carpetas `.build` de los worktrees dados que no están en uso, midiendo cada una y leyéndola de nuevo antes de borrarla, y devuelve un `SwiftBuildDeletion` con las borradas, las conservadas por estar en uso y los fallos.
 - `PrepareCocoaPodsUseCase` (un `CocoaPodsPreparer`) se ejecuta desde `PrepareWorktreeEnvironmentUseCase` después del fichero de entorno, así que lo reciben todos los flujos de creación y provisión, y devuelve un `PodsPreparation` (`cloned`, `installNeeded` con un `PodsInstallReason`, `error`) que `PreparedWorktree` lleva a `Worktree.pods` y `ProvisionResult.pods`. Con `XcodeProvider.cocoaPods` en macOS, lista los `Podfile.lock` versionados con `git ls-files` y, para cada carpeta sin `Pods`, clona el `Pods` de la base con `cp -c -R` cuando su `Manifest.lock` tiene el mismo contenido; nunca lanza excepciones, así que los pods no pueden deshacer un worktree.
 - `xcodeCompilationCacheContribution` es la contribución al entorno del provider cuando `XcodeProvider.compilationCache` está activo, en macOS (`MachineProviderContributions`): un recurso `xcode-compilation-cache` cuyo `create` escribe `~/.shogunai/xcode/compilation-cache.xcconfig` (`COMPILATION_CACHE_ENABLE_CACHING` y prefix mapping de Swift y Clang, cinco líneas `KEY = YES`) y cuyo `exists` comprueba que el fichero tiene ese contenido, más la variable `XCODE_XCCONFIG_FILE=<ruta>`. Al ser un recurso, solo se escribe al resolver con reserva y se vuelve a crear si se borra; el fichero es el mismo para todos los repositorios de la máquina. Un `XCODE_XCCONFIG_FILE` declarado en `env` gana.
 

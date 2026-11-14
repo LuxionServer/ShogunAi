@@ -71,17 +71,12 @@ fun PreferencesWindow(
         },
     ) {
         LaunchedEffect(bringToFrontRequests) { window.toFront() }
-        LaunchedEffect(Unit) { tools.refresh() }
-        LaunchedEffect(Unit) { claudeHooks.refresh() }
-        LaunchedEffect(Unit) { herdrPlugin.refresh() }
-        AppearanceScope(appearance) {
-            PreferencesContent(appearance, tools, resources, claudeHooks, herdrPlugin, updates, tray, inactivity)
-        }
+        AppearanceScope(appearance) { PreferencesContent(appearance, tools, resources, claudeHooks, herdrPlugin, updates, tray, inactivity) }
     }
 }
 
 @Composable
-private fun PreferencesContent(
+internal fun PreferencesContent(
     appearance: Appearance,
     tools: ToolsPreferences,
     resources: ResourcePreferences,
@@ -92,6 +87,9 @@ private fun PreferencesContent(
     inactivity: InactivityPreferences,
 ) {
     val strings = LocalStrings.current
+    LaunchedEffect(Unit) { tools.refresh() }
+    LaunchedEffect(Unit) { claudeHooks.refresh() }
+    LaunchedEffect(Unit) { herdrPlugin.refresh() }
     Column(
         modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(Spacing.lg),
         verticalArrangement = Arrangement.spacedBy(Spacing.sm),

@@ -9,6 +9,7 @@ import app.luxion.shogunai.domain.io.ClaudeSessionRegistry
 import app.luxion.shogunai.domain.io.ComposeProjectRegistry
 import app.luxion.shogunai.domain.io.ComposeProjectSource
 import app.luxion.shogunai.domain.io.DerivedDataSizeStore
+import app.luxion.shogunai.domain.io.SwiftBuildSource
 import app.luxion.shogunai.domain.io.DerivedDataSource
 import app.luxion.shogunai.domain.FakeForegroundCommandRunner
 import app.luxion.shogunai.domain.io.BuildTurnStore
@@ -97,6 +98,7 @@ fun cliEnginePorts(
     multirepos: MultirepoSource = JsonMultirepoSource(files.multirepos),
     provisioningRecords: ProvisioningRecordStore = ProvisioningRecordStore.NONE,
     derivedDataSizes: DerivedDataSizeStore = DerivedDataSizeStore.NONE,
+    swiftBuilds: SwiftBuildSource = SwiftBuildSource.NONE,
     packageCaches: PackageCacheSource = PackageCacheSource.NONE,
     deviceWaitQueue: DeviceWaitQueue = NioDeviceWaitQueue(files.folder),
     processLiveness: ProcessLiveness = ProcessHandleLiveness(),
@@ -137,6 +139,7 @@ fun cliEnginePorts(
     composeRegistry = composeRegistry,
     derivedData = derivedData,
     derivedDataSizes = derivedDataSizes,
+    swiftBuilds = swiftBuilds,
     packageCaches = packageCaches,
     herdr = herdr,
     herdrConfig = herdrConfig,

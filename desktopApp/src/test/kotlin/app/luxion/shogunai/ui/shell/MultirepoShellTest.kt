@@ -25,6 +25,7 @@ import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.UnavailableMultirepo
 import app.luxion.shogunai.domain.model.WorkspaceSetting
 import app.luxion.shogunai.ui.multirepo.MultirepoCatalog
+import app.luxion.shogunai.ui.multirepo.MultirepoMembership
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -414,6 +415,11 @@ class MultirepoShellTest {
             listOf(SidebarMultirepo(folder, "product", listOf(workspaceProject, app), ProjectActivity.NONE, collapsed = false, labels = labels)),
         ).filterIsInstance<SidebarEntry.FolderEntry>().single()
         assertEquals(listOf("app", "workspace"), folderEntry.multirepo.projects.map(folderEntry.multirepo::labelOf))
+    }
+
+    @Test
+    fun `a workspace repository without a project keeps its projects' names`() {
+        assertEquals(emptyMap(), multirepoChildLabels(MultirepoMembership(workspaceMultirepo(), aliases = emptyMap())))
     }
 
     @Test

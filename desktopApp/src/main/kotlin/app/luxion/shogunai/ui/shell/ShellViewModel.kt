@@ -211,7 +211,7 @@ class ShellViewModel(
             SidebarLevel.TopLevel -> entries.map { it.key }
             is SidebarLevel.Folder -> entries.filterIsInstance<SidebarEntry.FolderEntry>()
                 .firstOrNull { it.multirepo.folder == level.folder }
-                ?.multirepo?.projects?.map { it.id }.orEmpty()
+                ?.let { entry -> entry.multirepo.projects.map { it.id } }.orEmpty()
         }
     }
 
@@ -262,7 +262,7 @@ class ShellViewModel(
     }
 
     fun confirmMultirepoRemoval() {
-        val folder = multirepoPendingRemoval?.folder ?: return
+        val folder = (multirepoPendingRemoval ?: return).folder
         multirepoPendingRemoval = null
         forgetMultirepo(folder)
         if (folder in collapsedMultirepos) toggleMultirepoCollapsed(folder)
@@ -295,10 +295,10 @@ class ShellViewModel(
         leaveGuard = null
         projects = loadProjects()
         loadMultirepos()
-        val moved = previous != null &&
-            (previous.config.baseRepositoryPath != saved.config.baseRepositoryPath ||
-                previous.config.worktreesRoot != saved.config.worktreesRoot)
-        select(ShellDestination.All(saved.id, previous?.config?.worktreesRoot?.takeIf { moved }))
+        val movedFrom = previous?.let {
+            it.config.takeIf { config -> config.baseRepositoryPath != saved.config.baseRepositoryPath || config.worktreesRoot != saved.config.worktreesRoot }
+        }
+        select(ShellDestination.All(saved.id, movedFrom?.worktreesRoot))
     }
 
     fun rememberFetchBeforeCreate(projectId: String, fetch: Boolean) {
@@ -333,7 +333,7 @@ class ShellViewModel(
     private fun openForm(form: ShellDestination) {
         val current = destination
         if (current != null && !current.isForm) destinationBeforeForm = current
-        destination = form
+        select(form)
     }
 
     private fun select(target: ShellDestination?) {

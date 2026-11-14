@@ -102,6 +102,10 @@ Implementación de `DerivedDataSource` para macOS (`isSupported` comprueba `os.n
 - **Volúmenes**: una ruta bajo `/Volumes/<nombre>` está en un volumen no disponible si ese punto de montaje no existe.
 - **Borrado**: rechaza cualquier ruta que no sea hijo directo de la ubicación actual o no tenga `info.plist`, y después borra la carpeta recursivamente.
 
+## `FileSwiftBuildSource`
+
+Implementación de `SwiftBuildSource` sobre el puerto `FileManager`. Un worktree tiene carpeta `.build` cuando tiene `Package.swift` y `.build` es un directorio que no es un enlace simbólico; su último acceso es la modificación más reciente de `.build` y de sus entradas directas. El tamaño de los paquetes suma `checkouts` y `repositories`. El borrado rechaza cualquier ruta que no se llame `.build` o no tenga `Package.swift` al lado.
+
 ## `RepositoryProvisioningFiles`
 
 Implementación de `RepositoryProvisioningSource` sobre `java.nio.file` y `kotlinx.serialization`, sobre `<repo>/.shogunai.json` y `<repo>/.worktreeinclude`.
@@ -194,6 +198,7 @@ En `core/src/testFixtures/kotlin/app/luxion/shogunai/domain/`, los test fixtures
 - `FakeHerdrClient` — registra los worktrees abiertos, los panes divididos y cerrados, los workspaces cerrados, los comandos ejecutados y los agentes enfocados, da por abiertos los worktrees que se le indican (o que vuelve a abrir) o por abiertos sus workspaces, devuelve los agentes que se le indican, lista los panes que se le indican más los que crea, marca vivo el agente de un pane cuando se ejecuta un comando en él (en el acto, tras varios listados, nunca con `startsAgents = false`, o de nuevo ausente con `quitAgent`), y puede hacer fallar la apertura, la ejecución, el listado de worktrees o de agentes, o el cierre de un workspace dado con un error dado.
 - `FakeAndroidSdk` — sustituye `AndroidSdk` con AVDs, estados de emulador que pasan de arrancando a en marcha tras un número de consultas, un interruptor de SDK ausente y registro de arranques y paradas.
 - `FakeGradleDaemonSource` — sustituye `GradleDaemonSource` con una lista mutable de daemons (o un fallo) y cuenta los listados; `gradleDaemon(...)` y `kotlinDaemon(...)` los construyen.
+- `FakeSwiftBuildSource` — sustituye `SwiftBuildSource` con carpetas `.build` por worktree, tamaños y tamaños de paquetes, mediciones y borrados que fallan, y los registra; `swiftBuild(...)` construye una carpeta.
 - `FakeDerivedDataSource` — sustituye `DerivedDataSource` con carpetas, tamaños por ruta (registrando qué carpetas se midieron), proyectos existentes, volúmenes no montados, un tamaño de caché de compilación, un interruptor de macOS y borrados que fallan, y registra los borrados; `derivedData(...)` construye una carpeta.
 - `FakeClipboardWriter` — sustituye `ClipboardWriter`.
 - `FakeProjectRepository` — sustituye `ProjectRepository` en los tests de ViewModels.

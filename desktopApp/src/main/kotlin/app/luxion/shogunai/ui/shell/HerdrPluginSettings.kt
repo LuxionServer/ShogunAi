@@ -20,7 +20,7 @@ class HerdrPluginSettings(private val health: HerdrPluginHealth) {
     var running by mutableStateOf(false)
         private set
 
-    val action: HerdrPluginState? get() = status?.state?.takeIf { it == HerdrPluginState.BROKEN || it == HerdrPluginState.MISSING }
+    val action: HerdrPluginState? get() = status?.state.takeIf { it == HerdrPluginState.BROKEN || it == HerdrPluginState.MISSING }
 
     suspend fun refresh() {
         status = withContext(Dispatchers.IO) { health.status() }

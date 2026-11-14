@@ -31,6 +31,7 @@ A `.shogunai.json` at the repository's root declares what every worktree needs. 
 | `env` | object of strings | Per-worktree environment variables. Names use letters, digits and `_`, and don't start with a digit. Names that change how shells, runtimes, the dynamic loader, Git, package managers, compilers, build tools, network clients or coding agents behave are reserved, compared without regard to case, and make the file invalid even if approved: see [reserved names](#reserved-variable-names). Templates can't contain line breaks, other control characters or invisible Unicode format characters. The variables only apply once the repository is [approved](#approving-a-repository). |
 | `envFile` | string | A path inside the worktree where its environment is written in dotenv format, without control or invisible format characters. Never written over a file Git tracks, so add it to `.gitignore`. Only written once the repository is [approved](#approving-a-repository). |
 | `providers` | object | The [providers](providers.md) the repository uses, each with its own options. |
+| `overlap.ignore` | list of strings | Git glob pathspecs, relative to the repository root, of files several worktrees are expected to change at once, such as a roadmap every change edits line by line. [`shogun overlap`](cli.md#overlap) leaves them out unless given `--all`. `*` doesn't cross `/` and `**` does. |
 
 Values in `env` can use these templates:
 

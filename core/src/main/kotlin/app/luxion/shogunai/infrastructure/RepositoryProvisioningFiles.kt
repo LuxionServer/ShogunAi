@@ -51,6 +51,7 @@ class RepositoryProvisioningFiles : RepositoryProvisioningSource {
             worktreeIncludePatterns = readWorktreeInclude(root.resolve(RepositoryProvisioning.WORKTREE_INCLUDE_FILE_NAME)),
             providers = if (config != null) providersOf(config, configPath) else RepositoryProviders(),
             environment = if (config != null) environmentOf(config, configPath) else EnvironmentDeclaration(),
+            overlapIgnore = config?.let { overlapIgnoreOf(it, configPath) }.orEmpty(),
         )
     }
 

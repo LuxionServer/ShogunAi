@@ -102,6 +102,10 @@ Implementation of `DerivedDataSource` for macOS (`isSupported` checks `os.name`)
 - **Volumes**: a path under `/Volumes/<name>` is on an unavailable volume when that mount point doesn't exist.
 - **Deletion**: refuses any path that isn't a direct child of the current location or has no `info.plist`, then deletes the folder recursively.
 
+## `FileSwiftBuildSource`
+
+Implementation of `SwiftBuildSource` on the `FileManager` port. A worktree has a `.build` folder when it has `Package.swift` and `.build` is a directory that isn't a symbolic link; its last access is the latest modification time of `.build` and of its direct entries. The packages size adds `checkouts` and `repositories`. Deletion refuses any path not named `.build` or without `Package.swift` next to it.
+
 ## `RepositoryProvisioningFiles`
 
 Implementation of `RepositoryProvisioningSource` on `java.nio.file` and `kotlinx.serialization`, over `<repo>/.shogunai.json` and `<repo>/.worktreeinclude`.
@@ -194,6 +198,7 @@ In `core/src/testFixtures/kotlin/app/luxion/shogunai/domain/`, `core`'s test fix
 - `FakeHerdrClient` — records opened worktrees, split and closed panes, closed workspaces, commands run and focused agents, reports the worktrees it's given (or opens again) as already open or as open workspaces and the agents it's given, lists the panes it's given plus the ones it creates, marks a pane's agent live when a command runs in it (right away, after some listings, never with `startsAgents = false`, or gone again with `quitAgent`), and can fail opening, running, listing worktrees or agents, or closing a given workspace with a given error.
 - `FakeAndroidSdk` — substitutes `AndroidSdk` with AVDs, emulator states that move from booting to running after a number of polls, a missing-SDK switch, and records of starts and stops.
 - `FakeGradleDaemonSource` — substitutes `GradleDaemonSource` with a mutable list of daemons (or a failure) and counts the listings; `gradleDaemon(...)` and `kotlinDaemon(...)` build them.
+- `FakeSwiftBuildSource` — substitutes `SwiftBuildSource` with `.build` folders by worktree, sizes and packages sizes, failing measurements and deletions, and records them; `swiftBuild(...)` builds a folder.
 - `FakeDerivedDataSource` — substitutes `DerivedDataSource` with folders, sizes by path (recording which folders were measured), existing projects, unmounted volumes, a compilation cache size, a macOS switch and failing deletions, and records the deletions; `derivedData(...)` builds a folder.
 - `FakeClipboardWriter` — substitutes `ClipboardWriter`.
 - `FakeProjectRepository` — substitutes `ProjectRepository` in ViewModel tests.

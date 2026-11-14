@@ -4569,7 +4569,7 @@ class ShogunCliTest {
         assertEquals(setOf("active", "folders", "orphans", "unavailableVolumeFolders", "compilationCacheBytes", "swiftPmCacheBytes", "cocoaPodsCacheBytes"), json.keys)
         assertEquals(JsonPrimitive(true), json.getValue("active"))
         val folder = json.getValue("folders").jsonArray.single().jsonObject
-        assertEquals(setOf("path", "sizeBytes", "sourcePackagesBytes", "worktree"), folder.keys)
+        assertEquals(setOf("kind", "path", "sizeBytes", "sourcePackagesBytes", "worktree"), folder.keys)
         assertEquals(base, (folder.getValue("worktree") as JsonPrimitive).content)
         assertEquals(JsonPrimitive(1_073_741_824L), folder.getValue("sizeBytes"))
         val orphan = json.getValue("orphans").jsonArray.single().jsonObject

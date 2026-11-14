@@ -135,4 +135,20 @@ class TrayMenuModelTest {
             assertEquals("feature/TASK-123 — api", trayWorktreeLabel(worktree(it)))
         }
     }
+
+    @Test
+    fun `a loaded worktree without actions only offers to show it`() {
+        val submenu = submenuOf(menu(worktrees = listOf(worktree(actions = null))))
+
+        assertEquals(listOf(TrayEntry.Item("Show in ShogunAi", TrayAction.ShowWorktree(ref))), submenu.entries)
+    }
+
+    @Test
+    fun `a worktree without a runner, other openers or a launch command only offers to show it`() {
+        val actions = TrayActionEntries(primary = null, openWith = emptyList(), copyLaunchCommand = null)
+
+        val submenu = submenuOf(menu(worktrees = listOf(worktree(actions = actions))))
+
+        assertEquals(listOf(TrayEntry.Item("Show in ShogunAi", TrayAction.ShowWorktree(ref))), submenu.entries)
+    }
 }
