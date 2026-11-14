@@ -48,6 +48,8 @@ Status: **Started**.
 - **Compose Desktop**: apps run hidden in the background for agents to check on macOS.
 - **Desktop turn**: agents take turns to drive the real desktop with `shogun desktop acquire --wait`, which Claude takes by itself before its own computer use or Orca's acts, only stopping when another worktree holds it.
   The holder and the queue show in the control tower and `shogun status`.
+- **Build turn**: heavy builds (Gradle, Maven, `xcodebuild`, `swift build` and `swift test`) take one of the machine's build slots with `shogun build run --`, and wait in line when they are all taken.
+  Claude's hook turns away a heavy build run outside the turn, the number of slots follows the capacity profile, and the running builds and the queue show in `shogun build status` and `shogun status`.
 - **Physical devices**: Android phones and tablets, iPhones and iPads connected to the machine are recorded in an inventory, lent to agents by default and acquired one worktree at a time with `shogun device acquire`, under the same leases and `--wait` queue as emulators and simulators.
   They show in `shogun status`, a Devices view in the control tower and Orca's emulator view (Android).
 - **Maven**: JVM backends get Maven builds bounded in memory, see their Maven daemons and can stop the idle ones.
@@ -175,6 +177,15 @@ What's left:
 
 - A mark in the control tower on each worktree whose files another worktree changes, with the shared files and worktrees in its inspector.
 - Telling whether the shared files would actually conflict when merged, instead of only that they are shared.
+
+### The build turn everywhere
+
+The build turn bounds how many heavy builds run at once from the command line and Claude's hooks.
+Left out:
+
+- Showing the running builds and the build queue in the control tower, with a build slots field for the Custom profile in Preferences (Custom uses the Automatic number until then), and moving the build turn's errors under the ones the app describes.
+- Weighing builds by size, so a single-module compile doesn't take the same slot as a full test run, and learning more light invocations than `--version`, `--stop`, `help` and `tasks`.
+- Builds started by scripts or by agents without Claude Code's hooks, which only the guide reaches today.
 
 ### Robustness and maintenance
 

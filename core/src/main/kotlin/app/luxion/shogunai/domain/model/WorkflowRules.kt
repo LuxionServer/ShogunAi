@@ -211,6 +211,13 @@ object WorkflowRules {
                 "run it again to renew the turn during a long check, before it expires, and give it back with `shogun desktop release` as soon as you are done.",
         ),
         WorkflowRule(
+            "resources.build-turn",
+            WorkflowTopic.RESOURCES,
+            "Run heavy builds and tests (Gradle, Maven, xcodebuild, `swift build` and `swift test`) through the machine's build turn " +
+                "with `shogun build run -- <command>`, e.g. `shogun build run -- ./gradlew test`; " +
+                "run it in the background or with a long enough shell timeout, since it can wait up to 30 minutes for a build slot.",
+        ),
+        WorkflowRule(
             "resources.caches",
             WorkflowTopic.RESOURCES,
             "Run `shogun gradle stop` and `shogun xcode clean` showing what they free, and ask first.",

@@ -202,6 +202,10 @@ class ClaudeCodeHooks(private val fileManager: FileManager) {
             DesiredHook("SessionEnd", "shogun hook agent-state"),
             DesiredHook("PreToolUse", "shogun hook desktop-turn", matcher = "Bash", condition = "Bash(*computer *)"),
             DesiredHook("PreToolUse", "shogun hook desktop-turn", matcher = ClaudeComputerUse.hookMatcher),
+            DesiredHook("PreToolUse", "shogun hook build-turn", matcher = "Bash", condition = "Bash(*gradle*)"),
+            DesiredHook("PreToolUse", "shogun hook build-turn", matcher = "Bash", condition = "Bash(*mvn*)"),
+            DesiredHook("PreToolUse", "shogun hook build-turn", matcher = "Bash", condition = "Bash(*xcodebuild*)"),
+            DesiredHook("PreToolUse", "shogun hook build-turn", matcher = "Bash", condition = "Bash(*swift *)"),
         )
 
         private val AGENT_STATE_EVENTS: List<String> = listOf("UserPromptSubmit", "Notification", "Stop", "SessionEnd")
