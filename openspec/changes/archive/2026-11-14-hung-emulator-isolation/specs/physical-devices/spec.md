@@ -1,7 +1,7 @@
 ## MODIFIED Requirements
 
 ### Requirement: Discover connected physical Android devices
-The system SHALL list the physical Android devices from `adb devices -l`, over USB and wireless debugging, reading each one's `ro.serialno`, manufacturer, model, marketing name and Android version once per connection. Emulators SHALL NOT be listed. A device listed as `unauthorized` or `offline` SHALL be reported with that state and SHALL NOT be acquirable. The properties of different devices SHALL be read concurrently, each within a 5-second limit, and a device whose properties don't answer in time SHALL be reported as pending and unresponsive, not acquirable, without failing the listing.
+The system SHALL list the physical Android devices from `adb devices -l`, over USB and wireless debugging, reading each one's `ro.serialno`, manufacturer, model, marketing name and Android version once per connection. Emulators SHALL NOT be listed. A device listed as `unauthorized` or `offline` SHALL be reported with that state and SHALL NOT be acquirable.
 
 #### Scenario: USB device
 - **WHEN** `adb devices -l` lists `R5CT10ABCDE device model:SM_A556B`
@@ -22,6 +22,11 @@ The system SHALL list the physical Android devices from `adb devices -l`, over U
 #### Scenario: No Android SDK
 - **WHEN** the machine has no Android SDK
 - **THEN** no Android physical device is listed and no error is reported for it
+
+## ADDED Requirements
+
+### Requirement: A physical Android device that doesn't answer doesn't hold up the listing
+The properties of different devices SHALL be read concurrently, each within a 5-second limit, and a device whose properties don't answer in time SHALL be reported as pending and unresponsive, not acquirable, without failing the listing.
 
 #### Scenario: Device that doesn't answer
 - **WHEN** `adb devices -l` lists `R5CT10ABCDE` and `R58N20FGHIJ` as `device` and reading `R5CT10ABCDE`'s properties doesn't answer in time

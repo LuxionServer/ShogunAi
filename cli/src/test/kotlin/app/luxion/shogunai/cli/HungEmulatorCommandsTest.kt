@@ -107,6 +107,7 @@ class HungEmulatorCommandsTest {
         fileManager = FakeFileManager(existing = listOf("/sdk/emulator/emulator")),
         environmentVariable = { if (it == "ANDROID_HOME") "/sdk" else null },
         userHome = "/home/dev",
+        osName = "Linux",
         logDirectory = logs,
         launch = { command, _ ->
             online += "emulator-" + command[command.indexOf("-port") + 1]
