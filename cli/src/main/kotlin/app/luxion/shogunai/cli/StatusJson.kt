@@ -1,6 +1,7 @@
 package app.luxion.shogunai.cli
 
 import app.luxion.shogunai.domain.model.CustomPoolState
+import app.luxion.shogunai.domain.model.BuildTurnState
 import app.luxion.shogunai.domain.model.DesktopTurnState
 import app.luxion.shogunai.domain.model.AgentStateSource
 import app.luxion.shogunai.domain.model.AgentActivity
@@ -29,6 +30,7 @@ data class WorktreeEntry(
     val listeningPorts: List<ObservedPort>? = null,
     val devices: PhysicalDevicesState? = null,
     val pools: List<CustomPoolState> = emptyList(),
+    val builds: BuildTurnState = BuildTurnState.EMPTY,
 )
 
 val WorktreeOrigin.label: String
@@ -60,6 +62,7 @@ private fun worktreeJson(entry: WorktreeEntry): JsonObject = buildJsonObject {
     put("status", entry.status?.let(::statusObject).orJsonNull())
     entry.statusProblem?.let { put("statusProblem", it) }
     put("desktop", worktreeDesktopJson(entry.desktop, worktree.path).orJsonNull())
+    put("build", worktreeBuildJson(entry.builds, worktree.path).orJsonNull())
     put("devices", worktreeDevicesJson(entry.devices, worktree.path))
     put("pools", worktreePoolsJson(entry.pools, worktree.path))
     put("listeningPorts", entry.listeningPorts?.let { ports -> buildJsonArray { ports.forEach { add(portJson(it)) } } }.orJsonNull())

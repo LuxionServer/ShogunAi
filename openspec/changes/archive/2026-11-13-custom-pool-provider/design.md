@@ -109,7 +109,7 @@ New files: `domain/model/CustomPool.kt` (declaration, template, lease, loss, sta
 
 These files are exactly at their cap and need a few lines each; their caps rise by as many:
 
-- `cli/CliCommand.kt` 1091 → 1092: `parsePool` delegates `acquire` and `release` to the new parser.
+- `cli/CliCommand.kt` 1093 → 1094: `parsePool` delegates `acquire` and `release` to the new parser.
 - `infrastructure/RepositoryProvisioningFiles.kt` 460 → 461: `read` adds `pools`.
 - `ui/i18n/EnglishErrors.kt` 479 → 481 and `ui/i18n/SpanishErrors.kt` 500 → 502: the import and the branch of `CustomPoolFailure` in the exhaustive `when`.
 

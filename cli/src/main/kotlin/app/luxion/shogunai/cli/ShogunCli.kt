@@ -8,6 +8,7 @@ import app.luxion.shogunai.domain.io.HostEnvironment
 import app.luxion.shogunai.domain.io.RepositoryApproval
 import app.luxion.shogunai.domain.io.ApprovalDecision
 import app.luxion.shogunai.domain.model.CustomPoolWait
+import app.luxion.shogunai.domain.model.BuildTurnState
 import app.luxion.shogunai.domain.model.DesktopTurnState
 import app.luxion.shogunai.domain.model.DesktopWait
 import app.luxion.shogunai.domain.model.DevicePlatform
@@ -291,6 +292,7 @@ class ShogunCli(
     private val acquireDesktopTurn = engine.acquireDesktopTurn
     private val releaseDesktopTurn = engine.releaseDesktopTurn
     private val readDesktopTurn = engine.readDesktopTurn
+    private val buildTurn = BuildTurnCommands(engine, workingDirectory, { out.line(it) }, { err.line(it) }, readInput, ::worktreeTopLevel)
     private val physicalDevices = engine.physicalDeviceLedger
     private val readPhysicalDevices = engine.readPhysicalDevices
     private val acquirePhysicalDevice = engine.acquirePhysicalDevice
@@ -357,6 +359,7 @@ class ShogunCli(
             is CliCommand.Simulator -> simulator(command)
             is CliCommand.Headless -> headless(command)
             is CliCommand.Desktop -> desktop(command)
+            is BuildCommand -> buildTurn.run(command)
             is CliCommand.Device -> device(command)
             is CliCommand.SimulatorGradleInit -> simulatorGradleInit(command)
             CliCommand.HookSessionStart -> hookSessionStart()
@@ -364,6 +367,7 @@ class ShogunCli(
             is CliCommand.HookOrca -> hookOrca(command.action)
             CliCommand.HookAgentState -> hookAgentState()
             CliCommand.HookDesktopTurn -> hookDesktopTurn()
+            HookBuildTurn -> buildTurn.hook()
             is CliCommand.Hooks -> hooks(command)
             is CliCommand.Guide -> guide(command)
             is CliCommand.GuideBlock -> guideBlock(command)
@@ -1118,6 +1122,7 @@ class ShogunCli(
                 engine.detectRunningAgents(config, worktrees.filterNot { it.isPrunable }).getOrNull().orEmpty()
             }
             val desktopRead = async { readDesktopTurn().getOrElse { DesktopTurnState(holder = null, waiting = emptyList()) } }
+            val buildsRead = async { engine.readBuildTurn().getOrElse { BuildTurnState.EMPTY } }
             val devicesRead = async { readPhysicalDevices.ifAnyHeld() }
             val poolsRead = async { readCustomPools(config.baseRepositoryPath).getOrElse { emptyList() } }
             val basesRead = async { engine.project(config).readBaseBranches().getOrElse { emptyMap() } }
@@ -1132,6 +1137,7 @@ class ShogunCli(
             }.awaitAll()
             val agents = agentsRead.await()
             val desktop = desktopRead.await()
+            val builds = buildsRead.await()
             val devices = devicesRead.await()
             val bases = basesRead.await()
             val listeningPorts = orcaReader.ports(worktrees)
@@ -1147,6 +1153,7 @@ class ShogunCli(
                     listeningPorts?.get(worktree.path),
                     devices,
                     poolsRead.await(),
+                    builds,
                 )
             }
         }
@@ -3208,6 +3215,7 @@ class ShogunCli(
             entry.agents.takeIf { it.isNotEmpty() }?.let { agents -> add("agents=${agents.joinToString(",") { agentLabel(it) }}") }
             entry.listeningPorts?.takeIf { it.isNotEmpty() }?.let { ports -> add("listening=${ports.joinToString(",") { it.port.toString() }}") }
             desktopTurnStatusNote(entry.desktop, worktree.path)?.let(::add)
+            buildStatusNote(entry.builds, worktree.path)?.let(::add)
             addAll(deviceStatusNotes(entry.devices, worktree.path))
             addAll(customPoolStatusNotes(entry.pools, worktree.path))
             when {
