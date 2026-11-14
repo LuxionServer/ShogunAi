@@ -52,6 +52,7 @@ import app.luxion.shogunai.domain.usecase.RenewWorktreeLeasesUseCase
 import app.luxion.shogunai.domain.usecase.ResolveBaseBranchUseCase
 import app.luxion.shogunai.domain.usecase.ResolveDerivedDataQuotaUseCase
 import app.luxion.shogunai.domain.usecase.ResolveFlutterPackagesUseCase
+import app.luxion.shogunai.domain.usecase.PrepareNodeDependenciesUseCase
 import app.luxion.shogunai.domain.usecase.ResolveMultirepoUseCase
 import app.luxion.shogunai.domain.usecase.ResolveRepositoryUseCase
 import app.luxion.shogunai.domain.usecase.ResolveResourceLimitsUseCase
@@ -162,6 +163,7 @@ class ShogunEngine(
         writeEnvironmentFile,
         PrepareCocoaPodsUseCase(executor, fileManager, provisioningSource, isMacOs = isMac),
         ResolveFlutterPackagesUseCase(executor, fileManager, provisioningSource),
+        PrepareNodeDependenciesUseCase(executor, fileManager, provisioningSource, isMacOs = isMac),
     )
 
     val startSimulator = StartWorktreeSimulatorUseCase(provisioningSource, ports.appleSimulators, acquireResource, resolveEnvironment)

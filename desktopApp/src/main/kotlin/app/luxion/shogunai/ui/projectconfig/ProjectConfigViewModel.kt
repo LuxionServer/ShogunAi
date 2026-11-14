@@ -386,6 +386,8 @@ class ProjectConfigViewModel(
     fun setFlutterEnabled(enabled: Boolean) =
         updateRepositoryDraft { it.copy(flutter = enabled) }
 
+    fun setNodeEnabled(enabled: Boolean) = updateRepositoryDraft { it.copy(node = enabled) }
+
     val stackSuggestions: List<ProviderSuggestion>
         get() = if (!repositoryConfigEditable) {
             emptyList()
@@ -402,6 +404,7 @@ class ProjectConfigViewModel(
             SuggestedProvider.MAVEN -> setMavenEnabled(true)
             SuggestedProvider.DOCKER_COMPOSE -> setDockerComposeEnabled(true)
             SuggestedProvider.FLUTTER -> setFlutterEnabled(true)
+            SuggestedProvider.NODE -> setNodeEnabled(true)
         }
     }
 
@@ -783,7 +786,7 @@ class ProjectConfigViewModel(
 
     private fun writeAndApproveEnvironment() {
         val before = runCatching { provisioningSource.read(baseRepositoryPath).approvalSubject }.getOrNull()
-        val approveSaved = before != null && (before.commands.isEmpty() || trust.isApproved(baseRepositoryPath, before))
+        val approveSaved = before != null && (before.commands.isEmpty() && !before.nodeInstall || trust.isApproved(baseRepositoryPath, before))
         provisioningSource.write(baseRepositoryPath, pendingRepositoryEdit(), repositoryFingerprint)
         if (!approveSaved) return
         runCatching { provisioningSource.read(baseRepositoryPath).approvalSubject }.getOrNull()

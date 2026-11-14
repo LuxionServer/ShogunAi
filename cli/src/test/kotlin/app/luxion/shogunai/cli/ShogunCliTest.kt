@@ -4,6 +4,7 @@ import app.luxion.shogunai.engine.ShogunEngine
 import app.luxion.shogunai.domain.ScriptedShellCommandExecutor
 import app.luxion.shogunai.domain.executor.CommandExecutionException
 import app.luxion.shogunai.domain.model.FlutterProvider
+import app.luxion.shogunai.domain.model.NodeProvider
 import app.luxion.shogunai.domain.FakeMachineCapacity
 import app.luxion.shogunai.domain.FakeResourceLimitsRepository
 import app.luxion.shogunai.domain.model.RepositoryApprovalSubject
@@ -4285,7 +4286,7 @@ class ShogunCliTest {
 
         assertEquals(0, exitCode, err.toString())
         val json = jsonOut()
-        assertEquals(setOf("repository", "commands", "env", "envFile", "approved", "changed"), json.keys)
+        assertEquals(setOf("repository", "commands", "env", "envFile", "nodeInstall", "approved", "changed"), json.keys)
         assertEquals(base, (json.getValue("repository") as JsonPrimitive).content)
         assertEquals(JsonPrimitive(false), json.getValue("approved"))
         assertEquals(JsonPrimitive(false), json.getValue("changed"))
@@ -5087,6 +5088,79 @@ class ShogunCliTest {
         val pubGet = jsonOut().getValue("flutter").jsonObject.getValue("pubGet").jsonObject
         assertEquals("needed", pubGet.getValue("status").jsonPrimitive.content)
         assertEquals("exited with code 69: pub failed", pubGet.getValue("reason").jsonPrimitive.content)
+    }
+
+    private val nodeProvisioning = declaring(RepositoryProviders(node = NodeProvider))
+
+    private fun nodeFiles(worktree: String) = FakeFileManager(existing = listOf(base, "$base/local.properties", "$worktree/package.json", "$worktree/package-lock.json"))
+
+    @Test
+    fun `stacks lists a node repository and its suggestion`() {
+        val fileManager = FakeFileManager(existing = listOf(base, "$base/package.json", "$base/pnpm-lock.yaml"))
+
+        cli(repositoryExecutor(), projects = noLocalFiles, fileManager = fileManager).run(listOf("stacks"))
+        assertEquals(listOf("Node  evidence=package.json,pnpm-lock.yaml  node=suggested"), out.lines().filter { it.isNotEmpty() })
+
+        out.clear()
+        cli(repositoryExecutor(), projects = noLocalFiles, fileManager = fileManager).run(listOf("stacks", "--json"))
+        assertEquals("node", jsonOut().getValue("stacks").jsonArray.single().jsonObject.getValue("stack").jsonPrimitive.content)
+    }
+
+    @Test
+    fun `new notes that node dependencies need an approval and the command to run`() {
+        val executor = repositoryExecutor()
+
+        val exitCode = cli(executor, provisioning = nodeProvisioning, fileManager = nodeFiles("$worktreesRoot/TASK-123")).run(listOf("new", "TASK-123"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertTrue(
+            err.contains(
+                "shogun: node dependencies needed: the repository isn't approved on this machine (review it with 'shogun trust'); run 'npm ci' in the worktree",
+            ),
+            err.toString(),
+        )
+        assertFalse(executor.ran("npm", "ci"))
+    }
+
+    @Test
+    fun `new json reports node dependencies installed once the repository is approved`() {
+        val executor = repositoryExecutor()
+        val trust = FakeRepositoryTrust(approvesEverything = true)
+
+        cli(executor, provisioning = nodeProvisioning, fileManager = nodeFiles("$worktreesRoot/TASK-123"), trust = trust)
+            .run(listOf("new", "TASK-123", "--json"))
+
+        val dependencies = jsonOut().getValue("node").jsonObject.getValue("dependencies").jsonObject
+        assertEquals("installed", dependencies.getValue("status").jsonPrimitive.content)
+        assertEquals("npm", dependencies.getValue("manager").jsonPrimitive.content)
+        assertTrue(executor.calls.any { it.first == listOf("npm", "ci") && it.second == "$worktreesRoot/TASK-123" })
+    }
+
+    @Test
+    fun `provision reports node dependencies in text and json`() {
+        val trust = FakeRepositoryTrust(approvesEverything = true)
+        cli(repositoryExecutor(), provisioning = nodeProvisioning, fileManager = nodeFiles(merged), workingDirectory = merged, trust = trust)
+            .run(listOf("provision"))
+        assertTrue(out.contains("node dependencies: installed with npm\n"), out.toString())
+
+        out.clear()
+        val failing = repositoryExecutor { command, _ -> if (command.firstOrNull() == "npm") Executor.fail(command, stderr = "npm ERR! missing lockfile", exitCode = 1) else null }
+        cli(failing, provisioning = nodeProvisioning, fileManager = nodeFiles(merged), workingDirectory = merged, trust = trust).run(listOf("provision", "--json"))
+        val dependencies = jsonOut().getValue("node").jsonObject.getValue("dependencies").jsonObject
+        assertEquals("needed", dependencies.getValue("status").jsonPrimitive.content)
+        assertEquals("exited with code 1: npm ERR! missing lockfile", dependencies.getValue("reason").jsonPrimitive.content)
+        assertEquals(listOf("npm", "ci"), dependencies.getValue("command").jsonArray.map { it.jsonPrimitive.content })
+    }
+
+    @Test
+    fun `trust shows the node install and reports it in json`() {
+        cli(linkingExecutor(), provisioning = nodeProvisioning, answer = "n").run(listOf("trust"))
+        assertTrue(out.contains("Installs Node dependencies with the repository's package manager"), out.toString())
+        assertTrue(out.contains("not approved on this machine"), out.toString())
+
+        out.clear()
+        cli(linkingExecutor(), provisioning = nodeProvisioning).run(listOf("trust", "--json"))
+        assertEquals(JsonPrimitive(true), jsonOut().getValue("nodeInstall"))
     }
 
     private fun failingProjects(error: Exception) = object : ProjectRepository {

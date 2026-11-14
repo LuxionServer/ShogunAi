@@ -13,4 +13,5 @@ data class Worktree(
     val skippedLinks: List<String> = emptyList(),
     val pods: PodsPreparation = PodsPreparation(),
     val flutter: FlutterPubGet? = null,
+    val node: NodeDependencies? = null,
 )

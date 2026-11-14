@@ -8,6 +8,7 @@ import app.luxion.shogunai.domain.io.RepositoryTrust
 import app.luxion.shogunai.domain.io.RepositoryProvisioningSource
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.FlutterPubGet
+import app.luxion.shogunai.domain.model.NodeDependencies
 import app.luxion.shogunai.domain.model.PodsPreparation
 import app.luxion.shogunai.domain.model.ProvisionedFile
 import app.luxion.shogunai.domain.model.Worktree
@@ -40,6 +41,7 @@ class ProvisionWorktreeUseCase(
             skippedLinks = provisioned.skippedLinks,
             pods = prepared.pods,
             flutter = prepared.flutter,
+            node = prepared.node,
         )
     }
 }
@@ -52,6 +54,7 @@ data class ProvisionResult(
     val skippedLinks: List<String> = emptyList(),
     val pods: PodsPreparation = PodsPreparation(),
     val flutter: FlutterPubGet? = null,
+    val node: NodeDependencies? = null,
 )
 
 internal suspend fun findLinkedWorktree(

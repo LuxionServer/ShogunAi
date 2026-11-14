@@ -43,7 +43,7 @@ class WorkflowRulesTest {
         val selection = WorkflowRules.rulesFor(bare, WorkflowTopic.RESOURCES)
 
         assertEquals(
-            listOf("resources.emulator", "resources.simulator", "resources.flutter", "resources.compose", "resources.desktop-app"),
+            listOf("resources.emulator", "resources.simulator", "resources.flutter", "resources.node", "resources.compose", "resources.desktop-app"),
             ids(selection.inapplicable),
         )
     }

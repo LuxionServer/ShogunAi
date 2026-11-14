@@ -16,10 +16,11 @@ Un provider añade soporte para un tipo de herramienta a los worktrees de un rep
 | [`docker-compose`](#docker-compose) | Un proyecto de Docker Compose y puertos por worktree. | Todas, con la CLI de Docker |
 | [`desktop-app`](#app-de-compose-desktop) | Una app de Compose Desktop por worktree, ejecutada en segundo plano sin ocupar el escritorio. | macOS |
 | [`flutter`](#flutter) | Apps Flutter: `flutter pub get` en cada worktree nuevo, y agentes que ejecutan Flutter en los dispositivos de su worktree. | Todas, con Flutter |
+| [`node`](#node) | Repositorios Node: `node_modules` clonado de la base o instalado en cada worktree nuevo. | Todas, con Node; el clon en macOS |
 
 ## Detección de stacks
 
-No hace falta saber qué providers existen. ShogunAi mira los archivos de la carpeta principal del repositorio y de sus subcarpetas directas (nunca las ocultas, `build`, `node_modules` ni `Pods`) y reconoce seis stacks:
+No hace falta saber qué providers existen. ShogunAi mira los archivos de la carpeta principal del repositorio y de sus subcarpetas directas (nunca las ocultas, `build`, `node_modules` ni `Pods`) y reconoce siete stacks:
 
 | Stack | Lo delatan | Sugiere |
 |---|---|---|
@@ -29,6 +30,7 @@ No hace falta saber qué providers existen. ShogunAi mira los archivos de la car
 | Maven | `pom.xml` o `mvnw` en la carpeta principal | `maven` |
 | Docker Compose | `compose.yaml`, `compose.yml`, `docker-compose.yaml` o `docker-compose.yml` en la carpeta principal | `docker-compose` |
 | Flutter | un `pubspec.yaml` en la carpeta principal que depende del SDK de Flutter (`sdk: flutter`) | `flutter` |
+| Node | un `package.json` en la carpeta principal, con sus lockfiles como evidencia adicional | `node` |
 
 En los ajustes del proyecto, "Configuración del repositorio" lista los providers que el repositorio podría usar y aún no declara, con los archivos que los delataron, y "Activar" enciende el provider como un cambio sin guardar: no se escribe nada hasta que guardas y confirmas la vista previa. `shogun stacks` imprime lo mismo desde un terminal y no cambia nada. Una sugerencia es solo una pista (un `pom.xml` en una carpeta de pruebas también cuenta), por eso siempre se muestra la evidencia.
 
@@ -319,3 +321,20 @@ Un worktree recién creado de un repositorio Flutter no compila: `.dart_tool/`, 
 - **CocoaPods.** Con `cocoaPods` activado, un worktree nuevo recibe los pods del repositorio base junto al `ios/Podfile.lock` versionado. La primera build de Flutter en ese worktree aún ejecuta `pod install` por su cuenta, porque lo decide a partir de una huella que guarda en `build/`; con los pods ya en su sitio no descarga nada. Un aviso de "necesita `pod install`" también lo resuelve la propia build de Flutter.
 - **Puertos.** `flutter run` enlaza su VM service y DevTools a puertos libres que elige él, así que los worktrees no chocan. Si el repositorio fija el puerto del servidor web, reserva uno por worktree con `env` y pásalo: `"env": { "FLUTTER_WEB_PORT": "${port}" }` y `flutter run -d chrome --web-port "$FLUTTER_WEB_PORT"`.
 - `build/` y `.dart_tool/` siguen siendo de cada worktree: guardan rutas absolutas y el estado incremental del compilador. La caché de pub (`~/.pub-cache`) ya la comparten todos los worktrees.
+
+## Node
+
+Un worktree recién creado de un repositorio Node no arranca: `node_modules` está ignorado por Git, así que todos los scripts, los test runners y los servidores de desarrollo fallan hasta que se instalan las dependencias. Activa el provider de Node y cada worktree nuevo o provisionado las recibe:
+
+```json
+{ "providers": { "node": {} } }
+```
+
+- **Gestor de paquetes.** ShogunAi lo encuentra por el lockfile de la carpeta principal del repositorio: `package-lock.json` o `npm-shrinkwrap.json` (npm), `pnpm-lock.yaml` (pnpm), `yarn.lock` (Yarn) o `bun.lock`/`bun.lockb` (bun). Si hay varios lockfiles, decide `packageManager` en `package.json`; si no, pnpm, Yarn, bun y npm, en ese orden. Un repositorio sin lockfile se informa como pendiente de dependencias y no se ejecuta nada.
+- **Clonadas cuando la base coincide.** En macOS, cuando el lockfile del worktree es igual al del repositorio base y la base se instaló después del último cambio de su lockfile (`node_modules/.package-lock.json` de npm, `node_modules/.modules.yaml` de pnpm, `node_modules/.yarn-integrity` o `.yarn-state.yml` de Yarn), cada `node_modules` ignorado de la base se clona con copy-on-write. Tarda segundos, no ocupa disco extra hasta que cambian los ficheros y no ejecuta nada. Si un clon falla, se borran los clones hechos hasta entonces y las dependencias se instalan.
+- **Instaladas si no, una vez aprobado el repositorio.** Cuando no se pueden clonar (la rama cambió el lockfile, la base no está instalada, bun o Yarn Plug'n'Play, Linux o Windows), ShogunAi ejecuta en el worktree `npm ci`, `pnpm install --frozen-lockfile`, `yarn install --immutable` (Yarn Berry, con `.yarnrc.yml`) o `yarn install --frozen-lockfile`, o `bun install --frozen-lockfile`. Instalar ejecuta los scripts del repositorio y de sus dependencias, así que solo ocurre cuando el repositorio está [aprobado](configuration.md#aprobar-un-repositorio): declarar `node` hace que la aprobación lo cubra, y los diálogos de aprobación y `shogun trust` lo dicen. Hasta entonces el informe dice que faltan las dependencias y qué comando ejecutar.
+- **Workspaces.** Los workspaces de npm, pnpm, Yarn y bun tienen un solo lockfile en la raíz, así que el único clon cubre el `node_modules` de cada paquete, y la única instalación en la raíz los llena. Los proyectos Node independientes en subcarpetas, cada uno con su lockfile, aún no se preparan: declara sus instalaciones como comandos post-creación.
+- **Orden e informes.** Las dependencias se preparan después de copiar los ficheros, preparar los pods y `flutter pub get`, y antes de los comandos post-creación, así que un `npm run build` declarado ahí las encuentra. Un worktree que ya tiene `node_modules` se deja como está. `shogun new`, `shogun provision` y el hook de creación de worktrees informan del resultado (`node.dependencies` en su JSON). Una instalación fallida (el gestor no está en el `PATH`, el lockfile no cuadra con `package.json`) conserva el worktree y dice por qué.
+- **Puertos.** Da a los servidores de desarrollo un puerto por worktree con `env`, como `"env": { "PORT": "${port}" }`, y arráncalos con esa variable en vez de con un puerto fijo.
+- **Después de un clon.** Los ficheros que generan en `node_modules` los propios scripts del repositorio (un cliente de Prisma, por ejemplo) vienen del checkout de la base; vuelve a ejecutar el generador cuando la rama cambió sus fuentes. El hook `SessionStart` le dice a Claude que reinstale con el gestor del repositorio cuando cambien `package.json` o el lockfile, y que nunca enlace ni copie `node_modules` de otro worktree.
+- `shogun doctor` comprueba `node` y el gestor del lockfile (solo `bun` con bun).

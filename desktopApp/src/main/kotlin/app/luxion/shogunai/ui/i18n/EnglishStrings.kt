@@ -712,6 +712,7 @@ object EnglishStrings : Strings, XcodeStrings by EnglishXcodeStrings {
     override val variableNameReserved = "This name is reserved because it changes how other tools behave, so it can't be declared."
     override val approvalVariablesTitle = "Environment variables"
     override fun approvalEnvFile(path: String) = "Environment file: $path"
+    override val approvalNodeInstall = "Installs Node dependencies with the repository's package manager (npm ci, pnpm, yarn or bun install)"
     override fun variablesAwaitingApproval(names: List<String>) =
         "Awaiting approval: ${names.joinToString(", ")}. Approve them in project settings or with shogun trust."
     override val templateInvalidCharacters = "Templates can't contain line breaks or control characters."
@@ -775,6 +776,7 @@ object EnglishStrings : Strings, XcodeStrings by EnglishXcodeStrings {
     override val providerMaven = "Maven"
     override val providerDockerCompose = "Docker Compose"
     override val providerFlutter = "Flutter"
+    override val providerNode = "Node"
     override val mavenMaxHeapLabel = "Build heap"
     override val composePortVariablesLabel = "Port variables"
     override val composePortVariablesHelp = "Names separated by commas, for example DB_PORT, API_PORT. Each gets its own free port in every worktree."

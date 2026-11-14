@@ -6,7 +6,7 @@ Defines how ShogunAi inspects a repository's files to tell which stacks it uses 
 ## Requirements
 
 ### Requirement: Detect the stacks of a repository
-The system SHALL inspect the repository's main folder and its direct subfolders, reading only file names and, for Gradle build and settings files and the main folder's `pubspec.yaml`, their text, and report the stacks it finds with the files that revealed each. The stacks are Gradle, Android, Xcode, Maven, Docker Compose and Flutter. Folders such as `build`, `node_modules` and hidden folders SHALL NOT be inspected.
+The system SHALL inspect the repository's main folder and its direct subfolders, reading only file names and, for Gradle build and settings files and the main folder's `pubspec.yaml`, their text, and report the stacks it finds with the files that revealed each: Gradle, Android, Xcode, Maven, Docker Compose, Flutter and Node, the last only from a `package.json` in the main folder. Folders such as `build`, `node_modules` and hidden folders SHALL NOT be inspected.
 
 #### Scenario: Gradle repository
 - **WHEN** the repository has `gradlew` and `settings.gradle.kts` in its main folder
@@ -52,6 +52,14 @@ The system SHALL inspect the repository's main folder and its direct subfolders,
 - **WHEN** the main folder's `pubspec.yaml` doesn't mention `sdk: flutter`
 - **THEN** the Flutter stack isn't detected
 
+#### Scenario: Node repository
+- **WHEN** the main folder has `package.json` and `pnpm-lock.yaml`
+- **THEN** the Node stack is detected and the evidence names `package.json` and `pnpm-lock.yaml`
+
+#### Scenario: Node project in a subfolder only
+- **WHEN** only `web/package.json` exists
+- **THEN** the Node stack isn't detected
+
 #### Scenario: Nothing recognizable
 - **WHEN** the repository has none of those files
 - **THEN** no stack is detected and nothing fails
@@ -61,7 +69,7 @@ The system SHALL inspect the repository's main folder and its direct subfolders,
 - **THEN** the stacks that depend on its text aren't detected and the others are not affected
 
 ### Requirement: Suggest providers for the detected stacks
-The system SHALL map each detected stack to a provider: Gradle to `gradle`, Android to `emulator`, Xcode to `ios-simulator` and `xcode`, Maven to `maven`, Docker Compose to `docker-compose`, Flutter to `flutter`. It SHALL NOT suggest a provider the repository already declares, nor one the operating system doesn't support, and a suggestion SHALL NEVER be applied without the user's action.
+The system SHALL map each detected stack to a provider: Gradle to `gradle`, Android to `emulator`, Xcode to `ios-simulator` and `xcode`, Maven to `maven`, Docker Compose to `docker-compose`, Flutter to `flutter`, Node to `node`. It SHALL NOT suggest a provider the repository already declares, nor one the operating system doesn't support, and a suggestion SHALL NEVER be applied without the user's action.
 
 #### Scenario: Suggestions for an Android and Gradle repository
 - **WHEN** a repository is detected as Gradle and Android and declares no provider
@@ -70,6 +78,10 @@ The system SHALL map each detected stack to a provider: Gradle to `gradle`, Andr
 #### Scenario: Suggestions for a Flutter repository
 - **WHEN** a repository is detected as Flutter, Gradle, Android and Xcode, declares no provider, and ShogunAi runs on macOS
 - **THEN** `flutter`, `gradle`, `emulator`, `ios-simulator` and `xcode` are suggested, each with its evidence
+
+#### Scenario: Suggestion for a Node repository
+- **WHEN** a repository is detected as Node and Docker Compose, declares no provider, and ShogunAi runs on Linux
+- **THEN** `node` and `docker-compose` are suggested, each with its evidence
 
 #### Scenario: Already declared
 - **WHEN** the repository declares the `gradle` provider

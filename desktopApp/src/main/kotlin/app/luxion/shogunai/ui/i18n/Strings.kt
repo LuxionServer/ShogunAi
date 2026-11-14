@@ -599,6 +599,7 @@ interface Strings : XcodeStrings {
     val variableNameReserved: String
     val approvalVariablesTitle: String
     fun approvalEnvFile(path: String): String
+    val approvalNodeInstall: String
     fun variablesAwaitingApproval(names: List<String>): String
     val templateInvalidCharacters: String
     val envFileInvalidCharacters: String
@@ -659,6 +660,7 @@ interface Strings : XcodeStrings {
     val providerMaven: String
     val providerDockerCompose: String
     val providerFlutter: String
+    val providerNode: String
     val mavenMaxHeapLabel: String
     val composePortVariablesLabel: String
     val composePortVariablesHelp: String

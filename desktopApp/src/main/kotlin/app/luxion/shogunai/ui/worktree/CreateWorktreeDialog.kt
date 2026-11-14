@@ -147,6 +147,9 @@ fun ApprovalSubjectLines(subject: RepositoryApprovalSubject, strings: Strings) {
     subject.envFile?.let { envFile ->
         Text(strings.approvalEnvFile(envFile), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = Spacing.xs))
     }
+    if (subject.nodeInstall) {
+        Text(strings.approvalNodeInstall, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = Spacing.xs))
+    }
 }
 
 @Composable

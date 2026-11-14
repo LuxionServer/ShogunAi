@@ -56,6 +56,8 @@ Como `.shogunai.json` se versiona, quien controla una rama controla sus comandos
 
 Mientras un repositorio no está aprobado sus comandos no se ejecutan y sus variables declaradas no se entregan en ningún sitio: ni a la sesión del agente, ni a `shogun env`, ni a los terminales, ni a los paneles de Herdr, ni a las terminales de Orca, ni al archivo de entorno, ni a la vista de entorno de la app de escritorio, que las muestra como pendientes de aprobación. Las variables que añaden los [providers](providers.md) sí se entregan, porque ShogunAi calcula sus valores.
 
+Un repositorio que declara el [provider `node`](providers.md#node) también necesita aprobación, porque instalar sus dependencias ejecuta sus scripts: la aprobación cubre esa instalación, los diálogos y `shogun trust` lo dicen, y un pull que añade el provider vuelve a preguntar. Guardar desde los ajustes del proyecto nunca aprueba una instalación de Node que no habías aprobado.
+
 - La app de escritorio muestra los comandos, las variables con sus plantillas y el archivo de entorno en el diálogo de creación, antes de preparar el entorno del worktree, y ofrece «Aprobar y recordar» u «Omitir». Omitir crea el worktree sin ejecutar los comandos, sin las variables declaradas y sin el archivo de entorno. Los ajustes del proyecto listan lo que declara el repositorio, si está aprobado en este equipo, y permiten aprobarlo o revocarlo. Guardar el entorno desde los ajustes del proyecto aprueba lo guardado, salvo que el repositorio tenga comandos que no habías aprobado.
 - `shogun new` y `shogun provision` imprimen lo mismo y preguntan en un terminal. Donde no pueden preguntar, y siempre en los hooks de agentes, lo omiten e imprimen una nota por la salida de error que nombra `shogun trust`.
 - `shogun trust` muestra los comandos, las variables y el archivo de entorno y los aprueba (`--yes` omite la pregunta) o revoca la aprobación (`--revoke`); consulta [la referencia de la línea de comandos](cli.md#trust).
@@ -90,6 +92,7 @@ Opciones de los providers:
 | `docker-compose` | `portVariables`: una lista de nombres de variable únicos que siguen las reglas de nombres de `env` y no son reservados. |
 | `desktop-app` | `module` (obligatorio): la ruta Gradle del módulo de la app, como `:desktopApp`. `isolatedHome`: `true` (por defecto) o `false`. |
 | `flutter` | Ninguna: se declara como `{}`. |
+| `node` | Ninguna: se declara como `{}`. |
 
 Las claves y los providers desconocidos se ignoran. Un fichero que no es JSON válido, o una clave conocida con el tipo equivocado, hace que crear y provisionar worktrees falle con un mensaje que indica el fichero y el problema, sin crear nada.
 

@@ -56,6 +56,8 @@ Because `.shogunai.json` is committed, whoever controls a branch controls its po
 
 While a repository isn't approved its commands don't run and its declared variables aren't delivered anywhere: not to the agent's session, `shogun env`, terminals, Herdr panes, Orca terminals, the environment file nor the desktop app's environment view, which lists them as awaiting approval. Variables added by [providers](providers.md) are still delivered, since ShogunAi computes their values.
 
+A repository that declares the [`node` provider](providers.md#node) needs an approval too, since installing its dependencies runs its scripts: the approval covers that install, the dialogs and `shogun trust` say so, and a pull that adds the provider asks again. Saving from project settings never approves a Node install you hadn't approved.
+
 - The desktop app shows the commands, the variables with their templates and the environment file in the create dialog, before preparing the worktree's environment, and offers "Approve and remember" or "Skip". Skipping creates the worktree without running the commands, without the declared variables and without the environment file. Project settings lists what the repository declares, whether it is approved on this machine, and lets you approve or revoke it. Saving the environment from project settings approves what you saved, unless the repository has commands you hadn't approved.
 - `shogun new` and `shogun provision` print the same and ask on a terminal. Where they can't ask, and always in the agent hooks, they skip them and print a note on standard error that names `shogun trust`.
 - `shogun trust` shows the commands, variables and environment file and approves them (`--yes` skips the question) or revokes the approval (`--revoke`); see [the CLI reference](cli.md#trust).
@@ -90,6 +92,7 @@ Provider options:
 | `docker-compose` | `portVariables`: a list of unique variable names that follow the `env` name rules and aren't reserved. |
 | `desktop-app` | `module` (required): the Gradle path of the app's module, such as `:desktopApp`. `isolatedHome`: `true` (default) or `false`. |
 | `flutter` | None: declare it as `{}`. |
+| `node` | None: declare it as `{}`. |
 
 Unknown keys and unknown providers are ignored. A file that isn't valid JSON, or a known key with the wrong type, makes creating and provisioning worktrees fail with a message naming the file and the problem, and nothing is created.
 

@@ -53,6 +53,7 @@ Estado: **Empezado**.
 - **Maven**: los backends JVM obtienen compilaciones de Maven acotadas en memoria, ven sus daemons de Maven y pueden parar los ociosos.
 - **Docker Compose**: los backends JVM obtienen un proyecto de Docker Compose y puertos por worktree, que se arrancan y construyen con `shogun compose up` y se limpian junto con los volúmenes, redes e imágenes que dejan los worktrees eliminados.
 - **Flutter**: los repositorios reciben `flutter pub get` en cada worktree nuevo, con su build de Gradle en `android/` gestionado por los providers de Gradle y del emulador.
+- **Node**: los repositorios web y de backend reciben `node_modules` en cada worktree nuevo, clonado de la base cuando su lockfile coincide o instalado con npm, pnpm, Yarn o bun una vez aprobado el repositorio.
 - **Detección del stack**: la app y `shogun stacks` detectan el stack de un repositorio y sugieren los providers que encajan, y los `local.properties`, keystores y archivos de Firebase que enlazar en cada worktree.
 - **Archivos locales**: se pueden enlazar, seleccionar con patrones y mantener al día cuando la carpeta base pierde archivos.
 
@@ -144,6 +145,18 @@ Provisionado y recursos acotados para los stacks en los que un worktree recién 
   - Desinstalar la app del proyecto de un dispositivo al liberarlo.
   - Mostrar los dispositivos físicos de un worktree en su fila de la lista de worktrees.
   - Dar más espacio al nombre del dispositivo en la vista Dispositivos, que lo corta con el ancho de ventana por defecto.
+
+### Stacks web
+
+Preparar los worktrees de repositorios web y de backend no JVM, que empezó el provider de Node:
+
+- Entornos virtuales de Python por worktree (venv, uv, Poetry), creados o clonados de la base como `node_modules`.
+- Una base de datos por worktree, para que los agentes en paralelo no compartan ni se pisen los datos.
+- Mostrar el tamaño de las cachés de los gestores de paquetes (npm, el store de pnpm, Yarn y bun) junto a las demás cachés compartidas.
+- Seguimiento de Node:
+  - Proyectos Node independientes en subcarpetas, cada uno con su lockfile, que hoy declaran su instalación como comando post-creación.
+  - Clonar `node_modules` en Linux con reflinks donde el sistema de ficheros los admita; hoy Linux y Windows siempre instalan.
+  - Encontrar un Node o un gestor de paquetes instalado con nvm o Volta desde la app de escritorio abierta desde Finder.
 
 ### Todos los agentes, no solo Claude Code
 

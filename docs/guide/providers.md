@@ -16,10 +16,11 @@ A provider adds support for one kind of tooling to a repository's worktrees. A r
 | [`docker-compose`](#docker-compose) | A Docker Compose project and ports per worktree. | Any with the Docker CLI |
 | [`desktop-app`](#compose-desktop-app) | A Compose Desktop app per worktree, run in the background without taking the desktop. | macOS |
 | [`flutter`](#flutter) | Flutter apps: `flutter pub get` in every new worktree, and agents running Flutter on their worktree's devices. | Any with Flutter |
+| [`node`](#node) | Node repositories: `node_modules` cloned from the base or installed in every new worktree. | Any with Node; cloning on macOS |
 
 ## Detecting stacks
 
-You don't have to know which providers exist. ShogunAi looks at the files of the repository's main folder and its direct subfolders (never hidden folders, `build`, `node_modules` or `Pods`) and recognises six stacks:
+You don't have to know which providers exist. ShogunAi looks at the files of the repository's main folder and its direct subfolders (never hidden folders, `build`, `node_modules` or `Pods`) and recognises seven stacks:
 
 | Stack | Revealed by | Suggests |
 |---|---|---|
@@ -29,6 +30,7 @@ You don't have to know which providers exist. ShogunAi looks at the files of the
 | Maven | `pom.xml` or `mvnw` in the main folder | `maven` |
 | Docker Compose | `compose.yaml`, `compose.yml`, `docker-compose.yaml` or `docker-compose.yml` in the main folder | `docker-compose` |
 | Flutter | a `pubspec.yaml` in the main folder that depends on the Flutter SDK (`sdk: flutter`) | `flutter` |
+| Node | a `package.json` in the main folder, with its lockfiles as further evidence | `node` |
 
 In the project settings, "Repository configuration" lists the providers the repository could use and doesn't declare yet, with the files that revealed them, and "Turn on" switches the provider on as an unsaved change: nothing is written until you save and confirm the preview. `shogun stacks` prints the same from a terminal and changes nothing. A suggestion is only a hint (a `pom.xml` in a fixture folder also counts), so the evidence is always shown.
 
@@ -319,3 +321,20 @@ A fresh worktree of a Flutter repository doesn't build: `.dart_tool/`, `android/
 - **CocoaPods.** With `cocoaPods` on, a new worktree gets the base repository's pods next to the tracked `ios/Podfile.lock`. Flutter's first build in that worktree still runs `pod install` itself, because it decides from a fingerprint kept in `build/`; with the pods already in place it downloads nothing. A "needs `pod install`" report is handled by Flutter's own build too.
 - **Ports.** `flutter run` binds its VM service and DevTools to free ports it picks, so worktrees don't collide. If the repository fixes the web server port, reserve one per worktree with `env` and pass it on: `"env": { "FLUTTER_WEB_PORT": "${port}" }` and `flutter run -d chrome --web-port "$FLUTTER_WEB_PORT"`.
 - `build/` and `.dart_tool/` stay per worktree: they hold absolute paths and incremental compiler state. The pub cache (`~/.pub-cache`) is already shared by every worktree.
+
+## Node
+
+A fresh worktree of a Node repository doesn't run: `node_modules` is ignored by Git, so every script, test runner and dev server fails until the dependencies are installed. Turn on the Node provider and every new or provisioned worktree gets them:
+
+```json
+{ "providers": { "node": {} } }
+```
+
+- **Package manager.** ShogunAi finds it from the lockfile in the repository's main folder: `package-lock.json` or `npm-shrinkwrap.json` (npm), `pnpm-lock.yaml` (pnpm), `yarn.lock` (Yarn) or `bun.lock`/`bun.lockb` (bun). With several lockfiles, `packageManager` in `package.json` decides; otherwise pnpm, Yarn, bun and npm, in that order. A repository without a lockfile is reported as needing its dependencies, and nothing runs.
+- **Cloned when the base matches.** On macOS, when the worktree's lockfile equals the base repository's and the base was installed after its lockfile last changed (npm's `node_modules/.package-lock.json`, pnpm's `node_modules/.modules.yaml`, Yarn's `node_modules/.yarn-integrity` or `.yarn-state.yml`), every ignored `node_modules` of the base is cloned with copy-on-write. It takes seconds, uses no extra disk until files change, and runs nothing. If a clone fails, the clones made so far are removed and the dependencies are installed instead.
+- **Installed otherwise, once the repository is approved.** When they can't be cloned (the branch changed the lockfile, the base isn't installed, bun or Yarn Plug'n'Play, Linux or Windows), ShogunAi runs `npm ci`, `pnpm install --frozen-lockfile`, `yarn install --immutable` (Yarn Berry, with `.yarnrc.yml`) or `yarn install --frozen-lockfile`, or `bun install --frozen-lockfile` in the worktree. Installing runs the repository's and its dependencies' scripts, so it only happens when the repository is [approved](configuration.md#approving-a-repository): declaring `node` makes the approval cover it, and the approval dialogs and `shogun trust` say so. Until then the report says the dependencies are needed and which command to run.
+- **Workspaces.** npm, pnpm, Yarn and bun workspaces keep one lockfile at the root, so the one clone covers every package's `node_modules`, and the one install at the root fills them. Independent Node projects in subfolders, each with its own lockfile, aren't prepared yet: declare their installs as post-creation commands.
+- **Order and reports.** The dependencies are prepared after the files are copied, the pods prepared and `flutter pub get`, and before the post-creation commands, so a `npm run build` declared there finds them. A worktree that already has `node_modules` is left as is. `shogun new`, `shogun provision` and the worktree creation hook report the outcome (`node.dependencies` in their JSON). A failed install (the manager isn't on the `PATH`, the lockfile is out of sync with `package.json`) keeps the worktree and says why.
+- **Ports.** Give dev servers a port per worktree with `env`, such as `"env": { "PORT": "${port}" }`, and start them with that variable instead of a fixed port.
+- **After a clone.** Files that the repository's own scripts generate into `node_modules` (a Prisma client, for example) come from the base's checkout; run the generator again when the branch changed their sources. The `SessionStart` hook tells Claude to reinstall with the repository's manager after `package.json` or the lockfile change, and never to link or copy `node_modules` from another worktree.
+- `shogun doctor` checks `node` and the manager of the lockfile (only `bun` for bun).
