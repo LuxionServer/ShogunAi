@@ -229,6 +229,9 @@ private fun spanishProviderFix(tool: ProviderToolId, problem: ProviderToolProble
         ProviderToolId.COCOAPODS -> "Instala CocoaPods desde https://cocoapods.org."
         ProviderToolId.DOCKER_COMPOSE, ProviderToolId.DOCKER_DAEMON -> "Instala Docker con su plugin Compose, por ejemplo Docker Desktop desde https://docs.docker.com/get-docker/."
         ProviderToolId.FLUTTER -> "Instala Flutter (https://docs.flutter.dev/get-started/install), o FVM si el repositorio lo usa, y comprueba que está en tu PATH."
+        ProviderToolId.NODE, ProviderToolId.NPM -> "Instala Node.js, que incluye npm (https://nodejs.org), y comprueba que está en tu PATH."
+        ProviderToolId.PNPM, ProviderToolId.YARN -> "Actívalo con Corepack (corepack enable) o instálalo, y comprueba que está en tu PATH."
+        ProviderToolId.BUN -> "Instala bun (https://bun.sh) y comprueba que está en tu PATH."
         ProviderToolId.PROVIDERS -> "Corrige el .shogunai.json del repositorio para que sea válido."
     }
 }
