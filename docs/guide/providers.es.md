@@ -270,6 +270,7 @@ Cuando las carpetas suman más que la cuota, ShogunAi libera primero las carpeta
 ```bash
 shogun xcode                               # carpetas de DerivedData de este repositorio con sus paquetes, huérfanas y cachés compartidas
 shogun xcode clean                         # borrar las carpetas huérfanas
+shogun xcode clean --swift-build           # borrar las carpetas .build de los worktrees que no están en uso
 shogun xcode trim [--dry-run]              # liberar carpetas hasta que el DerivedData quepa en la cuota
 shogun clean --yes --delete-derived-data   # borrarlas también tras eliminar worktrees
 ```
@@ -287,6 +288,12 @@ shogun clean --yes --delete-derived-data   # borrarlas también tras eliminar wo
 Xcode resuelve los paquetes Swift de un proyecto dentro de su carpeta de DerivedData (`SourcePackages`), así que cada worktree tiene sus propios checkouts, que cuentan en la cuota y desaparecen con la carpeta. Salen de la caché de repositorios compartida de Xcode, así que un worktree nuevo los resuelve sin red. La sección y `shogun xcode` muestran cuánto de la carpeta de cada worktree son paquetes ("App.xcodeproj · paquetes 800 MB"), medido y recordado junto al tamaño de la carpeta; los checkouts no se comparten entre worktrees.
 
 Las cachés de paquetes compartidas, la de SwiftPM (`~/Library/Caches/org.swift.swiftpm`) y la de CocoaPods (`~/Library/Caches/CocoaPods`), se muestran debajo de la caché de compilación cuando existen. Como ella, no cuentan en la cuota y ShogunAi nunca las borra; solo se miden sus ubicaciones por defecto.
+
+### Builds de paquetes Swift
+
+Un repositorio que es un paquete Swift (un `Package.swift` en la carpeta principal del worktree) compilado con `swift build` deja una carpeta `.build` en cada worktree, que el DerivedData de Xcode no cubre. Con el provider de Xcode declarado, ShogunAi lee también la carpeta `.build` de cada worktree: la sección la lista como una fila de su worktree ("TASK-123 · .build", con sus paquetes de `.build/checkouts` y `.build/repositories`), y `shogun xcode` por su ruta. Su último acceso es la última vez que un build escribió en ella, y su tamaño se mide y se recuerda como el de una carpeta de DerivedData.
+
+Las carpetas `.build` cuentan en la cuota de DerivedData, y la cuota las libera como el DerivedData de un worktree que no está en uso, de la compilada hace más tiempo a la más reciente. "Borrar .build sin uso" en la sección, y `shogun xcode clean --swift-build`, borran en el acto las carpetas `.build` de los worktrees que no están en uso; el siguiente `swift build` las vuelve a crear. Una carpeta `.build` nunca queda huérfana: eliminar un worktree la elimina con el resto de sus ficheros.
 
 ### CocoaPods
 

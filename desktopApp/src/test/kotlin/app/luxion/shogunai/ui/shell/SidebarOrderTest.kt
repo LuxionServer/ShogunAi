@@ -160,6 +160,83 @@ class SidebarOrderTest {
     }
 
     @Test
+    fun `moving a key that isn't in the level leaves it as it is`() {
+        assertEquals(listOf("api", "mobile"), listOf("api", "mobile").moving("docs", 0))
+    }
+
+    @Test
+    fun `nothing is dragged before a drag starts or after it stops`() {
+        val state = SidebarDragState().apply {
+            keys = listOf("mobile", "api")
+            place("mobile", 0f, 30f)
+        }
+
+        assertEquals(-1, state.targetIndex())
+        assertEquals(0f, state.shiftOf("api"))
+        state.start("mobile")
+        state.stop()
+        assertEquals(-1, state.targetIndex())
+    }
+
+    @Test
+    fun `a dragged row not yet placed keeps its index`() {
+        val state = SidebarDragState().apply { keys = listOf("mobile", "api") }
+
+        state.start("api")
+
+        assertEquals(1, state.targetIndex())
+    }
+
+    @Test
+    fun `rows outside the level don't shift`() {
+        val state = SidebarDragState().apply {
+            keys = listOf("mobile", "api")
+            place("mobile", 0f, 30f)
+            place("api", 30f, 30f)
+        }
+
+        state.start("docs")
+        assertEquals(0f, state.shiftOf("api"))
+        state.start("mobile")
+        assertEquals(0f, state.shiftOf("docs"))
+    }
+
+    @Test
+    fun `dragging past a neighbour shifts it the other way by the dragged row's pitch`() {
+        val state = SidebarDragState().apply {
+            keys = listOf("mobile", "folder", "api")
+            spacing = 4f
+            place("mobile", 0f, 30f)
+            place("folder", 34f, 30f)
+            place("api", 68f, 30f)
+        }
+
+        state.start("api")
+        state.drag(-40f)
+        assertEquals(-40f, state.shiftOf("api"))
+        assertEquals(34f, state.shiftOf("folder"))
+        assertEquals(0f, state.shiftOf("mobile"))
+        state.stop()
+        state.start("mobile")
+        state.drag(40f)
+        assertEquals(-34f, state.shiftOf("folder"))
+        assertEquals(0f, state.shiftOf("api"))
+    }
+
+    @Test
+    fun `rows of unknown height count as empty`() {
+        val state = SidebarDragState().apply {
+            keys = listOf("mobile", "api")
+            place("api", 30f, 30f)
+        }
+
+        state.start("api")
+        state.drag(-40f)
+
+        assertEquals(0, state.targetIndex())
+    }
+
+    @Test
     fun `a tall block takes a place once its leading edge passes a neighbour's middle`() {
         val state = SidebarDragState().apply {
             keys = listOf("mobile", "folder", "api")

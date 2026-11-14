@@ -270,6 +270,7 @@ When the folders add up to more than the quota, ShogunAi releases the orphaned f
 ```bash
 shogun xcode                               # this repository's DerivedData folders with their packages, the orphans and the shared caches
 shogun xcode clean                         # delete the orphaned folders
+shogun xcode clean --swift-build           # delete the .build folders of the worktrees not in use
 shogun xcode trim [--dry-run]              # release folders until DerivedData fits the quota
 shogun clean --yes --delete-derived-data   # also delete them after removing worktrees
 ```
@@ -287,6 +288,12 @@ shogun clean --yes --delete-derived-data   # also delete them after removing wor
 Xcode resolves a project's Swift packages into its DerivedData folder (`SourcePackages`), so each worktree has its own checkouts, which count against the quota and go away with the folder. They come from Xcode's shared repository cache, so a new worktree resolves them without the network. The section and `shogun xcode` show how much of each worktree's folder are packages ("App.xcodeproj · packages 800 MB"), measured and remembered with the folder's size; checkouts aren't shared between worktrees.
 
 The shared package caches, SwiftPM's (`~/Library/Caches/org.swift.swiftpm`) and CocoaPods' (`~/Library/Caches/CocoaPods`), are shown below the compilation cache when they exist. Like it, they don't count against the quota and ShogunAi never deletes them; only their default locations are measured.
+
+### Swift package builds
+
+A repository that is a Swift package (a `Package.swift` in the worktree's main folder) built with `swift build` leaves a `.build` folder in each worktree, which Xcode's DerivedData doesn't cover. With the Xcode provider declared, ShogunAi reads each worktree's `.build` folder too: the section lists it as a row of its worktree ("TASK-123 · .build", with its packages from `.build/checkouts` and `.build/repositories`), and `shogun xcode` by its path. Its last access is the last time a build wrote to it, and its size is measured and remembered like a DerivedData folder's.
+
+The `.build` folders count against the DerivedData quota, and the quota releases them like the DerivedData of a worktree that is not in use, the least recently built first. "Delete unused .build" in the section, and `shogun xcode clean --swift-build`, delete the `.build` folders of the worktrees that are not in use right away; the next `swift build` recreates them. A `.build` folder is never orphaned: removing a worktree removes it with the rest of the worktree's files.
 
 ### CocoaPods
 

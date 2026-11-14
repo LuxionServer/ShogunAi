@@ -14,6 +14,7 @@ import app.luxion.shogunai.domain.usecase.CloseOrcaTerminalsUseCase
 import app.luxion.shogunai.domain.usecase.ConfigureMultirepoUseCase
 import app.luxion.shogunai.domain.usecase.CreateGroupUseCase
 import app.luxion.shogunai.domain.usecase.DeleteOrphanedDerivedDataUseCase
+import app.luxion.shogunai.domain.usecase.DeleteUnusedSwiftBuildsUseCase
 import app.luxion.shogunai.domain.usecase.DeleteSimulatorsUseCase
 import app.luxion.shogunai.domain.usecase.DesktopTurnLedger
 import app.luxion.shogunai.domain.usecase.DetectMobileSecretsUseCase
@@ -232,12 +233,13 @@ class ShogunEngine(
         orca = orcaReader,
     )
 
-    val listDerivedData = ListDerivedDataUseCase(ports.derivedData, ports.derivedDataSizes, ports.packageCaches)
-    val listDerivedDataFolders = ListDerivedDataUseCase(ports.derivedData, ports.derivedDataSizes)
-    val measureDerivedData = MeasureDerivedDataUseCase(ports.derivedData, ports.derivedDataSizes)
+    val listDerivedData = ListDerivedDataUseCase(ports.derivedData, ports.derivedDataSizes, ports.packageCaches, ports.swiftBuilds)
+    val listDerivedDataFolders = ListDerivedDataUseCase(ports.derivedData, ports.derivedDataSizes, swiftBuilds = ports.swiftBuilds)
+    val measureDerivedData = MeasureDerivedDataUseCase(ports.derivedData, ports.derivedDataSizes, swiftBuilds = ports.swiftBuilds)
     val deleteOrphanedDerivedData = DeleteOrphanedDerivedDataUseCase(ports.derivedData)
     val resolveDerivedDataQuota = ResolveDerivedDataQuotaUseCase(ports.derivedData)
-    val trimDerivedData = TrimDerivedDataUseCase(ports.derivedData, listDerivedData, options.clock)
+    val trimDerivedData = TrimDerivedDataUseCase(ports.derivedData, listDerivedData, ports.swiftBuilds, options.clock)
+    val deleteUnusedSwiftBuilds = DeleteUnusedSwiftBuildsUseCase(ports.swiftBuilds, options.clock)
 
     val listComposeProjects = ListComposeProjectsUseCase(ports.composeProjects, ports.composeRegistry)
     val listComposeLeftovers = ListComposeLeftoversUseCase(ports.composeProjects, ports.composeRegistry)

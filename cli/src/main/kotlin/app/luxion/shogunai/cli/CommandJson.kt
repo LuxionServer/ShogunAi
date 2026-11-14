@@ -9,11 +9,6 @@ import app.luxion.shogunai.domain.model.DaemonKind
 import app.luxion.shogunai.domain.model.DaemonOwner
 import app.luxion.shogunai.domain.model.DaemonState
 import app.luxion.shogunai.domain.model.DaemonStopReport
-import app.luxion.shogunai.domain.model.DerivedDataDeletion
-import app.luxion.shogunai.domain.model.DerivedDataFolder
-import app.luxion.shogunai.domain.model.DerivedDataListing
-import app.luxion.shogunai.domain.model.DerivedDataOwner
-import app.luxion.shogunai.domain.model.DerivedDataTrim
 import app.luxion.shogunai.domain.model.DetectedStack
 import app.luxion.shogunai.domain.model.InstallationReport
 import app.luxion.shogunai.domain.usecase.InstallationReportText
@@ -72,7 +67,7 @@ import java.time.Instant
 
 fun JsonObject.compact(): String = Json.encodeToString(JsonElement.serializer(), this)
 
-private fun strings(values: Iterable<String>): JsonArray = buildJsonArray { values.forEach { add(JsonPrimitive(it)) } }
+internal fun strings(values: Iterable<String>): JsonArray = buildJsonArray { values.forEach { add(JsonPrimitive(it)) } }
 
 private fun numbers(values: Iterable<Long>): JsonArray = buildJsonArray { values.forEach { add(JsonPrimitive(it)) } }
 
@@ -617,89 +612,6 @@ private val DaemonOwner.jsonLabel: String
         DaemonOwner.RemovedWorktree -> "removed"
         DaemonOwner.OtherProject -> "other-project"
     }
-
-fun xcodeJson(active: Boolean, listing: DerivedDataListing?): JsonObject = buildJsonObject {
-    put("active", active)
-    put(
-        "folders",
-        buildJsonArray {
-            listing?.ofWorktrees().orEmpty().forEach {
-                add(
-                    buildJsonObject {
-                        put("path", it.folder.path)
-                        put("sizeBytes", it.folder.sizeOrZero())
-                        put("sourcePackagesBytes", it.folder.packagesBytes)
-                        put("worktree", (it.owner as DerivedDataOwner.Worktree).path)
-                    },
-                )
-            }
-        },
-    )
-    put("orphans", derivedDataFolders(listing?.orphans.orEmpty()))
-    put("unavailableVolumeFolders", listing?.folders.orEmpty().count { it.owner == DerivedDataOwner.UnavailableVolume })
-    put("compilationCacheBytes", listing?.compilationCacheBytes)
-    put("swiftPmCacheBytes", listing?.let { it.packageCaches.swiftPmBytes })
-    put("cocoaPodsCacheBytes", listing?.let { it.packageCaches.cocoaPodsBytes })
-}
-
-private fun derivedDataFolders(folders: List<DerivedDataFolder>): JsonArray = buildJsonArray {
-    folders.forEach {
-        add(
-            buildJsonObject {
-                put("path", it.path)
-                put("sizeBytes", it.sizeOrZero())
-                put("sourcePackagesBytes", it.packagesBytes)
-            },
-        )
-    }
-}
-
-internal fun DerivedDataFolder.sizeOrZero(): Long = sizeBytes ?: 0L
-
-fun xcodeCleanJson(active: Boolean, deletion: DerivedDataDeletion?): JsonObject = buildJsonObject {
-    put("active", active)
-    put("deleted", strings(deletion?.deleted.orEmpty().map { it.path }))
-    put("freedBytes", deletion?.bytesFreed ?: 0L)
-    put(
-        "failures",
-        buildJsonArray {
-            deletion?.failures.orEmpty().forEach {
-                add(
-                    buildJsonObject {
-                        put("path", it.path)
-                        put("message", it.detail)
-                    },
-                )
-            }
-        },
-    )
-}
-
-fun xcodeTrimJson(active: Boolean, trim: DerivedDataTrim?): JsonObject = buildJsonObject {
-    put("active", active)
-    put("quotaMode", trim?.let { it.quotaMode.name.lowercase() })
-    put("quotaBytes", trim?.quotaBytes)
-    put("dryRun", trim?.dryRun ?: false)
-    put("usageBeforeBytes", trim?.usageBefore ?: 0L)
-    put("usageAfterBytes", trim?.usageAfter ?: 0L)
-    put("exceeded", trim?.isExceeded ?: false)
-    put("released", strings(trim?.released.orEmpty().map { it.folder.path }))
-    put("freedBytes", trim?.bytesFreed ?: 0L)
-    put("inUse", strings(trim?.inUse.orEmpty().map { (it.owner as DerivedDataOwner.Worktree).path }))
-    put(
-        "failures",
-        buildJsonArray {
-            trim?.failures.orEmpty().forEach {
-                add(
-                    buildJsonObject {
-                        put("path", it.path)
-                        put("message", it.detail)
-                    },
-                )
-            }
-        },
-    )
-}
 
 fun emulatorJson(
     worktree: String,

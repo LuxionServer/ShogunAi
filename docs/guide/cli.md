@@ -9,6 +9,7 @@ shogun provision ../other-worktree # copy the declared files into a worktree mad
 shogun status                      # every worktree with its changes, divergence and merged state
 shogun status --json               # the same, as one JSON document for scripts
 shogun base                        # the branch this worktree's branch was created from, its pull request's base
+shogun overlap                     # the files this worktree changes that another worktree changes too
 shogun remove TASK-123             # remove one worktree and stop its emulator and simulator
 shogun repair                      # re-link the worktrees after the repository moved
 shogun open TASK-123 --herdr       # open a worktree in Herdr with its environment and the project's agent
@@ -176,6 +177,22 @@ Prints the branch a worktree's branch was created from, alone on standard output
 - When none is recorded (a worktree created by Herdr or `git worktree add`, or a branch from before ShogunAi recorded bases), it says so on standard error, suggests `--set` and exits with `1`. A detached worktree has no branch and also exits with `1`.
 - `--set <branch>` records it, replacing any previous value. The value must be a local branch or a branch of a remote, whose remote prefix is dropped (`origin/develop` is recorded as `develop`); a tag or an unknown name records nothing and exits with `1`.
 - `--json` prints `{ "path", "branch", "base" }`, with `base` `null` (and exit code `1`) when none is recorded.
+
+### `overlap`
+
+```text
+shogun overlap [<task id | path | branch>] [--all] [--json]
+```
+
+Lists the files that more than one worktree of the repository is changing at once, so parallel changes find out before their pull requests collide.
+
+- A worktree changes a file when the file differs between its working tree and the commit where its branch left its base: the branch's commits, staged and unstaged edits and deletions, plus new files Git doesn't ignore. The base is the one `shogun status` compares with, the [recorded base](#base) or the main branch; changes the base made after the branch left it don't count.
+- Two worktrees overlap on a file when both change it, whatever the lines. Worktrees with different bases are reported together, each one with its base, since the conflict arrives when one base is merged into the other.
+- Inside a linked worktree, or with a target, it lists only the files that worktree shares; in the main checkout, every overlap of the repository. Each file is followed by one line per worktree: its branch (`(detached)` without one), its base and its path.
+- Files the repository expects to be edited in parallel are left out when [`.shogunai.json`](configuration.md#repository-configuration-shogunaijson) declares them in `overlap.ignore`; `--all` includes them.
+- A worktree that can't be compared (its folder is missing, it has no base, or Git fails to read it) is reported on standard error and the others are still compared.
+- It exits with `0` whether or not it finds overlaps.
+- `--json` prints `{ "repository", "worktree", "files", "skipped" }`: `worktree` is the target's path or `null`, each file is `{ "path", "worktrees": [{ "path", "branch", "base" }] }` and each skipped worktree is `{ "path", "branch", "reason" }`.
 
 ### `hooks`
 
@@ -526,11 +543,11 @@ shogun pool trim [--json]
 
 ```text
 shogun xcode
-shogun xcode clean
+shogun xcode clean [--swift-build]
 shogun xcode trim [--dry-run]
 ```
 
-`xcode` lists the DerivedData folders of the repository's worktrees with their size and, when they have Swift packages, `(packages <size>)`, the orphaned folders on the machine (`orphans: N (size)`), the compilation cache size when compilation caching is declared, and the sizes of the shared SwiftPM and CocoaPods caches when they exist (`SwiftPM cache: <size>`, `CocoaPods cache: <size>`). `xcode clean` deletes the orphaned folders (`deleted <path>`, `freed <size>`, or `Nothing to delete.`). `xcode trim` applies the DerivedData quota set in Preferences > Resources, automatic by default (a quarter of the free disk space plus what DerivedData takes, between 20 and 200 GB): when the folders add up to more than the quota it releases orphaned folders first and then the least recently accessed folders of worktrees of your saved projects that are not in use, and stops as soon as the total fits (`released <path>  <size>`, `freed <size>`, `usage <size> of <quota>`, followed by `(automatic)` for the automatic quota). A worktree is in use while its agent is working or blocked or its folder was accessed within the last hour, and folders of other projects, on unavailable volumes and the compilation cache are never released; if only those remain it prints `quota still exceeded` and the worktrees in use. `--dry-run` prints `would release` and `would free` without deleting. With "No quota" it says so and deletes nothing, and when the automatic quota can't be computed because the free disk space is unknown it says that instead. The `xcode` commands remember each folder's size between runs, shared with the app, and only measure again the folders Xcode has used since, several at a time. Without the Xcode provider, or off macOS, `xcode` says the provider isn't active and exits with `0`.
+`xcode` lists the DerivedData folders of the repository's worktrees with their size and, when they have Swift packages, `(packages <size>)`, the orphaned folders on the machine (`orphans: N (size)`), the compilation cache size when compilation caching is declared, and the sizes of the shared SwiftPM and CocoaPods caches when they exist (`SwiftPM cache: <size>`, `CocoaPods cache: <size>`). `xcode` also lists the `.build` folder of each worktree of a Swift package by its path (`<worktree>/.build  <size>`). `xcode clean` deletes the orphaned folders (`deleted <path>`, `freed <size>`, or `Nothing to delete.`); with `--swift-build` it deletes instead the `.build` folders of the worktrees that are not in use (`deleted <path>  <size>`, `freed <size>`, `kept <path>  (in use)`), and exits with `1` if one couldn't be deleted. `xcode trim` counts and releases the `.build` folders like the DerivedData of worktrees. `xcode trim` applies the DerivedData quota set in Preferences > Resources, automatic by default (a quarter of the free disk space plus what DerivedData takes, between 20 and 200 GB): when the folders add up to more than the quota it releases orphaned folders first and then the least recently accessed folders of worktrees of your saved projects that are not in use, and stops as soon as the total fits (`released <path>  <size>`, `freed <size>`, `usage <size> of <quota>`, followed by `(automatic)` for the automatic quota). A worktree is in use while its agent is working or blocked or its folder was accessed within the last hour, and folders of other projects, on unavailable volumes and the compilation cache are never released; if only those remain it prints `quota still exceeded` and the worktrees in use. `--dry-run` prints `would release` and `would free` without deleting. With "No quota" it says so and deletes nothing, and when the automatic quota can't be computed because the free disk space is unknown it says that instead. The `xcode` commands remember each folder's size between runs, shared with the app, and only measure again the folders Xcode has used since, several at a time. Without the Xcode provider, or off macOS, `xcode` says the provider isn't active and exits with `0`.
 
 ## JSON output
 
@@ -570,8 +587,8 @@ The rules are the same for all of them:
 | `compose up`, `compose build` | `worktree`, `project`, `succeeded` and, on failure, `message`. Docker Compose's output goes to standard error. |
 | `compose prune` | `dryRun`; `removed` and `kept`: `{ kind, name, project }`; `failures`: `{ resource, message }`. Without `--yes` `removed` is what it would remove. |
 | `compose down` | `takenDown` (project names) and `failures`: `{ name, message }`. The exit code is `1` when `failures` isn't empty. |
-| `xcode` | `active` (`false` when the provider isn't active, with the rest empty), `folders`: `{ path, sizeBytes, sourcePackagesBytes, worktree }`, `orphans`: `{ path, sizeBytes, sourcePackagesBytes }`, `unavailableVolumeFolders` (a count), `compilationCacheBytes` (`null` unless declared), and `swiftPmCacheBytes` and `cocoaPodsCacheBytes` (`null` when the cache doesn't exist). |
-| `xcode clean` | `active`, `deleted` (paths), `freedBytes` and `failures`: `{ path, message }`. |
+| `xcode` | `active` (`false` when the provider isn't active, with the rest empty), `folders`: `{ kind, path, sizeBytes, sourcePackagesBytes, worktree }` with `kind` `derived-data` or `swift-build`, `orphans`: `{ path, sizeBytes, sourcePackagesBytes }`, `unavailableVolumeFolders` (a count), `compilationCacheBytes` (`null` unless declared), and `swiftPmCacheBytes` and `cocoaPodsCacheBytes` (`null` when the cache doesn't exist). |
+| `xcode clean` | `active`, `deleted` (paths), `freedBytes` and `failures`: `{ path, message }`; with `--swift-build`, also `inUse` (paths kept). |
 | `xcode trim` | `active`, `quotaMode` (`automatic`, `fixed` or `none`), `quotaBytes` (`null` without a quota or when the automatic one can't be computed), `dryRun`, `usageBeforeBytes`, `usageAfterBytes`, `exceeded`, `released` (paths, those that would be released with `--dry-run`), `freedBytes`, `inUse` (worktree paths) and `failures`: `{ path, message }`. |
 | `emulator start\|stop\|status` | `worktree`, `serial` and `state` (`running`, `booting` or `stopped`). `serial` and `state` are `null` when the worktree has no emulator port reserved yet. `waited` is the whole seconds a `start --wait` waited for capacity (`0` if there was room), `null` otherwise. `start` adds `orcaView`: `shown`, `not-open` (Orca not installed or running, or not listing the worktree), `skipped` (the worktree's simulator is running too) or `failed`. |
 | `desktop acquire\|release\|status` | `holder` (`null`, or `{ repository, worktree, since, expiresAt }`) and `waiting`: `{ repository, worktree, since }` in line order, with ISO-8601 UTC times. `acquire` adds `renewed` and `waited` (whole seconds waited, `0` when the desktop was free, `null` without `--wait`); `release` adds `released`. |

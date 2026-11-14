@@ -6,7 +6,6 @@ import androidx.compose.runtime.setValue
 import app.luxion.shogunai.domain.usecase.ClaudeCodeHooks
 import app.luxion.shogunai.domain.usecase.CommandLineTool
 import app.luxion.shogunai.domain.usecase.CommandLineToolInstallation
-import app.luxion.shogunai.domain.model.CommandLineToolState
 import app.luxion.shogunai.domain.usecase.CommandLineToolStatus
 import app.luxion.shogunai.domain.model.HooksInstallState
 import app.luxion.shogunai.domain.usecase.HooksPreview
@@ -48,7 +47,7 @@ class ClaudeHooksState(
 
     val toolReady: Boolean get() = toolStatus?.usableByHooks ?: true
 
-    val toolNeedsAttention: Boolean get() = !toolReady || toolStatus?.state == CommandLineToolState.BROKEN
+    val toolNeedsAttention: Boolean get() = !toolReady
 
     val canChangeHooks: Boolean get() = toolReady
 

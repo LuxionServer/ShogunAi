@@ -9,6 +9,7 @@ shogun provision ../otro-worktree  # copia los archivos declarados en un worktre
 shogun status                      # todos los worktrees con sus cambios, divergencia y si están mergeados
 shogun status --json               # lo mismo, como un documento JSON para scripts
 shogun base                        # la rama de la que se creó la rama de este worktree, la base de su pull request
+shogun overlap                     # los archivos que este worktree cambia y que otro worktree también cambia
 shogun remove TASK-123             # elimina un worktree y para su emulador y simulador
 shogun repair                      # re-enlaza los worktrees tras mover el repositorio
 shogun open TASK-123 --herdr       # abre un worktree en Herdr con su entorno y el agente del proyecto
@@ -176,6 +177,22 @@ Imprime la rama de la que se creó la rama de un worktree, sola en la salida est
 - Si no hay ninguna registrada (un worktree creado por Herdr o con `git worktree add`, o una rama anterior a que ShogunAi registrara bases), lo dice en la salida de error, sugiere `--set` y sale con `1`. Un worktree en HEAD separado no tiene rama y también sale con `1`.
 - `--set <rama>` la registra, sustituyendo el valor anterior. El valor debe ser una rama local o de un remoto, cuyo prefijo de remoto se quita (`origin/develop` se registra como `develop`); un tag o un nombre desconocido no registran nada y salen con `1`.
 - `--json` imprime `{ "path", "branch", "base" }`, con `base` a `null` (y código de salida `1`) si no hay ninguna registrada.
+
+### `overlap`
+
+```text
+shogun overlap [<task id | path | branch>] [--all] [--json]
+```
+
+Lista los archivos que más de un worktree del repositorio está cambiando a la vez, para que los cambios en paralelo lo sepan antes de que sus pull requests choquen.
+
+- Un worktree cambia un archivo cuando el archivo difiere entre su árbol de trabajo y el commit en que su rama salió de su base: los commits de la rama, las ediciones en el índice o fuera de él y los borrados, más los archivos nuevos que Git no ignora. La base es la que compara `shogun status`, la [base registrada](#base) o la rama principal; los cambios que hizo la base después de que la rama saliera de ella no cuentan.
+- Dos worktrees se solapan en un archivo cuando ambos lo cambian, sean cuales sean las líneas. Los worktrees con bases distintas se muestran juntos, cada uno con su base, porque el conflicto llega cuando una base se fusiona en la otra.
+- Dentro de un worktree enlazado, o con un destino, lista solo los archivos que comparte ese worktree; en el checkout principal, todos los solapamientos del repositorio. Cada archivo va seguido de una línea por worktree: su rama (`(detached)` si no tiene), su base y su ruta.
+- Los archivos que el repositorio espera que se editen en paralelo se omiten cuando [`.shogunai.json`](configuration.md#configuracion-del-repositorio-shogunaijson) los declara en `overlap.ignore`; `--all` los incluye.
+- Un worktree que no se puede comparar (falta su carpeta, no tiene base o Git falla al leerlo) se indica en la salida de error y los demás se comparan igualmente.
+- Sale con `0` encuentre o no solapamientos.
+- `--json` imprime `{ "repository", "worktree", "files", "skipped" }`: `worktree` es la ruta del destino o `null`, cada archivo es `{ "path", "worktrees": [{ "path", "branch", "base" }] }` y cada worktree omitido es `{ "path", "branch", "reason" }`.
 
 ### `hooks`
 
@@ -526,11 +543,11 @@ shogun pool trim [--json]
 
 ```text
 shogun xcode
-shogun xcode clean
+shogun xcode clean [--swift-build]
 shogun xcode trim [--dry-run]
 ```
 
-`xcode` lista las carpetas de DerivedData de los worktrees del repositorio con su tamaño y, si tienen paquetes Swift, `(packages <tamaño>)`, las carpetas huérfanas de la máquina (`orphans: N (tamaño)`), el tamaño de la caché de compilación cuando se declara, y los de las cachés compartidas de SwiftPM y CocoaPods cuando existen (`SwiftPM cache: <tamaño>`, `CocoaPods cache: <tamaño>`). `xcode clean` borra las carpetas huérfanas (`deleted <path>`, `freed <tamaño>`, o `Nothing to delete.`). Sin el provider de Xcode, o fuera de macOS, dice que el provider no está activo y sale con `0`.
+`xcode` lista las carpetas de DerivedData de los worktrees del repositorio con su tamaño y, si tienen paquetes Swift, `(packages <tamaño>)`, las carpetas huérfanas de la máquina (`orphans: N (tamaño)`), el tamaño de la caché de compilación cuando se declara, y los de las cachés compartidas de SwiftPM y CocoaPods cuando existen (`SwiftPM cache: <tamaño>`, `CocoaPods cache: <tamaño>`). `xcode` lista también la carpeta `.build` de cada worktree de un paquete Swift por su ruta (`<worktree>/.build  <tamaño>`). `xcode clean` borra las carpetas huérfanas (`deleted <path>`, `freed <tamaño>`, o `Nothing to delete.`); con `--swift-build` borra en su lugar las carpetas `.build` de los worktrees que no están en uso (`deleted <path>  <tamaño>`, `freed <tamaño>`, `kept <path>  (in use)`), y sale con `1` si alguna no se pudo borrar. `xcode trim` cuenta y libera las carpetas `.build` como el DerivedData de los worktrees. Sin el provider de Xcode, o fuera de macOS, dice que el provider no está activo y sale con `0`.
 
 `xcode trim` aplica la cuota de DerivedData fijada en Preferencias > Recursos, automática por defecto (una cuarta parte del espacio libre en disco más lo que ocupa DerivedData, entre 20 y 200 GB): cuando las carpetas suman más que la cuota, libera primero las carpetas huérfanas y después las de los worktrees de tus proyectos guardados que no están en uso, de la menos a la más recientemente accedida, y se detiene en cuanto el total cabe (`released <path>  <tamaño>`, `freed <tamaño>`, `usage <tamaño> of <cuota>`, seguido de `(automatic)` con la cuota automática). Un worktree está en uso mientras su agente trabaja o está bloqueado, o su carpeta se accedió hace menos de una hora, y nunca se liberan las carpetas de otros proyectos, de volúmenes no disponibles ni la caché de compilación; si solo quedan esas, imprime `quota still exceeded` y los worktrees en uso. `--dry-run` imprime `would release` y `would free` sin borrar. Con «Sin cuota» lo dice y no borra nada, y cuando la cuota automática no se puede calcular porque no se conoce el espacio libre en disco, lo dice en su lugar. Los comandos `xcode` recuerdan el tamaño de cada carpeta entre ejecuciones, compartido con la app, y solo vuelven a medir, varias a la vez, las carpetas que Xcode ha usado desde entonces.
 
@@ -572,8 +589,8 @@ Las reglas son las mismas para todos:
 | `compose up`, `compose build` | `worktree`, `project`, `succeeded` y, si falla, `message`. La salida de Docker Compose va a la salida de error. |
 | `compose prune` | `dryRun`; `removed` y `kept`: `{ kind, name, project }`; `failures`: `{ resource, message }`. Sin `--yes`, `removed` es lo que eliminaría. |
 | `compose down` | `takenDown` (nombres de proyecto) y `failures`: `{ name, message }`. El código de salida es `1` si `failures` no está vacío. |
-| `xcode` | `active` (`false` si el provider no está activo, con el resto vacío), `folders`: `{ path, sizeBytes, sourcePackagesBytes, worktree }`, `orphans`: `{ path, sizeBytes, sourcePackagesBytes }`, `unavailableVolumeFolders` (un número), `compilationCacheBytes` (`null` salvo que esté declarada), y `swiftPmCacheBytes` y `cocoaPodsCacheBytes` (`null` si la caché no existe). |
-| `xcode clean` | `active`, `deleted` (rutas), `freedBytes` y `failures`: `{ path, message }`. |
+| `xcode` | `active` (`false` si el provider no está activo, con el resto vacío), `folders`: `{ kind, path, sizeBytes, sourcePackagesBytes, worktree }` con `kind` `derived-data` o `swift-build`, `orphans`: `{ path, sizeBytes, sourcePackagesBytes }`, `unavailableVolumeFolders` (un número), `compilationCacheBytes` (`null` salvo que esté declarada), y `swiftPmCacheBytes` y `cocoaPodsCacheBytes` (`null` si la caché no existe). |
+| `xcode clean` | `active`, `deleted` (rutas), `freedBytes` y `failures`: `{ path, message }`; con `--swift-build`, también `inUse` (rutas conservadas). |
 | `xcode trim` | `active`, `quotaMode` (`automatic`, `fixed` o `none`), `quotaBytes` (`null` sin cuota o cuando la automática no se puede calcular), `dryRun`, `usageBeforeBytes`, `usageAfterBytes`, `exceeded`, `released` (rutas; con `--dry-run`, las que se liberarían), `freedBytes`, `inUse` (rutas de worktrees) y `failures`: `{ path, message }`. |
 | `emulator start\|stop\|status` | `worktree`, `serial` y `state` (`running`, `booting` o `stopped`). `serial` y `state` son `null` si el worktree aún no tiene puerto de emulador reservado. `waited` son los segundos enteros que un `start --wait` esperó capacidad (`0` si había sitio), `null` en otro caso. `start` añade `orcaView`: `shown`, `not-open` (Orca no instalado o sin arrancar, o sin el worktree en su lista), `skipped` (el simulador del worktree también está en marcha) o `failed`. |
 | `desktop acquire\|release\|status` | `holder` (`null`, o `{ repository, worktree, since, expiresAt }`) y `waiting`: `{ repository, worktree, since }` por orden de cola, con horas ISO-8601 UTC. `acquire` añade `renewed` y `waited` (segundos enteros de espera, `0` si el escritorio estaba libre, `null` sin `--wait`); `release` añade `released`. |

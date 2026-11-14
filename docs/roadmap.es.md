@@ -100,10 +100,11 @@ Ninguno de los dos fallos apareció en la máquina de desarrollo, cuya propia co
 Por orden:
 
 - Tests que obligan al producto a cumplirlo:
-  - Subir hasta el 100% los suelos de cobertura que exige CI: las líneas (hoy 93%) y ramas (87%) de la app de escritorio fuera de sus composables, que cubren los tests end to end.
+  - Subir hasta el 100% los suelos de cobertura que exige CI: las líneas (hoy 96%) y ramas (90%) de la app de escritorio fuera de sus composables, que cubren los tests end to end.
     Las líneas de `core` y `cli`, las ramas de `cli`, todas las ramas de `core` a las que llega alguna entrada, y los textos y los ajustes de proyecto de la app de escritorio ya están cubiertos.
     Los worktrees y su inspector están cubiertos salvo 41 ramas de su lista, sus filas y sus barras de acciones, que quedan para el cambio de los componentes compartidos.
-    La app de escritorio sube un paquete por cambio, en este orden: el shell y el icono de la barra de menús, las vistas de la máquina y los multirepos, los componentes compartidos y, por último, el cableado de la app.
+    El shell y el icono de la barra de menús están cubiertos salvo 8 líneas y 4 ramas, sobre todo de sus ventanas y de la comprobación de actualizaciones, que quedan para el cambio del cableado de la app.
+    La app de escritorio sube un paquete por cambio, en este orden: las vistas de la máquina y los multirepos, los componentes compartidos y, por último, el cableado de la app.
 
 ### Orca, un segundo runner de primera clase
 
@@ -130,7 +131,7 @@ Por orden:
 Provisionado y recursos acotados para los stacks en los que un worktree recién creado está más lejos de compilar:
 
 - Decir al usuario de la app de escritorio qué carpetas de un worktree nuevo aún necesitan `pod install`; hoy la app clona los pods y solo `shogun new`, `shogun provision` y el hook de creación informan de lo que falta.
-- Los paquetes de los repositorios de paquetes Swift que se compilan con `swift build` (su carpeta `.build` por worktree), que el provider de Xcode no ve.
+- Las carpetas `.build` de los paquetes Swift que no están en la carpeta principal del worktree, que el provider de Xcode aún no lee.
 - Seguimiento de Flutter:
   - Comprobar el provider de principio a fin en un proyecto real creado con `flutter create` (un worktree que compila con `flutter build apk --debug` y `flutter build ios --simulator` sin pasos manuales).
   - Mostrar el tamaño de la caché de pub (`~/.pub-cache` o `PUB_CACHE`) junto a las demás cachés compartidas.
@@ -179,6 +180,14 @@ Quedaron fuera:
 - Mostrar en las vistas de la app de escritorio los nombres de las sesiones de Claude de los worktrees de un grupo y del agente del multirepo; hoy los informan `shogun open --herdr` y `shogun status`, y la app solo nombra las sesiones que abre.
 - Una única sesión para todo el grupo, con un entorno combinado, como opción junto a un agente por repositorio.
 - El estado del pull request de cada repositorio de un grupo, que depende de la integración con GitHub en estudio.
+
+### Cambios en paralelo que no chocan
+
+`shogun overlap` lista los archivos que varios worktrees de un repositorio cambian a la vez, y la guía pide a los agentes consultarlo antes de su pull request.
+Lo que queda:
+
+- Una marca en la torre de control en cada worktree cuyos archivos cambia otro worktree, con los archivos y worktrees compartidos en su inspector.
+- Saber si los archivos compartidos llegarían a dar conflicto al fusionar, en vez de solo que se comparten.
 
 ### Robustez y mantenimiento
 
