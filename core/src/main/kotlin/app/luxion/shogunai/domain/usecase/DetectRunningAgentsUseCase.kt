@@ -248,10 +248,11 @@ class DetectRunningAgentsUseCase(
         AgentState.IDLE -> 1
     }
 
-    private fun runningAgent(agent: HerdrAgent) = RunningAgent(agent.name, agent.state, agent.paneId, agent.state?.let { AgentStateSource.HERDR })
+    private fun runningAgent(agent: HerdrAgent) =
+        RunningAgent(agent.name, agent.state, agent.paneId, agent.state?.let { AgentStateSource.HERDR }, focusedInRunner = agent.focused)
 
     private fun runningAgent(agent: HerdrAgent, process: RunningAgent): RunningAgent =
-        if (agent.state == null) process.copy(herdrPaneId = agent.paneId) else runningAgent(agent)
+        if (agent.state == null) process.copy(herdrPaneId = agent.paneId, focusedInRunner = agent.focused) else runningAgent(agent)
 
     private fun agentName(agentCommand: String): String? =
         agentCommand.trim().substringBefore(' ').substringAfterLast('/').ifEmpty { null }

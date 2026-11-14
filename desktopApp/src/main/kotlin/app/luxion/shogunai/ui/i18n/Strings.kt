@@ -754,6 +754,9 @@ interface Strings : XcodeStrings {
     val showIconInMenuBar: String
     val showIconInTray: String
     val keepRunningWhenClosed: String
+    val notificationsLabel: String
+    val notifyWhenBlocked: String
+    val notifyWhenDone: String
     val groupByChange: String
     val ungrouped: String
     val newChange: String

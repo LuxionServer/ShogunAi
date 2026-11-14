@@ -214,7 +214,7 @@ private fun openWindow() = application {
     LaunchedEffect(shellViewModelForRequests, servesAppRequests) {
         if (!servesAppRequests || shellViewModelForRequests == null) return@LaunchedEffect
         val requests = FileAppRequestChannel(appContainer.files.appRequests)
-        val handler = AppRequestHandler(shellViewModelForRequests, showMainWindow)
+        val handler = AppRequestHandler(shellViewModelForRequests, { boardHolder.value }, showMainWindow)
         while (true) {
             val pending = withContext(Dispatchers.IO) { requests.receive(System.currentTimeMillis()) }
             pending.forEach { request -> runCatching { handler.handle(request) } }
@@ -376,7 +376,7 @@ private fun openWindow() = application {
             LocalShownErrorLog provides appContainer.shownErrorLog,
             LocalWindowExceptionHandlerFactory provides preferencesErrorHandlers,
         ) {
-            PreferencesWindow(appearance, appContainer.tools, appContainer.resources, appContainer.claudeHooks, appContainer.herdrPlugin, appContainer.updates, trayPreferences, inactivityPreferences, preferencesFrontRequests, onClose = { preferencesOpen = false })
+            PreferencesWindow(appearance, appContainer.tools, appContainer.resources, appContainer.claudeHooks, appContainer.herdrPlugin, appContainer.updates, trayPreferences, inactivityPreferences, appContainer.agentNotifications, preferencesFrontRequests, onClose = { preferencesOpen = false })
         }
     }
     if (installationCheckOpen) {

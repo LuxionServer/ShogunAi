@@ -21,6 +21,16 @@ class ReadAgentActivityUseCaseTest {
         store.write(worktree, AgentSessionRecord(id, "claude", state, updatedAt, transcript, pid))
 
     @Test
+    fun `one session's state is its effective state while it lives`() {
+        val live = AgentSessionRecord("a", "claude", AgentState.DONE, now - 60_000, "/t", pid = 10)
+        transcripts = mapOf("/t" to now)
+
+        assertEquals(AgentState.WORKING, activity().stateOf(live))
+        assertEquals(AgentState.BLOCKED, activity().stateOf(live.copy(state = AgentState.BLOCKED, transcriptPath = null)))
+        assertNull(activity().stateOf(live.copy(pid = 99)))
+    }
+
+    @Test
     fun `no sessions means no agent`() {
         assertNull(activity()(worktree))
     }

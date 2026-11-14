@@ -35,7 +35,7 @@ Checks SHALL run while the main window is visible, at the refresh cadence's focu
 - **THEN** no check runs during that minute, and checks resume when the window is shown again
 
 #### Scenario: Hidden with notifications on
-- **WHEN** the profile is Balanced, "Blocked" is on and the window is closed to the tray
+- **WHEN** the profile is Balanced, "When an agent needs you" is on and the window is closed to the tray
 - **THEN** running agents are detected every 15 seconds for every saved project, and no Git metadata or device state is read until the window is shown again
 
 #### Scenario: Focus regained

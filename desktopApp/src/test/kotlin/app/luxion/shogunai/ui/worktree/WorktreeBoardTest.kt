@@ -44,6 +44,8 @@ import app.luxion.shogunai.domain.model.GradleProvider
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.RunningAgent
+import app.luxion.shogunai.ui.notifications.AgentObserver
+import app.luxion.shogunai.domain.model.NotifiedWorktree
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.usecase.AgentSearch
@@ -310,6 +312,7 @@ class WorktreeBoardTest {
         runnerInUse: RunnerId = RunnerId.HERDR,
         syncOrca: suspend (List<OrcaSyncItem>) -> Unit = {},
         cadence: () -> RefreshCadence = { RefreshCadence.BALANCED },
+        notifications: AgentObserver = AgentObserver.NONE,
     ): WorktreeBoard = WorktreeBoard(
         useCasesFor = { config -> repositories.first { it.base == config.baseRepositoryPath }.useCases() },
         detectAgents = { searches ->
@@ -325,6 +328,7 @@ class WorktreeBoardTest {
         multirepoActions = multirepoActions,
         runnerInUse = { runnerInUse },
         cadence = cadence,
+        notifications = notifications,
     ).also {
         it.syncCatalog(projects)
         it.show(null)
@@ -1094,6 +1098,101 @@ class WorktreeBoardTest {
         board.stopWatching()
 
         assertEquals(1, agentSearches.size)
+    }
+
+    private class FakeAgentObserver(override var isWatching: Boolean = true, var next: Long? = null) : AgentObserver {
+        val observed = mutableListOf<Pair<List<NotifiedWorktree>, Map<String, List<RunningAgent>>>>()
+
+        override suspend fun observe(worktrees: List<NotifiedWorktree>, detected: Map<String, List<RunningAgent>>): Long? {
+            observed += worktrees to detected
+            return next.also { next = null }
+        }
+    }
+
+    @Test
+    fun `while hidden with notifications on only agents are detected, at the unfocused interval`() = runTest(dispatcher) {
+        val observer = FakeAgentObserver()
+        val board = board(notifications = observer)
+        advanceUntilIdle()
+        val lists = api.lists + mainRepo.lists
+        board.startWatching()
+        board.setWindowActivity(WindowActivity.HIDDEN)
+        runCurrent()
+        mainRepo.touch()
+
+        advanceTimeBy(14.seconds)
+        runCurrent()
+        assertTrue(agentSearches.isEmpty())
+        advanceTimeBy(1.seconds)
+        runCurrent()
+        board.stopWatching()
+
+        assertEquals(1, agentSearches.size)
+        assertEquals(lists, api.lists + mainRepo.lists)
+        val observed = observer.observed.single().first
+        assertTrue(NotifiedWorktree("api", "api", "/home/dev/projects/api-TASK-12", "feature/TASK-12") in observed)
+        assertTrue(NotifiedWorktree("main-repo", "main-repo", "/home/dev/projects/TASK-123", "feature/TASK-123") in observed)
+    }
+
+    @Test
+    fun `a pending change gets one extra detection when its grace period ends`() = runTest(dispatcher) {
+        val observer = FakeAgentObserver(next = now.toEpochMilli() + 1_000)
+        val board = board(clock = { now }, notifications = observer)
+        advanceUntilIdle()
+        board.startWatching()
+
+        tick()
+        assertEquals(1, observer.observed.size)
+        advanceTimeBy(999)
+        runCurrent()
+        assertEquals(1, observer.observed.size)
+        advanceTimeBy(1)
+        runCurrent()
+        board.stopWatching()
+
+        assertEquals(2, observer.observed.size)
+        assertEquals(2, agentSearches.size)
+    }
+
+    @Test
+    fun `with notifications off the agents are not observed and hidden windows check nothing`() = runTest(dispatcher) {
+        val observer = FakeAgentObserver(isWatching = false)
+        val board = board(notifications = observer)
+        advanceUntilIdle()
+        board.startWatching()
+
+        tick()
+        board.setWindowActivity(WindowActivity.HIDDEN)
+        repeat(6) { tick() }
+        board.stopWatching()
+
+        assertEquals(1, agentSearches.size)
+        assertTrue(observer.observed.isEmpty())
+    }
+
+    @Test
+    fun `a failed detection is not observed`() = runTest(dispatcher) {
+        val observer = FakeAgentObserver()
+        agentResult = Result.failure(IllegalStateException("ps failed"))
+        val board = board(notifications = observer)
+        advanceUntilIdle()
+        board.startWatching()
+
+        tick()
+        board.stopWatching()
+
+        assertTrue(observer.observed.isEmpty())
+    }
+
+    @Test
+    fun `a worktree is known when its project lists it or the board hasn't loaded it yet`() = runTest(dispatcher) {
+        val board = board()
+
+        assertTrue(board.knowsWorktree(WorktreeRef("api", "/home/dev/projects/elsewhere")))
+        advanceUntilIdle()
+        assertTrue(board.knowsWorktree(WorktreeRef("api", "/home/dev/projects/api-TASK-12")))
+        assertFalse(board.knowsWorktree(WorktreeRef("api", "/home/dev/projects/elsewhere")))
+        assertTrue(board.knowsWorktree(WorktreeRef("just-added", "/home/dev/projects/api-TASK-12")))
     }
 
     @Test

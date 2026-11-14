@@ -158,6 +158,11 @@ import app.luxion.shogunai.domain.usecase.selectLooseCleanup
 import app.luxion.shogunai.domain.usecase.withWorkspaceAt
 import app.luxion.shogunai.domain.usecase.selectGroupCleanup
 import java.io.File
+import app.luxion.shogunai.domain.io.NotificationSetup
+import app.luxion.shogunai.domain.model.runSuspendCatching
+import app.luxion.shogunai.domain.usecase.ReadAgentActivityUseCase
+import app.luxion.shogunai.domain.usecase.PendingAgentNotifications
+import app.luxion.shogunai.domain.model.NotifiedWorktree
 import app.luxion.shogunai.domain.io.AppInstanceLock
 import app.luxion.shogunai.domain.io.AppLauncher
 import app.luxion.shogunai.domain.io.AppRequestChannel
@@ -215,6 +220,7 @@ class ShogunCli(
     private val appLauncher: AppLauncher = DesktopAppLauncher(),
     private val isClaudeProcessAlive: (Long) -> Boolean = ::isLiveClaudeProcess,
     private val onShutdown: (Thread) -> () -> Unit = ::addJvmShutdownHook,
+    private val notificationSetup: NotificationSetup? = null,
     private val commandLineTool: CommandLineTool = CommandLineTool(
         os = environment.os,
         appLauncher = null,
@@ -361,6 +367,7 @@ class ShogunCli(
             CliCommand.HookHerdr -> hookHerdr()
             is CliCommand.HookOrca -> hookOrca(command.action)
             CliCommand.HookAgentState -> hookAgentState()
+            CliCommand.HookNotifyPending -> hookNotifyPending()
             CliCommand.HookDesktopTurn -> hookDesktopTurn()
             is CliCommand.Hooks -> hooks(command)
             is CliCommand.Guide -> guide(command)
@@ -2126,12 +2133,18 @@ class ShogunCli(
         if (!running && !appLauncher.isAvailable()) throw WorktreeError.AppNotAvailable
         val createdAt = now().toEpochMilli()
         val multirepoFolder = repository?.let { resolveMultirepo.known().withWorkspaceAt(it) }
+        var worktree: String? = null
         val request = if (repository == null || multirepoFolder != null) {
             AppRequest.openApp(createdAt)
         } else {
             val registration = RegisterProjectUseCase(projectRepository, resolveRepository)(repository).getOrThrow()
             if (registration is ProjectRegistration.Added) out.line("Added project ${registration.project.name} (${repository})")
-            AppRequest.openProject(createdAt, registration.project.id, command.settings)
+            worktree = if (command.settings) null else linkedWorktree(worktreeTopLevelOrNull(if (command.path != null) absolute(command.path) else workingDirectory), repository)
+            if (worktree != null) {
+                AppRequest.openWorktree(createdAt, registration.project.id, worktree)
+            } else {
+                AppRequest.openProject(createdAt, registration.project.id, command.settings)
+            }
         }
         appRequests.send(request)
         if (!running) appLauncher.launch()
@@ -2140,11 +2153,16 @@ class ShogunCli(
                 repository == null -> "Opening ShogunAi"
                 multirepoFolder != null -> "Opening ShogunAi; ${multirepoFolder.name} is a multirepo, its workspace repository belongs to it"
                 command.settings -> "Opening the settings of ${repository.substringAfterLast('/')} in ShogunAi"
+                worktree != null -> "Opening ${worktree.substringAfterLast('/')} of ${repository.substringAfterLast('/')} in ShogunAi"
                 else -> "Opening ${repository.substringAfterLast('/')} in ShogunAi"
             },
         )
         return EXIT_OK
     }
+
+    private suspend fun worktreeTopLevelOrNull(directory: String): String? = runSuspendCatching { worktreeTopLevel(directory) }.getOrNull()
+
+    private fun linkedWorktree(topLevel: String?, repository: String): String? = topLevel?.takeUnless { sameDirectory(it, repository) }
 
     private suspend fun doctor(command: CliCommand.Doctor): Int {
         val report = CheckInstallationUseCase(
@@ -2827,7 +2845,9 @@ class ShogunCli(
             val directory = input.string("cwd") ?: workingDirectory
             val folder = unversionedMultirepoFolder(directory)
             if (folder == null && engine.resolveRepository(directory).isFailure) return EXIT_OK
-            val sessionPath = folder ?: worktreeContaining(directory).second.path
+            val owner = if (folder == null) worktreeContaining(directory) else null
+            val sessionPath = folder ?: owner!!.second.path
+            val previous = sessionStore.list(sessionPath).firstOrNull { it.sessionId == sessionId }?.state
             if (state == null) {
                 sessionStore.remove(sessionPath, sessionId)
             } else {
@@ -2838,6 +2858,7 @@ class ShogunCli(
                 if (folder == null && state == AgentState.WORKING) renewLeases(sessionPath)
             }
             if (folder == null && event in DESKTOP_RELEASING_EVENTS) releaseDesktopTurn.ifHeldBy(sessionPath)
+            if (owner != null) scheduleNotification(previous, state, owner, sessionId)
         } catch (error: CancellationException) {
             throw error
         } catch (error: Exception) {
@@ -2845,6 +2866,42 @@ class ShogunCli(
         }
         return EXIT_OK
     }
+
+    private fun scheduleNotification(previous: AgentState?, state: AgentState?, owner: Pair<String, Worktree>, sessionId: String) {
+        val setup = notificationSetup ?: return
+        val pending = pendingNotifications(setup)
+        if (!pending.shouldSchedule(previous, state)) return
+        val (base, worktree) = owner
+        val project = projectRepository.list().firstOrNull { sameDirectory(it.config.baseRepositoryPath, base) } ?: return
+        val name = worktree.branch ?: worktree.path.replace('\\', '/').substringAfterLast('/')
+        pending.schedule(sessionId, NotifiedWorktree(project.id, project.name, worktree.path, name))
+        setup.startInBackground(listOf("hook", "notify-pending"))
+    }
+
+    private suspend fun hookNotifyPending(): Int {
+        val setup = notificationSetup ?: return EXIT_OK
+        val pending = pendingNotifications(setup)
+        repeat(MAX_NOTIFY_ROUNDS) {
+            val next = runSuspendCatching { pending.notifyDue() }.getOrNull() ?: return EXIT_OK
+            setup.pause((next - now().toEpochMilli()).coerceAtLeast(MIN_NOTIFY_PAUSE_MILLIS))
+        }
+        return EXIT_OK
+    }
+
+    private fun pendingNotifications(setup: NotificationSetup): PendingAgentNotifications =
+        PendingAgentNotifications(
+            store = setup.pending,
+            sessions = sessionStore,
+            sessionState = ReadAgentActivityUseCase(sessionStore, isAlive = isClaudeProcessAlive)::stateOf,
+            herdrAgents = herdr::listAgents,
+            runners = setup.runners,
+            notifier = setup.notifier,
+            images = setup.images,
+            preferences = setup.preferences::load,
+            language = setup.language::load,
+            appRunning = appLock::isHeldByAnyInstance,
+            now = { now().toEpochMilli() },
+        )
 
     private suspend fun hookDesktopTurn(): Int {
         val input = hookInput("desktop-turn") ?: return EXIT_USAGE
@@ -3246,6 +3303,8 @@ class ShogunCli(
         private const val IGNORED_DECLARED_AGENT =
             "The declaration's agent is ignored; set the multirepo agent on this machine with 'shogun multirepo agent'."
         private const val SESSION_END = "SessionEnd"
+        private const val MAX_NOTIFY_ROUNDS = 30
+        private const val MIN_NOTIFY_PAUSE_MILLIS = 250L
         private const val BASH_TOOL = "Bash"
         private val DESKTOP_RELEASING_EVENTS = setOf("Stop", SESSION_END)
         private const val HERDR_PLUGIN_EVENT = "HERDR_PLUGIN_EVENT"

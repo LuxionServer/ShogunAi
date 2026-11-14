@@ -149,6 +149,12 @@ For repositories that declare them in `.shogunai.json`, the worktree screen adds
 
 Preferences (the gear at the bottom of the sidebar, or Cmd+Comma on macOS and Ctrl+Comma elsewhere) holds the theme, the language, the **inactivity threshold** in days, the **Tools** section, where you choose the **default runner** (Herdr or Orca, the one the detail's main button and Cmd+O use; Herdr unless you change it; see [Choosing the runner](../agents.md#choosing-the-runner)), the terminal and the default IDE among the ones ShogunAi found on this machine (if none is found, the section says so and the matching actions aren't offered), and **Check for updates automatically**, on by default. See [Updates](#updates).
 
+## Notifications
+
+ShogunAi shows a system notification when an agent stops working because it needs you, and, if you turn it on, when it is done. The **Notifications** section of Preferences has one switch for each, **When an agent needs you** (on by default) and **When an agent is done** (off by default). A notification waits a few seconds so an agent that goes straight back to work doesn't notify, names the agent, the worktree and the project, and opens that worktree when clicked. Agents that change together make one notification. It stays silent for the agent whose Herdr pane is focused, and for agents whose runner already notifies them (Herdr with its desktop notifications on, Orca with its agent notifications on). While the window is hidden or closed to the menu bar, ShogunAi keeps watching the agents for this; with both switches off it doesn't.
+
+On macOS the first notification asks for permission for "ShogunAi"; you can change it later in System Settings, under Notifications. On Linux notifications need `notify-send`. While the app is closed, Claude Code's hooks still notify through `shogun` on macOS (with the app installed) and Linux. See [Agent notifications](../architecture/notifications.md) for how it works.
+
 ## Menu bar and system tray icon
 
 While ShogunAi runs, an icon in the macOS menu bar (or the system tray on Windows and Linux desktops that have one) opens a menu with:

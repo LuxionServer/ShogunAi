@@ -86,6 +86,60 @@ fun macBundleVersion(version: String): String {
     return "${major.toInt() + 1}.$minor.$patch"
 }
 
+val isMacOs = System.getProperty("os.name").startsWith("Mac")
+val notifierSources = layout.projectDirectory.dir("macos/notifier")
+val notifierResourcesRoot = layout.buildDirectory.dir("notifier")
+
+val buildNotifier by tasks.registering {
+    description = "Builds and signs the macOS helper app that posts ShogunAi's notifications."
+    val sources = notifierSources
+    val icon = layout.projectDirectory.file("icons/icon.icns")
+    val resourcesRoot = notifierResourcesRoot
+    val version = (findProperty("appVersion") as String?) ?: "0.0.0"
+    val identity = findProperty("macSigningIdentity") as String?
+    val keychain = findProperty("macSigningKeychain") as String?
+    val onMac = isMacOs
+    val architecture = if (System.getProperty("os.arch") in setOf("aarch64", "arm64")) "arm64" else "x86_64"
+    inputs.dir(sources)
+    inputs.file(icon)
+    inputs.property("version", version)
+    inputs.property("identity", identity.orEmpty())
+    outputs.dir(resourcesRoot)
+    onlyIf { onMac }
+    doLast {
+        fun run(vararg command: String) {
+            val exitCode = ProcessBuilder(*command).inheritIO().start().waitFor()
+            check(exitCode == 0) { "${command.joinToString(" ")} exited with $exitCode" }
+        }
+        val root = resourcesRoot.get().asFile
+        root.deleteRecursively()
+        val bundle = root.resolve("macos/ShogunAi Notifications.app/Contents")
+        bundle.resolve("MacOS").mkdirs()
+        bundle.resolve("Resources").mkdirs()
+        bundle.resolve("Info.plist").writeText(sources.file("Info.plist").asFile.readText().replace("@VERSION@", version))
+        icon.asFile.copyTo(bundle.resolve("Resources/icon.icns"))
+        run(
+            "swiftc", "-O", "-target", "$architecture-apple-macos12.0",
+            "-o", bundle.resolve("MacOS/shogunai-notifier").path,
+            sources.file("main.swift").asFile.path,
+        )
+        val signing = if (identity != null) {
+            listOf("--options", "runtime", "--timestamp", "--sign", "Developer ID Application: $identity") +
+                (keychain?.let { listOf("--keychain", it) } ?: emptyList())
+        } else {
+            listOf("--sign", "-")
+        }
+        run(*(listOf("codesign", "--force") + signing + bundle.parentFile.path).toTypedArray())
+    }
+}
+
+tasks.matching { it.name == "prepareAppResources" }.configureEach { dependsOn(buildNotifier) }
+
+tasks.withType<JavaExec>().matching { it.name.startsWith("hotRun") }.configureEach {
+    dependsOn(buildNotifier)
+    systemProperty("compose.application.resources.dir", notifierResourcesRoot.get().dir("macos").asFile.absolutePath)
+}
+
 compose.desktop {
     application {
         mainClass = "app.luxion.shogunai.MainKt"
@@ -102,6 +156,7 @@ compose.desktop {
             packageVersion = appVersion
 
             modules("java.net.http", "java.management", "jdk.management", "jdk.net", "jdk.security.auth")
+            appResourcesRootDir.set(notifierResourcesRoot)
 
             macOS {
                 packageVersion = macBundleVersion(appVersion)

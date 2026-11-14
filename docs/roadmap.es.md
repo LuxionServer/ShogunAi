@@ -150,15 +150,8 @@ Provisionado y recursos acotados para los stacks en los que un worktree recién 
 La vista de ShogunAi solo es neutral si ve a todos los agentes:
 
 - Estados de agente para agentes distintos de Claude Code (Codex, Gemini…), que hoy no tienen hooks equivalentes.
-- Una notificación cuando un agente (informado por Herdr o por los hooks de Claude Code) pasa a bloqueado o terminado; hoy la señal es la fila del worktree y el menú del icono de la barra de menús.
-  - Solo salta en un cambio de estado, de trabajando a bloqueado o terminado, nunca en cada evento que informa un agente.
-  - Un margen breve descarta el cambio cuando el agente vuelve a trabajar en pocos segundos, como ocurre entre turnos encadenados y subagentes.
-  - Calla para el worktree cuya sesión está enfocada en Herdr.
-  - Nombra el proyecto y el worktree, y al pulsarla abre ese worktree.
-  - Varios agentes que cambian a la vez forman una sola notificación, no una cada uno.
-  - Bloqueado notifica por defecto y terminado es opcional, cada uno con su interruptor en Ajustes.
-  - Nunca duplica una notificación que Herdr u Orca ya envían para el mismo agente.
-  - Sin la aplicación de escritorio abierta, los hooks de Claude Code podrían enviarla a través de la CLI.
+- Notificar en la app de escritorio los turnos más cortos que su lectura de agentes (hasta un minuto con la ventana oculta), que pasan de inactivo a terminado sin verse trabajando, leyendo el contador de turnos completados de Herdr.
+- Notificaciones de agentes desde la línea de comandos en Windows, y una acción al pulsarlas en Linux; hoy las cubre la app de escritorio.
 - Comprobar que Herdr detecta un agente envuelto por Headroom (`headroom wrap claude`): abrir en Herdr espera a que Herdr detecte el agente que escribió, y si Herdr no ve a través del envoltorio la apertura falla aunque el agente esté en marcha.
 - Los ficheros de usuario de otros agentes para la guía de flujo, a medida que su documentación los confirme (Cursor guarda hoy las reglas de usuario en sus ajustes), y una sección en Ajustes de la app de escritorio para instalar, actualizar y quitar el bloque de `AGENTS.md`, como ya hace con los hooks de Claude Code.
 - Registrar la rama base de los worktrees que crea Herdr, si su evento `worktree.created` llega a incluir el punto de partida; hoy se registra a mano con `shogun base --set`, mientras que `shogun new`, el hook de Claude Code, la app de escritorio y los grupos de los multirepos la registran solos.

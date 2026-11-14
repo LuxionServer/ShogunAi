@@ -362,7 +362,7 @@ Una app abierta recoge el cambio cuando su ventana recupera el foco o con **Ver 
 shogun app [<ruta>] [--settings]
 ```
 
-Abre la app de escritorio en el proyecto del repositorio que contiene la ruta (el directorio actual por defecto), registrándolo antes si no tiene proyecto. Con `--settings` abre los ajustes del proyecto en lugar de sus worktrees, lo que exige un repositorio (código de salida `2` sin él). Fuera de un repositorio y sin ruta, solo abre la app o la trae al frente. Con una ruta que no es un repositorio sale con `1` y no pide nada.
+Abre la app de escritorio en el proyecto del repositorio que contiene la ruta (el directorio actual por defecto), registrándolo antes si no tiene proyecto. Cuando la ruta está dentro de uno de los worktrees enlazados del proyecto, la app se abre con ese worktree seleccionado en «Todos los worktrees», o en su proyecto si el worktree ya no existe. Con `--settings` abre los ajustes del proyecto en lugar de sus worktrees, lo que exige un repositorio (código de salida `2` sin él). Fuera de un repositorio y sin ruta, solo abre la app o la trae al frente. Con una ruta que no es un repositorio sale con `1` y no pide nada.
 
 El comando vuelve en cuanto se ha avisado a la app, sin esperarla:
 

@@ -79,7 +79,7 @@ class CliHerdrClient(
             val directory = agent.string("foreground_cwd") ?: agent.string("cwd")
             val paneId = agent.string("pane_id")
             if (name != null && directory != null && paneId != null) {
-                HerdrAgent(name, agentState(agent.string("agent_status")), directory, paneId)
+                HerdrAgent(name, agentState(agent.string("agent_status")), directory, paneId, agent.flag("focused"))
             } else {
                 null
             }
@@ -201,6 +201,9 @@ class CliHerdrClient(
 
     private fun JsonObject.long(name: String): Long? =
         (this[name] as? JsonPrimitive)?.takeUnless { it.isString }?.longOrNull
+
+    private fun JsonObject.flag(name: String): Boolean =
+        (this[name] as? JsonPrimitive)?.takeUnless { it.isString }?.booleanOrNull == true
 
     private fun JsonObject.string(name: String): String? =
         (this[name] as? JsonPrimitive)?.stringOrNull()

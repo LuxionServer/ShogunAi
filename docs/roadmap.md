@@ -150,15 +150,8 @@ Provisioning and bounded resources for the stacks where a fresh worktree is furt
 ShogunAi's view is only neutral if it sees every agent:
 
 - Agent states for agents other than Claude Code (Codex, Gemini…), which have no equivalent hooks today.
-- A notification when an agent (reported by Herdr or by Claude Code's hooks) becomes blocked or done; today the worktree's row and the menu bar icon's menu are the signal.
-  - It fires only on a change of state, from working to blocked or done, never on every event an agent reports.
-  - A short grace period drops the change when the agent goes back to work within a few seconds, as it does between chained turns and subagents.
-  - It stays silent for the worktree whose session is focused in Herdr.
-  - It names the project and the worktree, and clicking it opens that worktree.
-  - Several agents changing at once make one notification, not one each.
-  - Blocked notifies by default and done is opt-in, each with its switch in Settings.
-  - It never doubles a notification Herdr or Orca already sends for the same agent.
-  - Without the desktop app running, Claude Code's hooks could send it through the CLI.
+- Notifying in the desktop app the turns shorter than its agent check (up to a minute with the window hidden), which go from idle to done without being seen working, by reading Herdr's completion counter.
+- Agent notifications from the command line on Windows, and a click action for them on Linux; today the desktop app covers both.
 - Checking that Herdr detects an agent wrapped by Headroom (`headroom wrap claude`): opening in Herdr waits for Herdr to detect the agent it typed, and if Herdr doesn't see through the wrapper the open fails although the agent runs.
 - Other agents' user-level files for the workflow guide, as their documentation confirms them (Cursor keeps user rules in its settings today), and a Settings section in the desktop app to install, update and remove the `AGENTS.md` block, as it already does for Claude Code's hooks.
 - Recording the base branch of the worktrees Herdr creates, if its `worktree.created` event gains their start point; today `shogun base --set` records it by hand, while `shogun new`, Claude Code's hook, the desktop app and multirepo groups record it themselves.

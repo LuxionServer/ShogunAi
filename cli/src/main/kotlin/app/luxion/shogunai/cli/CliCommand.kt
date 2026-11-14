@@ -144,6 +144,7 @@ sealed interface CliCommand {
     data object HookHerdr : CliCommand
     data class HookOrca(val action: OrcaHookAction) : CliCommand
     data object HookAgentState : CliCommand
+    data object HookNotifyPending : CliCommand
     data object HookDesktopTurn : CliCommand
     data class Hooks(
         val action: HooksAction,
@@ -552,8 +553,7 @@ private fun parseGradle(rest: List<String>): CliCommand {
     val subcommand = rest.firstOrNull() ?: return CliCommand.Gradle()
     if (subcommand != "stop") throw UsageException("unknown subcommand '$subcommand' for 'gradle', expected stop")
     val pids = rest.drop(1).map { argument ->
-        argument.toLongOrNull()?.takeIf { it > 0 }
-            ?: throw UsageException("'gradle stop' takes process ids, got '$argument'")
+        argument.toLongOrNull()?.takeIf { it > 0 } ?: throw UsageException("'gradle stop' takes process ids, got '$argument'")
     }
     return CliCommand.GradleStop(pids)
 }
@@ -562,8 +562,7 @@ private fun parseMaven(rest: List<String>): CliCommand {
     val subcommand = rest.firstOrNull() ?: return CliCommand.Maven()
     if (subcommand != "stop") throw UsageException("unknown subcommand '$subcommand' for 'maven', expected stop")
     val pids = rest.drop(1).map { argument ->
-        argument.toLongOrNull()?.takeIf { it > 0 }
-            ?: throw UsageException("'maven stop' takes process ids, got '$argument'")
+        argument.toLongOrNull()?.takeIf { it > 0 } ?: throw UsageException("'maven stop' takes process ids, got '$argument'")
     }
     return CliCommand.MavenStop(pids)
 }
@@ -611,6 +610,7 @@ private fun parseHook(rest: List<String>): CliCommand {
         "session-start" -> CliCommand.HookSessionStart
         "herdr" -> CliCommand.HookHerdr
         "agent-state" -> CliCommand.HookAgentState
+        "notify-pending" -> CliCommand.HookNotifyPending
         "desktop-turn" -> CliCommand.HookDesktopTurn
         else -> throw UsageException("unknown hook '$event', expected $HOOK_EVENTS")
     }

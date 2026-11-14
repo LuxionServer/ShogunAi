@@ -71,6 +71,21 @@ A notification SHALL name the agent, its state, the worktree's branch (or folder
 - **WHEN** the user clicks that notification while the app is hidden in the menu bar
 - **THEN** the window is shown with `feature/login` of `api` selected in "All worktrees"
 
+### Requirement: An image for the agent and its state
+Where the system can show an image in a notification, the notification SHALL carry a badge drawn by ShogunAi: amber with an exclamation mark when an agent needs the user, green with a check mark when it is done, with the agent's initial, or how many agents (up to 9) when it lists several, coloured by the first one listed. It SHALL NOT use the logo of any agent's vendor. When the image can't be drawn, the notification SHALL be shown without it.
+
+#### Scenario: One agent blocked
+- **WHEN** the notification says Claude needs the user
+- **THEN** it carries an amber badge with "C" and an exclamation mark
+
+#### Scenario: Several agents
+- **WHEN** a notification lists three agents and the first one needs the user
+- **THEN** it carries an amber badge with "3"
+
+#### Scenario: No fonts to draw with
+- **WHEN** the badge can't be drawn, as on a Linux machine without fonts
+- **THEN** the notification is shown without an image
+
 ### Requirement: One notification for changes confirmed together
 Changes confirmed at the same time SHALL make one notification that counts them, lists each agent with its worktree and project, puts blocked agents first, and opens the first one listed when clicked.
 
@@ -79,14 +94,14 @@ Changes confirmed at the same time SHALL make one notification that counts them,
 - **THEN** one notification reads "2 agents need you, 1 is done" and lists the three, the blocked ones first
 
 ### Requirement: Two switches in Settings
-Settings SHALL offer a "Notifications" section with two switches: "Blocked", on by default, and "Done", off by default. A state whose switch is off SHALL NOT notify. The desktop app and the command line SHALL honor the same switches.
+Settings SHALL offer a "Notifications" section with two switches: "When an agent needs you" (blocked), on by default, and "When an agent is done", off by default. A state whose switch is off SHALL NOT notify. The desktop app and the command line SHALL honor the same switches.
 
 #### Scenario: Defaults
 - **WHEN** a user who never changed the switches has an agent become done
 - **THEN** no notification is shown, and one is shown when an agent becomes blocked
 
 #### Scenario: Done turned on
-- **WHEN** the user turns on "Done" and an agent becomes done
+- **WHEN** the user turns on "When an agent is done" and an agent becomes done
 - **THEN** the notification says the agent is done
 
 ### Requirement: Notify through the command line when the app isn't running

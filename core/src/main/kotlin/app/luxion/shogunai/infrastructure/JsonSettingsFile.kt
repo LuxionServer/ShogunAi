@@ -83,6 +83,8 @@ class JsonSettingsFile(
         val claudeHooksNoticeDismissed: Boolean = false,
         val tourOffered: Boolean = false,
         val resources: ResourceSettings = ResourceSettings(),
+        val notifyBlocked: Boolean = true,
+        val notifyDone: Boolean = false,
     )
 
     @Serializable

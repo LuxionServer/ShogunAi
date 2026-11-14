@@ -18,6 +18,7 @@ A Claude Code hook that notified on every event was turned off because it was pu
 - While notifications are on and the window is hidden, the app keeps detecting agents at the unfocused interval; it stops reading Git metadata as it does today.
 - `shogun app <path>` opens the app on the worktree containing `<path>`, not only on its project, which is also what a click on a notification asks for.
 - On macOS, a small helper app bundled inside ShogunAi posts the notifications through `UNUserNotificationCenter`, because the JVM's tray notifications are no longer shown and don't report clicks. Linux uses `notify-send`, Windows the system tray's notifications.
+- Each notification carries a badge drawn by ShogunAi for the agent and its state (amber "needs you", green "done", with the agent's initial or the count), attached as an image on macOS and as the icon on Linux. Added at Ciro's request during validation.
 
 Out of scope: floating popups, mascots or sounds of ShogunAi's own; the worktree's row and the menu bar menu stay the traffic light.
 

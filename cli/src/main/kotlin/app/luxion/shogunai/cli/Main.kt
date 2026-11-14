@@ -1,6 +1,7 @@
 package app.luxion.shogunai.cli
 
 import app.luxion.shogunai.engine.ShogunEngine
+import app.luxion.shogunai.infrastructure.HostNotificationSetup
 import app.luxion.shogunai.infrastructure.JsonSettingsFile
 import app.luxion.shogunai.infrastructure.ShogunFiles
 import app.luxion.shogunai.infrastructure.SystemHostEnvironment
@@ -36,6 +37,7 @@ fun runShogun(args: Array<String>): Int {
         readAnswer = { System.console()?.readLine() },
         environment = environment,
         files = files,
+        notificationSetup = HostNotificationSetup(environment, files, ports.executor),
     ).run(args.toList())
     out.flush()
     err.flush()

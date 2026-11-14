@@ -9,7 +9,7 @@ Ciro had a Claude Code hook that notified on every event and turned it off as no
 Findings with read-only commands (no Herdr or Orca writes):
 
 - `herdr agent list` reports `"focused": true|false` for each agent's pane; `CliHerdrClient` doesn't read it yet.
-- Herdr can notify by itself: `[ui.toast] delivery = "off" | "herdr" | "terminal" | "system"` in its `config.toml` (default `off`, Ciro's is unset). `terminal` and `system` are desktop notifications; `herdr` is an in-app toast. `[ui.sound]` only plays sounds.
+- Herdr can notify by itself: `[ui.toast] delivery = "off" | "herdr" | "terminal" | "system"` in its `config.toml` (default `off`). `terminal` and `system` are desktop notifications; `herdr` is an in-app toast. `[ui.sound]` only plays sounds.
 - Orca keeps its settings in `profiles/<profile>/profile-state.db` (SQLite) under its app data folder, table `profile_state_documents`, row `domain = 'settings'`, a JSON payload with `notifications: { enabled, agentNeedsInput, agentTaskComplete, terminalBell, suppressWhenFocused, … }`. Orca's code defaults `agentNeedsInput` to `agentTaskComplete` when absent. There is no CLI to read them.
 - On this Mac (JBR 21), `java.awt.TrayIcon.displayMessage` posts through the deprecated `NSUserNotificationCenter`; a test notification was not shown, and `CTrayIcon` has no Java callback for a click anyway. Compose's `TrayState.sendNotification` is built on it.
 
@@ -69,7 +69,7 @@ When both are off, the app doesn't keep detecting agents while hidden and the ho
 `RunnerNotifications` says which runner notifies which state, read by two adapters behind `RunnerNotificationSource`:
 
 - Herdr notifies both states when `[ui.toast] delivery` is `terminal` or `system` in its `config.toml` (`HerdrConfigFile`, the same file and path rules `worktreesRoot` already uses). `herdr` (in-app toast) and `off` don't count: they don't reach the desktop.
-- Orca notifies blocked when `notifications.enabled && (agentNeedsInput ?: agentTaskComplete)` and done when `enabled && agentTaskComplete`, read with `sqlite3 -readonly` (argv, no shell) from the active profile's `profile-state.db`. Missing fields take Orca's defaults (enabled, both on). When the database can't be read (no `sqlite3`, as on Windows, or a changed schema), ShogunAi assumes Orca's defaults and stays silent for Orca's agents: a missed duplicate is worse than relying on Orca.
+- Orca notifies blocked when `notifications.enabled && (agentNeedsInput ?: agentTaskComplete)` and done when `enabled && agentTaskComplete`, read with `sqlite3 -readonly` (argv, no shell) from the active profile's `profile-state.db` (`activeProfileId` of `orca-profile-index.json`, `local-default` otherwise). Orca holds that database with an exclusive lock, so a normal read-only open fails with "unable to open database file"; the URI `file:…?mode=ro&immutable=1` reads it without locking. A read that races a write fails or returns garbage, which falls back like any unreadable case. Missing fields take Orca's defaults (enabled, both on). When the database can't be read (no `sqlite3`, as on Windows, or a changed schema), ShogunAi assumes Orca's defaults and stays silent for Orca's agents: a missed duplicate is worse than relying on Orca.
 - Values are cached for 60 seconds.
 
 An agent's runner is Herdr when Herdr reports its pane and Orca when Orca reports its state, as the agent indicator already decides (`agent-indicator`). Orca's `suppressWhenFocused` and `notifyHiddenWorkspaces` aren't modelled: when Orca is set to notify, ShogunAi leaves Orca's agents to it.
@@ -85,7 +85,7 @@ Reading Orca's private database is fragile by nature; it's isolated in one adapt
 
 - **macOS: a bundled helper app.** Ciro chose a native helper so the click reaches the right worktree. `ShogunAi Notifications.app` (bundle id `app.luxion.shogunai.notifications`, `LSUIElement`, ShogunAi's icon), one Swift file using `UNUserNotificationCenter`. `post --title … --body … --request <json> --requests-dir <dir> [--app <ShogunAi.app>]` asks for authorization the first time, adds the notification with the request JSON and paths in `userInfo`, and exits once it's added. A click relaunches the helper through Launch Services; its delegate sets `createdAt` to the current time in the request JSON, writes it atomically into ShogunAi's request folder as `FileAppRequestChannel` names files, opens `--app` when given (or nothing in development, where the running app polls the folder) and exits. Kotlin owns every field of the request except the timestamp, so the format lives in one place. The click therefore goes through the same path as `shogun app`, with the same guard for unsaved forms.
 - **Linux: `notify-send`.** The app runs `notify-send --app-name=ShogunAi --action=default=<Open> --wait -- <title> <body>` and reads its output on a background thread; `default` means a click, handled in process. Without `notify-send`, notifications aren't available.
-- **Windows: the system tray.** A `java.awt.TrayIcon` kept by the adapter (added when the first notification is shown if the menu bar icon is off) with `displayMessage` and an `ActionListener`, which Windows calls when the notification is clicked.
+- **Windows: the system tray.** A `java.awt.TrayIcon` of its own, added when the first notification is shown and kept, with `displayMessage` and an `ActionListener`, which Windows calls when the notification is clicked. Compose's tray icon doesn't expose its `TrayIcon` nor a click on its notifications, so with the tray icon on there are two icons once a notification has been shown; checked by hand on Windows only, behind the `TrayBalloon` port so the rest is unit tested.
 
 The helper is built by a Gradle task with `swiftc` (`-target <arch>-apple-macos12`, the runner's architecture, as the DMGs are built per architecture) into `desktopApp/build/notifier/macos/ShogunAi Notifications.app`, wired into Compose's `appResourcesRootDir` so it lands in `Contents/app/resources/` of the app and is also there for `./gradlew :desktopApp:run` (`compose.application.resources.dir`). It is signed before packaging: with the Developer ID identity and the hardened runtime when `macSigningIdentity` is set, ad hoc otherwise. Off macOS the task is skipped. Its Swift has no Kotlin coverage; the Kotlin side (arguments, request JSON, locating the helper) is unit tested, and the helper itself is checked by hand and by `codesign --verify --deep --strict` on the packaged app.
 
@@ -109,14 +109,33 @@ The CLI's notifier is the same port: on macOS the helper is found inside the app
 
 `AppRequest` gains the action `open-worktree` with `projectId` and `worktreePath`. It stays version 1: older apps don't understand the action and delete the request, as for any unknown action. `shogun app <path>` sends it when `<path>` is inside one of the project's worktrees other than the main checkout, and `open-project` otherwise, so it also serves people, not only clicks.
 
+### A badge for the agent and its state
+
+Asked for by Ciro after seeing the first real notification. macOS always shows the posting app's icon on the left, whatever the notification, so the per-agent image goes as a `UNNotificationAttachment`, shown as a thumbnail and enlarged when the notification is expanded; on Linux it is `notify-send`'s `--icon`; Windows' tray offers only fixed message types.
+
+`RenderedNotificationImages` (behind the `NotificationImages` port) draws a 256 px rounded square with `java.awt` in headless mode: amber with a white "!" mark for needs you, green with a check mark for done, and the agent's initial in white, or the number of agents (up to 9) for a grouped notification, coloured by its first item. It writes each badge once into `~/.shogunai/notifications/images` (`needs-you-c.png`, `done-3.png`…) and reuses it. Vendors' logos (Claude, Codex, Gemini) are not used: they are other companies' marks. Drawing can fail where Java has no fonts (`UnsatisfiedLinkError` on a minimal Linux), so any failure leaves the notification without an image. The helper copies the image to a temporary file before attaching it, because macOS moves an attachment's file into its own store.
+
+### Keeping the board under its length cap
+
+`WorktreeBoard.kt` is on the file length exception list at its cap. The watch loop moved to `BoardCheckLoop` and the device refresh times to `DeviceRefreshSchedule`, both new files, so the board can call the notification watch without growing; its cap is lowered to its new length.
+
+### Coverage
+
+`core`'s maximum of missed branches goes from 18 to 19: adding `notifyBlocked` and `notifyDone` to the `@Serializable` `Settings` adds one more of the deserializer checks kotlinx.serialization generates for classes whose fields all have defaults, which no input reaches. The pending-notification store is written and read by hand instead of through `@Serializable` classes, so it adds none. The board's length cap is lowered to its new length.
+
+### The click from the desktop app goes through the request folder
+
+The watch's click handler writes the `open-worktree` request into `~/.shogunai/app-requests` instead of navigating directly: `notify-send`'s and AWT's callbacks arrive on background threads, and the request poller already serves requests on the UI thread with the guard for unsaved forms. On macOS the helper writes the same request, so every click takes one path.
+
 ## Risks / Trade-offs
 
 - [Compose re-signs files inside the bundle and could break the helper's nested signature, failing notarization] → The helper is signed before packaging and the packaged app is checked with `codesign --verify --deep --strict` locally; before release, the macOS installer workflow is run on the branch with Ciro's agreement.
-- [The first notification on macOS asks for permission, and a denial silences them] → The helper asks once; macOS keeps the choice in System Settings, which the architecture docs mention.
+- [The first notification on macOS asks for permission, and a denial silences them] → The helper asks once; macOS keeps the choice in System Settings, which the architecture docs and the guide mention. The notification that triggers the question is lost when the user takes longer than the helper's post to answer; the next one shows.
 - [Orca's database format can change with any Orca update] → One adapter with fixtures; any failure falls back to silence for Orca's agents only.
 - [A detached `notify-pending` could be killed with Claude Code's hook process group] → It's started in its own process; checked by hand with a real Claude session, and the next app start clears stale pending entries.
 - [Agents-only checks while hidden cost a process scan every 15 seconds] → Only with a switch on; the scan is the one the visible window already runs, without Git or device reads.
 - [Polling can miss a working → blocked → working that happens between two checks] → That is the grace period's intent; a long block is always seen.
+- [With the window hidden the app reads agents every 15 to 60 seconds depending on the refresh cadence, so a turn shorter than that goes from idle to done without being seen working, and doesn't notify] → Accepted with Ciro during validation: the rule stays "only from working". Claude Code's hooks see every turn, so the CLI path isn't affected; reading Herdr's `completion_seq` would catch them in the app and is left as a follow-up.
 
 ## Migration Plan
 

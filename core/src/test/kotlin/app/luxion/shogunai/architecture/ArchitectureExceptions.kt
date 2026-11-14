@@ -51,7 +51,7 @@ val FILE_LENGTH_CAPS: Map<String, Int> = mapOf(
     desktop("ui/shell/ShellViewModel.kt") to 414,
     desktop("ui/shell/Sidebar.kt") to 620,
     desktop("ui/worktree/ProjectWorktrees.kt") to 1366,
-    desktop("ui/worktree/WorktreeBoard.kt") to 1294,
+    desktop("ui/worktree/WorktreeBoard.kt") to 1293,
     desktop("ui/worktree/WorktreeListPane.kt") to 828,
     desktop("ui/worktree/WorktreeRow.kt") to 409,
     desktop("ui/worktree/WorktreeScreen.kt") to 481,

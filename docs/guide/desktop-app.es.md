@@ -149,6 +149,12 @@ En repositorios que los declaran en `.shogunai.json`, la pantalla de worktrees a
 
 Preferencias (el engranaje al pie de la barra lateral, o Cmd+Coma en macOS y Ctrl+Coma en los demás) reúne el tema, el idioma, el **umbral de inactividad** en días, la sección **Herramientas**, donde eliges el **runner por defecto** (Herdr u Orca, el que usan el botón principal del detalle y Cmd+O; Herdr si no lo cambias; ver [Elegir el runner](../agents.md#elegir-el-runner)), el terminal y el IDE predeterminado entre los que ShogunAi ha encontrado en esta máquina (si no encuentra ninguno, la sección lo dice y las acciones correspondientes no se ofrecen), y **Buscar actualizaciones automáticamente**, activada por defecto. Consulta [Actualizaciones](#actualizaciones).
 
+## Notificaciones
+
+ShogunAi muestra una notificación del sistema cuando un agente deja de trabajar porque te necesita y, si lo activas, cuando termina. La sección **Notificaciones** de Preferencias tiene un interruptor para cada caso, **Cuando un agente te necesita** (activado por defecto) y **Cuando un agente termina** (desactivado por defecto). Una notificación espera unos segundos para que no avise un agente que vuelve a trabajar enseguida, nombra el agente, el worktree y el proyecto, y abre ese worktree al pulsarla. Los agentes que cambian a la vez forman una sola notificación. Calla para el agente cuyo panel de Herdr está enfocado, y para los agentes cuyo runner ya avisa de ellos (Herdr con sus notificaciones de escritorio activadas, Orca con sus avisos de agentes activados). Con la ventana oculta o cerrada a la barra de menús, ShogunAi sigue vigilando los agentes para esto; con los dos interruptores apagados, no.
+
+En macOS la primera notificación pide permiso para «ShogunAi»; puedes cambiarlo después en Ajustes del Sistema, en Notificaciones. En Linux las notificaciones necesitan `notify-send`. Con la app cerrada, los hooks de Claude Code siguen notificando a través de `shogun` en macOS (con la app instalada) y en Linux. Consulta [Notificaciones de agentes](../architecture/notifications.md) para ver cómo funciona.
+
 ## Icono en la barra de menús y en la bandeja del sistema
 
 Mientras ShogunAi se ejecuta, un icono en la barra de menús de macOS (o en la bandeja del sistema en los escritorios de Windows y Linux que la tienen) abre un menú con:

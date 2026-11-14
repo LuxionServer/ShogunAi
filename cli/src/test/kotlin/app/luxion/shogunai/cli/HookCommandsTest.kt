@@ -4,6 +4,18 @@ import app.luxion.shogunai.engine.ShogunEngine
 import app.luxion.shogunai.domain.ScriptedShellCommandExecutor
 import app.luxion.shogunai.domain.model.FlutterProvider
 import app.luxion.shogunai.domain.FakeAgentSessionStore
+import app.luxion.shogunai.domain.io.NotificationSetup
+import app.luxion.shogunai.domain.usecase.AgentNotificationTracker
+import app.luxion.shogunai.domain.model.PendingSession
+import app.luxion.shogunai.domain.model.NotifiedWorktree
+import app.luxion.shogunai.domain.model.NotificationPreferences
+import app.luxion.shogunai.domain.model.AppLanguage
+import app.luxion.shogunai.domain.io.NoNotificationImages
+import app.luxion.shogunai.domain.io.PendingNotificationStore
+import app.luxion.shogunai.domain.io.LanguagePreferenceRepository
+import app.luxion.shogunai.domain.RecordingSystemNotifier
+import app.luxion.shogunai.domain.FakeRunnerNotificationSource
+import app.luxion.shogunai.domain.FakeNotificationPreferenceRepository
 import app.luxion.shogunai.domain.FakeMachineCapacity
 import app.luxion.shogunai.domain.FakeResourceLimitsRepository
 import app.luxion.shogunai.domain.model.RepositoryApprovalSubject
@@ -111,6 +123,8 @@ class HookCommandsTest {
         sessionStore: FakeAgentSessionStore = FakeAgentSessionStore(),
         orca: FakeOrcaClient = FakeOrcaClient(installed = false),
         gitHub: FakeGitHubClient = FakeGitHubClient(),
+        notificationSetup: NotificationSetup? = null,
+        claudeAlive: (Long) -> Boolean = { false },
     ) = ShogunCli(
         engine = ShogunEngine(
             cliEnginePorts(
@@ -149,6 +163,8 @@ class HookCommandsTest {
         environment = hostEnvironment("/home/dev", environment),
         readAnswer = { "y" },
         agentProcessId = { 4242L },
+        notificationSetup = notificationSetup,
+        isClaudeProcessAlive = claudeAlive,
     )
 
     private fun createInput(name: String, cwd: String = base) =
@@ -869,6 +885,128 @@ class HookCommandsTest {
         assertEquals(0, exitCode, err.toString())
         assertEquals("", out.toString())
         assertEquals(AgentSessionRecord("963d9441", "claude", AgentState.WORKING, recorded(store)!!.updatedAt, transcript, 4242L), recorded(store))
+    }
+
+    private class FakeNotificationSetup(var appRunning: Boolean = false) : NotificationSetup {
+        override val notifier = RecordingSystemNotifier()
+        val stored = mutableListOf<PendingSession>()
+        val started = mutableListOf<List<String>>()
+        val pauses = mutableListOf<Long>()
+        var onPause: () -> Unit = {}
+        override val runners = FakeRunnerNotificationSource()
+        override val images = NoNotificationImages
+        override val preferences = FakeNotificationPreferenceRepository()
+        override val language = object : LanguagePreferenceRepository {
+            override fun load() = AppLanguage.ENGLISH
+            override fun save(language: AppLanguage) = Unit
+        }
+        override val pending = object : PendingNotificationStore {
+            override fun <T> update(block: (List<PendingSession>) -> Pair<List<PendingSession>, T>): T {
+                val (next, result) = block(stored.toList())
+                stored.clear()
+                stored += next
+                return result
+            }
+        }
+
+        override fun startInBackground(arguments: List<String>) {
+            started += arguments
+        }
+
+        override suspend fun pause(millis: Long) {
+            pauses += millis
+            onPause()
+        }
+    }
+
+    private val linkedPath = "/home/dev/projects/worktrees/TASK-7"
+
+    private fun runNotifyingState(event: String, previous: AgentState?, setup: FakeNotificationSetup, projects: List<Project> = listOf(project), extra: String = ""): FakeAgentSessionStore {
+        val store = FakeAgentSessionStore()
+        previous?.let { store.write(linkedPath, AgentSessionRecord("963d9441", "claude", it, 0, transcript, 4242L)) }
+        val executor = Executor(porcelain(linkedPath to "feature/TASK-7")) { command ->
+            CommandResult(command, 0, "$base/.git\n$base/.git\n", "").takeIf { "--git-dir" in command }
+        }
+        cli(executor, stateInput(event, extra, cwd = linkedPath), projects = projects, existing = listOf(base, linkedPath), sessionStore = store, notificationSetup = setup)
+            .run(listOf("hook", "agent-state"))
+        return store
+    }
+
+    @Test
+    fun `agent-state schedules a notification when the agent stops working and the app is closed`() {
+        val setup = FakeNotificationSetup()
+
+        runNotifyingState("Notification", AgentState.WORKING, setup, extra = ""","notification_type":"permission_prompt"""")
+
+        assertEquals(listOf(listOf("hook", "notify-pending")), setup.started)
+        val scheduled = setup.stored.single()
+        assertEquals("963d9441", scheduled.sessionId)
+        assertEquals(NotifiedWorktree(project.id, project.name, linkedPath, "feature/TASK-7"), scheduled.worktree)
+    }
+
+    @Test
+    fun `agent-state schedules nothing without a stop, without a project or without notifications`() {
+        val noStop = FakeNotificationSetup()
+        runNotifyingState("UserPromptSubmit", AgentState.DONE, noStop)
+        val noProject = FakeNotificationSetup()
+        runNotifyingState("Stop", AgentState.WORKING, noProject, projects = emptyList())
+
+        assertTrue(noStop.started.isEmpty() && noStop.stored.isEmpty())
+        assertTrue(noProject.started.isEmpty() && noProject.stored.isEmpty())
+        assertEquals(AgentState.DONE, runNotifyingState("Stop", AgentState.WORKING, FakeNotificationSetup().also { it.preferences.stored = NotificationPreferences(false, false) }).records[linkedPath]?.single()?.state)
+    }
+
+    @Test
+    fun `a detached worktree is named after its folder`() {
+        val setup = FakeNotificationSetup()
+        val store = FakeAgentSessionStore().apply { write(linkedPath, AgentSessionRecord("963d9441", "claude", AgentState.WORKING, 0, transcript, 4242L)) }
+        val detached = "worktree $base\nHEAD 1111111111111111111111111111111111111111\nbranch refs/heads/main\n\nworktree $linkedPath\nHEAD 2222222222222222222222222222222222222222\ndetached\n"
+        val executor = Executor(detached) { command -> CommandResult(command, 0, "$base/.git\n$base/.git\n", "").takeIf { "--git-dir" in command } }
+        setup.preferences.stored = NotificationPreferences(blocked = true, done = true)
+
+        cli(executor, stateInput("Stop", cwd = linkedPath), existing = listOf(base, linkedPath), sessionStore = store, notificationSetup = setup).run(listOf("hook", "agent-state"))
+
+        assertEquals("TASK-7", setup.stored.single().worktree.worktreeName)
+    }
+
+    @Test
+    fun `notify-pending waits for the grace period and then notifies`() {
+        val setup = FakeNotificationSetup()
+        val store = FakeAgentSessionStore().apply { write(linkedPath, AgentSessionRecord("963d9441", "claude", AgentState.BLOCKED, Long.MAX_VALUE / 2, null, 4242L)) }
+        val worktree = NotifiedWorktree(project.id, project.name, linkedPath, "feature/TASK-7")
+        setup.stored += PendingSession("963d9441", worktree, System.currentTimeMillis())
+        setup.onPause = { setup.stored.replaceAll { it.copy(sinceMillis = 0) } }
+
+        val exitCode = cli(Executor(porcelain()), "", sessionStore = store, notificationSetup = setup, claudeAlive = { it == 4242L })
+            .run(listOf("hook", "notify-pending"))
+
+        assertEquals(0, exitCode)
+        assertEquals(1, setup.pauses.size)
+        assertTrue(setup.pauses.single() in 250..AgentNotificationTracker.GRACE_MILLIS)
+        assertEquals("Claude needs you", setup.notifier.shown.single().title)
+        assertTrue(setup.stored.isEmpty())
+    }
+
+    @Test
+    fun `notify-pending gives up after a bounded number of rounds and does nothing without notifications`() {
+        val setup = FakeNotificationSetup()
+        setup.stored += PendingSession("s", NotifiedWorktree("p", "p", linkedPath, "x"), Long.MAX_VALUE / 2)
+
+        cli(Executor(porcelain()), "", notificationSetup = setup).run(listOf("hook", "notify-pending"))
+
+        assertEquals(30, setup.pauses.size)
+        assertEquals(0, cli(Executor(porcelain()), "").run(listOf("hook", "notify-pending")))
+    }
+
+    @Test
+    fun `notify-pending stops quietly when the pending notifications can't be read`() {
+        val setup = object : NotificationSetup by FakeNotificationSetup() {
+            override val pending = object : PendingNotificationStore {
+                override fun <T> update(block: (List<PendingSession>) -> Pair<List<PendingSession>, T>): T = error("unreadable")
+            }
+        }
+
+        assertEquals(0, cli(Executor(porcelain()), "", notificationSetup = setup).run(listOf("hook", "notify-pending")))
     }
 
     private fun holdEmulator() {

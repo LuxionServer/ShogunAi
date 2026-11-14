@@ -14,6 +14,8 @@ class ShogunFiles(home: String) {
     val agentSessions: Path = folder.resolve("agent-sessions")
     val appRequests: Path = folder.resolve("app-requests")
     val appLock: Path = folder.resolve("app.lock")
+    val pendingNotifications: Path = folder.resolve("notifications").resolve("pending.json")
+    val notificationImages: Path = folder.resolve("notifications").resolve("images")
     val logs: Path = folder.resolve("logs")
     val headless: Path = folder.resolve("headless")
 }
