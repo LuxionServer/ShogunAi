@@ -601,6 +601,7 @@ interface Strings : XcodeStrings {
     fun approvalEnvFile(path: String): String
     val approvalPoolsTitle: String
     fun approvalPool(name: String, max: Int): String
+    val approvalNodeInstall: String
     fun variablesAwaitingApproval(names: List<String>): String
     val templateInvalidCharacters: String
     val envFileInvalidCharacters: String
@@ -661,6 +662,7 @@ interface Strings : XcodeStrings {
     val providerMaven: String
     val providerDockerCompose: String
     val providerFlutter: String
+    val providerNode: String
     val mavenMaxHeapLabel: String
     val composePortVariablesLabel: String
     val composePortVariablesHelp: String

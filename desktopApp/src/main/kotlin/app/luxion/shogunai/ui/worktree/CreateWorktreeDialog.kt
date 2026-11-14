@@ -156,6 +156,9 @@ fun ApprovalSubjectLines(subject: RepositoryApprovalSubject, strings: Strings) {
             pool.variables.forEach { Text("${it.name} = ${it.template.source}", style = ShogunTheme.typography.data) }
         }
     }
+    if (subject.nodeInstall) {
+        Text(strings.approvalNodeInstall, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = Spacing.xs))
+    }
 }
 
 @Composable

@@ -714,6 +714,7 @@ object SpanishStrings : Strings, XcodeStrings by SpanishXcodeStrings {
     override fun approvalEnvFile(path: String) = "Archivo de entorno: $path"
     override val approvalPoolsTitle = "Pools"
     override fun approvalPool(name: String, max: Int) = "$name, como máximo $max a la vez"
+    override val approvalNodeInstall = "Instala las dependencias de Node con el gestor de paquetes del repositorio (npm ci, pnpm, yarn o bun install)"
     override fun variablesAwaitingApproval(names: List<String>) =
         "Pendientes de aprobación: ${names.joinToString(", ")}. Apruébalas en los ajustes del proyecto o con shogun trust."
     override val templateInvalidCharacters = "Las plantillas no pueden contener saltos de línea ni caracteres de control."
@@ -776,6 +777,7 @@ object SpanishStrings : Strings, XcodeStrings by SpanishXcodeStrings {
     override val providerMaven = "Maven"
     override val providerDockerCompose = "Docker Compose"
     override val providerFlutter = "Flutter"
+    override val providerNode = "Node"
     override val mavenMaxHeapLabel = "Memoria de las compilaciones"
     override val composePortVariablesLabel = "Variables de puerto"
     override val composePortVariablesHelp = "Nombres separados por comas, por ejemplo DB_PORT, API_PORT. Cada uno recibe su propio puerto libre en cada worktree."

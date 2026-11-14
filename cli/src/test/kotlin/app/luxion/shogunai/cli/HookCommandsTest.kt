@@ -3,6 +3,7 @@ package app.luxion.shogunai.cli
 import app.luxion.shogunai.engine.ShogunEngine
 import app.luxion.shogunai.domain.ScriptedShellCommandExecutor
 import app.luxion.shogunai.domain.model.FlutterProvider
+import app.luxion.shogunai.domain.model.NodeProvider
 import app.luxion.shogunai.domain.FakeAgentSessionStore
 import app.luxion.shogunai.domain.FakeMachineCapacity
 import app.luxion.shogunai.domain.FakeResourceLimitsRepository
@@ -1027,6 +1028,16 @@ class HookCommandsTest {
 
         assertEquals(2, exitCode)
         assertTrue(err.contains("agent-state"), err.toString())
+    }
+
+    @Test
+    fun `worktree-create notes that node dependencies are still needed on stderr`() {
+        val provisioning = RepositoryProvisioning(providers = RepositoryProviders(node = NodeProvider))
+
+        val exitCode = cli(Executor(porcelain()), createInput("TASK-123"), provisioning = provisioning).run(listOf("hook", "worktree-create"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertTrue(err.contains("shogun: hook worktree-create: node dependencies needed: there is no lockfile in the main folder"), err.toString())
     }
 
     @Test

@@ -206,6 +206,9 @@ object InstallationReportText {
         ProviderToolId.COCOAPODS -> "Install CocoaPods: https://cocoapods.org"
         ProviderToolId.DOCKER_COMPOSE, ProviderToolId.DOCKER_DAEMON -> "Install Docker with its Compose plugin, for example Docker Desktop: https://docs.docker.com/get-docker/"
         ProviderToolId.FLUTTER -> "Install Flutter (https://docs.flutter.dev/get-started/install), or FVM if the repository uses it, and make sure it's on your PATH"
+        ProviderToolId.NODE, ProviderToolId.NPM -> "Install Node.js, which includes npm (https://nodejs.org), and make sure it's on your PATH"
+        ProviderToolId.PNPM, ProviderToolId.YARN -> "Enable it with Corepack (corepack enable) or install it, and make sure it's on your PATH"
+        ProviderToolId.BUN -> "Install bun (https://bun.sh) and make sure it's on your PATH"
         ProviderToolId.PROVIDERS -> "Correct the repository's ${RepositoryProvisioning.CONFIG_FILE_NAME} so it's valid"
     }
 

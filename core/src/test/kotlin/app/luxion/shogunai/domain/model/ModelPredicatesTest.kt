@@ -29,6 +29,7 @@ class ModelPredicatesTest {
             maven = MavenProvider(),
             dockerCompose = DockerComposeProvider(),
             flutter = FlutterProvider,
+            node = NodeProvider,
         )
 
         SuggestedProvider.entries.forEach { provider ->
