@@ -22,6 +22,11 @@ class SharedDeviceStatesAndroidSdk(
         read.states ?: delegate.emulatorStates(sdk, read.attached).also { reads[sdk.adb] = read.copy(states = it) }
     }
 
+    override suspend fun deviceStates(sdk: SdkLocation, serials: Set<String>): Map<String, EmulatorState> = mutex.withLock {
+        val read = currentRead(sdk)
+        read.states?.filterKeys { it in serials } ?: delegate.emulatorStates(sdk, read.attached.filterKeys { it in serials })
+    }
+
     override suspend fun attachedDevices(sdk: SdkLocation): Map<String, String> = mutex.withLock { currentRead(sdk).attached }
 
     override suspend fun stopEmulator(sdk: SdkLocation, serial: String) {

@@ -4,6 +4,7 @@ import app.luxion.shogunai.domain.io.RepositoryProvisioningSource
 import app.luxion.shogunai.domain.model.DesktopAppProvider
 import app.luxion.shogunai.domain.model.DockerComposeProvider
 import app.luxion.shogunai.domain.model.FlutterProvider
+import app.luxion.shogunai.domain.model.NodeProvider
 import app.luxion.shogunai.domain.model.EmulatorProvider
 import app.luxion.shogunai.domain.model.EnvironmentDeclaration
 import app.luxion.shogunai.domain.model.RepositoryConfigEdit
@@ -51,6 +52,7 @@ class RepositoryProvisioningFiles : RepositoryProvisioningSource {
             worktreeIncludePatterns = readWorktreeInclude(root.resolve(RepositoryProvisioning.WORKTREE_INCLUDE_FILE_NAME)),
             providers = if (config != null) providersOf(config, configPath) else RepositoryProviders(),
             environment = if (config != null) environmentOf(config, configPath) else EnvironmentDeclaration(),
+            pools = CustomPoolDeclarations.read(config, configPath, (config?.get(ENV_FIELD) as? JsonObject)?.keys.orEmpty()),
             overlapIgnore = config?.let { overlapIgnoreOf(it, configPath) }.orEmpty(),
         )
     }
@@ -152,6 +154,7 @@ class RepositoryProvisioningFiles : RepositoryProvisioningSource {
         updatedProviders.applyProvider(MAVEN_PROVIDER, edit.providers.maven?.let { mavenOptions(it) })
         updatedProviders.applyProvider(DOCKER_COMPOSE_PROVIDER, edit.providers.dockerCompose?.let { composeOptions(it) })
         updatedProviders.applyProvider(FLUTTER_PROVIDER, edit.providers.flutter?.let { emptyMap() })
+        updatedProviders.applyProvider(NODE_PROVIDER, edit.providers.node?.let { emptyMap() })
         result.putOrRemove(PROVIDERS_FIELD, updatedProviders.takeIf { it.isNotEmpty() }?.let(::JsonObject))
         result.putOrRemove(
             ENV_FIELD,
@@ -323,6 +326,7 @@ class RepositoryProvisioningFiles : RepositoryProvisioningSource {
                 providerOptions(value, FLUTTER_PROVIDER, path)
                 FlutterProvider
             },
+            node = providers[NODE_PROVIDER]?.let { value -> providerOptions(value, NODE_PROVIDER, path).let { NodeProvider } },
         )
     }
 
@@ -444,6 +448,7 @@ class RepositoryProvisioningFiles : RepositoryProvisioningSource {
         const val MODULE_FIELD = "module"
         const val ISOLATED_HOME_FIELD = "isolatedHome"
         const val FLUTTER_PROVIDER = "flutter"
+        const val NODE_PROVIDER = "node"
         const val ENV_FIELD = "env"
         const val ENV_FILE_FIELD = "envFile"
         const val ABSENT_FINGERPRINT = "absent"
@@ -455,6 +460,7 @@ class RepositoryProvisioningFiles : RepositoryProvisioningSource {
             MAVEN_PROVIDER to listOf(MAVEN_MAX_HEAP_FIELD),
             DOCKER_COMPOSE_PROVIDER to listOf(PORT_VARIABLES_FIELD),
             FLUTTER_PROVIDER to emptyList(),
+            NODE_PROVIDER to emptyList(),
         )
     }
 }

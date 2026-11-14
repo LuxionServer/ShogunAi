@@ -177,8 +177,8 @@ class PhysicalDevicesViewUiTest {
     @Test
     fun `every usability has a label`() {
         assertEquals(
-            listOf("Allow USB debugging on the device", "Offline", "Connecting", "Not paired with this Mac", "Turn on developer mode", "Connecting"),
-            listOf(DeviceUsability.UNAUTHORIZED, DeviceUsability.OFFLINE, DeviceUsability.CONNECTING, DeviceUsability.UNPAIRED, DeviceUsability.DEVELOPER_MODE_OFF, DeviceUsability.USABLE)
+            listOf("Allow USB debugging on the device", "Offline", "Connecting", "Not paired with this Mac", "Turn on developer mode", "Connecting", "Not responding"),
+            listOf(DeviceUsability.UNAUTHORIZED, DeviceUsability.OFFLINE, DeviceUsability.CONNECTING, DeviceUsability.UNPAIRED, DeviceUsability.DEVELOPER_MODE_OFF, DeviceUsability.USABLE, DeviceUsability.UNRESPONSIVE)
                 .map { usabilityLabel(it, EnglishStrings) },
         )
     }

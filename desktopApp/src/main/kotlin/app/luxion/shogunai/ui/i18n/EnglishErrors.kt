@@ -3,10 +3,7 @@ package app.luxion.shogunai.ui.i18n
 import app.luxion.shogunai.domain.model.AGENT_START_SECONDS
 import app.luxion.shogunai.domain.model.ORCA_START_SECONDS
 import app.luxion.shogunai.domain.executor.CommandExecutionException
-import app.luxion.shogunai.domain.model.HolderProtection
-import app.luxion.shogunai.domain.model.PoolHolder
-import app.luxion.shogunai.domain.model.PoolHolderState
-import app.luxion.shogunai.domain.model.ResourceKind
+import app.luxion.shogunai.domain.model.CustomPoolFailure
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.UnavailableReason
 import app.luxion.shogunai.domain.model.UnavailableLocalFile
@@ -231,6 +228,7 @@ private fun englishWorktreeTexts(error: WorktreeError, gitCause: GitFailureCause
         "${error.summary}.",
         "Connect or release a device, or wait for one with --wait.",
     )
+    is CustomPoolFailure -> englishCustomPoolTexts(error.problem)
     is WorktreeError.PhysicalDeviceWaitTimedOut -> ErrorTexts(
         "No device was free within ${error.waited.toMinutes()} min.",
         "Release one from the Devices view, or try again later.",
@@ -246,6 +244,14 @@ private fun englishWorktreeTexts(error: WorktreeError, gitCause: GitFailureCause
     is WorktreeError.EmulatorBootTimeout -> ErrorTexts(
         "${error.serial} didn't finish booting within ${error.seconds} s.",
         "Try again; the first boot can be slow.",
+    )
+    is WorktreeError.EmulatorUnresponsive -> ErrorTexts(
+        "${error.serial} is running but hasn't answered adb for ${error.seconds} s.",
+        "Wait and start it again, or stop it and start it again.",
+    )
+    is WorktreeError.EmulatorDidNotExit -> ErrorTexts(
+        "${error.serial} didn't answer the request to exit.",
+        "End its emulator process, the one started on port ${error.consolePort}, and start it again.",
     )
     is WorktreeError.EmulatorExitedEarly -> ErrorTexts(
         "The emulator of ${error.serial} stopped before it finished booting.",
@@ -440,28 +446,6 @@ private fun englishWorktreeTexts(error: WorktreeError, gitCause: GitFailureCause
         "Check the technical details.",
     )
     is WorktreeError.GitCommandFailed -> englishGitTexts(gitCause)
-}
-
-private fun englishKindName(kind: ResourceKind): String = when (kind) {
-    ResourceKind.EMULATOR -> "emulators"
-    ResourceKind.IOS_SIMULATOR -> "iOS simulators"
-    ResourceKind.GRADLE_DAEMON -> "Gradle daemons"
-}
-
-private fun englishHolderState(state: PoolHolderState): String = state.name.lowercase()
-
-private fun englishWaiting(waiting: Int): String = when (waiting) {
-    0 -> ""
-    1 -> "; 1 worktree is waiting for one"
-    else -> "; $waiting worktrees are waiting for one"
-}
-
-private fun englishProtection(holder: PoolHolder): String {
-    val protection = holder.protection ?: return ""
-    return when (protection) {
-        HolderProtection.AGENT_WORKING -> ", agent working"
-        HolderProtection.LEASED -> ", lease until ${holder.leaseExpiresAt?.toLocalClockTime()}"
-    }
 }
 
 internal fun englishLocalFilesFix(files: List<UnavailableLocalFile>): String {

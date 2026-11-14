@@ -1,13 +1,10 @@
 package app.luxion.shogunai.ui.i18n
 
+import app.luxion.shogunai.domain.model.CustomPoolFailure
 import app.luxion.shogunai.domain.model.AGENT_START_SECONDS
 import app.luxion.shogunai.domain.model.ORCA_START_SECONDS
 import app.luxion.shogunai.domain.model.MacPermission
 import app.luxion.shogunai.domain.executor.CommandExecutionException
-import app.luxion.shogunai.domain.model.HolderProtection
-import app.luxion.shogunai.domain.model.PoolHolder
-import app.luxion.shogunai.domain.model.PoolHolderState
-import app.luxion.shogunai.domain.model.ResourceKind
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.UnavailableReason
 import app.luxion.shogunai.domain.model.UnavailableLocalFile
@@ -232,6 +229,7 @@ private fun spanishWorktreeTexts(error: WorktreeError, gitCause: GitFailureCause
         "Ningún dispositivo que coincida está libre: los que hay están desconectados, retirados, sin permisos o en uso.",
         "Conecta o libera un dispositivo, o espera uno con --wait.",
     )
+    is CustomPoolFailure -> spanishCustomPoolTexts(error.problem)
     is WorktreeError.PhysicalDeviceWaitTimedOut -> ErrorTexts(
         "Ningún dispositivo quedó libre en ${error.waited.toMinutes()} min.",
         "Libera uno desde la vista Dispositivos, o inténtalo más tarde.",
@@ -247,6 +245,14 @@ private fun spanishWorktreeTexts(error: WorktreeError, gitCause: GitFailureCause
     is WorktreeError.EmulatorBootTimeout -> ErrorTexts(
         "${error.serial} no terminó de arrancar en ${error.seconds} s.",
         "Vuelve a intentarlo; el primer arranque puede tardar.",
+    )
+    is WorktreeError.EmulatorUnresponsive -> ErrorTexts(
+        "${error.serial} está en marcha pero no responde a adb desde hace ${error.seconds} s.",
+        "Espera y vuelve a arrancarlo, o detenlo y arráncalo de nuevo.",
+    )
+    is WorktreeError.EmulatorDidNotExit -> ErrorTexts(
+        "${error.serial} no respondió a la petición de cerrarse.",
+        "Termina su proceso de emulador, el que se arrancó en el puerto ${error.consolePort}, y vuelve a arrancarlo.",
     )
     is WorktreeError.EmulatorExitedEarly -> ErrorTexts(
         "El emulador de ${error.serial} se detuvo antes de terminar de arrancar.",
@@ -441,43 +447,6 @@ private fun spanishWorktreeTexts(error: WorktreeError, gitCause: GitFailureCause
         "Revisa los detalles técnicos.",
     )
     is WorktreeError.GitCommandFailed -> spanishGitTexts(gitCause)
-}
-
-private fun spanishKindName(kind: ResourceKind): String = when (kind) {
-    ResourceKind.EMULATOR -> "emuladores"
-    ResourceKind.IOS_SIMULATOR -> "simuladores de iOS"
-    ResourceKind.GRADLE_DAEMON -> "daemons de Gradle"
-}
-
-private fun spanishHolderState(state: PoolHolderState): String = when (state) {
-    PoolHolderState.STOPPED -> "detenido"
-    PoolHolderState.BOOTING -> "arrancando"
-    PoolHolderState.RUNNING -> "en ejecución"
-    PoolHolderState.SHUTDOWN -> "apagado"
-    PoolHolderState.BOOTED -> "arrancado"
-    PoolHolderState.BUSY -> "ocupado"
-    PoolHolderState.IDLE -> "inactivo"
-    PoolHolderState.UNKNOWN -> "desconocido"
-}
-
-private fun spanishWaiting(waiting: Int): String = when (waiting) {
-    0 -> ""
-    1 -> "; 1 worktree espera uno"
-    else -> "; $waiting worktrees esperan uno"
-}
-
-private fun spanishKindSingular(kind: ResourceKind): String = when (kind) {
-    ResourceKind.EMULATOR -> "emulador"
-    ResourceKind.IOS_SIMULATOR -> "simulador"
-    ResourceKind.GRADLE_DAEMON -> "daemon de Gradle"
-}
-
-private fun spanishProtection(holder: PoolHolder): String {
-    val protection = holder.protection ?: return ""
-    return when (protection) {
-        HolderProtection.AGENT_WORKING -> ", agente trabajando"
-        HolderProtection.LEASED -> ", concesión hasta ${holder.leaseExpiresAt?.toLocalClockTime()}"
-    }
 }
 
 private fun spanishPermissionName(permission: MacPermission): String = when (permission) {

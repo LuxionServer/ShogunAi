@@ -16,10 +16,13 @@ A provider adds support for one kind of tooling to a repository's worktrees. A r
 | [`docker-compose`](#docker-compose) | A Docker Compose project and ports per worktree. | Any with the Docker CLI |
 | [`desktop-app`](#compose-desktop-app) | A Compose Desktop app per worktree, run in the background without taking the desktop. | macOS |
 | [`flutter`](#flutter) | Flutter apps: `flutter pub get` in every new worktree, and agents running Flutter on their worktree's devices. | Any with Flutter |
+| [`node`](#node) | Node repositories: `node_modules` cloned from the base or installed in every new worktree. | Any with Node; cloning on macOS |
+
+For a resource none of them covers, a repository can declare its own [custom pools](#custom-pools).
 
 ## Detecting stacks
 
-You don't have to know which providers exist. ShogunAi looks at the files of the repository's main folder and its direct subfolders (never hidden folders, `build`, `node_modules` or `Pods`) and recognises six stacks:
+You don't have to know which providers exist. ShogunAi looks at the files of the repository's main folder and its direct subfolders (never hidden folders, `build`, `node_modules` or `Pods`) and recognises seven stacks:
 
 | Stack | Revealed by | Suggests |
 |---|---|---|
@@ -29,6 +32,7 @@ You don't have to know which providers exist. ShogunAi looks at the files of the
 | Maven | `pom.xml` or `mvnw` in the main folder | `maven` |
 | Docker Compose | `compose.yaml`, `compose.yml`, `docker-compose.yaml` or `docker-compose.yml` in the main folder | `docker-compose` |
 | Flutter | a `pubspec.yaml` in the main folder that depends on the Flutter SDK (`sdk: flutter`) | `flutter` |
+| Node | a `package.json` in the main folder, with its lockfiles as further evidence | `node` |
 
 In the project settings, "Repository configuration" lists the providers the repository could use and doesn't declare yet, with the files that revealed them, and "Turn on" switches the provider on as an unsaved change: nothing is written until you save and confirm the preview. `shogun stacks` prints the same from a terminal and changes nothing. A suggestion is only a hint (a `pom.xml` in a fixture folder also counts), so the evidence is always shown.
 
@@ -213,6 +217,42 @@ Some bugs only show on real hardware: a manufacturer's skin, the camera, Bluetoo
 - **Orca.** Acquiring an Android device in a worktree open in Orca shows it in the worktree's emulator view, and opening a worktree that holds one shows it instead of its emulator, unless the worktree's simulator is booted. Orca can't show a physical iPhone yet.
 - **Cost.** `adb devices` runs only when something needs the devices, once every 2 seconds at most, shared with the emulator states, and `getprop` once per connection. The desktop app doesn't look for devices on machines with no recorded device and no project declaring the emulator or iOS simulator provider.
 
+## Custom pools
+
+A repository whose worktrees share something ShogunAi has no provider for, such as a database per worktree, a test device, a licence or a GPU, declares it under `pools` in its `.shogunai.json`, without waiting for a provider:
+
+```json
+{
+  "pools": {
+    "db": {
+      "max": 3,
+      "acquire": ["./scripts/db-up.sh", "${slot}"],
+      "release": ["./scripts/db-down.sh", "${slot}"],
+      "env": { "DATABASE_URL": "postgres://localhost/app_${slot}" }
+    }
+  }
+}
+```
+
+| Key | Meaning |
+|---|---|
+| name | The key under `pools`: 1 to 32 lowercase letters, digits and hyphens, starting with a letter or digit. |
+| `max` | The most instances at once on the machine, a whole number from 1 to 64 (not a string). Each holder gets a slot from 1 to `max`. |
+| `acquire` | Required. One command, as a non-empty list of strings given as argv, never through a shell, run in the worktree when it takes or renews a slot. |
+| `release` | Optional. One command, as for `acquire`, run when the worktree gives its slot back, when another worktree takes it over and when the worktree is removed. |
+| `env` | Variables the worktree gets while it holds a slot, with the same name rules as the repository's `env`; a name can't repeat one of `env` or of another pool. |
+
+Commands and variables accept `${slot}` (the holder's slot number), `${worktree}` (its folder name) and `$$` (a literal `$`); any other placeholder makes the file invalid. Use the slot to keep instances apart: a database name, a port offset in the script, a device index.
+
+- **Approval.** The pools' commands and variables run on your machine, so they are part of the repository's single [approval](configuration.md#approving-a-repository): nothing of a pool runs until you approve it, and a pull that changes a pool asks again. An unapproved repository's `shogun pool acquire` fails naming `shogun trust`.
+- **On demand.** A worktree takes a slot with [`shogun pool acquire <name>`](cli.md#pool) when it needs it, which runs `acquire` with its slot; running it again renews the lease and runs `acquire` again, so make the command safe to repeat. `shogun pool release <name>` runs `release` and frees the slot. Nothing is acquired when a worktree is created.
+- **Leases and taking over.** Slots have the same lease as devices (the machine's lease duration, 20 minutes by default), protected while the worktree's agent works or while a command of the slot runs. When the pool is full, acquiring takes over a slot whose lease expired, in the same order as devices, running `release` for its holder first; if that `release` fails, the holder keeps it. With `--wait`, the worktree waits in line for a slot, first in, first out.
+- **Per repository.** A pool's slots are shared by the worktrees of the repository that declares it; another repository with a pool of the same name counts its own. For a resource of the whole machine, such as a GPU, give it the same `max` in each repository knowing they don't see each other.
+- **Variables.** While a worktree holds a slot, the pool's variables reach its environment: `shogun env`, agent sessions started afterwards, terminals and the environment file written afterwards. A shell that was already open reads them with `eval "$(shogun env)"`.
+- **Removal.** Removing or cleaning up a worktree runs `release` for each slot it holds and frees them even if `release` fails, which is reported.
+- **Status.** `shogun pool status` lists the repository's pools with their holders and waiters, and `shogun status` shows each worktree's slots (`pool=db#2`). The desktop app doesn't show custom pools yet.
+- **Limit.** `max` is the only limit a repository sets: the capacity profile and Preferences don't change it.
+
 ## Capacity
 
 Emulators, iOS simulators and Gradle daemons are limited per machine, shared by every repository and worktree. The limits come from the capacity profile in Preferences > Resources and are never read from the repository: **Automatic** (the default, from the machine's memory and cores), **Light** (1 emulator, 1 simulator, 2 Gradle daemons), **Balanced** (2, 2 and 4), **One per worktree** (no limit beyond the 16 emulator ports) or **Custom** (a number or no limit per kind). Both the app and `shogun` apply them.
@@ -319,3 +359,20 @@ A fresh worktree of a Flutter repository doesn't build: `.dart_tool/`, `android/
 - **CocoaPods.** With `cocoaPods` on, a new worktree gets the base repository's pods next to the tracked `ios/Podfile.lock`. Flutter's first build in that worktree still runs `pod install` itself, because it decides from a fingerprint kept in `build/`; with the pods already in place it downloads nothing. A "needs `pod install`" report is handled by Flutter's own build too.
 - **Ports.** `flutter run` binds its VM service and DevTools to free ports it picks, so worktrees don't collide. If the repository fixes the web server port, reserve one per worktree with `env` and pass it on: `"env": { "FLUTTER_WEB_PORT": "${port}" }` and `flutter run -d chrome --web-port "$FLUTTER_WEB_PORT"`.
 - `build/` and `.dart_tool/` stay per worktree: they hold absolute paths and incremental compiler state. The pub cache (`~/.pub-cache`) is already shared by every worktree.
+
+## Node
+
+A fresh worktree of a Node repository doesn't run: `node_modules` is ignored by Git, so every script, test runner and dev server fails until the dependencies are installed. Turn on the Node provider and every new or provisioned worktree gets them:
+
+```json
+{ "providers": { "node": {} } }
+```
+
+- **Package manager.** ShogunAi finds it from the lockfile in the repository's main folder: `package-lock.json` or `npm-shrinkwrap.json` (npm), `pnpm-lock.yaml` (pnpm), `yarn.lock` (Yarn) or `bun.lock`/`bun.lockb` (bun). With several lockfiles, `packageManager` in `package.json` decides; otherwise pnpm, Yarn, bun and npm, in that order. A repository without a lockfile is reported as needing its dependencies, and nothing runs.
+- **Cloned when the base matches.** On macOS, when the worktree's lockfile equals the base repository's and the base was installed after its lockfile last changed (npm's `node_modules/.package-lock.json`, pnpm's `node_modules/.modules.yaml`, Yarn's `node_modules/.yarn-integrity` or `.yarn-state.yml`), every ignored `node_modules` of the base is cloned with copy-on-write. It takes seconds, uses no extra disk until files change, and runs nothing. If a clone fails, the clones made so far are removed and the dependencies are installed instead.
+- **Installed otherwise, once the repository is approved.** When they can't be cloned (the branch changed the lockfile, the base isn't installed, bun or Yarn Plug'n'Play, Linux or Windows), ShogunAi runs `npm ci`, `pnpm install --frozen-lockfile`, `yarn install --immutable` (Yarn Berry, with `.yarnrc.yml`) or `yarn install --frozen-lockfile`, or `bun install --frozen-lockfile` in the worktree. Installing runs the repository's and its dependencies' scripts, so it only happens when the repository is [approved](configuration.md#approving-a-repository): declaring `node` makes the approval cover it, and the approval dialogs and `shogun trust` say so. Until then the report says the dependencies are needed and which command to run.
+- **Workspaces.** npm, pnpm, Yarn and bun workspaces keep one lockfile at the root, so the one clone covers every package's `node_modules`, and the one install at the root fills them. Independent Node projects in subfolders, each with its own lockfile, aren't prepared yet: declare their installs as post-creation commands.
+- **Order and reports.** The dependencies are prepared after the files are copied, the pods prepared and `flutter pub get`, and before the post-creation commands, so a `npm run build` declared there finds them. A worktree that already has `node_modules` is left as is. `shogun new`, `shogun provision` and the worktree creation hook report the outcome (`node.dependencies` in their JSON). A failed install (the manager isn't on the `PATH`, the lockfile is out of sync with `package.json`) keeps the worktree and says why.
+- **Ports.** Give dev servers a port per worktree with `env`, such as `"env": { "PORT": "${port}" }`, and start them with that variable instead of a fixed port.
+- **After a clone.** Files that the repository's own scripts generate into `node_modules` (a Prisma client, for example) come from the base's checkout; run the generator again when the branch changed their sources. The `SessionStart` hook tells Claude to reinstall with the repository's manager after `package.json` or the lockfile change, and never to link or copy `node_modules` from another worktree.
+- `shogun doctor` checks `node` and the manager of the lockfile (only `bun` for bun).

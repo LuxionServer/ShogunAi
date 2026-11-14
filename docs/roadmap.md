@@ -20,6 +20,7 @@ Status: **Available**.
 - Worktree provisioning defined in the repository (`.shogunai.json`).
 - A `shogun` command that the desktop app, agents and their hooks all use.
 - A per-worktree environment (reserved ports and variables) delivered to each agent's shell.
+- Resources a repository declares itself in `.shogunai.json` and shares between its worktrees, with leases and a queue.
 - JSON output on every command, for scripts.
 
 ### Control tower
@@ -55,6 +56,7 @@ Status: **Started**.
 - **Maven**: JVM backends get Maven builds bounded in memory, see their Maven daemons and can stop the idle ones.
 - **Docker Compose**: JVM backends get a Docker Compose project and ports per worktree, started and built with `shogun compose up`, and cleaned up with the volumes, networks and images removed worktrees leave behind.
 - **Flutter**: repositories get `flutter pub get` in every new worktree, with their Gradle build in `android/` handled by the Gradle and emulator providers.
+- **Node**: web and backend repositories get `node_modules` in every new worktree, cloned from the base when its lockfile matches or installed with npm, pnpm, Yarn or bun once the repository is approved.
 - **Stack detection**: the app and `shogun stacks` detect a repository's stack and suggest the providers that fit, and the `local.properties`, keystores and Firebase files to link into every worktree.
 - **Local files**: they can be linked, matched by patterns and kept in sync when the base folder loses files.
 
@@ -147,6 +149,18 @@ Provisioning and bounded resources for the stacks where a fresh worktree is furt
   - Showing a worktree's physical devices in its row of the worktree list.
   - Giving the device's name more room in the Devices view, which cuts it at the default window width.
 
+### Web stacks
+
+Preparing worktrees of web and non-JVM backend repositories, which the Node provider started:
+
+- Python virtual environments per worktree (venv, uv, Poetry), created or cloned from the base like `node_modules`.
+- A database per worktree, so parallel agents don't share or overwrite each other's data.
+- Showing the size of the package managers' caches (npm, the pnpm store, Yarn and bun) next to the other shared caches.
+- Node follow-ups:
+  - Independent Node projects in subfolders, each with its own lockfile, which today declare their installs as post-creation commands.
+  - Cloning `node_modules` on Linux with reflinks where the file system supports them; today Linux and Windows always install.
+  - Finding a Node or package manager installed with nvm or Volta from the desktop app started from Finder.
+
 ### Every agent, not only Claude Code
 
 ShogunAi's view is only neutral if it sees every agent:
@@ -186,6 +200,17 @@ Left out:
 - Showing the running builds and the build queue in the control tower, with a build slots field for the Custom profile in Preferences (Custom uses the Automatic number until then), and moving the build turn's errors under the ones the app describes.
 - Weighing builds by size, so a single-module compile doesn't take the same slot as a full test run, and learning more light invocations than `--version`, `--stop`, `help` and `tasks`.
 - Builds started by scripts or by agents without Claude Code's hooks, which only the guide reaches today.
+
+### Custom pools
+
+Follow-ups of the pools a repository declares in `.shogunai.json`:
+
+- A per-machine setting that lowers a pool's `max`, from Preferences and the CLI.
+- Showing custom pools in the desktop app: the machine views, the worktree detail and its row, and releasing a slot from there.
+- Reporting a failed `release` when a worktree is removed from the desktop app; today only `shogun remove` and `shogun clean` print it.
+- Ports in pool templates (`${port}` and `${port:<key>}`).
+- Pools shared by several repositories, for resources of the whole machine such as a GPU or a licence.
+- Acquiring a slot automatically when a worktree is created.
 
 ### Robustness and maintenance
 

@@ -177,7 +177,7 @@ class ShellE2eTest {
         runOnIdle { shell!!.selectMachine(MachineResource.GRADLE_DAEMONS) }
         waitForIdle()
 
-        assertTrue(appContainer.loadedBranches().contains(E2eEnvironment.MAIN_BRANCH))
+        awaitCondition("the main branch loaded") { appContainer.loadedBranches().contains(E2eEnvironment.MAIN_BRANCH) }
         assertFalse(appContainer.declaresMobileProviders())
     }
 

@@ -587,6 +587,17 @@ A failed post-creation command SHALL be reported with the command, its exit code
 - **WHEN** an approved post-creation command names a program that isn't installed
 - **THEN** creation fails with an error naming the command, and the worktree is kept
 
+### Requirement: Declare the Node provider
+The system SHALL read `providers.node` in `.shogunai.json` as an object with no options; unknown options inside it SHALL be ignored and kept when the file is written. A non-object value SHALL make the file invalid.
+
+#### Scenario: Provider declared
+- **WHEN** `.shogunai.json` contains `{ "providers": { "node": {} } }`
+- **THEN** the repository declares the Node provider
+
+#### Scenario: Invalid declaration
+- **WHEN** `providers.node` is `true`
+- **THEN** the file is reported as invalid with an error that names `.shogunai.json`
+
 ### Requirement: Declare files whose overlaps are expected
 `.shogunai.json` MAY declare `overlap.ignore`, a list of Git glob pathspecs relative to the repository root naming files that several worktrees are expected to change at once, such as a roadmap every change edits line by line. An `overlap` field that isn't an object, or an `ignore` that isn't a list of strings, SHALL make the file invalid with an error naming it, like any other wrong field. Writing `.shogunai.json` from the settings SHALL keep the field unchanged.
 

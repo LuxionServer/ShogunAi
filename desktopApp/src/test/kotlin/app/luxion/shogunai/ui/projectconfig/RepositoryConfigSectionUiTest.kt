@@ -111,9 +111,9 @@ class RepositoryConfigSectionUiTest {
         val viewModel = viewModel()
         setSettingsContent { RepositoryConfigSection(viewModel) }
 
-        (6 downTo 0).forEach { onAllNodes(isToggleable())[it].performClick() }
-        onAllNodes(isToggleable())[7].performClick()
+        (7 downTo 0).forEach { onAllNodes(isToggleable())[it].performClick() }
         onAllNodes(isToggleable())[8].performClick()
+        onAllNodes(isToggleable())[9].performClick()
         field(strings.gradleDaemonMaxHeapLabel).performTextReplacement("lots")
         field(strings.gradleIdleTimeoutLabel).performTextReplacement("soon")
         field(strings.gradleKotlinDaemonMaxHeapLabel).performTextReplacement("1g")
@@ -129,6 +129,7 @@ class RepositoryConfigSectionUiTest {
         assertEquals(MavenDraft("2g"), draft.maven)
         assertEquals(ComposeDraft("DB_PORT, DB_PORT"), draft.dockerCompose)
         assertTrue(draft.flutter)
+        assertTrue(draft.node)
         assertEquals(IosSimulatorDraft("iPhone 16", "iOS 18.5"), draft.iosSimulator)
         assertEquals(XcodeDraft(compilationCache = true, cocoaPods = true), draft.xcode)
         onNodeWithText(strings.repositoryConfigIssue(RepositoryConfigIssue.InvalidMemorySize)).assertIsDisplayed()
@@ -164,7 +165,7 @@ class RepositoryConfigSectionUiTest {
         assertEquals(
             listOf(
                 strings.providerGradle, strings.providerEmulator, strings.providerIosSimulator, strings.providerXcode,
-                strings.providerMaven, strings.providerDockerCompose, strings.providerFlutter,
+                strings.providerMaven, strings.providerDockerCompose, strings.providerFlutter, strings.providerNode,
             ),
             SuggestedProvider.entries.map { it.label(strings) },
         )

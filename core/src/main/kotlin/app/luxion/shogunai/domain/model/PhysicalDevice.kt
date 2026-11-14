@@ -29,6 +29,7 @@ enum class DeviceUsability(val key: String, val note: String) {
     UNAUTHORIZED("unauthorized", "waiting for the user to allow USB debugging on the device"),
     OFFLINE("offline", "offline"),
     CONNECTING("connecting", "connecting"),
+    UNRESPONSIVE("unresponsive", "not answering adb"),
     UNPAIRED("unpaired", "not paired with this Mac"),
     DEVELOPER_MODE_OFF("developer-mode-off", "developer mode must be turned on"),
 }

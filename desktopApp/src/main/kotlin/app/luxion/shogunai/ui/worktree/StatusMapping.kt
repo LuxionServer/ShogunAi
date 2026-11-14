@@ -9,6 +9,7 @@ fun EmulatorState.status(): Status = when (this) {
     EmulatorState.RUNNING -> Status.SUCCESS
     EmulatorState.BOOTING -> Status.INFO
     EmulatorState.STOPPED -> Status.NEUTRAL
+    EmulatorState.UNRESPONSIVE -> Status.WARNING
 }
 
 fun SimulatorState.status(): Status = when (this) {
@@ -21,6 +22,7 @@ fun emulatorStateLabel(state: EmulatorState, strings: Strings): String = when (s
     EmulatorState.STOPPED -> strings.emulatorStopped
     EmulatorState.BOOTING -> strings.emulatorBooting
     EmulatorState.RUNNING -> strings.emulatorRunning
+    EmulatorState.UNRESPONSIVE -> strings.emulatorUnresponsive
 }
 
 fun simulatorStateLabel(state: SimulatorState, strings: Strings): String = when (state) {

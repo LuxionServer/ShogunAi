@@ -20,6 +20,7 @@ class SharedDeviceStatesAndroidSdkTest {
 
     private class FakeAndroidSdk : AndroidSdk {
         var reads = 0
+        var attached = mapOf("emulator-5554" to "device", "R5CT10ABCDE" to "device")
         var gate: CompletableDeferred<Unit>? = null
         val stopped = mutableListOf<String>()
 
@@ -28,15 +29,17 @@ class SharedDeviceStatesAndroidSdkTest {
         override suspend fun listAvds(sdk: SdkLocation) = listOf("Pixel")
 
         var stateComputations = 0
+        val probedSerials = mutableListOf<Set<String>>()
 
         override suspend fun attachedDevices(sdk: SdkLocation): Map<String, String> {
             reads++
             gate?.await()
-            return mapOf("emulator-5554" to "device", "R5CT10ABCDE" to "device")
+            return attached
         }
 
         override suspend fun emulatorStates(sdk: SdkLocation, attached: Map<String, String>): Map<String, EmulatorState> {
             stateComputations++
+            probedSerials += attached.keys
             return attached.filterKeys { it.startsWith("emulator-") }.mapValues { EmulatorState.RUNNING }
         }
 
@@ -118,5 +121,26 @@ class SharedDeviceStatesAndroidSdkTest {
         assertEquals(mapOf("ro.serialno" to "R5CT10ABCDE"), shared.deviceProperties(location, "R5CT10ABCDE"))
         assertEquals(listOf("Pixel"), shared.listAvds(location))
         assertEquals("/sdk", shared.locate("/repo").root)
+    }
+
+    @Test
+    fun `states of some serials probe only those when nothing is cached`() = runTest {
+        delegate.attached = mapOf("emulator-5554" to "device", "emulator-5560" to "device")
+        val states = shared.deviceStates(location, setOf("emulator-5560"))
+
+        assertEquals(mapOf("emulator-5560" to EmulatorState.RUNNING), states)
+        assertEquals(listOf(setOf("emulator-5560")), delegate.probedSerials)
+
+        shared.deviceStates(location)
+        assertEquals(2, delegate.stateComputations)
+    }
+
+    @Test
+    fun `states of some serials come from a cached reading when it has them`() = runTest {
+        delegate.attached = mapOf("emulator-5554" to "device", "emulator-5560" to "device")
+        shared.deviceStates(location)
+
+        assertEquals(mapOf("emulator-5560" to EmulatorState.RUNNING), shared.deviceStates(location, setOf("emulator-5560")))
+        assertEquals(1, delegate.stateComputations)
     }
 }

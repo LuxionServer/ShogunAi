@@ -20,6 +20,7 @@ Estado: **Disponible**.
 - Provisionado de worktrees definido en el repositorio (`.shogunai.json`).
 - Un comando `shogun` que usan la app de escritorio, los agentes y sus hooks.
 - Un entorno por worktree (puertos reservados y variables) que llega a la shell de cada agente.
+- Recursos que un repositorio declara él mismo en `.shogunai.json` y reparte entre sus worktrees, con leases y cola.
 - Salida JSON en todos los comandos, para scripts.
 
 ### Torre de control
@@ -55,6 +56,7 @@ Estado: **Empezado**.
 - **Maven**: los backends JVM obtienen compilaciones de Maven acotadas en memoria, ven sus daemons de Maven y pueden parar los ociosos.
 - **Docker Compose**: los backends JVM obtienen un proyecto de Docker Compose y puertos por worktree, que se arrancan y construyen con `shogun compose up` y se limpian junto con los volúmenes, redes e imágenes que dejan los worktrees eliminados.
 - **Flutter**: los repositorios reciben `flutter pub get` en cada worktree nuevo, con su build de Gradle en `android/` gestionado por los providers de Gradle y del emulador.
+- **Node**: los repositorios web y de backend reciben `node_modules` en cada worktree nuevo, clonado de la base cuando su lockfile coincide o instalado con npm, pnpm, Yarn o bun una vez aprobado el repositorio.
 - **Detección del stack**: la app y `shogun stacks` detectan el stack de un repositorio y sugieren los providers que encajan, y los `local.properties`, keystores y archivos de Firebase que enlazar en cada worktree.
 - **Archivos locales**: se pueden enlazar, seleccionar con patrones y mantener al día cuando la carpeta base pierde archivos.
 
@@ -147,6 +149,18 @@ Provisionado y recursos acotados para los stacks en los que un worktree recién 
   - Mostrar los dispositivos físicos de un worktree en su fila de la lista de worktrees.
   - Dar más espacio al nombre del dispositivo en la vista Dispositivos, que lo corta con el ancho de ventana por defecto.
 
+### Stacks web
+
+Preparar los worktrees de repositorios web y de backend no JVM, que empezó el provider de Node:
+
+- Entornos virtuales de Python por worktree (venv, uv, Poetry), creados o clonados de la base como `node_modules`.
+- Una base de datos por worktree, para que los agentes en paralelo no compartan ni se pisen los datos.
+- Mostrar el tamaño de las cachés de los gestores de paquetes (npm, el store de pnpm, Yarn y bun) junto a las demás cachés compartidas.
+- Seguimiento de Node:
+  - Proyectos Node independientes en subcarpetas, cada uno con su lockfile, que hoy declaran su instalación como comando post-creación.
+  - Clonar `node_modules` en Linux con reflinks donde el sistema de ficheros los admita; hoy Linux y Windows siempre instalan.
+  - Encontrar un Node o un gestor de paquetes instalado con nvm o Volta desde la app de escritorio abierta desde Finder.
+
 ### Todos los agentes, no solo Claude Code
 
 La vista de ShogunAi solo es neutral si ve a todos los agentes:
@@ -186,6 +200,17 @@ Queda fuera:
 - Mostrar los builds en marcha y la cola de builds en la torre de control, con un campo de huecos de build para el perfil Personalizado en Preferencias (hasta entonces Personalizado usa el número del Automático), y pasar los errores del turno de build a los que la app describe.
 - Dar peso a los builds según su tamaño, para que compilar un módulo no ocupe el mismo hueco que una ejecución completa de tests, y reconocer más invocaciones ligeras que `--version`, `--stop`, `help` y `tasks`.
 - Los builds que lanzan scripts o agentes sin los hooks de Claude Code, a los que hoy solo llega la guía.
+
+### Pools propios
+
+Seguimiento de los pools que un repositorio declara en `.shogunai.json`:
+
+- Un ajuste por máquina que baje el `max` de un pool, desde las Preferencias y la CLI.
+- Mostrar los pools propios en la app de escritorio: las vistas de la máquina, el detalle del worktree y su fila, y liberar una plaza desde ahí.
+- Informar de un `release` fallido al eliminar un worktree desde la app de escritorio; hoy solo lo imprimen `shogun remove` y `shogun clean`.
+- Puertos en las plantillas de los pools (`${port}` y `${port:<clave>}`).
+- Pools compartidos por varios repositorios, para recursos de toda la máquina como una GPU o una licencia.
+- Adquirir una plaza automáticamente al crear un worktree.
 
 ### Robustez y mantenimiento
 

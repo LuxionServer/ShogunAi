@@ -11,6 +11,9 @@ interface AndroidSdk {
 
     suspend fun deviceStates(sdk: SdkLocation): Map<String, EmulatorState> = emulatorStates(sdk, attachedDevices(sdk))
 
+    suspend fun deviceStates(sdk: SdkLocation, serials: Set<String>): Map<String, EmulatorState> =
+        emulatorStates(sdk, attachedDevices(sdk).filterKeys { it in serials })
+
     suspend fun attachedDevices(sdk: SdkLocation): Map<String, String>
 
     suspend fun emulatorStates(sdk: SdkLocation, attached: Map<String, String>): Map<String, EmulatorState>

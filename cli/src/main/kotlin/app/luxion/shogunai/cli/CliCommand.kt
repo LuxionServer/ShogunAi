@@ -596,9 +596,10 @@ private fun parseApp(rest: List<String>): CliCommand.App {
 }
 
 private fun parsePool(rest: List<String>): CliCommand {
-    val name = rest.firstOrNull() ?: throw UsageException("'pool' needs an action: status or trim")
+    val name = rest.firstOrNull() ?: throw UsageException("'pool' needs an action: status, trim, acquire or release")
+    if (name in POOL_SLOT_ACTIONS) return parsePoolSlot(rest)
     val action = PoolAction.entries.firstOrNull { it.name.equals(name, ignoreCase = true) }
-        ?: throw UsageException("unknown action '$name' for 'pool', expected status or trim")
+        ?: throw UsageException("unknown action '$name' for 'pool', expected status, trim, acquire or release")
     rest.drop(1).firstOrNull()?.let { throw UsageException("'pool $name' takes no arguments, got '$it'") }
     return CliCommand.Pool(action)
 }

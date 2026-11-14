@@ -71,6 +71,7 @@ class ProcessBuilderShellCommandExecutorTest {
 
     private companion object {
         val LIMIT = 10.seconds
+        val CANCELLED_COMMAND_LIMIT = 60.seconds
     }
 
     private val executor = ProcessBuilderShellCommandExecutor(path = null)
@@ -182,7 +183,7 @@ class ProcessBuilderShellCommandExecutorTest {
     @Test
     fun `cancelar la operación mata el comando y sus hijos en pocos segundos`() = runBlocking {
         val marker = "98765${System.nanoTime() % 1000}"
-        val job = launch(Dispatchers.Default) { executor.executeWithin(listOf("sh", "-c", "sleep $marker; true"), LIMIT) }
+        val job = launch(Dispatchers.Default) { executor.executeWithin(listOf("sh", "-c", "sleep $marker; true"), CANCELLED_COMMAND_LIMIT) }
         awaitProcess(marker, running = true)
 
         val elapsed = measureTimeMillis { job.cancelAndJoin() }

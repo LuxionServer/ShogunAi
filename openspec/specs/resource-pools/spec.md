@@ -17,7 +17,7 @@ The system SHALL keep one pool per resource kind on the machine: Android emulato
 - **THEN** the Gradle daemon pool counts three
 
 ### Requirement: Limits come from the machine, not the repository
-Pool limits SHALL be machine settings stored with the app's settings and SHALL NOT be read from `.shogunai.json`. The desktop app and the `shogun` command SHALL apply the same limits. A repository SHALL only declare which providers it needs.
+Pool limits SHALL be machine settings stored with the app's settings and SHALL NOT be read from `.shogunai.json`. The desktop app and the `shogun` command SHALL apply the same limits. A repository SHALL only declare which providers it needs. The only exception SHALL be the custom pools a repository declares itself, whose limit is their declared `max`.
 
 #### Scenario: Same limits from the app and the command line
 - **WHEN** the machine's emulator limit is 2 and an agent runs `shogun emulator start`
@@ -26,6 +26,10 @@ Pool limits SHALL be machine settings stored with the app's settings and SHALL N
 #### Scenario: Repository can't raise a limit
 - **WHEN** `.shogunai.json` contains a field trying to set a pool limit
 - **THEN** the limit is not changed
+
+#### Scenario: Custom pool limit
+- **WHEN** `.shogunai.json` declares the custom pool `db` with `max` 3
+- **THEN** pool `db` has a limit of 3, and the emulator, simulator and Gradle daemon limits are not changed
 
 ### Requirement: Capacity profiles
 The limits SHALL follow one capacity profile: Automatic (the default), Light (1 emulator, 1 simulator, 2 Gradle daemons), Balanced (2, 2 and 4), One per worktree (no limit) or Custom (a limit per kind, a positive number or no limit). Changing the profile SHALL apply to the next acquisition without stopping anything already running.
@@ -311,3 +315,18 @@ When every console port is reserved or busy, acquiring SHALL release only a rele
 #### Scenario: Only running emulators could free a port
 - **WHEN** every console port is reserved or busy and the only releasable emulators are running
 - **THEN** acquiring fails saying no emulator port is left, and no emulator is stopped
+
+### Requirement: A device that doesn't answer doesn't stop a pool reading
+Reading a pool SHALL report a held emulator that doesn't answer its boot property query as unresponsive, and SHALL succeed with every other holder's state, so `shogun pool status`, an acquisition and the desktop app's views neither fail nor wait more than the query's limit because of it. An unresponsive emulator SHALL NOT be released to make room, like a booting one, because asking it to exit may get no answer either.
+
+#### Scenario: Pool status with a hung emulator
+- **WHEN** `shogun pool status` runs while one held emulator doesn't answer and another is running
+- **THEN** it succeeds within a few seconds, listing the first holder as unresponsive and the second as running
+
+#### Scenario: Acquisition next to a hung emulator
+- **WHEN** a worktree acquires an emulator while another worktree's held emulator doesn't answer
+- **THEN** the acquisition reads the pool without failing and decides with that holder counted as unresponsive
+
+#### Scenario: Unresponsive emulator isn't released
+- **WHEN** the pool is full, the only holder whose lease has expired is an unresponsive emulator, and another worktree starts its emulator
+- **THEN** the unresponsive emulator isn't stopped or released, and the start fails with the pool's error listing it as unresponsive

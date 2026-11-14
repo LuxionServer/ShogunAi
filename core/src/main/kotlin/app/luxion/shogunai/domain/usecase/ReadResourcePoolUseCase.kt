@@ -93,6 +93,7 @@ class ReadResourcePoolUseCase(
                     EmulatorState.STOPPED -> PoolHolderState.STOPPED
                     EmulatorState.BOOTING -> PoolHolderState.BOOTING
                     EmulatorState.RUNNING -> PoolHolderState.RUNNING
+                    EmulatorState.UNRESPONSIVE -> PoolHolderState.UNRESPONSIVE
                 }
             }
         } else if (simulators.isSupported()) {
@@ -175,7 +176,7 @@ class ReadResourcePoolUseCase(
             agentState = agent,
             releaseRank = releaseRank(
                 stopped = state == PoolHolderState.STOPPED || state == PoolHolderState.SHUTDOWN,
-                busy = state == PoolHolderState.BOOTING,
+                busy = state == PoolHolderState.BOOTING || state == PoolHolderState.UNRESPONSIVE,
                 leaseExpiresAt = leaseExpiresAt,
                 agent = agent,
                 now = clock(),

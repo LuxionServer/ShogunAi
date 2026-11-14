@@ -1,5 +1,6 @@
 package app.luxion.shogunai.infrastructure
 
+import app.luxion.shogunai.domain.executor.CommandExecutionException
 import app.luxion.shogunai.domain.io.AndroidSdk
 import app.luxion.shogunai.domain.io.PhysicalDevices
 import app.luxion.shogunai.domain.model.DeviceConnection
@@ -10,6 +11,8 @@ import app.luxion.shogunai.domain.model.PhysicalDevice
 import app.luxion.shogunai.domain.model.PhysicalDeviceListing
 import app.luxion.shogunai.domain.model.SdkLocation
 import app.luxion.shogunai.domain.model.runSuspendCatching
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -26,6 +29,8 @@ class AdbPhysicalDevices(
         val attached = runSuspendCatching { sdk.attachedDevices(location) }.getOrDefault(emptyMap())
             .filterKeys { !it.startsWith(EMULATOR_PREFIX) }
         identities.keys.retainAll(attached.filterValues { it == ONLINE }.keys)
+        val probed = probeUnknown(location, attached.filterValues { it == ONLINE }.keys - identities.keys)
+        probed.forEach { (serial, probe) -> if (probe is Probe.Known) identities[serial] = probe.identity }
         val devices = mutableListOf<PhysicalDevice>()
         val pending = mutableListOf<PendingDevice>()
         attached.forEach { (serial, state) ->
@@ -33,8 +38,8 @@ class AdbPhysicalDevices(
                 pending += PendingDevice(DevicePlatform.ANDROID, serial, usabilityOf(state))
                 return@forEach
             }
-            when (val identity = identityOf(location, serial)) {
-                null -> pending += PendingDevice(DevicePlatform.ANDROID, serial, DeviceUsability.CONNECTING)
+            when (val identity = identities[serial]) {
+                null -> pending += PendingDevice(DevicePlatform.ANDROID, serial, probed.getValue(serial).usability())
                 Identity.Emulator -> Unit
                 is Identity.Device -> devices += identity.toDevice(serial)
             }
@@ -42,16 +47,25 @@ class AdbPhysicalDevices(
         PhysicalDeviceListing(devices, pending)
     }
 
-    private suspend fun identityOf(location: SdkLocation, serial: String): Identity? {
-        identities[serial]?.let { return it }
-        val properties = sdk.deviceProperties(location, serial) ?: return null
+    private suspend fun probeUnknown(location: SdkLocation, serials: Set<String>): Map<String, Probe> = coroutineScope {
+        serials.associateWith { serial -> async { probe(location, serial) } }.mapValues { it.value.await() }
+    }
+
+    private suspend fun probe(location: SdkLocation, serial: String): Probe {
+        val properties = try {
+            sdk.deviceProperties(location, serial)
+        } catch (error: CommandExecutionException.TimedOut) {
+            return Probe.Unresponsive
+        } ?: return Probe.Unknown
         val identity = when {
             properties[QEMU] == "1" -> Identity.Emulator
-            else -> properties[SERIAL_NUMBER]?.takeIf { it.isNotBlank() }?.let { Identity.Device(it, properties) } ?: return null
+            else -> properties[SERIAL_NUMBER]?.takeIf { it.isNotBlank() }?.let { Identity.Device(it, properties) } ?: return Probe.Unknown
         }
-        identities[serial] = identity
-        return identity
+        return Probe.Known(identity)
     }
+
+    private fun Probe.usability(): DeviceUsability =
+        if (this == Probe.Unresponsive) DeviceUsability.UNRESPONSIVE else DeviceUsability.CONNECTING
 
     private fun Identity.Device.toDevice(serial: String): PhysicalDevice {
         val model = properties[MODEL].orNullIfBlank()
@@ -67,6 +81,14 @@ class AdbPhysicalDevices(
             marketingName = marketingName,
             osVersion = properties[ANDROID_VERSION].orNullIfBlank(),
         )
+    }
+
+    private sealed interface Probe {
+        data object Unknown : Probe
+
+        data object Unresponsive : Probe
+
+        data class Known(val identity: Identity) : Probe
     }
 
     private sealed interface Identity {
