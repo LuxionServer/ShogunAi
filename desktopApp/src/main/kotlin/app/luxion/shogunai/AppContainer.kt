@@ -40,6 +40,7 @@ import app.luxion.shogunai.domain.usecase.GradleTrim
 import app.luxion.shogunai.domain.usecase.AgentSearch
 import app.luxion.shogunai.domain.model.AgentState
 import app.luxion.shogunai.domain.model.DerivedDataTrim
+import app.luxion.shogunai.domain.model.SwiftBuildDeletion
 import app.luxion.shogunai.ui.machine.MachineProject
 import app.luxion.shogunai.infrastructure.PmsetPowerSource
 import app.luxion.shogunai.ui.isMacOs
@@ -496,7 +497,10 @@ class AppContainer(private val hostEnvironment: HostEnvironment = SystemHostEnvi
         },
         takeDownComposeProjects = { names -> engine.takeDownComposeProjects(names) },
         stopDaemons = { pids -> engine.stopGradleDaemons(pids) },
-        listDerivedData = { engine.listDerivedDataFolders(emptyList(), includeCompilationCache = false, measure = DerivedDataMeasure.NONE) },
+        listDerivedData = { declaring ->
+            val worktrees = agentSearches(declaring).flatMap { it.worktrees }
+            engine.listDerivedDataFolders(worktrees, false, DerivedDataMeasure.NONE, worktrees)
+        },
         measureDerivedData = { folders, remeasure -> engine.measureDerivedData(folders, remeasure) },
         measureCompilationCache = { runCatching { derivedDataSource.compilationCacheBytes() } },
         measurePackageCaches = { runCatching { packageCacheSource.sizes() } },
@@ -520,22 +524,27 @@ class AppContainer(private val hostEnvironment: HostEnvironment = SystemHostEnvi
         deleteSimulators = { udids -> deleteSimulators(udids) },
         trimDerivedData = { quotaBytes, declaring, listing ->
             runCatching {
-                val searches = declaring.map { machineProject ->
-                    AgentSearch(
-                        machineProject.project.config.agents.map { it.agentCommand },
-                        machineProject.worktrees.orEmpty().filterNot { it.isPrunable },
-                    )
-                }
-                val worktrees = searches.flatMap { it.worktrees }
-                val agents = detectRunningAgents(searches).getOrNull().orEmpty()
-                val active = agents.filterValues { running -> running.any { it.state == AgentState.WORKING || it.state == AgentState.BLOCKED } }.keys
-                engine.trimDerivedData(quotaBytes, worktrees, active, measured = listing).getOrThrow()
+                val searches = agentSearches(declaring)
+                engine.trimDerivedData(quotaBytes, searches.flatMap { it.worktrees }, activeWorktrees(searches), measured = listing).getOrThrow()
             }
+        },
+        deleteUnusedSwiftBuilds = { declaring ->
+            val searches = agentSearches(declaring)
+            engine.deleteUnusedSwiftBuilds(searches.flatMap { it.worktrees }, activeWorktrees(searches))
         },
         resolveDerivedDataQuota = { settings, usage -> engine.resolveDerivedDataQuota(settings, usage) },
     )
 
     val pathExists: (String) -> Boolean = fileManager::exists
+
+    private fun agentSearches(declaring: List<MachineProject>): List<AgentSearch> = declaring.map { machineProject ->
+        AgentSearch(machineProject.project.config.agents.map { it.agentCommand }, machineProject.worktrees.orEmpty().filterNot { it.isPrunable })
+    }
+
+    private suspend fun activeWorktrees(searches: List<AgentSearch>): Set<String> {
+        val agents = detectRunningAgents(searches).getOrNull().orEmpty()
+        return agents.filterValues { running -> running.any { it.state == AgentState.WORKING || it.state == AgentState.BLOCKED } }.keys
+    }
 
     val repositoryApproval = DialogRepositoryApproval()
 
@@ -882,7 +891,7 @@ class ReleaseResourcesUseCases(
 class MachineUseCases(
     val listDaemons: suspend (worktreePaths: List<String>) -> Result<List<DaemonProcess>>,
     val stopDaemons: suspend (List<Long>?) -> Result<DaemonStopReport>,
-    val listDerivedData: suspend () -> Result<DerivedDataListing>,
+    val listDerivedData: suspend (List<MachineProject>) -> Result<DerivedDataListing>,
     val measureDerivedData: (List<DerivedDataFolder>, Boolean) -> Flow<MeasuredSize>,
     val measureCompilationCache: suspend () -> Result<Long?>,
     val deleteOrphanedDerivedData: suspend () -> Result<DerivedDataDeletion>,
@@ -899,6 +908,7 @@ class MachineUseCases(
     val stopSimulator: suspend (ProjectConfig, String) -> Result<WorktreeSimulator?>,
     val readSimulatorOrphans: suspend (ProjectConfig) -> Result<List<SimulatorDevice>>,
     val deleteSimulators: suspend (List<String>) -> Result<List<String>>,
+    val deleteUnusedSwiftBuilds: suspend (List<MachineProject>) -> Result<SwiftBuildDeletion> = { Result.success(SwiftBuildDeletion()) },
     val trimDerivedData: suspend (Long, List<MachineProject>, DerivedDataListing) -> Result<DerivedDataTrim> =
         { quotaBytes, _, _ -> Result.success(DerivedDataTrim(quotaBytes, 0L, 0L)) },
     val resolveDerivedDataQuota: suspend (ResourceSettings, Long) -> DerivedDataQuota =

@@ -27,8 +27,8 @@ fun rememberTrayIconPainter(): Painter {
     return remember(dark) { BitmapPainter(trayIconImage(dark).toComposeImageBitmap()) }
 }
 
-fun trayIconImage(darkMenuBar: Boolean): BufferedImage =
-    if (isMacOs) {
+fun trayIconImage(darkMenuBar: Boolean, mac: Boolean = isMacOs): BufferedImage =
+    if (mac) {
         drawHelmet(MacMenuBarIconSize, body = if (darkMenuBar) Color.WHITE else Color.BLACK, accent = null)
     } else {
         drawHelmet(ColoredIconSize, body = Color(0x3F, 0x4E, 0x5F), accent = Color(0xC0, 0x39, 0x2B))

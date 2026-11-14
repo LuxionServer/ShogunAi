@@ -30,18 +30,20 @@ class AppMessages(private val scope: CoroutineScope) {
     fun show(message: String, action: MessageAction? = null) {
         current?.cancel()
         current = scope.launch {
-            val result = withTimeoutOrNull(durationFor(action)) {
-                hostState.showSnackbar(message, action?.label, duration = SnackbarDuration.Indefinite)
+            if (action == null) {
+                display(message, null, SHORT_DURATION)
+            } else if (display(message, action.label, WITH_ACTION_DURATION) == SnackbarResult.ActionPerformed) {
+                action.onAction()
             }
-            if (result == SnackbarResult.ActionPerformed) action?.onAction?.invoke()
         }
     }
+
+    private suspend fun display(message: String, actionLabel: String?, timeout: Duration): SnackbarResult? =
+        withTimeoutOrNull(timeout) { hostState.showSnackbar(message, actionLabel, duration = SnackbarDuration.Indefinite) }
 
     companion object {
         val SHORT_DURATION = 4.seconds
         val WITH_ACTION_DURATION = 8.seconds
-
-        fun durationFor(action: MessageAction?): Duration = if (action == null) SHORT_DURATION else WITH_ACTION_DURATION
     }
 }
 

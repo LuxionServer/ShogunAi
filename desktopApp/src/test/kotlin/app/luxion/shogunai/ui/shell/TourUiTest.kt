@@ -38,6 +38,7 @@ private class FakeTour(
     var toolAvailable: Boolean = true,
     var offered: Boolean = false,
     var createResult: Result<Project> = Result.success(tourProject),
+    var endResult: Result<Unit> = Result.success(Unit),
 ) {
     var created = 0
     var ended = 0
@@ -50,9 +51,10 @@ private class FakeTour(
         },
         end = {
             ended++
-            existing = null
-            leftover = false
-            Result.success(Unit)
+            endResult.onSuccess {
+                existing = null
+                leftover = false
+            }
         },
         existingProject = { existing },
         leftoverFolder = { leftover },
@@ -68,7 +70,70 @@ private class FakeTour(
 class TourStateTest {
 
     @Test
-    fun `with the tool available the welcome goes straight to creating the sample`() = runBlocking {
+    fun `the notice isn't shown without projects or while the tour is open`() {
+        val state = TourState(FakeTour().actions)
+
+        assertFalse(state.showsNotice(hasProjects = false))
+        state.start()
+        assertFalse(state.showsNotice(hasProjects = true))
+    }
+
+    @Test
+    fun `starting again after the offer was remembered doesn't remember it twice`() {
+        val tour = FakeTour(offered = true)
+        val state = TourState(tour.actions)
+
+        state.start()
+
+        assertEquals(0, tour.rememberedOffers)
+        assertEquals(TourStep.WELCOME, state.step)
+    }
+
+    @Test
+    fun `a restart whose ending fails keeps the tour and shows the error`() = runBlocking<Unit> {
+        val failure = IllegalStateException("tour folder locked")
+        val tour = FakeTour(existing = tourProject, endResult = Result.failure(failure))
+        val state = TourState(tour.actions)
+        state.start()
+
+        state.restart()
+
+        assertEquals(failure, state.error)
+        assertEquals(tourProject, state.project)
+        assertEquals(TourStep.EXISTING, state.step)
+        assertEquals(0, tour.created)
+        state.dismissError()
+        assertNull(state.error)
+    }
+
+    @Test
+    fun `cancelling the end keeps the tour`() {
+        val state = TourState(FakeTour().actions)
+        state.requestEnd()
+
+        state.cancelEnd()
+
+        assertFalse(state.isEndRequested)
+    }
+
+    @Test
+    fun `an ending that fails keeps the project and shows the error`() = runBlocking<Unit> {
+        val failure = IllegalStateException("tour folder locked")
+        val tour = FakeTour(existing = tourProject, endResult = Result.failure(failure))
+        val state = TourState(tour.actions)
+        state.start()
+        state.requestEnd()
+
+        val result = state.confirmEnd()
+
+        assertEquals(failure, result.exceptionOrNull())
+        assertEquals(failure, state.error)
+        assertEquals(tourProject, state.project)
+        assertFalse(state.isEndRequested)
+    }
+
+    @Test
+    fun `with the tool available the welcome goes straight to creating the sample`() = runBlocking<Unit> {
         val tour = FakeTour(toolAvailable = true)
         val state = TourState(tour.actions)
 
@@ -81,7 +146,7 @@ class TourStateTest {
     }
 
     @Test
-    fun `with the tool missing the tool step comes before creating`() = runBlocking {
+    fun `with the tool missing the tool step comes before creating`() = runBlocking<Unit> {
         val tour = FakeTour(toolAvailable = false)
         val state = TourState(tour.actions)
 
@@ -109,7 +174,7 @@ class TourStateTest {
     }
 
     @Test
-    fun `an existing tour offers to restart, which ends it and creates it again`() = runBlocking {
+    fun `an existing tour offers to restart, which ends it and creates it again`() = runBlocking<Unit> {
         val tour = FakeTour(existing = tourProject)
         val state = TourState(tour.actions)
 
@@ -133,7 +198,7 @@ class TourStateTest {
     }
 
     @Test
-    fun `a failed creation stays on the step with its error and can be retried`() = runBlocking {
+    fun `a failed creation stays on the step with its error and can be retried`() = runBlocking<Unit> {
         val tour = FakeTour(createResult = Result.failure(WorktreeError.TourCreationFailed(listOf("git", "init"), "boom")))
         val state = TourState(tour.actions)
 
@@ -163,7 +228,7 @@ class TourStateTest {
     }
 
     @Test
-    fun `ending the tour forgets its project`() = runBlocking {
+    fun `ending the tour forgets its project`() = runBlocking<Unit> {
         val tour = FakeTour(existing = tourProject)
         val state = TourState(tour.actions)
         state.start()
@@ -362,5 +427,139 @@ class TourUiTest {
 
         assertEquals(1, tour.ended)
         onNodeWithText(EnglishStrings.tourEndTitle).assertDoesNotExist()
+    }
+
+    private fun androidx.compose.ui.test.ComposeUiTest.showDialog(state: TourState, hooks: ClaudeHooksState, onShown: (Project) -> Unit = {}) =
+        setContent {
+            CompositionLocalProvider(LocalStrings provides EnglishStrings) {
+                MaterialTheme { TourDialog(state, hooks, onShowProject = onShown, agentChoices = { project, _ -> Text("Agent choices for ${project.name}") }) }
+            }
+        }
+
+    @Test
+    fun `a leftover tour folder without a project only offers to restart`() = runComposeUiTest {
+        val state = TourState(FakeTour(leftover = true).actions).also { it.start() }
+        showDialog(state, hooks(found = "/usr/local/bin/shogun"))
+
+        onNodeWithText(EnglishStrings.tourRestart).assertIsDisplayed()
+        onNodeWithText(EnglishStrings.tourOpenExisting).assertDoesNotExist()
+        onNodeWithText(EnglishStrings.cancel).performClick()
+
+        assertNull(state.step)
+    }
+
+    @Test
+    fun `the tool step offers to skip while the tool's status is unknown`() = runComposeUiTest {
+        val unread = ClaudeHooksState(
+            hooks = ClaudeCodeHooks(FakeFileManager()),
+            settingsPath = { "/home/dev/.claude/settings.json" },
+            tool = CommandLineTool(
+                os = HostOs.MACOS,
+                appLauncher = null,
+                home = "/home/dev",
+                pathFolders = { emptyList() },
+                userBinFolders = emptyList(),
+                findShogun = { null },
+                files = launcherFiles,
+                userPath = object : UserPathEntries {
+                    override suspend fun contains(folder: String) = false
+                    override suspend fun add(folder: String) = Unit
+                    override suspend fun remove(folder: String) = Unit
+                },
+            ),
+            noticeDismissedStore = { true },
+            rememberNoticeDismissed = {},
+        )
+        val state = TourState(FakeTour(toolAvailable = false).actions).also { it.start() }
+        showDialog(state, unread)
+
+        onNodeWithText(EnglishStrings.tourStart).performClick()
+        waitUntil { state.step == TourStep.TOOL }
+
+        onNodeWithText(EnglishStrings.tourSkip).assertIsDisplayed()
+    }
+
+    @Test
+    fun `the tool step lets the tour continue with the tool outside the PATH`() = runComposeUiTest {
+        val state = TourState(FakeTour(toolAvailable = false).actions).also { it.start() }
+        showDialog(state, hooks(found = "/home/dev/bin/shogun"))
+
+        onNodeWithText(EnglishStrings.tourStart).performClick()
+        waitUntil { state.step == TourStep.TOOL }
+
+        onNodeWithText(EnglishStrings.tourContinue).assertIsDisplayed()
+    }
+
+    @Test
+    fun `a failed creation shows its error, retries and can be cancelled`() = runComposeUiTest {
+        val tour = FakeTour(createResult = Result.failure(IllegalStateException("disk full")))
+        val state = TourState(tour.actions).also { it.start() }
+        showDialog(state, hooks(found = "/usr/local/bin/shogun"))
+
+        onNodeWithText(EnglishStrings.tourStart).performClick()
+        waitUntil { state.error != null }
+        onNodeWithText(EnglishStrings.tourCreating).assertDoesNotExist()
+        onNodeWithText(EnglishStrings.tourRetry).performClick()
+        waitUntil { tour.created == 2 }
+        onNodeWithText(EnglishStrings.cancel).performClick()
+
+        assertNull(state.step)
+    }
+
+    @Test
+    fun `an error shown in the dialog can be dismissed`() = runComposeUiTest {
+        val tour = FakeTour(existing = tourProject, endResult = Result.failure(IllegalStateException("tour folder locked")))
+        val state = TourState(tour.actions).also { it.start() }
+        showDialog(state, hooks(found = "/usr/local/bin/shogun"))
+
+        onNodeWithText(EnglishStrings.tourRestart).performClick()
+        waitUntil { state.error != null }
+        onNodeWithContentDescription(EnglishStrings.closeError).performClick()
+
+        assertNull(state.error)
+    }
+
+    @Test
+    fun `the agent step of a tour that ended in the meantime shows no choices`() = runComposeUiTest {
+        val state = TourState(FakeTour().actions)
+        state.start()
+        runBlocking {
+            state.continueFromWelcome()
+            state.confirmEnd()
+        }
+        showDialog(state, hooks(found = "/usr/local/bin/shogun"))
+
+        onNodeWithText(EnglishStrings.tourLater).assertIsDisplayed()
+        onNodeWithText("Agent choices for ShogunAi tour").assertDoesNotExist()
+    }
+
+    @Test
+    fun `the banner leaves errors to the dialog while it is open`() = runComposeUiTest {
+        val tour = FakeTour(existing = tourProject, endResult = Result.failure(IllegalStateException("tour folder locked")))
+        val state = TourState(tour.actions).also { it.start() }
+        runBlocking { state.restart() }
+        setContent {
+            CompositionLocalProvider(LocalStrings provides EnglishStrings) {
+                MaterialTheme { Column { TourBanner(state, tourProject, onEnded = {}, agentChoices = { _, _ -> }) } }
+            }
+        }
+
+        onNodeWithText("tour folder locked", substring = true).assertDoesNotExist()
+    }
+
+    @Test
+    fun `the banner shows an ending that failed once the dialog is closed`() = runComposeUiTest {
+        val tour = FakeTour(existing = tourProject, endResult = Result.failure(IllegalStateException("tour folder locked")))
+        val state = TourState(tour.actions)
+        runBlocking { state.confirmEnd() }
+        setContent {
+            CompositionLocalProvider(LocalStrings provides EnglishStrings) {
+                MaterialTheme { Column { TourBanner(state, tourProject, onEnded = {}, agentChoices = { _, _ -> }) } }
+            }
+        }
+
+        onNodeWithContentDescription(EnglishStrings.closeError).performClick()
+
+        assertNull(state.error)
     }
 }

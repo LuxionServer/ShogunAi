@@ -33,6 +33,7 @@ import app.luxion.shogunai.ui.actions.ActionId
 import app.luxion.shogunai.ui.actions.OpenTarget
 import app.luxion.shogunai.ui.worktree.WorktreeBoard
 import app.luxion.shogunai.ui.worktree.WorktreeRef
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
 
@@ -50,30 +51,7 @@ fun TourDialog(
     ShogunDialog(
         title = strings.tourDialogTitle,
         onDismissRequest = { if (step != TourStep.CREATING) state.close() },
-        confirm = {
-            when (step) {
-                TourStep.EXISTING -> FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.xs)) {
-                    state.project?.let { project ->
-                        SecondaryButton(onClick = {
-                            state.close()
-                            onShowProject(project)
-                        }) { Text(strings.tourOpenExisting) }
-                    }
-                    PrimaryButton(onClick = { scope.launch { state.restart() } }) { Text(strings.tourRestart) }
-                }
-                TourStep.WELCOME -> PrimaryButton(onClick = { scope.launch { state.continueFromWelcome() } }) { Text(strings.tourStart) }
-                TourStep.TOOL -> {
-                    val ready = hooks.toolStatus?.state.let { it == CommandLineToolState.AVAILABLE || it == CommandLineToolState.INSTALLED_NOT_ON_PATH }
-                    PrimaryButton(onClick = { scope.launch { state.continueFromTool() } }) {
-                        Text(if (ready) strings.tourContinue else strings.tourSkip)
-                    }
-                }
-                TourStep.CREATING -> if (state.error != null) {
-                    PrimaryButton(onClick = { scope.launch { state.retry() } }) { Text(strings.tourRetry) }
-                }
-                TourStep.OPEN_AGENT -> Unit
-            }
-        },
+        confirm = { TourConfirm(step, state, hooks, onShowProject, scope) },
         dismiss = {
             when (step) {
                 TourStep.CREATING -> if (state.error != null) NeutralTextButton(onClick = state::close) { Text(strings.cancel) }
@@ -84,22 +62,62 @@ fun TourDialog(
         size = DialogSize.Medium,
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-            when (step) {
-                TourStep.EXISTING -> Text(strings.tourExistingMessage, style = MaterialTheme.typography.bodyMedium)
-                TourStep.WELCOME -> Text(strings.tourWelcomeMessage(state.folder), style = MaterialTheme.typography.bodyMedium)
-                TourStep.TOOL -> {
-                    Text(strings.tourToolMessage, style = MaterialTheme.typography.bodyMedium)
-                    CommandLineToolPrerequisite(hooks, os, showWhenReady = true)
-                }
-                TourStep.CREATING -> if (state.error == null) Text(strings.tourCreating, style = MaterialTheme.typography.bodyMedium)
-                TourStep.OPEN_AGENT -> state.project?.let { project ->
-                    LaunchedEffect(project.id) { onShowProject(project) }
-                    Text(strings.tourOpenAgentMessage, style = MaterialTheme.typography.bodyMedium)
-                    Text(strings.tourTrustHint, style = MaterialTheme.typography.bodyMedium)
-                    agentChoices(project, state::close)
-                }
-            }
+            TourStepMessage(step, state, hooks, os, onShowProject, agentChoices)
             state.error?.let { ErrorNotice(error = it, onDismiss = state::dismissError) }
+        }
+    }
+}
+
+@Composable
+private fun TourConfirm(step: TourStep, state: TourState, hooks: ClaudeHooksState, onShowProject: (Project) -> Unit, scope: CoroutineScope) {
+    val strings = LocalStrings.current
+    when (step) {
+        TourStep.EXISTING -> FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+            state.project?.let { project ->
+                SecondaryButton(onClick = {
+                    state.close()
+                    onShowProject(project)
+                }) { Text(strings.tourOpenExisting) }
+            }
+            PrimaryButton(onClick = { scope.launch { state.restart() } }) { Text(strings.tourRestart) }
+        }
+        TourStep.WELCOME -> PrimaryButton(onClick = { scope.launch { state.continueFromWelcome() } }) { Text(strings.tourStart) }
+        TourStep.TOOL -> {
+            val ready = hooks.toolStatus?.state.let { it == CommandLineToolState.AVAILABLE || it == CommandLineToolState.INSTALLED_NOT_ON_PATH }
+            PrimaryButton(onClick = { scope.launch { state.continueFromTool() } }) {
+                Text(if (ready) strings.tourContinue else strings.tourSkip)
+            }
+        }
+        TourStep.CREATING -> if (state.error != null) {
+            PrimaryButton(onClick = { scope.launch { state.retry() } }) { Text(strings.tourRetry) }
+        }
+        TourStep.OPEN_AGENT -> Unit
+    }
+}
+
+@Composable
+private fun TourStepMessage(
+    step: TourStep,
+    state: TourState,
+    hooks: ClaudeHooksState,
+    os: HostOs,
+    onShowProject: (Project) -> Unit,
+    agentChoices: @Composable (project: Project, onLaunched: () -> Unit) -> Unit,
+) {
+    val strings = LocalStrings.current
+    when (step) {
+        TourStep.EXISTING -> Text(strings.tourExistingMessage, style = MaterialTheme.typography.bodyMedium)
+        TourStep.WELCOME -> Text(strings.tourWelcomeMessage(state.folder), style = MaterialTheme.typography.bodyMedium)
+        TourStep.TOOL -> {
+            Text(strings.tourToolMessage, style = MaterialTheme.typography.bodyMedium)
+            CommandLineToolPrerequisite(hooks, os, showWhenReady = true)
+        }
+        TourStep.CREATING -> if (state.error == null) Text(strings.tourCreating, style = MaterialTheme.typography.bodyMedium)
+        TourStep.OPEN_AGENT -> state.project?.let { project ->
+            LaunchedEffect(project.id) { onShowProject(project) }
+            Text(strings.tourOpenAgentMessage, style = MaterialTheme.typography.bodyMedium)
+            Text(strings.tourTrustHint, style = MaterialTheme.typography.bodyMedium)
+            agentChoices(project, state::close)
         }
     }
 }

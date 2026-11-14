@@ -52,6 +52,7 @@ class RepositoryProvisioningFiles : RepositoryProvisioningSource {
             providers = if (config != null) providersOf(config, configPath) else RepositoryProviders(),
             environment = if (config != null) environmentOf(config, configPath) else EnvironmentDeclaration(),
             pools = CustomPoolDeclarations.read(config, configPath, (config?.get(ENV_FIELD) as? JsonObject)?.keys.orEmpty()),
+            overlapIgnore = config?.let { overlapIgnoreOf(it, configPath) }.orEmpty(),
         )
     }
 

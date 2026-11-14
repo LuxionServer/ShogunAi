@@ -41,6 +41,7 @@ import app.luxion.shogunai.domain.io.ClaudeSessionRegistry
 import app.luxion.shogunai.domain.io.ComposeProjectRegistry
 import app.luxion.shogunai.domain.io.ComposeProjectSource
 import app.luxion.shogunai.domain.io.DerivedDataSizeStore
+import app.luxion.shogunai.domain.io.SwiftBuildSource
 import app.luxion.shogunai.domain.io.DerivedDataSource
 import app.luxion.shogunai.domain.io.DesktopTurnStore
 import app.luxion.shogunai.domain.io.DeviceWaitQueue
@@ -92,6 +93,7 @@ fun fakeEnginePorts(
     composeRegistry: ComposeProjectRegistry = FakeComposeProjectRegistry(),
     derivedData: DerivedDataSource = FakeDerivedDataSource(),
     derivedDataSizes: DerivedDataSizeStore = DerivedDataSizeStore.NONE,
+    swiftBuilds: SwiftBuildSource = SwiftBuildSource.NONE,
     packageCaches: PackageCacheSource = PackageCacheSource.NONE,
     herdr: HerdrClient = FakeHerdrClient(),
     herdrConfig: HerdrConfigSource = FakeHerdrConfigSource(),
@@ -132,6 +134,7 @@ fun fakeEnginePorts(
     composeRegistry = composeRegistry,
     derivedData = derivedData,
     derivedDataSizes = derivedDataSizes,
+    swiftBuilds = swiftBuilds,
     packageCaches = packageCaches,
     herdr = herdr,
     herdrConfig = herdrConfig,

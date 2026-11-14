@@ -50,6 +50,9 @@ fun derivedDataDeleteBlock(orphans: Int, deleting: Boolean, strings: Strings): L
     else -> null
 }
 
+fun swiftBuildDeleteBlock(deleting: Boolean, strings: Strings): ListActionBlock? =
+    if (deleting) ListActionBlock(strings.swiftBuildDeleteBlockedDeleting, running = true) else null
+
 fun simulatorOrphansDeleteBlock(deleting: Boolean, strings: Strings): ListActionBlock? =
     if (deleting) ListActionBlock(strings.simulatorOrphansDeleteBlockedDeleting, running = true) else null
 

@@ -32,6 +32,7 @@ Un `.shogunai.json` en la raíz del repositorio declara lo que necesita cada wor
 | `envFile` | cadena | Una ruta dentro del worktree donde se escribe su entorno en formato dotenv, sin caracteres de control ni de formato invisibles. Nunca se escribe sobre un archivo que Git versiona, así que añádelo a `.gitignore`. Solo se escribe cuando el repositorio está [aprobado](#aprobar-un-repositorio). |
 | `providers` | objeto | Los [providers](providers.md) que usa el repositorio, cada uno con sus opciones. |
 | `pools` | objeto | Los [pools propios](providers.md#pools-propios) del repositorio: recursos que comparten sus worktrees, cada uno con `max`, un comando `acquire`, un comando `release` opcional y `env`. Solo se usan cuando el repositorio está [aprobado](#aprobar-un-repositorio). |
+| `overlap.ignore` | lista de cadenas | Pathspecs glob de Git, relativos a la raíz del repositorio, de archivos que se espera que varios worktrees cambien a la vez, como un roadmap que cada cambio edita línea a línea. [`shogun overlap`](cli.md#overlap) los omite salvo con `--all`. `*` no cruza `/` y `**` sí. |
 
 Los valores de `env` pueden usar estas plantillas:
 

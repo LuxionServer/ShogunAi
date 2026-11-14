@@ -58,27 +58,30 @@ fun InstallationCheckWindow(
         icon = rememberAppIconPainter(),
         state = rememberDialogState(size = InstallationCheckWindowSize),
     ) {
-        AppearanceScope(appearance) {
-            val clipboard = LocalClipboard.current
-            val scope = rememberCoroutineScope()
-            var copied by remember { mutableStateOf(false) }
-            LaunchedEffect(state) { state.run() }
-            InstallationCheckContent(
-                result = state.result,
-                copied = copied,
-                onCheckAgain = { scope.launch { state.run() } },
-                onCopyReport = {
-                    scope.launch {
-                        copyDiagnosticReport(
-                            build = { withContext(Dispatchers.IO) { buildReport() } },
-                            copy = { clipboard.copyText(it) },
-                            confirm = { copied = true },
-                        )
-                    }
-                },
-            )
-        }
+        AppearanceScope(appearance) { InstallationCheckPanel(state, buildReport) }
     }
+}
+
+@Composable
+internal fun InstallationCheckPanel(state: InstallationCheckState, buildReport: suspend () -> String) {
+    val clipboard = LocalClipboard.current
+    val scope = rememberCoroutineScope()
+    var copied by remember { mutableStateOf(false) }
+    LaunchedEffect(state) { state.run() }
+    InstallationCheckContent(
+        result = state.result,
+        copied = copied,
+        onCheckAgain = { scope.launch { state.run() } },
+        onCopyReport = {
+            scope.launch {
+                copyDiagnosticReport(
+                    build = { withContext(Dispatchers.IO) { buildReport() } },
+                    copy = { clipboard.copyText(it) },
+                    confirm = { copied = true },
+                )
+            }
+        },
+    )
 }
 
 @Composable

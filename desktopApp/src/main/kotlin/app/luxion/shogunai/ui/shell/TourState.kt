@@ -33,7 +33,7 @@ class TourState(private val actions: TourActions) {
 
     val folder: String get() = TOUR_FOLDER_LABEL
 
-    fun showsNotice(hasProjects: Boolean): Boolean = hasProjects && !offered && step == null
+    fun showsNotice(hasProjects: Boolean): Boolean = hasProjects && !offered
 
     fun start() {
         markOffered()

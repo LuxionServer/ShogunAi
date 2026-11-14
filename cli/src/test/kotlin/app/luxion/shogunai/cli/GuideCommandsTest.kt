@@ -209,6 +209,21 @@ class GuideCommandsTest {
     }
 
     @Test
+    fun `guide tells agents to check shogun overlap before a pull request`() {
+        assertEquals(0, cli().run(listOf("guide", "worktrees")))
+
+        assertTrue(out.contains("Before opening a pull request, run `shogun overlap`"), out.toString())
+        assertTrue(out.contains("tell the person which files and worktrees your change shares"), out.toString())
+    }
+
+    @Test
+    fun `the overlap rule stays out of the session start`() {
+        assertEquals(0, cli(everything(), input = """{"cwd": "$linked"}""", herdr = fakeHerdr()).run(listOf("hook", "session-start")), err.toString())
+
+        assertFalse(out.contains("shogun overlap"), out.toString())
+    }
+
+    @Test
     fun `guide resources tells agents to wait for a full pool in the background`() {
         assertEquals(0, cli(everything()).run(listOf("guide", "resources")))
 

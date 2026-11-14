@@ -23,7 +23,7 @@ import app.luxion.shogunai.ui.components.Spacing
 import app.luxion.shogunai.ui.i18n.LocalStrings
 import app.luxion.shogunai.ui.theme.ShogunTheme
 
-private const val RepositoryUrl = "https://github.com/LuxionServer/ShogunAi"
+internal const val RepositoryUrl = "https://github.com/LuxionServer/ShogunAi"
 private val AboutWindowSize = DpSize(360.dp, 340.dp)
 private val AboutIconSize = 72.dp
 
@@ -37,13 +37,13 @@ fun AboutWindow(appearance: Appearance, onClose: () -> Unit) {
         state = rememberDialogState(size = AboutWindowSize),
     ) {
         AppearanceScope(appearance) {
-            AboutContent()
+            AboutContent(openUrl = ::openInBrowser)
         }
     }
 }
 
 @Composable
-private fun AboutContent() {
+internal fun AboutContent(openUrl: (String) -> Unit) {
     val strings = LocalStrings.current
     Column(
         modifier = Modifier.fillMaxSize().padding(Spacing.lg),
@@ -63,6 +63,6 @@ private fun AboutContent() {
             style = ShogunTheme.typography.dataSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        NeutralTextButton(onClick = { openInBrowser(RepositoryUrl) }) { Text(strings.aboutRepositoryLink) }
+        NeutralTextButton(onClick = { openUrl(RepositoryUrl) }) { Text(strings.aboutRepositoryLink) }
     }
 }

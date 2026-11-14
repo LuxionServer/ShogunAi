@@ -32,6 +32,7 @@ A `.shogunai.json` at the repository's root declares what every worktree needs. 
 | `envFile` | string | A path inside the worktree where its environment is written in dotenv format, without control or invisible format characters. Never written over a file Git tracks, so add it to `.gitignore`. Only written once the repository is [approved](#approving-a-repository). |
 | `providers` | object | The [providers](providers.md) the repository uses, each with its own options. |
 | `pools` | object | The repository's own [custom pools](providers.md#custom-pools): resources its worktrees share, each with `max`, an `acquire` command, an optional `release` command and `env`. Only used once the repository is [approved](#approving-a-repository). |
+| `overlap.ignore` | list of strings | Git glob pathspecs, relative to the repository root, of files several worktrees are expected to change at once, such as a roadmap every change edits line by line. [`shogun overlap`](cli.md#overlap) leaves them out unless given `--all`. `*` doesn't cross `/` and `**` does. |
 
 Values in `env` can use these templates:
 
