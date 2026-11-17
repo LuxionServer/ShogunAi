@@ -43,7 +43,8 @@ desktopApp/src/main/kotlin/app/luxion/shogunai/
 └── main.kt           # entry point: runs the CLI with arguments, opens the window without
 
 cli/src/main/kotlin/app/luxion/shogunai/cli/
-├── CliCommand.kt     # argument parsing into a sealed CliCommand
+├── CliCommand.kt     # the sealed CliCommand
+├── CliArguments.kt   # parseArguments: dispatches each command to its parser (*Arguments.kt, *Command.kt)
 ├── ShogunCli.kt      # runs each command on top of the engine's use cases
 └── Main.kt           # standalone entry point (runShogun)
 ```
@@ -73,9 +74,11 @@ The tests in `core/src/test/kotlin/app/luxion/shogunai/architecture/` read the s
 - **Composition roots**: in the desktop app, only `main.kt` and `AppContainer.kt` use infrastructure, and `runShogun` is the only thing it uses from the CLI; in the CLI, only `Main.kt` and `ShogunCli.kt` use infrastructure.
 - **No comments** in any Kotlin source or Gradle script.
 - **Commands as argv**: no `Runtime.exec`, and no shell interpreter named as a command.
-- **File length**: no production file over 400 lines.
+- **File length**: no production file over 400 lines, except the files directly in a folder exempt as a whole because it only holds data that grows with every feature (the desktop app's translation tables in `ui/i18n`).
 
 Some existing code doesn't follow the rules about the system, shells and length yet. Each case is on an exception list in `ArchitectureExceptions.kt`, which must match the code exactly: a new case fails, and so does an entry that no longer matches anything, so the lists can only shrink.
+A file over the length limit is capped at its length, and its cap is never raised: a change that needs room in it moves code to new files first.
+An exempt folder fails once none of its files is over the limit.
 
 See the detail of each layer:
 

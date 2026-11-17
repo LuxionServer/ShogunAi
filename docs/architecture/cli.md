@@ -47,7 +47,9 @@ Every command starts from a directory (the current one, or the path given to `pr
 
 ## Structure
 
-- `CliCommand.kt` — `parseArguments(args)` turns the arguments into a sealed `CliCommand` or a usage error. Hand-written: a dozen commands with about twenty options, each with its own small rules (`--from` not with `--branch`, `--avd` only with `start`, aliases such as `-y`), don't justify a parsing library and its startup cost.
+- `CliCommand.kt` declares the sealed `CliCommand`, and `CliArguments.kt` has `parseArguments(args)`, which turns the arguments into a `CliCommand` or a usage error by dispatching each command name to its parser.
+  The parsers are grouped by command family (`WorktreeArguments.kt`, `ToolArguments.kt`, `HookArguments.kt`, `DeviceArguments.kt`, `MultirepoArguments.kt`), and newer commands declare their type and parser in a file of their own (`OverlapCommand.kt`, `BuildCommand.kt`), so a new command only adds a line to the dispatch.
+  Hand-written: a dozen commands with about twenty options, each with its own small rules (`--from` not with `--branch`, `--avd` only with `start`, aliases such as `-y`), don't justify a parsing library and its startup cost.
 - `ShogunCli.kt` — `ShogunCli(engine, workingDirectory, out, err…).run(args): Int` executes a command. It receives the `ShogunEngine` with the use cases already wired, plus what only the command line uses (output streams, the terminal prompt, the app request channel and lock, `CommandLineTool`), so `ShogunCliTest` drives every command with an engine built from `core`'s test fixtures and string buffers.
 - `Main.kt` — `main` and `runShogun(args)` build the real ports with `hostEnginePorts` (the working directory as the folder physical devices locate the Android SDK from, without shared emulator-state reads), the engine on top of them, and `ShogunCli`. See [One composition graph](overview.md#one-composition-graph).
 

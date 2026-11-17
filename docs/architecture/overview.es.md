@@ -43,7 +43,8 @@ desktopApp/src/main/kotlin/app/luxion/shogunai/
 └── main.kt           # punto de entrada: ejecuta el CLI con argumentos, abre la ventana sin ellos
 
 cli/src/main/kotlin/app/luxion/shogunai/cli/
-├── CliCommand.kt     # parsing de argumentos a un CliCommand sellado
+├── CliCommand.kt     # el CliCommand sellado
+├── CliArguments.kt   # parseArguments: pasa cada comando a su parser (*Arguments.kt, *Command.kt)
 ├── ShogunCli.kt      # ejecuta cada comando sobre los casos de uso del motor
 └── Main.kt           # punto de entrada independiente (runShogun)
 ```
@@ -73,9 +74,11 @@ Los tests de `core/src/test/kotlin/app/luxion/shogunai/architecture/` leen los f
 - **Raíces de composición**: en la app de escritorio, solo `main.kt` y `AppContainer.kt` usan infraestructura, y `runShogun` es lo único que usa de la CLI; en la CLI, solo `Main.kt` y `ShogunCli.kt` usan infraestructura.
 - **Sin comentarios** en ningún fuente Kotlin ni script de Gradle.
 - **Comandos como argv**: nada de `Runtime.exec`, y ningún intérprete de shell nombrado como comando.
-- **Longitud de fichero**: ningún fichero de producción de más de 400 líneas.
+- **Longitud de fichero**: ningún fichero de producción de más de 400 líneas, salvo los que están directamente en una carpeta exenta entera porque solo contiene datos que crecen con cada funcionalidad (las tablas de traducción de la app de escritorio en `ui/i18n`).
 
 Parte del código existente aún no cumple las reglas del sistema, las shells y la longitud. Cada caso está en una lista de excepciones en `ArchitectureExceptions.kt`, que debe coincidir exactamente con el código: un caso nuevo falla, y también una entrada que ya no corresponde a nada, así que las listas solo pueden encoger.
+Un fichero por encima del límite de longitud tiene un tope igual a su longitud, y ese tope nunca se sube: un cambio que necesita sitio en él mueve antes código a ficheros nuevos.
+Una carpeta exenta falla en cuanto ninguno de sus ficheros pasa del límite.
 
 Ver el detalle de cada capa:
 

@@ -21,7 +21,10 @@ Don't load all of `docs/` into context by default: search for the specific page 
 
 - The tests in `core/src/test/kotlin/app/luxion/shogunai/architecture/` enforce the layering, composition roots, no comments, argv commands and the file length cap described in `docs/architecture/overview.md`.
 - When one fails, fix the code: move the declaration to the right package, take the system behind a port, or split the file.
-- Never add an entry to an exception list in `ArchitectureExceptions.kt`, or raise a length cap, without its reason in your change's `design.md`. When your change fixes a listed case, remove its entry.
+- Never add an entry to an exception list in `ArchitectureExceptions.kt` without its reason in your change's `design.md`. When your change fixes a listed case, remove its entry.
+- A code file's length cap is never raised, and no file is added to the caps. When your change doesn't fit, move code out of the file in the same change: new commands, parsers, readers and texts go in files of their own, with only a dispatch line in the shared file. "Splitting is out of scope" is not a reason.
+- When you resolve a conflict in `FILE_LENGTH_CAPS` after merging the base branch, keep the base's caps and move code out of any file that no longer fits.
+- Folders of pure data that grow with every feature (the desktop app's translation tables in `ui/i18n`) are exempt as a whole in `FILE_LENGTH_EXEMPT_FOLDERS`. A new exempt folder needs its reason in your change's `design.md`, and never holds logic.
 
 ## Testing integrations with real tools
 

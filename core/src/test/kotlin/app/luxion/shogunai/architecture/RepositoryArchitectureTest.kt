@@ -34,6 +34,6 @@ class RepositoryArchitectureTest {
 
     @Test
     fun `production files stay under their length cap`() {
-        assertEquals(emptyList(), FileLength.violations(tree, FILE_LENGTH_CAPS))
+        assertEquals(emptyList(), FileLength.violations(tree, FILE_LENGTH_CAPS, FILE_LENGTH_EXEMPT_FOLDERS))
     }
 }
