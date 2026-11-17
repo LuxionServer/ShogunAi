@@ -28,6 +28,13 @@ The system SHALL list the physical Android devices from `adb devices -l`, over U
 - **WHEN** the machine has no Android SDK
 - **THEN** no Android physical device is listed and no error is reported for it
 
+### Requirement: A physical Android device that doesn't answer doesn't hold up the listing
+The properties of different devices SHALL be read concurrently, each within a 5-second limit, and a device whose properties don't answer in time SHALL be reported as pending and unresponsive, not acquirable, without failing the listing.
+
+#### Scenario: Device that doesn't answer
+- **WHEN** `adb devices -l` lists `R5CT10ABCDE` and `R58N20FGHIJ` as `device` and reading `R5CT10ABCDE`'s properties doesn't answer in time
+- **THEN** the listing succeeds, `R58N20FGHIJ` is listed as a device, and `R5CT10ABCDE` is reported as pending and not answering, and can't be acquired
+
 ### Requirement: Discover connected iPhones and iPads
 On macOS the system SHALL list the physical iOS and iPadOS devices that `xcrun devicectl list devices` reports, over USB or the network, with their UDID, name, model, marketing name and OS version. Simulators SHALL NOT be listed. A device that isn't paired, or has no developer mode, SHALL be reported with that state and SHALL NOT be acquirable. On other systems no iOS device SHALL be listed.
 

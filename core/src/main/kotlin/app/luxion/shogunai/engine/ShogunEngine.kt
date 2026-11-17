@@ -5,8 +5,14 @@ import app.luxion.shogunai.domain.io.EnginePorts
 import app.luxion.shogunai.domain.io.RepositoryApproval
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.SimulatorSettings
+import app.luxion.shogunai.domain.usecase.AcquireBuildSlotUseCase
 import app.luxion.shogunai.domain.usecase.AcquireDesktopTurnUseCase
+import app.luxion.shogunai.domain.usecase.AcquireCustomPoolUseCase
+import app.luxion.shogunai.domain.usecase.BuildTurnLedger
 import app.luxion.shogunai.domain.usecase.AcquirePhysicalDeviceUseCase
+import app.luxion.shogunai.domain.usecase.CustomPoolLedger
+import app.luxion.shogunai.domain.usecase.ReadCustomPoolsUseCase
+import app.luxion.shogunai.domain.usecase.ReleaseCustomPoolUseCase
 import app.luxion.shogunai.domain.usecase.AcquireWorktreeResourceUseCase
 import app.luxion.shogunai.domain.usecase.CaptureHeadlessAppUseCase
 import app.luxion.shogunai.domain.usecase.CheckGradleBuildCacheUseCase
@@ -36,6 +42,7 @@ import app.luxion.shogunai.domain.usecase.PhysicalDeviceLedger
 import app.luxion.shogunai.domain.usecase.PrepareCocoaPodsUseCase
 import app.luxion.shogunai.domain.usecase.PrepareWorktreeEnvironmentUseCase
 import app.luxion.shogunai.domain.usecase.ReadAgentActivityUseCase
+import app.luxion.shogunai.domain.usecase.ReadBuildTurnUseCase
 import app.luxion.shogunai.domain.usecase.ReadDesktopTurnUseCase
 import app.luxion.shogunai.domain.usecase.ReadEmulatorStatesUseCase
 import app.luxion.shogunai.domain.usecase.ReadHeadlessAppUseCase
@@ -44,6 +51,7 @@ import app.luxion.shogunai.domain.usecase.ReadReleaseRecordUseCase
 import app.luxion.shogunai.domain.usecase.ReadResourcePoolUseCase
 import app.luxion.shogunai.domain.usecase.ReadSimulatorStatesUseCase
 import app.luxion.shogunai.domain.usecase.ReadWorktreeStatusUseCase
+import app.luxion.shogunai.domain.usecase.ReleaseBuildSlotUseCase
 import app.luxion.shogunai.domain.usecase.ReleaseDesktopTurnUseCase
 import app.luxion.shogunai.domain.usecase.ReleasePhysicalDeviceUseCase
 import app.luxion.shogunai.domain.usecase.ReleaseWorktreeResourcesUseCase
@@ -52,9 +60,11 @@ import app.luxion.shogunai.domain.usecase.RenewWorktreeLeasesUseCase
 import app.luxion.shogunai.domain.usecase.ResolveBaseBranchUseCase
 import app.luxion.shogunai.domain.usecase.ResolveDerivedDataQuotaUseCase
 import app.luxion.shogunai.domain.usecase.ResolveFlutterPackagesUseCase
+import app.luxion.shogunai.domain.usecase.PrepareNodeDependenciesUseCase
 import app.luxion.shogunai.domain.usecase.ResolveMultirepoUseCase
 import app.luxion.shogunai.domain.usecase.ResolveRepositoryUseCase
 import app.luxion.shogunai.domain.usecase.ResolveResourceLimitsUseCase
+import app.luxion.shogunai.domain.usecase.RunInBuildTurnUseCase
 import app.luxion.shogunai.domain.usecase.ResolveStartPointUseCase
 import app.luxion.shogunai.domain.usecase.ResolveWorktreeEnvironmentUseCase
 import app.luxion.shogunai.domain.usecase.RunComposeProjectUseCase
@@ -115,7 +125,7 @@ class ShogunEngine(
         ports.trust,
         ports.composeRegistry,
         sharedEnvironment,
-        deviceVariables = { worktree -> physicalDeviceLedger.variablesFor(worktree) },
+        deviceVariables = { worktree -> physicalDeviceLedger.variablesFor(worktree) + customPoolLedger.variablesFor(worktree) },
     )
 
     private suspend fun adminDirectoryOf(worktreePath: String): String = resolveEnvironment.directoriesOf(worktreePath).admin
@@ -162,6 +172,7 @@ class ShogunEngine(
         writeEnvironmentFile,
         PrepareCocoaPodsUseCase(executor, fileManager, provisioningSource, isMacOs = isMac),
         ResolveFlutterPackagesUseCase(executor, fileManager, provisioningSource),
+        PrepareNodeDependenciesUseCase(executor, fileManager, provisioningSource, isMacOs = isMac),
     )
 
     val startSimulator = StartWorktreeSimulatorUseCase(provisioningSource, ports.appleSimulators, acquireResource, resolveEnvironment)
@@ -203,6 +214,21 @@ class ShogunEngine(
     val releaseDesktopTurn = ReleaseDesktopTurnUseCase(desktopTurnLedger)
     val readDesktopTurn = ReadDesktopTurnUseCase(desktopTurnLedger)
 
+    val buildTurnLedger = BuildTurnLedger(
+        ports.buildTurns,
+        ports.environmentStateStore,
+        ports.deviceWaitQueue,
+        ports.processLiveness,
+        ::adminDirectoryOf,
+        resolveLimits::buildSlots,
+        clock = options.clock,
+        sleep = options.pauseWhileWaiting,
+    )
+    val acquireBuildSlot = AcquireBuildSlotUseCase(buildTurnLedger)
+    val releaseBuildSlot = ReleaseBuildSlotUseCase(buildTurnLedger)
+    val readBuildTurn = ReadBuildTurnUseCase(buildTurnLedger)
+    val runInBuildTurn = RunInBuildTurnUseCase(acquireBuildSlot, releaseBuildSlot, ports.foregroundCommands)
+
     val physicalDeviceLedger: PhysicalDeviceLedger = PhysicalDeviceLedger(
         ports.physicalDevices,
         ports.deviceInventory,
@@ -220,6 +246,26 @@ class ShogunEngine(
     val acquirePhysicalDevice = AcquirePhysicalDeviceUseCase(physicalDeviceLedger)
     val releasePhysicalDevice = ReleasePhysicalDeviceUseCase(physicalDeviceLedger)
     val managePhysicalDevices = ManagePhysicalDevicesUseCase(physicalDeviceLedger)
+
+    val customPoolLedger: CustomPoolLedger = CustomPoolLedger(
+        provisioningSource,
+        ports.trust,
+        ports.poolLeases,
+        ports.environmentStateStore,
+        ports.deviceWaitQueue,
+        ports.processLiveness,
+        resolveEnvironment::directoriesOf,
+        { worktree -> resolveRepository(worktree).getOrThrow() },
+        executor,
+        fileManager::isDirectory,
+        resolveLimits::leaseDuration,
+        agentActivity = readAgentActivity::invoke,
+        clock = options.clock,
+        sleep = options.pauseWhileWaiting,
+    )
+    val readCustomPools = ReadCustomPoolsUseCase(customPoolLedger)
+    val acquireCustomPool = AcquireCustomPoolUseCase(customPoolLedger)
+    val releaseCustomPool = ReleaseCustomPoolUseCase(customPoolLedger)
 
     val orcaReader = OrcaWorktreeReader(ports.orca, ports.orcaWorkspaces, ports.userHome)
     val closeOrcaTerminals = CloseOrcaTerminalsUseCase(ports.orca)

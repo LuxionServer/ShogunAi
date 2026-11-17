@@ -119,6 +119,10 @@ Asked for by Ciro after seeing the first real notification. macOS always shows t
 
 `WorktreeBoard.kt` is on the file length exception list at its cap. The watch loop moved to `BoardCheckLoop` and the device refresh times to `DeviceRefreshSchedule`, both new files, so the board can call the notification watch without growing; its cap is lowered to its new length.
 
+### Fitting the capped files after merging develop
+
+`develop` lowered every file's length cap to its length and forbade raising them, so the files this change touches keep their base caps and the new code lives in files of its own: the CLI's notification hook and `notify-pending` in `AgentNotificationHook.kt`, the request and message of `shogun app` in `AppTargets.kt` (with the two Herdr and Orca close-failure texts moved there too), and the desktop app's notification wiring in `DesktopNotificationServices.kt`, which builds a `NotificationServices` bundle and the watch so `AppContainer.kt` holds one line for it. Two single-use aliases of `AppContainer.kt` (`readDesktopTurn`, `releaseDesktopTurn`) were inlined to keep it at its cap.
+
 ### Coverage
 
 `core`'s maximum of missed branches goes from 18 to 19: adding `notifyBlocked` and `notifyDone` to the `@Serializable` `Settings` adds one more of the deserializer checks kotlinx.serialization generates for classes whose fields all have defaults, which no input reaches. The pending-notification store is written and read by hand instead of through `@Serializable` classes, so it adds none. The board's length cap is lowered to its new length.

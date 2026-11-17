@@ -18,6 +18,8 @@ class ResolveResourceLimitsUseCase(
 
     fun desktopTurnDuration(): Duration = runCatching { repository.load() }.getOrDefault(ResourceSettings()).desktopTurnDuration
 
+    fun buildSlots(): Int? = buildSlotsFor(runCatching { repository.load() }.getOrDefault(ResourceSettings()).profile, capacity)
+
     fun limitsFor(settings: ResourceSettings): ResourceLimits = limitsFor(settings.profile, settings.custom)
 
     fun limitsFor(profile: CapacityProfile, custom: ResourceLimits = ResourceLimits.LIGHT): ResourceLimits = when (profile) {

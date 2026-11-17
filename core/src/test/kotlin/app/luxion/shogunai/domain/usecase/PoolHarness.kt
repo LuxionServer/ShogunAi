@@ -13,6 +13,7 @@ import app.luxion.shogunai.domain.FakeProcessLiveness
 import app.luxion.shogunai.domain.FakeRepositoryProvisioningSource
 import app.luxion.shogunai.domain.FakeResourceLimitsRepository
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
+import app.luxion.shogunai.domain.io.AndroidSdk
 import app.luxion.shogunai.domain.model.AgentState
 import app.luxion.shogunai.domain.model.CapacityProfile
 import app.luxion.shogunai.domain.model.ResourceLimits
@@ -25,7 +26,7 @@ class PoolHarness(
     val git: ShellCommandExecutor,
     val source: FakeRepositoryProvisioningSource,
     val store: FakeEnvironmentStateStore = FakeEnvironmentStateStore(),
-    val sdk: FakeAndroidSdk = FakeAndroidSdk(),
+    val sdk: AndroidSdk = FakeAndroidSdk(),
     val simulators: FakeAppleSimulators = FakeAppleSimulators(),
     val files: FakeFileManager = FakeFileManager(),
     val portProbe: FakePortProbe = FakePortProbe(),

@@ -123,6 +123,7 @@ fun usabilityLabel(usability: DeviceUsability, strings: Strings): String = when 
     DeviceUsability.OFFLINE -> strings.deviceOffline
     DeviceUsability.UNPAIRED -> strings.deviceUnpaired
     DeviceUsability.DEVELOPER_MODE_OFF -> strings.deviceDeveloperModeOff
+    DeviceUsability.UNRESPONSIVE -> strings.deviceUnresponsive
     DeviceUsability.CONNECTING, DeviceUsability.USABLE -> strings.deviceConnecting
 }
 

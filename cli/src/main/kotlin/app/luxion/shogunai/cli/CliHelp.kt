@@ -186,6 +186,13 @@ internal object CliHelp {
   pool status [--json]        Show the emulator, iOS simulator and Gradle daemon pools: the limit of the
                               machine's capacity profile, how many are in use and which worktree holds each
   pool trim [--json]          Stop idle Gradle daemons, longest idle first, until they are within the limit
+  pool acquire <name> [<path>] [--wait] [--wait-timeout <minutes>] [--json]
+                              Take a slot of a pool declared under "pools" in .shogunai.json and run its
+                              acquire command; running it again renews the lease. When the pool is full and
+                              no slot has an expired lease, wait in line with --wait (30 minutes at most, or
+                              --wait-timeout); `pool status` also lists the repository's pools
+  pool release <name> [<path>] [--json]
+                              Run the pool's release command and free the worktree's slot
 """.trimIndent(),
         "xcode" to """
   xcode [--json]              List Xcode DerivedData and Swift .build folders of the worktrees, orphans and compilation cache
@@ -202,6 +209,8 @@ internal object CliHelp {
   hook agent-state            Claude Code UserPromptSubmit, Notification, Stop and SessionEnd hook: record the session's state
   hook desktop-turn           Claude Code PreToolUse hook: take the desktop turn before Claude's computer use or Orca's orca computer
                               acts on the desktop, or block the call while another worktree holds it
+  hook build-turn             Claude Code PreToolUse hook: block a Gradle, Maven, xcodebuild or swift build|test command run
+                              outside the build turn and tell the agent to run it with shogun build run --
   hook herdr                  Herdr plugin hook: provision worktrees on worktree.created, delete merged branches on worktree.removed
   hook orca setup|archive     Orca orca.yaml scripts: provision the worktree at ORCA_WORKTREE_PATH on setup,
                               free its emulator, simulator and idle Gradle daemons on archive
@@ -280,6 +289,13 @@ internal object CliHelp {
   desktop release [<path>] [--json]
                               Give the turn back; Claude Code's Stop and SessionEnd hooks also release it
   desktop status [--json]     Show who holds the desktop, until when, and who waits for it
+""".trimIndent(),
+        "build" to """
+  build run [--wait-timeout <minutes>] -- <command> [<arguments>]
+                              Run a heavy build in one of the machine's build slots: wait in line while they are
+                              all taken (30 minutes at most by default), run the command here, free the slot when
+                              it ends and exit with its exit code; the slots follow the capacity profile
+  build status [--json]       Show the build slots in use, the command each runs, and who waits for one
 """.trimIndent(),
         "device" to """
   device list [--all] [--json]

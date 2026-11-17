@@ -82,6 +82,13 @@ class FakeAndroidSdk(
         return listed
     }
 
+    val requestedSerials = mutableListOf<Set<String>>()
+
+    override suspend fun deviceStates(sdk: SdkLocation, serials: Set<String>): Map<String, EmulatorState> {
+        requestedSerials += serials
+        return deviceStates(sdk).filterKeys { it in serials }
+    }
+
     override fun startEmulator(sdk: SdkLocation, avd: String, consolePort: Int, noWindow: Boolean): EmulatorProcess {
         started += Started(avd, consolePort, noWindow)
         states[emulatorSerial(consolePort)] = EmulatorState.BOOTING

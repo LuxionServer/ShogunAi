@@ -7,6 +7,8 @@ import app.luxion.shogunai.domain.executor.CommandTimeouts
 import app.luxion.shogunai.domain.io.HostEnvironment
 import app.luxion.shogunai.domain.io.RepositoryApproval
 import app.luxion.shogunai.domain.io.ApprovalDecision
+import app.luxion.shogunai.domain.model.CustomPoolWait
+import app.luxion.shogunai.domain.model.BuildTurnState
 import app.luxion.shogunai.domain.model.DesktopTurnState
 import app.luxion.shogunai.domain.model.DesktopWait
 import app.luxion.shogunai.domain.model.DevicePlatform
@@ -101,6 +103,7 @@ import app.luxion.shogunai.domain.model.HerdrPluginStatus
 import app.luxion.shogunai.domain.usecase.isLiveClaudeProcess
 import app.luxion.shogunai.domain.usecase.HerdrAgentRunner
 import app.luxion.shogunai.domain.usecase.usesFvm
+import app.luxion.shogunai.domain.usecase.findNodeProject
 import app.luxion.shogunai.domain.usecase.CheckInstallationUseCase
 import app.luxion.shogunai.domain.usecase.CheckMultireposUseCase
 import app.luxion.shogunai.domain.usecase.CheckProviderToolsUseCase
@@ -159,10 +162,6 @@ import app.luxion.shogunai.domain.usecase.withWorkspaceAt
 import app.luxion.shogunai.domain.usecase.selectGroupCleanup
 import java.io.File
 import app.luxion.shogunai.domain.io.NotificationSetup
-import app.luxion.shogunai.domain.model.runSuspendCatching
-import app.luxion.shogunai.domain.usecase.ReadAgentActivityUseCase
-import app.luxion.shogunai.domain.usecase.PendingAgentNotifications
-import app.luxion.shogunai.domain.model.NotifiedWorktree
 import app.luxion.shogunai.domain.io.AppInstanceLock
 import app.luxion.shogunai.domain.io.AppLauncher
 import app.luxion.shogunai.domain.io.AppRequestChannel
@@ -252,6 +251,7 @@ class ShogunCli(
     private val gitHub = ports.gitHub
     private val orcaWorkspaces = ports.orcaWorkspaces
     private val sessionStore = ports.agentSessions
+    private val notificationHook by lazy { AgentNotificationHook(notificationSetup, sessionStore, herdr, projectRepository, appLock, isClaudeProcessAlive, { now().toEpochMilli() }, ::sameDirectory) }
     private val claudeSessions = ports.claudeSessions
     private val mavenDaemonSource = ports.mavenDaemons
     private val composeSource = ports.composeProjects
@@ -296,10 +296,12 @@ class ShogunCli(
     private val acquireDesktopTurn = engine.acquireDesktopTurn
     private val releaseDesktopTurn = engine.releaseDesktopTurn
     private val readDesktopTurn = engine.readDesktopTurn
+    private val buildTurn = BuildTurnCommands(engine, workingDirectory, { out.line(it) }, { err.line(it) }, readInput, ::worktreeTopLevel)
     private val physicalDevices = engine.physicalDeviceLedger
     private val readPhysicalDevices = engine.readPhysicalDevices
     private val acquirePhysicalDevice = engine.acquirePhysicalDevice
     private val releasePhysicalDevice = engine.releasePhysicalDevice
+    private val readCustomPools = engine.readCustomPools
     private val managePhysicalDevices = engine.managePhysicalDevices
 
     fun run(args: List<String>): Int = when (val parsed = parseArguments(args)) {
@@ -361,19 +363,22 @@ class ShogunCli(
             is CliCommand.Simulator -> simulator(command)
             is CliCommand.Headless -> headless(command)
             is CliCommand.Desktop -> desktop(command)
+            is BuildCommand -> buildTurn.run(command)
             is CliCommand.Device -> device(command)
             is CliCommand.SimulatorGradleInit -> simulatorGradleInit(command)
             CliCommand.HookSessionStart -> hookSessionStart()
             CliCommand.HookHerdr -> hookHerdr()
             is CliCommand.HookOrca -> hookOrca(command.action)
             CliCommand.HookAgentState -> hookAgentState()
-            CliCommand.HookNotifyPending -> hookNotifyPending()
+            CliCommand.HookNotifyPending -> notificationHook.notifyPending()
             CliCommand.HookDesktopTurn -> hookDesktopTurn()
+            HookBuildTurn -> buildTurn.hook()
             is CliCommand.Hooks -> hooks(command)
             is CliCommand.Guide -> guide(command)
             is CliCommand.GuideBlock -> guideBlock(command)
             is CliCommand.GradleStop -> gradleStop(command)
             is CliCommand.Pool -> pool(command)
+            is PoolSlotCommand -> poolSlot(command)
             is CliCommand.Project -> project(command)
             is CliCommand.App -> app(command)
             is CliCommand.Xcode -> xcode(command)
@@ -441,7 +446,7 @@ class ShogunCli(
         }
         val worktree = created.getOrThrow()
         if (command.json) {
-            printJson(newJson(worktree.path, worktree.branch, worktree.skippedPostCreateCommands, worktree.skippedVariables, null, worktree.skippedLinks, worktree.pods, worktree.flutter))
+            printJson(newJson(worktree.path, worktree.branch, worktree.skippedPostCreateCommands, worktree.skippedVariables, null, worktree.skippedLinks, worktree.pods, worktree.flutter, worktree.node))
             return EXIT_OK
         }
         out.line(worktree.path)
@@ -449,6 +454,7 @@ class ShogunCli(
         noteSkippedLinks(worktree.skippedLinks)
         podsLines(worktree.pods).forEach { err.line("shogun: $it") }
         worktree.flutter?.let { err.line("shogun: ${flutterPubGetLine(it)}") }
+        worktree.node?.let { err.line("shogun: ${nodeDependenciesLine(it)}") }
         noteSkipped(config.baseRepositoryPath, worktree.skippedPostCreateCommands, worktree.skippedVariables)
         return EXIT_OK
     }
@@ -974,6 +980,8 @@ class ShogunCli(
             subject.variables.forEach { (name, template) -> append("  $name = $template\n") }
         }
         subject.envFile?.let { append("Environment file: $it\n") }
+        append(poolDeclarationLines(repository, subject.pools))
+        if (subject.nodeInstall) append("$NODE_INSTALL_APPROVAL_LINE\n")
     }
 
     private fun shellLine(command: List<String>): String = ShellQuoting.posixCommand(command)
@@ -994,7 +1002,7 @@ class ShogunCli(
         }
         val subject = provisioningSource.read(repository).approvalSubject
         if (subject.isEmpty) {
-            out.line("$repository declares no post-creation commands, environment variables nor environment file.")
+            out.line("$repository declares no post-creation commands, environment variables, environment file, pools nor Node install.")
             return EXIT_OK
         }
         val approved = trust.isApproved(repository, subject)
@@ -1094,7 +1102,7 @@ class ShogunCli(
             printJson(
                 provisionJson(
                     worktree.path, result.files, result.skippedPostCreateCommands, result.skippedVariables, null,
-                    result.removed, result.skippedLinks, result.pods, result.flutter,
+                    result.removed, result.skippedLinks, result.pods, result.flutter, result.node,
                 ),
             )
             return EXIT_OK
@@ -1104,6 +1112,7 @@ class ShogunCli(
         result.skippedLinks.forEach { out.line("$it (skipped: symbolic link)") }
         podsLines(result.pods).forEach { out.line(it) }
         result.flutter?.let { out.line(flutterPubGetLine(it)) }
+        result.node?.let { out.line(nodeDependenciesLine(it)) }
         noteSkipped(config.baseRepositoryPath, result.skippedPostCreateCommands, result.skippedVariables)
         onProvisioned(worktree, config)
         return EXIT_OK
@@ -1121,7 +1130,9 @@ class ShogunCli(
                 engine.detectRunningAgents(config, worktrees.filterNot { it.isPrunable }).getOrNull().orEmpty()
             }
             val desktopRead = async { readDesktopTurn().getOrElse { DesktopTurnState(holder = null, waiting = emptyList()) } }
+            val buildsRead = async { engine.readBuildTurn().getOrElse { BuildTurnState.EMPTY } }
             val devicesRead = async { readPhysicalDevices.ifAnyHeld() }
+            val poolsRead = async { readCustomPools(config.baseRepositoryPath).getOrElse { emptyList() } }
             val basesRead = async { engine.project(config).readBaseBranches().getOrElse { emptyMap() } }
             val resolvedBasesRead = async { engine.project(config).resolveRecordedBases() }
             val mainBranch = mainBranchRead.await()
@@ -1134,6 +1145,7 @@ class ShogunCli(
             }.awaitAll()
             val agents = agentsRead.await()
             val desktop = desktopRead.await()
+            val builds = buildsRead.await()
             val devices = devicesRead.await()
             val bases = basesRead.await()
             val listeningPorts = orcaReader.ports(worktrees)
@@ -1148,6 +1160,8 @@ class ShogunCli(
                     worktree.branch?.let(bases::get),
                     listeningPorts?.get(worktree.path),
                     devices,
+                    poolsRead.await(),
+                    builds,
                 )
             }
         }
@@ -1242,6 +1256,7 @@ class ShogunCli(
         removal.herdrFailure?.let { err.line(herdrCloseFailure(worktree.path, it)) }
         removal.orcaFailure?.let { err.line(orcaCloseFailure(worktree.path, it)) }
         removal.headlessAppFailure?.let { err.line(headlessStopFailure(worktree.path, it)) }
+        removal.poolReleaseFailures.forEach { err.line("shogun: ${it.message}") }
         val released = releaseResources.release(config, plan)
         released.stoppedEmulators.forEach { say("stopped emulator $it") }
         released.stoppedSimulators.forEach { say("stopped simulator $it") }
@@ -1459,6 +1474,7 @@ class ShogunCli(
         report.herdrFailures.forEach { err.line(herdrCloseFailure(it.path, it.error)) }
         report.orcaFailures.forEach { err.line(orcaCloseFailure(it.path, it.error)) }
         report.headlessAppFailures.forEach { err.line(headlessStopFailure(it.path, it.error)) }
+        report.poolReleaseFailures.forEach { err.line("shogun: ${it.error.message}") }
         report.composeDown?.let { down ->
             down.takenDown.forEach { say("took down Compose project $it") }
             down.failures.forEach { err.line("shogun: couldn't take down Compose project ${it.name}: ${it.detail}") }
@@ -1705,6 +1721,7 @@ class ShogunCli(
         acquisition?.releases.orEmpty().forEach { err.line("released the emulator of ${releasedName(it)} to make room") }
         reportWaited(acquisition)
         if (emulator != null) reportOrcaView("emulator", emulator.serial, orcaView)
+        if (emulator?.state == EmulatorState.UNRESPONSIVE) err.line(unresponsiveEmulatorHint(emulator.serial))
         val released = if (emulator == null) readReleaseRecord(worktree.path, ResourceKind.EMULATOR) else null
         if (command.json) {
             printJson(emulatorJson(worktree.path, emulator, acquisition, released, orcaView))
@@ -1763,8 +1780,9 @@ class ShogunCli(
             usage.kind to if (usage.kind == ResourceKind.GRADLE_DAEMON) emptyList() else acquireResource.waiting(usage.kind)
         }
         val devices = readPhysicalDevices().getOrThrow()
+        val customPools = readCustomPools(config.baseRepositoryPath).getOrThrow()
         if (command.json) {
-            printJson(JsonObject(poolJson(usages) { waiting.getValue(it) } + ("physicalDevices" to devicePoolJson(devices))))
+            printJson(JsonObject(poolJson(usages) { waiting.getValue(it) } + ("physicalDevices" to devicePoolJson(devices)) + ("customPools" to customPoolsJson(customPools))))
             return EXIT_OK
         }
         usages.forEach { usage ->
@@ -1776,6 +1794,28 @@ class ShogunCli(
             }
         }
         devicePoolLines(devices).forEach { out.line(it) }
+        customPoolStatusLines(customPools).forEach { out.line(it) }
+        return EXIT_OK
+    }
+
+    private suspend fun poolSlot(command: PoolSlotCommand): Int {
+        val worktree = worktreeTopLevel(absolute(command.path ?: workingDirectory))
+        if (command.action == PoolSlotAction.RELEASE) {
+            val release = engine.releaseCustomPool(worktree, command.pool).getOrThrow()
+            if (command.json) printJson(poolReleaseJson(release)) else out.line(poolReleaseLine(release))
+            return EXIT_OK
+        }
+        var lastLine: String? = null
+        val wait = command.wait?.let { timeout ->
+            CustomPoolWait(timeout) { progress ->
+                val line = poolWaitProgressLine(progress)
+                if (line != lastLine) err.line(line)
+                lastLine = line
+            }
+        }
+        val acquisition = engine.acquireCustomPool(worktree, command.pool, wait).getOrThrow()
+        acquisition.waitedSeconds?.takeIf { it > 0 }?.let { err.line("waited ${Duration.ofSeconds(it).toWaitText()}") }
+        if (command.json) printJson(poolAcquisitionJson(acquisition)) else poolAcquisitionLines(acquisition).forEach { out.line(it) }
         return EXIT_OK
     }
 
@@ -1906,7 +1946,8 @@ class ShogunCli(
     }
 
     private suspend fun workflowContext(repository: String, worktree: Worktree): WorkflowContext {
-        val providers = provisioningSource.read(repository).providers
+        val provisioning = provisioningSource.read(repository)
+        val providers = provisioning.providers
         val runner = runnerInUse()
         return WorkflowContext(
             inMainCheckout = worktree.isMain,
@@ -1918,6 +1959,9 @@ class ShogunCli(
             runner = runner,
             flutterProvider = providers.flutter != null,
             flutterUsesFvm = usesFvm(fileManager, worktree.path),
+            customPools = provisioning.pools.map { it.name },
+            nodeProvider = providers.node != null,
+            nodeProject = findNodeProject(fileManager, worktree.path),
         )
     }
 
@@ -2133,36 +2177,19 @@ class ShogunCli(
         if (!running && !appLauncher.isAvailable()) throw WorktreeError.AppNotAvailable
         val createdAt = now().toEpochMilli()
         val multirepoFolder = repository?.let { resolveMultirepo.known().withWorkspaceAt(it) }
-        var worktree: String? = null
         val request = if (repository == null || multirepoFolder != null) {
             AppRequest.openApp(createdAt)
         } else {
             val registration = RegisterProjectUseCase(projectRepository, resolveRepository)(repository).getOrThrow()
             if (registration is ProjectRegistration.Added) out.line("Added project ${registration.project.name} (${repository})")
-            worktree = if (command.settings) null else linkedWorktree(worktreeTopLevelOrNull(if (command.path != null) absolute(command.path) else workingDirectory), repository)
-            if (worktree != null) {
-                AppRequest.openWorktree(createdAt, registration.project.id, worktree)
-            } else {
-                AppRequest.openProject(createdAt, registration.project.id, command.settings)
-            }
+            val directory = if (command.path != null) absolute(command.path) else workingDirectory
+            projectOrWorktreeRequest(createdAt, registration.project.id, command.settings, linkedWorktreeOf(directory, repository, ::worktreeTopLevel, ::sameDirectory))
         }
         appRequests.send(request)
         if (!running) appLauncher.launch()
-        out.line(
-            when {
-                repository == null -> "Opening ShogunAi"
-                multirepoFolder != null -> "Opening ShogunAi; ${multirepoFolder.name} is a multirepo, its workspace repository belongs to it"
-                command.settings -> "Opening the settings of ${repository.substringAfterLast('/')} in ShogunAi"
-                worktree != null -> "Opening ${worktree.substringAfterLast('/')} of ${repository.substringAfterLast('/')} in ShogunAi"
-                else -> "Opening ${repository.substringAfterLast('/')} in ShogunAi"
-            },
-        )
+        out.line(appOpeningMessage(repository, multirepoFolder?.name, request))
         return EXIT_OK
     }
-
-    private suspend fun worktreeTopLevelOrNull(directory: String): String? = runSuspendCatching { worktreeTopLevel(directory) }.getOrNull()
-
-    private fun linkedWorktree(topLevel: String?, repository: String): String? = topLevel?.takeUnless { sameDirectory(it, repository) }
 
     private suspend fun doctor(command: CliCommand.Doctor): Int {
         val report = CheckInstallationUseCase(
@@ -2220,6 +2247,7 @@ class ShogunCli(
         app.luxion.shogunai.domain.model.Stack.MAVEN -> "Maven"
         app.luxion.shogunai.domain.model.Stack.DOCKER_COMPOSE -> "Docker Compose"
         app.luxion.shogunai.domain.model.Stack.FLUTTER -> "Flutter"
+        app.luxion.shogunai.domain.model.Stack.NODE -> "Node"
     }
 
     private suspend fun maven(command: CliCommand.Maven): Int {
@@ -2653,6 +2681,7 @@ class ShogunCli(
                     noteSkippedLinks(it.skippedLinks, "shogun: hook worktree-create")
                     podsLines(it.pods).forEach { line -> err.line("shogun: hook worktree-create: $line") }
                     it.flutter?.let { pubGet -> err.line("shogun: hook worktree-create: ${flutterPubGetLine(pubGet)}") }
+                    it.node?.let { node -> err.line("shogun: hook worktree-create: ${nodeDependenciesLine(node)}") }
                     noteSkipped(config.baseRepositoryPath, it.skippedPostCreateCommands, it.skippedVariables, "shogun: hook worktree-create")
                 }.path
                 is WorktreeError.PostCreateCommandFailed -> {
@@ -2683,6 +2712,7 @@ class ShogunCli(
         removal.herdrFailure?.let { err.line(herdrCloseFailure(worktree.path, it)) }
         removal.orcaFailure?.let { err.line(orcaCloseFailure(worktree.path, it)) }
         removal.headlessAppFailure?.let { err.line(headlessStopFailure(worktree.path, it)) }
+        removal.poolReleaseFailures.forEach { err.line("shogun: ${it.message}") }
         reportKeptBranch(worktree.branch, removal.branch)
         return EXIT_OK
     }
@@ -2830,12 +2860,6 @@ class ShogunCli(
         return topLevel
     }
 
-    private fun herdrCloseFailure(path: String, error: WorktreeError) =
-        "shogun: couldn't close the Herdr workspace of $path: ${error.herdrDetail()}"
-
-    private fun orcaCloseFailure(path: String, error: WorktreeError) =
-        "shogun: couldn't close the Orca terminals of $path: ${error.orcaDetail()}"
-
     private suspend fun hookAgentState(): Int {
         val input = hookInput("agent-state") ?: return EXIT_USAGE
         val sessionId = input.string("session_id") ?: return EXIT_OK
@@ -2847,7 +2871,7 @@ class ShogunCli(
             if (folder == null && engine.resolveRepository(directory).isFailure) return EXIT_OK
             val owner = if (folder == null) worktreeContaining(directory) else null
             val sessionPath = folder ?: owner!!.second.path
-            val previous = sessionStore.list(sessionPath).firstOrNull { it.sessionId == sessionId }?.state
+            val notify = notificationHook.before(owner, sessionId)
             if (state == null) {
                 sessionStore.remove(sessionPath, sessionId)
             } else {
@@ -2858,7 +2882,7 @@ class ShogunCli(
                 if (folder == null && state == AgentState.WORKING) renewLeases(sessionPath)
             }
             if (folder == null && event in DESKTOP_RELEASING_EVENTS) releaseDesktopTurn.ifHeldBy(sessionPath)
-            if (owner != null) scheduleNotification(previous, state, owner, sessionId)
+            notify(state)
         } catch (error: CancellationException) {
             throw error
         } catch (error: Exception) {
@@ -2866,42 +2890,6 @@ class ShogunCli(
         }
         return EXIT_OK
     }
-
-    private fun scheduleNotification(previous: AgentState?, state: AgentState?, owner: Pair<String, Worktree>, sessionId: String) {
-        val setup = notificationSetup ?: return
-        val pending = pendingNotifications(setup)
-        if (!pending.shouldSchedule(previous, state)) return
-        val (base, worktree) = owner
-        val project = projectRepository.list().firstOrNull { sameDirectory(it.config.baseRepositoryPath, base) } ?: return
-        val name = worktree.branch ?: worktree.path.replace('\\', '/').substringAfterLast('/')
-        pending.schedule(sessionId, NotifiedWorktree(project.id, project.name, worktree.path, name))
-        setup.startInBackground(listOf("hook", "notify-pending"))
-    }
-
-    private suspend fun hookNotifyPending(): Int {
-        val setup = notificationSetup ?: return EXIT_OK
-        val pending = pendingNotifications(setup)
-        repeat(MAX_NOTIFY_ROUNDS) {
-            val next = runSuspendCatching { pending.notifyDue() }.getOrNull() ?: return EXIT_OK
-            setup.pause((next - now().toEpochMilli()).coerceAtLeast(MIN_NOTIFY_PAUSE_MILLIS))
-        }
-        return EXIT_OK
-    }
-
-    private fun pendingNotifications(setup: NotificationSetup): PendingAgentNotifications =
-        PendingAgentNotifications(
-            store = setup.pending,
-            sessions = sessionStore,
-            sessionState = ReadAgentActivityUseCase(sessionStore, isAlive = isClaudeProcessAlive)::stateOf,
-            herdrAgents = herdr::listAgents,
-            runners = setup.runners,
-            notifier = setup.notifier,
-            images = setup.images,
-            preferences = setup.preferences::load,
-            language = setup.language::load,
-            appRunning = appLock::isHeldByAnyInstance,
-            now = { now().toEpochMilli() },
-        )
 
     private suspend fun hookDesktopTurn(): Int {
         val input = hookInput("desktop-turn") ?: return EXIT_USAGE
@@ -3139,6 +3127,7 @@ class ShogunCli(
             val worktree = worktrees.firstOrNull { sameDirectory(it.path, path) } ?: throw WorktreeError.NotAWorktree(path)
             stopHeadlessApp.beforeRemoving(worktree.path)?.let { err.line(headlessStopFailure(worktree.path, it)) }
             releaseDesktopTurn.onWorktreeRemoved(worktree.path)
+            engine.releaseCustomPool.onWorktreeRemoved(worktree.path).forEach { err.line("shogun: hook orca: ${it.message}") }
             val released = releaseResources.release(config, releaseResources.plan(config, worktree, worktrees))
             released.stoppedEmulators.forEach { out.line("stopped emulator $it") }
             released.stoppedSimulators.forEach { out.line("stopped simulator $it") }
@@ -3230,7 +3219,9 @@ class ShogunCli(
             entry.agents.takeIf { it.isNotEmpty() }?.let { agents -> add("agents=${agents.joinToString(",") { agentLabel(it) }}") }
             entry.listeningPorts?.takeIf { it.isNotEmpty() }?.let { ports -> add("listening=${ports.joinToString(",") { it.port.toString() }}") }
             desktopTurnStatusNote(entry.desktop, worktree.path)?.let(::add)
+            buildStatusNote(entry.builds, worktree.path)?.let(::add)
             addAll(deviceStatusNotes(entry.devices, worktree.path))
+            addAll(customPoolStatusNotes(entry.pools, worktree.path))
             when {
                 worktree.isPrunable -> add("folder-missing")
                 status == null -> add(statusUnavailable(entry.statusProblem!!))
@@ -3303,8 +3294,6 @@ class ShogunCli(
         private const val IGNORED_DECLARED_AGENT =
             "The declaration's agent is ignored; set the multirepo agent on this machine with 'shogun multirepo agent'."
         private const val SESSION_END = "SessionEnd"
-        private const val MAX_NOTIFY_ROUNDS = 30
-        private const val MIN_NOTIFY_PAUSE_MILLIS = 250L
         private const val BASH_TOOL = "Bash"
         private val DESKTOP_RELEASING_EVENTS = setOf("Stop", SESSION_END)
         private const val HERDR_PLUGIN_EVENT = "HERDR_PLUGIN_EVENT"

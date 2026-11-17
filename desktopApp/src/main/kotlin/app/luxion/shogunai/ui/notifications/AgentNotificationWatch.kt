@@ -6,6 +6,7 @@ import androidx.compose.runtime.setValue
 import app.luxion.shogunai.domain.io.NoNotificationImages
 import app.luxion.shogunai.domain.io.NotificationImages
 import app.luxion.shogunai.domain.io.NotificationPreferenceRepository
+import app.luxion.shogunai.domain.io.NotificationServices
 import app.luxion.shogunai.domain.io.RunnerNotificationSource
 import app.luxion.shogunai.domain.io.SystemNotification
 import app.luxion.shogunai.domain.io.SystemNotifier
@@ -47,6 +48,11 @@ class AgentNotificationWatch(
     private val now: () -> Long = System::currentTimeMillis,
     private val images: NotificationImages = NoNotificationImages,
 ) : AgentObserver {
+    constructor(services: NotificationServices, language: () -> AppLanguage, scope: CoroutineScope) :
+        this(services.preferences, services.runners, services.notifier, language, scope, images = services.images) {
+        onClick = { request -> runCatching { services.requests.send(request) } }
+    }
+
     private val mutex = Mutex()
     private var tracker = TrackerState()
     var onClick: (AppRequest) -> Unit = {}

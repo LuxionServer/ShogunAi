@@ -30,6 +30,11 @@ enum class ProviderToolId(val id: String, val displayName: String, val provider:
     DOCKER_COMPOSE("docker-compose", "Docker Compose", "docker-compose"),
     DOCKER_DAEMON("docker-daemon", "Docker daemon", "docker-compose"),
     FLUTTER("flutter", "Flutter", "flutter"),
+    NODE("node", "Node.js", "node"),
+    NPM("npm", "npm", "node"),
+    PNPM("pnpm", "pnpm", "node"),
+    YARN("yarn", "Yarn", "node"),
+    BUN("bun", "bun", "node"),
 }
 
 sealed interface ProviderToolProblem {

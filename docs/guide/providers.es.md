@@ -16,10 +16,13 @@ Un provider añade soporte para un tipo de herramienta a los worktrees de un rep
 | [`docker-compose`](#docker-compose) | Un proyecto de Docker Compose y puertos por worktree. | Todas, con la CLI de Docker |
 | [`desktop-app`](#app-de-compose-desktop) | Una app de Compose Desktop por worktree, ejecutada en segundo plano sin ocupar el escritorio. | macOS |
 | [`flutter`](#flutter) | Apps Flutter: `flutter pub get` en cada worktree nuevo, y agentes que ejecutan Flutter en los dispositivos de su worktree. | Todas, con Flutter |
+| [`node`](#node) | Repositorios Node: `node_modules` clonado de la base o instalado en cada worktree nuevo. | Todas, con Node; el clon en macOS |
+
+Para un recurso que ninguno cubre, un repositorio puede declarar sus propios [pools](#pools-propios).
 
 ## Detección de stacks
 
-No hace falta saber qué providers existen. ShogunAi mira los archivos de la carpeta principal del repositorio y de sus subcarpetas directas (nunca las ocultas, `build`, `node_modules` ni `Pods`) y reconoce seis stacks:
+No hace falta saber qué providers existen. ShogunAi mira los archivos de la carpeta principal del repositorio y de sus subcarpetas directas (nunca las ocultas, `build`, `node_modules` ni `Pods`) y reconoce siete stacks:
 
 | Stack | Lo delatan | Sugiere |
 |---|---|---|
@@ -29,6 +32,7 @@ No hace falta saber qué providers existen. ShogunAi mira los archivos de la car
 | Maven | `pom.xml` o `mvnw` en la carpeta principal | `maven` |
 | Docker Compose | `compose.yaml`, `compose.yml`, `docker-compose.yaml` o `docker-compose.yml` en la carpeta principal | `docker-compose` |
 | Flutter | un `pubspec.yaml` en la carpeta principal que depende del SDK de Flutter (`sdk: flutter`) | `flutter` |
+| Node | un `package.json` en la carpeta principal, con sus lockfiles como evidencia adicional | `node` |
 
 En los ajustes del proyecto, "Configuración del repositorio" lista los providers que el repositorio podría usar y aún no declara, con los archivos que los delataron, y "Activar" enciende el provider como un cambio sin guardar: no se escribe nada hasta que guardas y confirmas la vista previa. `shogun stacks` imprime lo mismo desde un terminal y no cambia nada. Una sugerencia es solo una pista (un `pom.xml` en una carpeta de pruebas también cuenta), por eso siempre se muestra la evidencia.
 
@@ -213,6 +217,42 @@ Algunos fallos solo aparecen en hardware real: la capa de un fabricante, la cám
 - **Orca.** Obtener un dispositivo Android en un worktree abierto en Orca lo muestra en la vista de emulador del worktree, y abrir un worktree que tiene uno lo muestra en lugar de su emulador, salvo que el simulador del worktree esté arrancado. Orca aún no puede mostrar un iPhone físico.
 - **Coste.** `adb devices` solo se ejecuta cuando algo necesita los dispositivos, como mucho una vez cada 2 segundos y compartido con los estados de los emuladores, y `getprop` una vez por conexión. La app de escritorio no busca dispositivos en máquinas sin ningún dispositivo registrado y sin proyectos que declaren el provider del emulador o del simulador de iOS.
 
+## Pools propios
+
+Un repositorio cuyos worktrees comparten algo para lo que ShogunAi no tiene provider, como una base de datos por worktree, un dispositivo de pruebas, una licencia o una GPU, lo declara en `pools` de su `.shogunai.json`, sin esperar a un provider:
+
+```json
+{
+  "pools": {
+    "db": {
+      "max": 3,
+      "acquire": ["./scripts/db-up.sh", "${slot}"],
+      "release": ["./scripts/db-down.sh", "${slot}"],
+      "env": { "DATABASE_URL": "postgres://localhost/app_${slot}" }
+    }
+  }
+}
+```
+
+| Clave | Significado |
+|---|---|
+| nombre | La clave dentro de `pools`: de 1 a 32 letras minúsculas, dígitos y guiones, empezando por letra o dígito. |
+| `max` | El máximo de instancias a la vez en la máquina, un número entero de 1 a 64 (no una cadena). Cada worktree que tiene una recibe una plaza de 1 a `max`. |
+| `acquire` | Obligatorio. Un comando, como lista no vacía de cadenas que se pasa como argv, nunca a través de una shell, que se ejecuta en el worktree cuando toma o renueva una plaza. |
+| `release` | Opcional. Un comando, como `acquire`, que se ejecuta cuando el worktree devuelve su plaza, cuando otro worktree se la quita y cuando se elimina el worktree. |
+| `env` | Variables que recibe el worktree mientras tiene una plaza, con las mismas reglas de nombre que el `env` del repositorio; un nombre no puede repetir uno de `env` ni de otro pool. |
+
+Los comandos y las variables aceptan `${slot}` (el número de plaza de quien la tiene), `${worktree}` (el nombre de su carpeta) y `$$` (un `$` literal); cualquier otro marcador hace el archivo inválido. Usa la plaza para separar las instancias: el nombre de una base de datos, un desplazamiento de puerto en el script, el índice de un dispositivo.
+
+- **Aprobación.** Los comandos y las variables de los pools se ejecutan en tu máquina, así que forman parte de la [aprobación](configuration.md#aprobar-un-repositorio) única del repositorio: nada de un pool se ejecuta hasta que lo apruebas, y un pull que cambia un pool vuelve a preguntar. En un repositorio sin aprobar, `shogun pool acquire` falla nombrando `shogun trust`.
+- **Bajo demanda.** Un worktree toma una plaza con [`shogun pool acquire <nombre>`](cli.md#pool) cuando la necesita, lo que ejecuta `acquire` con su plaza; volver a ejecutarlo renueva el lease y vuelve a ejecutar `acquire`, así que el comando debe poder repetirse. `shogun pool release <nombre>` ejecuta `release` y libera la plaza. Al crear un worktree no se adquiere nada.
+- **Leases y relevo.** Las plazas tienen el mismo lease que los dispositivos (la duración de lease de la máquina, 20 minutos por defecto), protegidas mientras el agente del worktree trabaja o mientras se ejecuta un comando de la plaza. Cuando el pool está lleno, adquirir toma una plaza cuyo lease caducó, en el mismo orden que los dispositivos, ejecutando antes `release` para quien la tenía; si ese `release` falla, la conserva. Con `--wait`, el worktree espera en la cola por una plaza, por orden de llegada.
+- **Por repositorio.** Las plazas de un pool las comparten los worktrees del repositorio que lo declara; otro repositorio con un pool del mismo nombre cuenta las suyas. Para un recurso de toda la máquina, como una GPU, dale el mismo `max` en cada repositorio sabiendo que no se ven entre sí.
+- **Variables.** Mientras un worktree tiene una plaza, las variables del pool llegan a su entorno: `shogun env`, las sesiones de agente que se inicien después, los terminales y el archivo de entorno que se escriba después. Una shell que ya estaba abierta las lee con `eval "$(shogun env)"`.
+- **Eliminación.** Eliminar o limpiar un worktree ejecuta `release` por cada plaza que tiene y las libera aunque `release` falle, cosa que se informa.
+- **Estado.** `shogun pool status` lista los pools del repositorio con quién tiene cada plaza y quién espera, y `shogun status` muestra las plazas de cada worktree (`pool=db#2`). La app de escritorio aún no muestra los pools propios.
+- **Límite.** `max` es el único límite que fija un repositorio: el perfil de capacidad y las Preferencias no lo cambian.
+
 ## Capacidad
 
 Los emuladores, los simuladores de iOS y los daemons de Gradle están limitados por máquina y los comparten todos los repositorios y worktrees. Los límites salen del perfil de capacidad de Preferencias > Recursos y nunca se leen del repositorio: **Automático** (por defecto, según la memoria y los núcleos de la máquina), **Ligero** (1 emulador, 1 simulador, 2 daemons de Gradle), **Equilibrado** (2, 2 y 4), **Uno por worktree** (sin límite más allá de los 16 puertos de emulador) o **Personalizado** (un número o sin límite por tipo). Los aplican tanto la app como `shogun`.
@@ -319,3 +359,20 @@ Un worktree recién creado de un repositorio Flutter no compila: `.dart_tool/`, 
 - **CocoaPods.** Con `cocoaPods` activado, un worktree nuevo recibe los pods del repositorio base junto al `ios/Podfile.lock` versionado. La primera build de Flutter en ese worktree aún ejecuta `pod install` por su cuenta, porque lo decide a partir de una huella que guarda en `build/`; con los pods ya en su sitio no descarga nada. Un aviso de "necesita `pod install`" también lo resuelve la propia build de Flutter.
 - **Puertos.** `flutter run` enlaza su VM service y DevTools a puertos libres que elige él, así que los worktrees no chocan. Si el repositorio fija el puerto del servidor web, reserva uno por worktree con `env` y pásalo: `"env": { "FLUTTER_WEB_PORT": "${port}" }` y `flutter run -d chrome --web-port "$FLUTTER_WEB_PORT"`.
 - `build/` y `.dart_tool/` siguen siendo de cada worktree: guardan rutas absolutas y el estado incremental del compilador. La caché de pub (`~/.pub-cache`) ya la comparten todos los worktrees.
+
+## Node
+
+Un worktree recién creado de un repositorio Node no arranca: `node_modules` está ignorado por Git, así que todos los scripts, los test runners y los servidores de desarrollo fallan hasta que se instalan las dependencias. Activa el provider de Node y cada worktree nuevo o provisionado las recibe:
+
+```json
+{ "providers": { "node": {} } }
+```
+
+- **Gestor de paquetes.** ShogunAi lo encuentra por el lockfile de la carpeta principal del repositorio: `package-lock.json` o `npm-shrinkwrap.json` (npm), `pnpm-lock.yaml` (pnpm), `yarn.lock` (Yarn) o `bun.lock`/`bun.lockb` (bun). Si hay varios lockfiles, decide `packageManager` en `package.json`; si no, pnpm, Yarn, bun y npm, en ese orden. Un repositorio sin lockfile se informa como pendiente de dependencias y no se ejecuta nada.
+- **Clonadas cuando la base coincide.** En macOS, cuando el lockfile del worktree es igual al del repositorio base y la base se instaló después del último cambio de su lockfile (`node_modules/.package-lock.json` de npm, `node_modules/.modules.yaml` de pnpm, `node_modules/.yarn-integrity` o `.yarn-state.yml` de Yarn), cada `node_modules` ignorado de la base se clona con copy-on-write. Tarda segundos, no ocupa disco extra hasta que cambian los ficheros y no ejecuta nada. Si un clon falla, se borran los clones hechos hasta entonces y las dependencias se instalan.
+- **Instaladas si no, una vez aprobado el repositorio.** Cuando no se pueden clonar (la rama cambió el lockfile, la base no está instalada, bun o Yarn Plug'n'Play, Linux o Windows), ShogunAi ejecuta en el worktree `npm ci`, `pnpm install --frozen-lockfile`, `yarn install --immutable` (Yarn Berry, con `.yarnrc.yml`) o `yarn install --frozen-lockfile`, o `bun install --frozen-lockfile`. Instalar ejecuta los scripts del repositorio y de sus dependencias, así que solo ocurre cuando el repositorio está [aprobado](configuration.md#aprobar-un-repositorio): declarar `node` hace que la aprobación lo cubra, y los diálogos de aprobación y `shogun trust` lo dicen. Hasta entonces el informe dice que faltan las dependencias y qué comando ejecutar.
+- **Workspaces.** Los workspaces de npm, pnpm, Yarn y bun tienen un solo lockfile en la raíz, así que el único clon cubre el `node_modules` de cada paquete, y la única instalación en la raíz los llena. Los proyectos Node independientes en subcarpetas, cada uno con su lockfile, aún no se preparan: declara sus instalaciones como comandos post-creación.
+- **Orden e informes.** Las dependencias se preparan después de copiar los ficheros, preparar los pods y `flutter pub get`, y antes de los comandos post-creación, así que un `npm run build` declarado ahí las encuentra. Un worktree que ya tiene `node_modules` se deja como está. `shogun new`, `shogun provision` y el hook de creación de worktrees informan del resultado (`node.dependencies` en su JSON). Una instalación fallida (el gestor no está en el `PATH`, el lockfile no cuadra con `package.json`) conserva el worktree y dice por qué.
+- **Puertos.** Da a los servidores de desarrollo un puerto por worktree con `env`, como `"env": { "PORT": "${port}" }`, y arráncalos con esa variable en vez de con un puerto fijo.
+- **Después de un clon.** Los ficheros que generan en `node_modules` los propios scripts del repositorio (un cliente de Prisma, por ejemplo) vienen del checkout de la base; vuelve a ejecutar el generador cuando la rama cambió sus fuentes. El hook `SessionStart` le dice a Claude que reinstale con el gestor del repositorio cuando cambien `package.json` o el lockfile, y que nunca enlace ni copie `node_modules` de otro worktree.
+- `shogun doctor` comprueba `node` y el gestor del lockfile (solo `bun` con bun).

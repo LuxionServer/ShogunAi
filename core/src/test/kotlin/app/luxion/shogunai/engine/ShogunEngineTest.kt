@@ -1,14 +1,17 @@
 package app.luxion.shogunai.engine
 
 import app.luxion.shogunai.domain.ScriptedShellCommandExecutor
+import app.luxion.shogunai.domain.FakeBuildTurnStore
 import app.luxion.shogunai.domain.FakeDerivedDataSource
 import app.luxion.shogunai.domain.FakeFileManager
+import app.luxion.shogunai.domain.FakeForegroundCommandRunner
 import app.luxion.shogunai.domain.FakeRepositoryApproval
 import app.luxion.shogunai.domain.FakeRepositoryProvisioningSource
 import app.luxion.shogunai.domain.FakeRepositoryTrust
 import app.luxion.shogunai.domain.FakeShellCommandExecutor
 import app.luxion.shogunai.domain.io.EnginePorts
 import app.luxion.shogunai.domain.io.ApprovalDecision
+import app.luxion.shogunai.domain.model.CustomPoolFailure
 import app.luxion.shogunai.domain.model.DesktopAppProvider
 import app.luxion.shogunai.domain.model.GradleProvider
 import app.luxion.shogunai.domain.model.ProjectConfig
@@ -39,7 +42,10 @@ class ShogunEngineTest {
         val commands = mutableListOf<List<String>>()
 
         override suspend fun respond(command: List<String>, workingDirectory: String?) =
-            FakeShellCommandExecutor.success(command, "$admin\n$common\n").also { commands += command }
+            FakeShellCommandExecutor.success(command, stdoutFor(command)).also { commands += command }
+
+        private fun stdoutFor(command: List<String>) =
+            if ("--is-bare-repository" in command) "$common\nfalse\n" else "$admin\n$common\n"
     }
 
     private fun provisioning(providers: RepositoryProviders) = FakeRepositoryProvisioningSource(
@@ -100,6 +106,31 @@ class ShogunEngineTest {
 
         assertTrue(engine.readDesktopTurn().isSuccess)
         assertTrue(engine.readPhysicalDevices().isSuccess)
+    }
+
+    @Test
+    fun `custom pools resolve the worktree's repository and start empty`() = runTest {
+        val engine = ShogunEngine(fakeEnginePorts(executor = gitExecutor))
+
+        assertIs<CustomPoolFailure>(engine.acquireCustomPool(task, "db").exceptionOrNull())
+        assertFalse(gitExecutor.commands.any { it.take(2) == listOf("git", "config") })
+        assertEquals(emptyList(), engine.customPoolLedger.variablesFor(task))
+        assertEquals(emptyList(), engine.readCustomPools(repository).getOrThrow())
+        assertEquals(emptyList(), engine.releaseCustomPool.onWorktreeRemoved(task))
+    }
+
+    @Test
+    fun `a build runs in a slot of the build turn and gives it back`() = runTest {
+        val runner = FakeForegroundCommandRunner(exitCode = 0)
+        val slots = FakeBuildTurnStore()
+        val engine = ShogunEngine(fakeEnginePorts(executor = gitExecutor, buildTurns = slots, foregroundCommands = runner))
+
+        val run = engine.runInBuildTurn("/home/dev/projects/main-repo", "/home/dev/projects/main-repo", listOf("./gradlew", "test")).getOrThrow()
+
+        assertEquals(0, run.exitCode)
+        assertEquals(listOf("./gradlew", "test"), runner.runs.single().first)
+        assertTrue(slots.slots.isEmpty())
+        assertTrue(engine.readBuildTurn().getOrThrow().running.isEmpty())
     }
 
     @Test

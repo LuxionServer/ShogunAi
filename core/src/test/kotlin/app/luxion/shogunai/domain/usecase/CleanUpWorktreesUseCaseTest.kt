@@ -1,5 +1,9 @@
 package app.luxion.shogunai.domain.usecase
 
+import app.luxion.shogunai.domain.FakeCustomPoolLeaseStore
+import app.luxion.shogunai.domain.customPoolRelease
+import app.luxion.shogunai.domain.dbLease
+import app.luxion.shogunai.domain.model.CustomPoolLeases
 import app.luxion.shogunai.domain.FakePhysicalDeviceInventoryStore
 import app.luxion.shogunai.domain.FakePhysicalDeviceLeaseStore
 import app.luxion.shogunai.domain.model.DeviceLeases
@@ -256,6 +260,21 @@ class CleanUpWorktreesUseCaseTest {
 
         assertEquals(DeviceLeases(), leases.leases)
         assertTrue(queue.read(WaitQueueName.ANDROID_DEVICE).isEmpty())
+    }
+
+    @Test
+    fun `cleaning up releases the custom pool slots of removed worktrees and reports failures`() = runTest {
+        val leases = FakeCustomPoolLeaseStore(CustomPoolLeases(listOf(dbLease(config.baseRepositoryPath, first.path))))
+        val failing = FakeShellCommandExecutor { if (it.first() == "./scripts/db-down.sh") failure(it) else success(it) }
+
+        val report = CleanUpWorktreesUseCase(config, failing, releaseCustomPools = customPoolRelease(config.baseRepositoryPath, failing, leases))(
+            listOf(first),
+            mainBranch,
+            deleteBranches = false,
+        ).getOrThrow()
+
+        assertEquals(CustomPoolLeases(), leases.leases)
+        assertEquals(first.path, report.poolReleaseFailures.single().path)
     }
 
     @Test

@@ -22,7 +22,9 @@ enum class WorkflowCondition(val label: String) {
     COMPOSE_PROVIDER("when the repository declares the docker-compose provider"),
     DESKTOP_APP_PROVIDER("when the repository declares the desktop-app provider, on macOS"),
     FLUTTER_PROVIDER("when the repository declares the flutter provider"),
+    NODE_PROVIDER("when the repository declares the node provider"),
     MOBILE_PROVIDER("when the repository declares the emulator or ios-simulator provider"),
+    CUSTOM_POOLS("when the repository declares pools in .shogunai.json"),
 }
 
 data class WorkflowRule(
@@ -45,6 +47,9 @@ data class WorkflowContext(
     val runner: RunnerId = RunnerId.HERDR,
     val flutterProvider: Boolean = false,
     val flutterUsesFvm: Boolean = false,
+    val customPools: List<String> = emptyList(),
+    val nodeProvider: Boolean = false,
+    val nodeProject: NodeProject? = null,
 ) {
     fun holds(condition: WorkflowCondition): Boolean = when (condition) {
         WorkflowCondition.ALWAYS -> true
@@ -56,7 +61,9 @@ data class WorkflowContext(
         WorkflowCondition.COMPOSE_PROVIDER -> composeProvider
         WorkflowCondition.DESKTOP_APP_PROVIDER -> desktopAppProvider
         WorkflowCondition.FLUTTER_PROVIDER -> flutterProvider
+        WorkflowCondition.NODE_PROVIDER -> nodeProvider
         WorkflowCondition.MOBILE_PROVIDER -> emulatorProvider || simulatorProvider
+        WorkflowCondition.CUSTOM_POOLS -> customPools.isNotEmpty()
     }
 }
 
@@ -73,6 +80,8 @@ object WorkflowRules {
 
     private fun openSessionText(runner: RunnerId): String = "Open another session with `shogun open <id> --${runner.flag}`."
     private const val FLUTTER_RULE_ID = "resources.flutter"
+    private const val CUSTOM_POOLS_RULE_ID = "resources.custom-pools"
+    private const val NODE_RULE_ID = "resources.node"
 
     val all: List<WorkflowRule> = listOf(
         WorkflowRule(
@@ -183,6 +192,16 @@ object WorkflowRules {
             WorkflowCondition.FLUTTER_PROVIDER,
             inSessionStart = true,
         ),
+        WorkflowRule(NODE_RULE_ID, WorkflowTopic.RESOURCES, nodeRuleText(null), WorkflowCondition.NODE_PROVIDER, inSessionStart = true),
+        WorkflowRule(
+            CUSTOM_POOLS_RULE_ID,
+            WorkflowTopic.RESOURCES,
+            customPoolsRuleText(emptyList()),
+            WorkflowCondition.CUSTOM_POOLS,
+            inSessionStart = true,
+            sessionStartText = customPoolsSessionText(emptyList()),
+            onlyWhenApplicable = true,
+        ),
         WorkflowRule(
             "resources.compose",
             WorkflowTopic.RESOURCES,
@@ -209,6 +228,13 @@ object WorkflowRules {
             "Before driving the desktop with computer use, Orca's `orca computer` commands included, take the machine's desktop turn with `shogun desktop acquire --wait`, " +
                 "run in the background or with a long enough shell timeout, since it can wait up to 30 minutes; " +
                 "run it again to renew the turn during a long check, before it expires, and give it back with `shogun desktop release` as soon as you are done.",
+        ),
+        WorkflowRule(
+            "resources.build-turn",
+            WorkflowTopic.RESOURCES,
+            "Run heavy builds and tests (Gradle, Maven, xcodebuild, `swift build` and `swift test`) through the machine's build turn " +
+                "with `shogun build run -- <command>`, e.g. `shogun build run -- ./gradlew test`; " +
+                "run it in the background or with a long enough shell timeout, since it can wait up to 30 minutes for a build slot.",
         ),
         WorkflowRule(
             "resources.caches",
@@ -239,12 +265,29 @@ object WorkflowRules {
         return WorkflowSelection(applicable.map { it.adaptedTo(context) }, inapplicable.filterNot { it.onlyWhenApplicable })
     }
 
-    private fun WorkflowRule.adaptedTo(context: WorkflowContext): WorkflowRule =
-        if (id == FLUTTER_RULE_ID) {
-            copy(text = flutterRuleText(context.flutterUsesFvm, context.emulatorProvider, context.simulatorProvider))
-        } else {
-            this
-        }
+    private fun WorkflowRule.adaptedTo(context: WorkflowContext): WorkflowRule = when (id) {
+        FLUTTER_RULE_ID -> copy(text = flutterRuleText(context.flutterUsesFvm, context.emulatorProvider, context.simulatorProvider))
+        CUSTOM_POOLS_RULE_ID -> copy(text = customPoolsRuleText(context.customPools), sessionStartText = customPoolsSessionText(context.customPools))
+        NODE_RULE_ID -> copy(text = nodeRuleText(context.nodeProject))
+        else -> this
+    }
+
+    private fun poolArgument(pools: List<String>): String = pools.singleOrNull() ?: "<name>"
+
+    private fun customPoolsRuleText(pools: List<String>): String {
+        val name = poolArgument(pools)
+        val declared = if (pools.isEmpty()) "The repository declares pools in .shogunai.json. " else "The repository declares the pools ${pools.joinToString()} in .shogunai.json. "
+        return declared +
+            "Before using one, take a slot with `shogun pool acquire $name --wait`, run in the background or with a long enough shell timeout, " +
+            "since it can wait up to 30 minutes; the slot's variables then reach `shogun env`. " +
+            "Run it again to renew the lease during long work, and free the slot with `shogun pool release $name` when done."
+    }
+
+    private fun customPoolsSessionText(pools: List<String>): String {
+        val name = poolArgument(pools)
+        return "Take a slot of the repository's pool ${pools.joinToString().ifEmpty { name }} with `shogun pool acquire $name --wait` before using it, " +
+            "run in the background, and free it with `shogun pool release $name`."
+    }
 
     private fun flutterRuleText(usesFvm: Boolean, android: Boolean, ios: Boolean): String {
         val flutter = if (usesFvm) "fvm flutter" else "flutter"

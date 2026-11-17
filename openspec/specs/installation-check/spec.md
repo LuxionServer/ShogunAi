@@ -128,7 +128,7 @@ The desktop app's "Check Installation…" SHALL open a window that runs the chec
 - **THEN** the hooks check passes in the window
 
 ### Requirement: Check the tools of each project's providers
-For each registered project whose base folder exists, the check SHALL read the providers its repository declares and report one check per tool they need: the Android SDK and an AVD for `emulator`, the simulators and an iOS runtime for `ios-simulator`, Xcode for `xcode` and `pod` when it declares CocoaPods, and `flutter` (or `fvm`) for `flutter`. The tools of `gradle`, `maven` and `docker-compose` are checked as their own requirements say.
+For each registered project whose base folder exists, the check SHALL read the providers its repository declares and report one check per tool they need: the Android SDK and an AVD for `emulator`, simulators and an iOS runtime for `ios-simulator`, Xcode for `xcode` and `pod` when it declares CocoaPods, `flutter` (or `fvm`) for `flutter`, and `node` and its lockfile's package manager for `node`. The tools of `gradle`, `maven` and `docker-compose` follow their own requirements.
 
 #### Scenario: Tools found
 - **WHEN** a project declares `docker-compose`, `docker compose version` runs and `docker info` succeeds
@@ -145,6 +145,10 @@ For each registered project whose base folder exists, the check SHALL read the p
 #### Scenario: Tool missing, no runtime check
 - **WHEN** a project declares `maven` and neither `mvnw` nor `mvn` is found
 - **THEN** the Maven check warns and no Java check is reported for Maven
+
+#### Scenario: Node project
+- **WHEN** a project declares `node` and its main folder has `package-lock.json`
+- **THEN** checks for `node` and `npm` are reported for it
 
 #### Scenario: Plain Gradle build
 - **WHEN** a project declares `gradle`, its wrapper is found, and its repository has no daemon JVM criteria, no `org.gradle.java.home`, no toolchain and no Android Gradle Plugin

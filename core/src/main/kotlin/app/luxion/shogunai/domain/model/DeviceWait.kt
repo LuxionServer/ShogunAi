@@ -11,6 +11,8 @@ enum class WaitQueueName(val key: String) {
     DESKTOP("desktop"),
     ANDROID_DEVICE("android-device"),
     IOS_DEVICE("ios-device"),
+    CUSTOM_POOL("custom-pool"),
+    BUILD("build"),
 }
 
 val ResourceKind.queueName: WaitQueueName

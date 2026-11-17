@@ -33,7 +33,7 @@ class JsonRepositoryTrust(
         subject.isEmpty || read().approvals[keyOf(repository)]?.sha256 == digestOf(subject)
 
     override fun approve(repository: String, subject: RepositoryApprovalSubject) {
-        val approval = Approval(digestOf(subject), subject.commands, subject.variables.toMap(), subject.envFile)
+        val approval = Approval(digestOf(subject), subject.commands, subject.variables.toMap(), subject.envFile, subject.nodeInstall)
         file.update { it.copy(approvals = it.approvals + (keyOf(repository) to approval)) }
     }
 
@@ -53,7 +53,7 @@ class JsonRepositoryTrust(
     }
 
     private fun digestOf(subject: RepositoryApprovalSubject): String {
-        val canonical = if (subject.declaresEnvironment) canonicalOf(subject) else Json.encodeToString(subject.commands)
+        val canonical = if (subject.declaresEnvironment || subject.pools.isNotEmpty() || subject.nodeInstall) canonicalOf(subject) else Json.encodeToString(subject.commands)
         return MessageDigest.getInstance("SHA-256").digest(canonical.toByteArray()).joinToString("") { "%02x".format(it) }
     }
 
@@ -63,8 +63,10 @@ class JsonRepositoryTrust(
             subject.variables.sortedBy { it.first }.map { (name, template) -> JsonArray(listOf(JsonPrimitive(name), JsonPrimitive(template))) },
         )
         val envFile: JsonElement = if (subject.envFile != null) JsonPrimitive(subject.envFile) else JsonNull
-        val canonical = JsonObject(linkedMapOf("commands" to commands, "env" to variables, "envFile" to envFile))
-        return Json.encodeToString(JsonElement.serializer(), canonical)
+        val members = linkedMapOf("commands" to commands, "env" to variables, "envFile" to envFile)
+        poolsJsonOf(subject.pools)?.let { members["pools"] = it }
+        if (subject.nodeInstall) members["nodeInstall"] = JsonPrimitive(true)
+        return Json.encodeToString(JsonElement.serializer(), JsonObject(members))
     }
 
     @Serializable
@@ -76,5 +78,6 @@ class JsonRepositoryTrust(
         val commands: List<List<String>>,
         val env: Map<String, String> = emptyMap(),
         val envFile: String? = null,
+        val nodeInstall: Boolean = false,
     )
 }

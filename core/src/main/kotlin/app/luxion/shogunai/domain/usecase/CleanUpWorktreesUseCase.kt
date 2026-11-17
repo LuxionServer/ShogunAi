@@ -25,6 +25,7 @@ data class CleanupReport(
     val herdrFailures: List<CleanupFailure> = emptyList(),
     val orcaFailures: List<CleanupFailure> = emptyList(),
     val headlessAppFailures: List<CleanupFailure> = emptyList(),
+    val poolReleaseFailures: List<CleanupFailure> = emptyList(),
     val composeDown: ComposeDownReport? = null,
     val composeUnavailable: String? = null,
     val composeResources: ComposeLeftoversReport? = null,
@@ -70,9 +71,11 @@ class CleanUpWorktreesUseCase(
     releaseDesktopTurn: ReleaseDesktopTurnUseCase? = null,
     private val closeOrcaTerminals: CloseOrcaTerminalsUseCase? = null,
     releasePhysicalDevices: ReleasePhysicalDeviceUseCase? = null,
+    releaseCustomPools: ReleaseCustomPoolUseCase? = null,
 ) {
-    private val folderRemoval =
-        WorktreeFolderRemoval(config, executor, fileManager, closeHerdrWorkspaces, stopHeadlessApp, releaseDesktopTurn, closeOrcaTerminals, releasePhysicalDevices)
+    private val folderRemoval = WorktreeFolderRemoval(
+        config, executor, fileManager, closeHerdrWorkspaces, stopHeadlessApp, releaseDesktopTurn, closeOrcaTerminals, releasePhysicalDevices, releaseCustomPools,
+    )
 
     suspend operator fun invoke(
         candidates: List<Worktree>,
@@ -92,6 +95,7 @@ class CleanUpWorktreesUseCase(
         val closedOrcaPaths = mutableSetOf<String>()
         val orcaFailures = mutableListOf<CleanupFailure>()
         val headlessAppFailures = mutableListOf<CleanupFailure>()
+        val poolReleaseFailures = mutableListOf<CleanupFailure>()
 
         candidates.filterNot { it.isPrunable }.forEach { worktree ->
             try {
@@ -101,6 +105,7 @@ class CleanUpWorktreesUseCase(
                 closing.orcaFailure?.let { orcaFailures += CleanupFailure(worktree.path, it) }
                 closing.failure?.let { herdrFailures += CleanupFailure(worktree.path, it) }
                 closing.headlessAppFailure?.let { headlessAppFailures += CleanupFailure(worktree.path, it) }
+                poolReleaseFailures += closing.poolReleaseFailures.map { CleanupFailure(worktree.path, it) }
                 removedWorktrees += worktree
             } catch (error: CancellationException) {
                 throw error
@@ -137,6 +142,7 @@ class CleanUpWorktreesUseCase(
             herdrFailures = herdrFailures,
             orcaFailures = orcaFailures,
             headlessAppFailures = headlessAppFailures,
+            poolReleaseFailures = poolReleaseFailures,
             composeDown = compose?.getOrNull()?.first,
             composeUnavailable = compose?.exceptionOrNull()?.let { (it as? WorktreeError.DockerUnavailable)?.reason ?: it.message.orEmpty() },
             composeResources = compose?.getOrNull()?.second,

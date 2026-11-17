@@ -31,23 +31,16 @@ val ARGV_EXCEPTIONS: Set<String> = setOf(
 )
 
 val FILE_LENGTH_CAPS: Map<String, Int> = mapOf(
-    cli("CliCommand.kt") to 1091,
-    cli("CommandJson.kt") to 1028,
-    cli("ShogunCli.kt") to 3493,
-    core("domain/model/WorktreeError.kt") to 461,
+    cli("CommandJson.kt") to 948,
+    cli("ShogunCli.kt") to 3363,
+    core("domain/model/WorktreeError.kt") to 456,
     core("domain/usecase/WorktreeCreation.kt") to 440,
-    core("infrastructure/RepositoryProvisioningFiles.kt") to 460,
-    desktop("AppContainer.kt") to 1338,
+    desktop("AppContainer.kt") to 1085,
     desktop("main.kt") to 453,
-    desktop("ui/i18n/EnglishErrors.kt") to 479,
-    desktop("ui/i18n/EnglishStrings.kt") to 1131,
-    desktop("ui/i18n/SpanishErrors.kt") to 500,
-    desktop("ui/i18n/SpanishStrings.kt") to 1129,
-    desktop("ui/i18n/Strings.kt") to 957,
-    desktop("ui/machine/MachineResources.kt") to 1006,
-    desktop("ui/projectconfig/ProjectConfigViewModel.kt") to 820,
+    desktop("ui/machine/MachineResources.kt") to 995,
+    desktop("ui/projectconfig/ProjectConfigViewModel.kt") to 823,
     desktop("ui/projectconfig/ProjectSettingsView.kt") to 841,
-    desktop("ui/shell/AppShell.kt") to 586,
+    desktop("ui/shell/AppShell.kt") to 527,
     desktop("ui/shell/ShellViewModel.kt") to 414,
     desktop("ui/shell/Sidebar.kt") to 620,
     desktop("ui/worktree/ProjectWorktrees.kt") to 1366,
@@ -55,4 +48,8 @@ val FILE_LENGTH_CAPS: Map<String, Int> = mapOf(
     desktop("ui/worktree/WorktreeListPane.kt") to 828,
     desktop("ui/worktree/WorktreeRow.kt") to 409,
     desktop("ui/worktree/WorktreeScreen.kt") to 481,
+)
+
+val FILE_LENGTH_EXEMPT_FOLDERS: Map<String, String> = mapOf(
+    desktop("ui/i18n") to "translation tables: every user-facing text adds a line to the interface and one to each language, and a text belongs next to its translations",
 )

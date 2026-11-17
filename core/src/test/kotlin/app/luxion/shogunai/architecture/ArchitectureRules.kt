@@ -145,9 +145,10 @@ object FileLength {
 
     const val MAX_LINES = 400
 
-    fun violations(tree: SourceTree, caps: Map<String, Int>): List<String> {
+    fun violations(tree: SourceTree, caps: Map<String, Int>, exemptFolders: Map<String, String> = emptyMap()): List<String> {
         val production = tree.kotlinSources.filter { it.isProduction }
-        val tooLong = production.mapNotNull { source ->
+        val checked = production.filterNot { it.folder in exemptFolders }
+        val tooLong = checked.mapNotNull { source ->
             val cap = caps[source.path] ?: MAX_LINES
             if (source.lineCount <= cap) {
                 null
@@ -155,14 +156,26 @@ object FileLength {
                 staleEntry(source.path, "has ${source.lineCount} lines, over its cap of $cap")
             }
         }
-        val lengths = production.associate { it.path to it.lineCount }
+        val lengths = checked.associate { it.path to it.lineCount }
         val stale = caps.keys.mapNotNull { path ->
             when (val length = lengths[path]) {
-                null -> staleEntry(path, "no longer exists, remove it from the file length caps")
+                null -> staleCap(path, exemptFolders)
                 in 0..MAX_LINES -> staleEntry(path, "has $length lines, remove it from the file length caps")
                 else -> null
             }
         }
-        return tooLong + stale
+        val longFolders = production.filter { it.lineCount > MAX_LINES }.map { it.folder }.toSet()
+        val staleFolders = exemptFolders.keys.filterNot { it in longFolders }
+            .map { staleEntry(it, "has no file over $MAX_LINES lines, remove it from the file length exemptions") }
+        return tooLong + stale + staleFolders
     }
+
+    private val KotlinSource.folder: String get() = path.substringBeforeLast('/')
+
+    private fun staleCap(path: String, exemptFolders: Map<String, String>): String =
+        if (path.substringBeforeLast('/') in exemptFolders) {
+            staleEntry(path, "is in an exempt folder, remove it from the file length caps")
+        } else {
+            staleEntry(path, "no longer exists, remove it from the file length caps")
+        }
 }

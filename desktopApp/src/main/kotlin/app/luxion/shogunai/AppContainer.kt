@@ -192,15 +192,7 @@ import app.luxion.shogunai.infrastructure.ShogunFiles
 import app.luxion.shogunai.infrastructure.SystemHostEnvironment
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
-import app.luxion.shogunai.ui.tray.trayIconImage
-import app.luxion.shogunai.ui.notifications.AgentNotificationWatch
-import app.luxion.shogunai.infrastructure.notificationPorts
-import app.luxion.shogunai.infrastructure.TrayNotifier
-import app.luxion.shogunai.infrastructure.JsonNotificationPreferenceRepository
-import app.luxion.shogunai.infrastructure.FileAppRequestChannel
-import app.luxion.shogunai.infrastructure.AwtTrayBalloon
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.CoroutineScope
+import app.luxion.shogunai.infrastructure.desktopAgentNotifications
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 
@@ -442,29 +434,11 @@ class AppContainer(private val hostEnvironment: HostEnvironment = SystemHostEnvi
     private val headlessAppWindows = ports.appWindows
     private val stopHeadlessApp = engine.stopHeadlessApp
     private val readHeadlessApp = engine.readHeadlessApp
-    private val releaseDesktopTurn = engine.releaseDesktopTurn
-    private val readDesktopTurn = engine.readDesktopTurn
     val desktopTurn = DesktopTurnWatch(
-        read = { withContext(Dispatchers.IO) { readDesktopTurn() } },
-        forceRelease = { withContext(Dispatchers.IO) { releaseDesktopTurn.force() } },
+        read = { withContext(Dispatchers.IO) { engine.readDesktopTurn() } },
+        forceRelease = { withContext(Dispatchers.IO) { engine.releaseDesktopTurn.force() } },
     )
-    private val notificationPorts = notificationPorts(
-        hostEnvironment,
-        files,
-        shellCommandExecutor,
-        resourcesDirectory = System.getProperty("compose.application.resources.dir"),
-        javaHome = System.getProperty("java.home"),
-        waitForClick = true,
-        windows = { TrayNotifier(AwtTrayBalloon { trayIconImage(darkMenuBar = false) }) },
-    )
-    val agentNotifications = AgentNotificationWatch(
-        repository = JsonNotificationPreferenceRepository(settingsFile),
-        runners = notificationPorts.runners,
-        notifier = notificationPorts.notifier,
-        images = notificationPorts.images,
-        language = languagePreferenceRepository::load,
-        scope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
-    ).apply { onClick = { request -> runCatching { FileAppRequestChannel(files.appRequests).send(request) } } }
+    val agentNotifications = desktopAgentNotifications(hostEnvironment, files, shellCommandExecutor, settingsFile, languagePreferenceRepository::load)
     private val physicalDeviceLedger = engine.physicalDeviceLedger
     private val readPhysicalDevices = engine.readPhysicalDevices
     private val releasePhysicalDevice = engine.releasePhysicalDevice
