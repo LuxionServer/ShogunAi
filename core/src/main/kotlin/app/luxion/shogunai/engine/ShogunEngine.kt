@@ -21,7 +21,9 @@ import app.luxion.shogunai.domain.usecase.ConfigureMultirepoUseCase
 import app.luxion.shogunai.domain.usecase.CreateGroupUseCase
 import app.luxion.shogunai.domain.usecase.DeleteOrphanedDerivedDataUseCase
 import app.luxion.shogunai.domain.usecase.DeleteUnusedSwiftBuildsUseCase
+import app.luxion.shogunai.domain.usecase.DeleteSimulatorRuntimeUseCase
 import app.luxion.shogunai.domain.usecase.DeleteSimulatorsUseCase
+import app.luxion.shogunai.domain.usecase.DeleteUnavailableDevicesUseCase
 import app.luxion.shogunai.domain.usecase.DesktopTurnLedger
 import app.luxion.shogunai.domain.usecase.DetectMobileSecretsUseCase
 import app.luxion.shogunai.domain.usecase.DetectGroupsUseCase
@@ -31,6 +33,7 @@ import app.luxion.shogunai.domain.usecase.HeadlessAppWorktrees
 import app.luxion.shogunai.domain.usecase.ListComposeLeftoversUseCase
 import app.luxion.shogunai.domain.usecase.ListComposeProjectsUseCase
 import app.luxion.shogunai.domain.usecase.ListDerivedDataUseCase
+import app.luxion.shogunai.domain.usecase.ListSimulatorStorageUseCase
 import app.luxion.shogunai.domain.usecase.ListGradleDaemonsUseCase
 import app.luxion.shogunai.domain.usecase.ListMavenDaemonsUseCase
 import app.luxion.shogunai.domain.usecase.MachineProviderContributions
@@ -179,6 +182,15 @@ class ShogunEngine(
     val stopSimulator = StopWorktreeSimulatorUseCase(provisioningSource, ports.appleSimulators, resolveEnvironment)
     val readSimulatorStates = ReadSimulatorStatesUseCase(provisioningSource, ports.appleSimulators, resolveEnvironment)
     val deleteSimulators = DeleteSimulatorsUseCase(provisioningSource, ports.appleSimulators, resolveEnvironment)
+    val listSimulatorStorage = ListSimulatorStorageUseCase(
+        ports.appleSimulators,
+        ports.dyldCaches,
+        ports.projectRepository,
+        provisioningSource,
+        resolveEnvironment::recordedOnMachine,
+    )
+    val deleteSimulatorRuntime = DeleteSimulatorRuntimeUseCase(listSimulatorStorage, ports.appleSimulators)
+    val deleteUnavailableSimulators = DeleteUnavailableDevicesUseCase(ports.appleSimulators)
 
     val startEmulator = StartWorktreeEmulatorUseCase(provisioningSource, resolveEnvironment, acquireResource, ports.androidSdk)
     val stopEmulator = StopWorktreeEmulatorUseCase(provisioningSource, resolveEnvironment, ports.androidSdk)

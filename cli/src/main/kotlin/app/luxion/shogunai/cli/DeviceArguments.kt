@@ -9,10 +9,11 @@ enum class EmulatorAction { START, STOP, STATUS }
 enum class SimulatorAction { START, STOP, STATUS }
 
 internal fun parseSimulator(rest: List<String>): CliCommand {
-    val name = rest.firstOrNull() ?: throw UsageException("'simulator' needs an action: start, stop, status or gradle-init")
+    val name = rest.firstOrNull() ?: throw UsageException("'simulator' needs an action: start, stop, status, gradle-init, storage, runtime or clean-unavailable")
     if (name == "gradle-init") return parseSimulatorGradleInit(rest.drop(1))
+    if (name in SIMULATOR_STORAGE_ACTIONS) return parseSimulatorStorage(rest)
     val action = SimulatorAction.entries.firstOrNull { it.name.equals(name, ignoreCase = true) }
-        ?: throw UsageException("unknown action '$name' for 'simulator', expected start, stop, status or gradle-init")
+        ?: throw UsageException("unknown action '$name' for 'simulator', expected start, stop, status, gradle-init, storage, runtime or clean-unavailable")
     var path: String? = null
     var device: String? = null
     var runtime: String? = null

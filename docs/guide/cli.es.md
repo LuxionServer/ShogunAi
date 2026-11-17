@@ -477,11 +477,16 @@ Con `--wait`, `start` espera en cola en vez de fallar cuando el pool está lleno
 ```text
 shogun simulator start|stop|status [<path>] [--device <type>] [--runtime <runtime>] [--wait] [--wait-timeout <minutes>]
 shogun simulator gradle-init install|uninstall [--yes|-y]
+shogun simulator storage [--json]
+shogun simulator runtime delete <runtime> [--yes|-y] [--json]
+shogun simulator clean-unavailable [--yes|-y] [--json]
 ```
 
 Crea si hace falta, arranca (y espera a) y abre, apaga o muestra el simulador de iOS del worktree (solo macOS). `--device` y `--runtime` solo se aplican cuando `start` crea el simulador. `--wait` y `--wait-timeout` esperan a un pool de simuladores lleno igual que en [`emulator`](#emulator). En un repositorio Kotlin Multiplatform, `status` dice además si los tests de KMP usan el simulador. Cuando el worktree está abierto en un Orca en marcha, `start` también muestra el simulador en la vista de emuladores del worktree en Orca, como hace [`emulator start`](#emulator) con el emulador (`shown <udid> in Orca's emulator view` en la salida de errores), salvo que el emulador del worktree también esté en marcha.
 
 `gradle-init install` instala un init script de Gradle para toda la máquina que hace que los tests de simulador KMP de todos los proyectos usen el simulador del worktree; muestra el script y pregunta `[y/N]` salvo con `--yes`. `uninstall` lo elimina.
+
+`storage` lista los runtimes de simulador de la máquina con su tamaño, su último uso y quién los usa, o por qué se conserva cada uno, los dispositivos que se han quedado sin runtime y las cachés dyld, con el comando `sudo rm -rf` para las carpetas de otra build de macOS; funciona desde cualquier carpeta (consulta [Almacenamiento de simuladores](providers.md#almacenamiento-de-simuladores)). `runtime delete` acepta el identificador de un runtime, su nombre (`iOS 26.5`) o su versión (`26.5`); sin `--yes` solo dice lo que borraría, y termina con `1` si el runtime está en uso, viene con Xcode, tiene un simulador arrancado o no coincide con ninguno o coincide con varios. `clean-unavailable` lista los dispositivos cuyo runtime ya no existe y los borra con `--yes`. `shogun clean` nunca borra runtimes ni dispositivos no disponibles.
 
 ### `headless`
 

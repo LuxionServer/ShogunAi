@@ -44,6 +44,7 @@ import app.luxion.shogunai.domain.io.RepositoryTrust
 import app.luxion.shogunai.domain.io.ResourceLimitsRepository
 import app.luxion.shogunai.domain.model.claudeSessionsDirectory
 import app.luxion.shogunai.domain.model.HostOs
+import app.luxion.shogunai.domain.io.DyldCacheSource
 import app.luxion.shogunai.domain.io.EnginePorts
 import app.luxion.shogunai.infrastructure.AdbPhysicalDevices
 import app.luxion.shogunai.infrastructure.DevicectlPhysicalDevices
@@ -117,6 +118,7 @@ fun cliEnginePorts(
     deviceInventory: PhysicalDeviceInventoryStore = NioPhysicalDeviceInventoryStore(files.folder),
     deviceLeases: PhysicalDeviceLeaseStore = NioPhysicalDeviceLeaseStore(files.folder),
     poolLeases: CustomPoolLeaseStore = NioCustomPoolLeaseStore(files.folder),
+    dyldCaches: DyldCacheSource = DyldCacheSource.NONE,
     claudeSessions: ClaudeSessionRegistry = FileClaudeSessionRegistry(
         claudeSessionsDirectory(environment.variable("CLAUDE_CONFIG_DIR"), environment.home),
     ),
@@ -163,4 +165,5 @@ fun cliEnginePorts(
     deviceInventory = deviceInventory,
     deviceLeases = deviceLeases,
     poolLeases = poolLeases,
+    dyldCaches = dyldCaches,
 )

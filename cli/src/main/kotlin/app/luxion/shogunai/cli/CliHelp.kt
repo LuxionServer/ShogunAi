@@ -257,6 +257,14 @@ internal object CliHelp {
                               (repositories with "providers": { "ios-simulator": {} } in .shogunai.json)
   simulator gradle-init install|uninstall [--yes]
                               Make every project's KMP iOS simulator tests use IOS_SIMULATOR_UDID
+  simulator storage [--json]  List the machine's simulator runtimes with their size, last use and users, the
+                              unavailable devices and the dyld caches (macOS)
+  simulator runtime delete <runtime> [--yes] [--json]
+                              Delete one runtime, named by its identifier, name or version; without --yes, say
+                              what would be deleted. Runtimes in use, bundled with Xcode or with a booted
+                              simulator are refused
+  simulator clean-unavailable [--yes] [--json]
+                              Delete the simulator devices whose runtime is gone; without --yes, list them
 """.trimIndent(),
         "emulator" to """
   emulator start|stop|status [<path>] [--avd <name>] [--no-window] [--json]

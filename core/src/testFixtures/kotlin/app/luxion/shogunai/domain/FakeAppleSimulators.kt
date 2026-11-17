@@ -4,6 +4,7 @@ import app.luxion.shogunai.domain.io.AppleSimulators
 import app.luxion.shogunai.domain.model.SimulatorDevice
 import app.luxion.shogunai.domain.model.SimulatorDeviceType
 import app.luxion.shogunai.domain.model.SimulatorRuntime
+import app.luxion.shogunai.domain.model.SimulatorRuntimeImage
 import app.luxion.shogunai.domain.model.SimulatorState
 
 class FakeAppleSimulators(
@@ -32,6 +33,10 @@ class FakeAppleSimulators(
     val callsUnderLock = mutableListOf<String>()
     var afterListing: (suspend () -> Unit)? = null
     var onCreate: (suspend (String) -> Unit)? = null
+    val images = mutableListOf<SimulatorRuntimeImage>()
+    val deletedRuntimes = mutableListOf<String>()
+    var deleteRuntimeFailure: Throwable? = null
+    var unavailableDeletions = 0
     var createFailure: Throwable? = null
 
     private fun observe(call: String) {
@@ -93,6 +98,34 @@ class FakeAppleSimulators(
         deleteFailure?.let { throw it }
         deleted += udid
         devicesByUdid.remove(udid)
+    }
+
+    override suspend fun runtimeImages(): List<SimulatorRuntimeImage> {
+        observe("runtimeImages")
+        return images.toList()
+    }
+
+    override suspend fun deleteRuntime(identifier: String) {
+        observe("deleteRuntime")
+        deleteRuntimeFailure?.let { throw it }
+        val image = images.first { it.identifier == identifier }
+        images.remove(image)
+        deletedRuntimes += identifier
+        if (images.none { it.runtimeIdentifier == image.runtimeIdentifier }) {
+            devicesByUdid.replaceAll { _, device ->
+                if (device.runtimeIdentifier == image.runtimeIdentifier) device.copy(isAvailable = false) else device
+            }
+        }
+    }
+
+    override suspend fun deleteUnavailable() {
+        observe("deleteUnavailable")
+        unavailableDeletions++
+        devicesByUdid.values.removeIf { !it.isAvailable }
+    }
+
+    fun addDevice(device: SimulatorDevice) {
+        devicesByUdid[device.udid] = device
     }
 
     fun addExisting(udid: String, name: String, state: SimulatorState = SimulatorState.SHUTDOWN) {

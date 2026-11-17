@@ -34,6 +34,7 @@ import app.luxion.shogunai.domain.FakeRepositoryProvisioningSource
 import app.luxion.shogunai.domain.FakeResourceLimitsRepository
 import app.luxion.shogunai.domain.FakeShellCommandExecutor
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
+import app.luxion.shogunai.domain.io.DyldCacheSource
 import app.luxion.shogunai.domain.io.EnginePorts
 import app.luxion.shogunai.domain.io.AgentSessionStore
 import app.luxion.shogunai.domain.io.AndroidSdk
@@ -118,6 +119,7 @@ fun fakeEnginePorts(
     deviceInventory: PhysicalDeviceInventoryStore = FakePhysicalDeviceInventoryStore(),
     deviceLeases: PhysicalDeviceLeaseStore = FakePhysicalDeviceLeaseStore(),
     poolLeases: CustomPoolLeaseStore = FakeCustomPoolLeaseStore(),
+    dyldCaches: DyldCacheSource = DyldCacheSource.NONE,
 ): EnginePorts = EnginePorts(
     executor = executor,
     fileManager = fileManager,
@@ -161,4 +163,5 @@ fun fakeEnginePorts(
     deviceInventory = deviceInventory,
     deviceLeases = deviceLeases,
     poolLeases = poolLeases,
+    dyldCaches = dyldCaches,
 )

@@ -148,6 +148,9 @@ Provisionado y recursos acotados para los stacks en los que un worktree recién 
   - Desinstalar la app del proyecto de un dispositivo al liberarlo.
   - Mostrar los dispositivos físicos de un worktree en su fila de la lista de worktrees.
   - Dar más espacio al nombre del dispositivo en la vista Dispositivos, que lo corta con el ancho de ventana por defecto.
+- Seguimientos del almacenamiento de simuladores:
+  - Un aviso de `shogun doctor` cuando runtimes de simulador sin usar desde hace tiempo ocupan mucho disco.
+  - Un elemento de la barra de estado para el almacenamiento de simuladores, para ver su tamaño sin abrir la vista de simuladores de iOS.
 
 ### Stacks web
 

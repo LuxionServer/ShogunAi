@@ -477,11 +477,16 @@ With `--wait`, `start` waits in line instead of failing when the pool is full an
 ```text
 shogun simulator start|stop|status [<path>] [--device <type>] [--runtime <runtime>] [--wait] [--wait-timeout <minutes>]
 shogun simulator gradle-init install|uninstall [--yes|-y]
+shogun simulator storage [--json]
+shogun simulator runtime delete <runtime> [--yes|-y] [--json]
+shogun simulator clean-unavailable [--yes|-y] [--json]
 ```
 
 Creates if needed, boots (and waits for) and opens, shuts down or shows the iOS simulator of the worktree (macOS only). `--device` and `--runtime` only apply when `start` creates the simulator. `--wait` and `--wait-timeout` wait for a full simulator pool as they do for [`emulator`](#emulator). In a Kotlin Multiplatform repository, `status` also says whether the KMP tests use the simulator. When the worktree is open in a running Orca, `start` also shows the simulator in the worktree's emulator view in Orca, as [`emulator start`](#emulator) does with the emulator (`shown <udid> in Orca's emulator view` on standard error), unless the worktree's emulator is running too.
 
 `gradle-init install` installs a machine-wide Gradle init script that makes every project's KMP simulator tests use the worktree's simulator; it shows the script and asks `[y/N]` unless `--yes` is given. `uninstall` removes it.
+
+`storage` lists the machine's simulator runtimes with their size, last use and users, or why each one is kept, the devices left without a runtime and the dyld caches, with the `sudo rm -rf` command for the folders of another macOS build; it works from any folder (see [Simulator storage](providers.md#simulator-storage)). `runtime delete` takes a runtime's identifier, name (`iOS 26.5`) or version (`26.5`); without `--yes` it only says what it would delete, and it exits with `1` when the runtime is in use, bundled with Xcode, has a booted simulator, or matches none or several runtimes. `clean-unavailable` lists the devices whose runtime is gone and deletes them with `--yes`. `shogun clean` never deletes runtimes or unavailable devices.
 
 ### `headless`
 

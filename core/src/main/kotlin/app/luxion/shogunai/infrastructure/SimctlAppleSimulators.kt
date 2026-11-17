@@ -8,6 +8,7 @@ import app.luxion.shogunai.domain.io.AppleSimulators
 import app.luxion.shogunai.domain.model.SimulatorDevice
 import app.luxion.shogunai.domain.model.SimulatorDeviceType
 import app.luxion.shogunai.domain.model.SimulatorRuntime
+import app.luxion.shogunai.domain.model.SimulatorRuntimeImage
 import app.luxion.shogunai.domain.model.SimulatorState
 import app.luxion.shogunai.domain.model.WorktreeError
 import kotlinx.serialization.json.Json
@@ -16,6 +17,9 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.longOrNull
+import java.time.Instant
+import java.time.format.DateTimeParseException
 
 class SimctlAppleSimulators(
     private val executor: ShellCommandExecutor,
@@ -49,6 +53,17 @@ class SimctlAppleSimulators(
 
     override suspend fun delete(udid: String) {
         simctl("delete", udid, timeout = CommandTimeouts.LOCAL_TOOL)
+    }
+
+    override suspend fun runtimeImages(): List<SimulatorRuntimeImage> =
+        parseRuntimeImages(simctl("runtime", "list", "-j", timeout = CommandTimeouts.LISTING).stdout)
+
+    override suspend fun deleteRuntime(identifier: String) {
+        simctl("runtime", "delete", identifier, timeout = CommandTimeouts.LOCAL_WORK)
+    }
+
+    override suspend fun deleteUnavailable() {
+        simctl("delete", "unavailable", timeout = CommandTimeouts.LOCAL_WORK)
     }
 
     private suspend fun simctl(
@@ -97,7 +112,7 @@ internal fun parseRuntimes(json: String): List<SimulatorRuntime> {
 
 internal fun parseDevices(json: String): List<SimulatorDevice> {
     val byRuntime = lenientJson.parseToJsonElement(json).objectField("devices") as? JsonObject ?: return emptyList()
-    return byRuntime.values.flatMap { devices ->
+    return byRuntime.entries.flatMap { (runtimeIdentifier, devices) ->
         (devices as? JsonArray).orEmpty().mapNotNull { element ->
             val device = element as? JsonObject ?: return@mapNotNull null
             SimulatorDevice(
@@ -108,10 +123,37 @@ internal fun parseDevices(json: String): List<SimulatorDevice> {
                     "Shutdown" -> SimulatorState.SHUTDOWN
                     else -> SimulatorState.BOOTING
                 },
+                runtimeIdentifier = runtimeIdentifier,
+                isAvailable = (device["isAvailable"] as? JsonPrimitive)?.booleanOrNull != false,
+                dataBytes = device.long("dataPathSize"),
             )
         }
     }
 }
+
+internal fun parseRuntimeImages(json: String): List<SimulatorRuntimeImage> {
+    val images = lenientJson.parseToJsonElement(json) as? JsonObject ?: return emptyList()
+    return images.entries.mapNotNull { (key, element) ->
+        val image = element as? JsonObject ?: return@mapNotNull null
+        SimulatorRuntimeImage(
+            identifier = image.string("identifier") ?: key,
+            runtimeIdentifier = image.string("runtimeIdentifier") ?: return@mapNotNull null,
+            version = image.string("version").orEmpty(),
+            build = image.string("build").orEmpty(),
+            sizeBytes = image.long("sizeBytes"),
+            lastUsedAt = image.string("lastUsedAt")?.let(::parseInstantOrNull),
+            deletable = (image["deletable"] as? JsonPrimitive)?.booleanOrNull ?: false,
+        )
+    }
+}
+
+private fun parseInstantOrNull(text: String): Instant? = try {
+    Instant.parse(text)
+} catch (error: DateTimeParseException) {
+    null
+}
+
+private fun JsonObject.long(name: String): Long? = (this[name] as? JsonPrimitive)?.longOrNull
 
 private fun JsonElement.objectField(name: String) = (this as? JsonObject)?.get(name)
 

@@ -363,6 +363,7 @@ class ShogunCli(
             is BuildCommand -> buildTurn.run(command)
             is CliCommand.Device -> device(command)
             is CliCommand.SimulatorGradleInit -> simulatorGradleInit(command)
+            is SimulatorStorageCommand -> SimulatorStorageCommands(engine) { out.line(it) }.run(command)
             CliCommand.HookSessionStart -> hookSessionStart()
             CliCommand.HookHerdr -> hookHerdr()
             is CliCommand.HookOrca -> hookOrca(command.action)
@@ -1661,8 +1662,7 @@ class ShogunCli(
         out.line(FileKmpTestWiring.INIT_SCRIPT.trimEnd())
         if (!command.confirmed) {
             out.append("Install it? [y/N] ")
-            val answer = readInput().trim().lowercase()
-            if (answer != "y" && answer != "yes") {
+            if (readInput().trim().lowercase() !in setOf("y", "yes")) {
                 out.line("Nothing installed.")
                 return EXIT_OK
             }

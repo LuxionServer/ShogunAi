@@ -111,12 +111,6 @@ data class MachineEmulator(
 
 data class UnownedEmulator(val serial: String, val state: EmulatorState)
 
-data class MachineSimulator(
-    val projectId: String,
-    val worktreePath: String,
-    val simulator: WorktreeSimulator?,
-)
-
 class MachineResources(
     private val scope: CoroutineScope,
     private val useCases: MachineUseCases,
@@ -128,6 +122,7 @@ class MachineResources(
     val physicalDevices: PhysicalDevicesWatch = PhysicalDevicesWatch.NONE,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
     private val clock: () -> Instant = Instant::now,
+    val simulatorStorage: MachineSimulatorStorage = MachineSimulatorStorage(scope, SimulatorStorageActions.NONE),
 ) {
     private var shownJob: Job? = null
     private val windowActivity = MutableStateFlow(WindowActivity.FOCUSED)
@@ -261,7 +256,9 @@ class MachineResources(
     }
 
     val declared: Set<MachineResource>
-        get() = projects().flatMapTo(mutableSetOf()) { it.declares }
+        get() = projects().flatMapTo(mutableSetOf()) { it.declares }.withSimulatorStorage(simulatorStorage)
+
+    val declaresSimulators: Boolean get() = projects().any { MachineResource.IOS_SIMULATORS in it.declares }
 
     val visibleResources: List<MachineResource>
         get() {

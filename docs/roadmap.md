@@ -148,6 +148,9 @@ Provisioning and bounded resources for the stacks where a fresh worktree is furt
   - Uninstalling the project's app from a device when it's released.
   - Showing a worktree's physical devices in its row of the worktree list.
   - Giving the device's name more room in the Devices view, which cuts it at the default window width.
+- Simulator storage follow-ups:
+  - A `shogun doctor` warning when simulator runtimes unused for a long time take a lot of disk.
+  - A status bar item for the simulator storage, so its size is seen without opening the iOS simulators view.
 
 ### Web stacks
 

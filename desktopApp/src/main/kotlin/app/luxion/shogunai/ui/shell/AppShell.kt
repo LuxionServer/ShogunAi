@@ -40,7 +40,6 @@ import app.luxion.shogunai.diagnostics.diagnosticsExceptionHandler
 import app.luxion.shogunai.ui.WindowActivity
 import app.luxion.shogunai.ui.components.EmptyState
 import app.luxion.shogunai.ui.components.ShogunDialog
-import app.luxion.shogunai.ui.components.DangerButton
 import app.luxion.shogunai.ui.components.StateAction
 import app.luxion.shogunai.ui.components.FocusRingWidth
 import app.luxion.shogunai.ui.components.NeutralTextButton
@@ -56,6 +55,7 @@ import app.luxion.shogunai.ui.projectconfig.ProjectSettingsView
 import app.luxion.shogunai.ui.rememberScreenViewModelStoreOwner
 import app.luxion.shogunai.ui.machine.MachineResource
 import app.luxion.shogunai.ui.machine.MachineResources
+import app.luxion.shogunai.ui.machine.MachineSimulatorStorage
 import app.luxion.shogunai.ui.machine.machineStatusItems
 import app.luxion.shogunai.ui.palette.CommandPalette
 import app.luxion.shogunai.ui.palette.PaletteAction
@@ -137,6 +137,7 @@ fun AppShell(
             desktopTurn = appContainer.desktopTurn,
             physicalDevices = appContainer.physicalDevices,
             cadence = appContainer::refreshCadence,
+            simulatorStorage = MachineSimulatorStorage(machineScope, appContainer.simulatorStorage),
         )
     }
     val declaredMachine = machine.declared
@@ -508,19 +509,6 @@ private fun DiscardChangesDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
         dismiss = { NeutralTextButton(onClick = onDismiss) { Text(strings.keepEditing) } },
     ) {
         Text(strings.discardChangesMessage)
-    }
-}
-
-@Composable
-private fun RemoveProjectDialog(project: Project, onConfirm: () -> Unit, onDismiss: () -> Unit) {
-    val strings = LocalStrings.current
-    ShogunDialog(
-        title = strings.removeProjectTitle,
-        onDismissRequest = onDismiss,
-        confirm = { DangerButton(onClick = onConfirm) { Text(strings.remove) } },
-        dismiss = { NeutralTextButton(onClick = onDismiss) { Text(strings.cancel) } },
-    ) {
-        Text(strings.removeProjectMessage(project.name))
     }
 }
 

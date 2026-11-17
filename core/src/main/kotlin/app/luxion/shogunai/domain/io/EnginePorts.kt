@@ -45,4 +45,5 @@ data class EnginePorts(
     val deviceInventory: PhysicalDeviceInventoryStore,
     val deviceLeases: PhysicalDeviceLeaseStore,
     val poolLeases: CustomPoolLeaseStore,
+    val dyldCaches: DyldCacheSource = DyldCacheSource.NONE,
 )

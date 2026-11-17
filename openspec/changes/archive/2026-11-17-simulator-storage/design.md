@@ -68,7 +68,7 @@ The commands work from any folder, reading the saved projects from the project r
 
 ### Desktop: a separate state holder and the view's visibility
 
-The storage state and actions go into a new `MachineSimulatorStorage` class owned by `MachineResources`, which only forwards the load to it, keeping `MachineResources.kt` under its cap without raising it. `IosSimulatorsView` renders a storage section below the worktree simulators; the section uses the shared list row and ghost actions with disabled reasons, like the DerivedData view. The dyld command is offered as "Copy command", never run.
+The storage state and actions go into a new `MachineSimulatorStorage` class, created in `AppShell` from the engine's actions (`simulatorStorageActions`) and passed to `MachineResources`, which only exposes it and adds the iOS simulators entry for Xcode projects. The section loads the storage each time it is shown, not on the view's refresh ticks, so the dyld caches aren't walked every few seconds, and reloads it after each deletion. To stay within the length caps without raising them, `MachineSimulator` moved out of `MachineResources.kt`, `XcodeUseCases` out of `AppContainer.kt` and `RemoveProjectDialog` out of `AppShell.kt`, and the caps of those three files were lowered to their new lengths. `IosSimulatorsView` renders a storage section below the worktree simulators; the section uses the shared list row and ghost actions with disabled reasons, like the DerivedData view. The dyld command is offered as "Copy command", never run.
 
 `IOS_SIMULATORS` is offered when a saved project declares `ios-simulator` or `xcode` on macOS (`MachineProject.declares` gains it for `xcode`); with only `xcode` the worktree simulator part is omitted.
 
@@ -77,7 +77,7 @@ Alternative: put the storage in the Xcode DerivedData view. Rejected: runtimes a
 ## Risks / Trade-offs
 
 - [`simctl runtime list -j` fields change between Xcode versions] → lenient parsing; a missing `sizeBytes` or `lastUsedAt` is shown as unknown, never as zero, and an image without `identifier` is skipped.
-- [A runtime deletion needs rights on some setups] → reported with the tooling's message; no escalation.
+- [A runtime deletion needs rights on some setups] → reported with the tooling's message; no escalation. It wasn't confirmed on a real runtime: the only deletable one on the machine used for the check was named by a saved project, and ShogunAi refused it, as specified.
 - [Deleting unavailable devices also deletes an unavailable ShogunAi simulator a worktree recorded] → acceptable: it can't boot anyway, and the provider recreates a lost simulator on the next start.
 - [Measuring the dyld caches walks tens of GB of files] → done off the interface thread, cancellable like DerivedData measurement, and only when the view or the CLI asks.
 - [A runtime used by a project not saved in ShogunAi looks unused] → its users only cover ShogunAi's projects; the confirmation states the runtime and its size, and deletion is always explicit.
