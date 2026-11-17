@@ -161,6 +161,7 @@ import app.luxion.shogunai.domain.usecase.selectLooseCleanup
 import app.luxion.shogunai.domain.usecase.withWorkspaceAt
 import app.luxion.shogunai.domain.usecase.selectGroupCleanup
 import java.io.File
+import app.luxion.shogunai.domain.io.NotificationSetup
 import app.luxion.shogunai.domain.io.AppInstanceLock
 import app.luxion.shogunai.domain.io.AppLauncher
 import app.luxion.shogunai.domain.io.AppRequestChannel
@@ -218,6 +219,7 @@ class ShogunCli(
     private val appLauncher: AppLauncher = DesktopAppLauncher(),
     private val isClaudeProcessAlive: (Long) -> Boolean = ::isLiveClaudeProcess,
     private val onShutdown: (Thread) -> () -> Unit = ::addJvmShutdownHook,
+    private val notificationSetup: NotificationSetup? = null,
     private val commandLineTool: CommandLineTool = CommandLineTool(
         os = environment.os,
         appLauncher = null,
@@ -249,6 +251,7 @@ class ShogunCli(
     private val gitHub = ports.gitHub
     private val orcaWorkspaces = ports.orcaWorkspaces
     private val sessionStore = ports.agentSessions
+    private val notificationHook by lazy { AgentNotificationHook(notificationSetup, sessionStore, herdr, projectRepository, appLock, isClaudeProcessAlive, { now().toEpochMilli() }, ::sameDirectory) }
     private val claudeSessions = ports.claudeSessions
     private val mavenDaemonSource = ports.mavenDaemons
     private val composeSource = ports.composeProjects
@@ -367,6 +370,7 @@ class ShogunCli(
             CliCommand.HookHerdr -> hookHerdr()
             is CliCommand.HookOrca -> hookOrca(command.action)
             CliCommand.HookAgentState -> hookAgentState()
+            CliCommand.HookNotifyPending -> notificationHook.notifyPending()
             CliCommand.HookDesktopTurn -> hookDesktopTurn()
             HookBuildTurn -> buildTurn.hook()
             is CliCommand.Hooks -> hooks(command)
@@ -2178,18 +2182,12 @@ class ShogunCli(
         } else {
             val registration = RegisterProjectUseCase(projectRepository, resolveRepository)(repository).getOrThrow()
             if (registration is ProjectRegistration.Added) out.line("Added project ${registration.project.name} (${repository})")
-            AppRequest.openProject(createdAt, registration.project.id, command.settings)
+            val directory = if (command.path != null) absolute(command.path) else workingDirectory
+            projectOrWorktreeRequest(createdAt, registration.project.id, command.settings, linkedWorktreeOf(directory, repository, ::worktreeTopLevel, ::sameDirectory))
         }
         appRequests.send(request)
         if (!running) appLauncher.launch()
-        out.line(
-            when {
-                repository == null -> "Opening ShogunAi"
-                multirepoFolder != null -> "Opening ShogunAi; ${multirepoFolder.name} is a multirepo, its workspace repository belongs to it"
-                command.settings -> "Opening the settings of ${repository.substringAfterLast('/')} in ShogunAi"
-                else -> "Opening ${repository.substringAfterLast('/')} in ShogunAi"
-            },
-        )
+        out.line(appOpeningMessage(repository, multirepoFolder?.name, request))
         return EXIT_OK
     }
 
@@ -2862,12 +2860,6 @@ class ShogunCli(
         return topLevel
     }
 
-    private fun herdrCloseFailure(path: String, error: WorktreeError) =
-        "shogun: couldn't close the Herdr workspace of $path: ${error.herdrDetail()}"
-
-    private fun orcaCloseFailure(path: String, error: WorktreeError) =
-        "shogun: couldn't close the Orca terminals of $path: ${error.orcaDetail()}"
-
     private suspend fun hookAgentState(): Int {
         val input = hookInput("agent-state") ?: return EXIT_USAGE
         val sessionId = input.string("session_id") ?: return EXIT_OK
@@ -2877,7 +2869,9 @@ class ShogunCli(
             val directory = input.string("cwd") ?: workingDirectory
             val folder = unversionedMultirepoFolder(directory)
             if (folder == null && engine.resolveRepository(directory).isFailure) return EXIT_OK
-            val sessionPath = folder ?: worktreeContaining(directory).second.path
+            val owner = if (folder == null) worktreeContaining(directory) else null
+            val sessionPath = folder ?: owner!!.second.path
+            val notify = notificationHook.before(owner, sessionId)
             if (state == null) {
                 sessionStore.remove(sessionPath, sessionId)
             } else {
@@ -2888,6 +2882,7 @@ class ShogunCli(
                 if (folder == null && state == AgentState.WORKING) renewLeases(sessionPath)
             }
             if (folder == null && event in DESKTOP_RELEASING_EVENTS) releaseDesktopTurn.ifHeldBy(sessionPath)
+            notify(state)
         } catch (error: CancellationException) {
             throw error
         } catch (error: Exception) {

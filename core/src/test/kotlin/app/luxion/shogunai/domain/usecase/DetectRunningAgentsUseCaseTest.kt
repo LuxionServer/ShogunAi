@@ -239,6 +239,24 @@ class DetectRunningAgentsUseCaseTest {
     }
 
     @Test
+    fun `the focus of the agent's Herdr pane is carried with or without a state`() = runTest {
+        val herdr = FakeHerdrClient(
+            agents = listOf(
+                HerdrAgent("claude", AgentState.BLOCKED, nested.path, "w2:p1", focused = true),
+                HerdrAgent("codex", null, main.path, "w3:p1", focused = true),
+            ),
+        )
+
+        val agents = DetectRunningAgentsUseCase(executor(), herdr)(config, worktrees).getOrThrow()
+
+        assertEquals(
+            listOf(RunningAgent("claude", AgentState.BLOCKED, "w2:p1", AgentStateSource.HERDR, focusedInRunner = true)),
+            agents[nested.path],
+        )
+        assertEquals(listOf(RunningAgent("codex", herdrPaneId = "w3:p1", focusedInRunner = true)), agents[main.path])
+    }
+
+    @Test
     fun `the most urgent state wins among several panes of the same agent`() = runTest {
         val herdr = FakeHerdrClient(
             agents = listOf(

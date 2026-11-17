@@ -43,6 +43,19 @@ class AppRequestTest {
     }
 
     @Test
+    fun `an open worktree request round-trips`() {
+        val request = AppRequest.openWorktree(createdAt = 1_000, projectId = "project-1", worktreePath = "/home/dev/projects/TASK-1")
+
+        assertEquals(request, AppRequest.parse(request.toJson()))
+    }
+
+    @Test
+    fun `discards an open worktree request without its project or worktree`() {
+        assertNull(AppRequest.parse("""{"version":1,"createdAt":5,"action":"open-worktree","worktreePath":"/w"}"""))
+        assertNull(AppRequest.parse("""{"version":1,"createdAt":5,"action":"open-worktree","projectId":"p"}"""))
+    }
+
+    @Test
     fun `discards text that isn't a request`() {
         assertNull(AppRequest.parse("not json"))
         assertNull(AppRequest.parse("[]"))

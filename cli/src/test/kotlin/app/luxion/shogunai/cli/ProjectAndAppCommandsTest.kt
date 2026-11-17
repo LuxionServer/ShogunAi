@@ -86,10 +86,12 @@ class ProjectAndAppCommandsTest {
                 workingDirectory?.startsWith(other) == true -> other
                 else -> null
             }
-            return if (repository == null) {
-                CommandResult(command, 128, "", "fatal: not a git repository")
-            } else {
-                CommandResult(command, 0, "$repository/.git\n", "")
+            val topLevel = if (workingDirectory?.startsWith(linked) == true) linked else repository
+            return when {
+                repository == null -> CommandResult(command, 128, "", "fatal: not a git repository")
+                "--show-toplevel" in command && workingDirectory?.endsWith("broken") == true -> CommandResult(command, 128, "", "fatal")
+                "--show-toplevel" in command -> CommandResult(command, 0, "$topLevel\n", "")
+                else -> CommandResult(command, 0, "$repository/.git\n", "")
             }
         }
     }
@@ -289,6 +291,36 @@ class ProjectAndAppCommandsTest {
         assertEquals(0, exitCode)
         assertEquals(listOf(AppRequest.openProject(now.toEpochMilli(), "registered", settings = true)), sent)
         assertEquals(1, launches)
+    }
+
+    @Test
+    fun `app inside a linked worktree asks to open that worktree`() {
+        val exitCode = cli(FakeProjectRepository(listOf(registered)), workingDirectory = "$linked/src", appRunning = true).run(listOf("app"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals(listOf(AppRequest.openWorktree(now.toEpochMilli(), "registered", linked)), sent)
+        assertEquals("Opening TASK-123 of main-repo in ShogunAi\n", out.toString())
+    }
+
+    @Test
+    fun `app with the path of a linked worktree opens it, and settings still open the project`() {
+        cli(FakeProjectRepository(listOf(registered)), workingDirectory = other, appRunning = true).run(listOf("app", linked))
+        cli(FakeProjectRepository(listOf(registered)), workingDirectory = linked, appRunning = true).run(listOf("app", "--settings"))
+
+        assertEquals(
+            listOf(
+                AppRequest.openWorktree(now.toEpochMilli(), "registered", linked),
+                AppRequest.openProject(now.toEpochMilli(), "registered", settings = true),
+            ),
+            sent,
+        )
+    }
+
+    @Test
+    fun `app opens the project when the worktree's top level can't be read`() {
+        cli(FakeProjectRepository(listOf(registered)), workingDirectory = "$base/broken", appRunning = true).run(listOf("app"))
+
+        assertEquals(listOf(AppRequest.openProject(now.toEpochMilli(), "registered", settings = false)), sent)
     }
 
     @Test

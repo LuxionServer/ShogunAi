@@ -5,6 +5,7 @@ import app.luxion.shogunai.domain.FakeShellPreferenceRepository
 import app.luxion.shogunai.domain.model.AppRequest
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.ProjectConfig
+import app.luxion.shogunai.ui.worktree.WorktreeRef
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -127,6 +128,52 @@ class AppRequestHandlerTest {
         viewModel.selectAll()
 
         handler.handle(AppRequest(createdAt = 1, action = "open-something-new"))
+
+        assertEquals(ShellDestination.All(), viewModel.destination)
+        assertEquals(0, windowShown)
+    }
+
+    private class FakeReveal(private val known: Set<WorktreeRef>) : WorktreeReveal {
+        val revealed = mutableListOf<WorktreeRef>()
+        override fun knowsWorktree(ref: WorktreeRef) = ref in known
+        override fun revealInAllWorktrees(ref: WorktreeRef) {
+            revealed += ref
+        }
+    }
+
+    private fun openWorktree(reveal: WorktreeReveal?, projectId: String = "api", path: String = "/home/dev/projects/TASK-1") =
+        AppRequestHandler(viewModel, { reveal }) { windowShown++ }.handle(AppRequest.openWorktree(1, projectId, path))
+
+    @Test
+    fun `opens a known worktree in all worktrees`() {
+        viewModel.selectProject(mobile)
+        val reveal = FakeReveal(setOf(WorktreeRef("api", "/home/dev/projects/TASK-1")))
+
+        openWorktree(reveal)
+
+        assertEquals(ShellDestination.All(), viewModel.destination)
+        assertEquals(listOf(WorktreeRef("api", "/home/dev/projects/TASK-1")), reveal.revealed)
+        assertEquals(1, windowShown)
+    }
+
+    @Test
+    fun `a worktree that is gone, or no board yet, shows its project`() {
+        val reveal = FakeReveal(emptySet())
+
+        openWorktree(reveal)
+        assertEquals(ShellDestination.All(projectFilter = "api"), viewModel.destination)
+        assertTrue(reveal.revealed.isEmpty())
+
+        viewModel.selectAll()
+        openWorktree(null, projectId = "mobile")
+        assertEquals(ShellDestination.All(projectFilter = "mobile"), viewModel.destination)
+    }
+
+    @Test
+    fun `a worktree of a removed project is ignored`() {
+        viewModel.selectAll()
+
+        openWorktree(FakeReveal(emptySet()), projectId = "removed")
 
         assertEquals(ShellDestination.All(), viewModel.destination)
         assertEquals(0, windowShown)

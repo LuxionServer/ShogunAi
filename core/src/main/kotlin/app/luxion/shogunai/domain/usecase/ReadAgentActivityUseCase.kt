@@ -16,6 +16,8 @@ class ReadAgentActivityUseCase(
             .map(::effectiveState)
             .minByOrNull { PRECEDENCE.indexOf(it) }
 
+    fun stateOf(record: AgentSessionRecord): AgentState? = record.takeIf(::isLive)?.let(::effectiveState)
+
     private fun isLive(record: AgentSessionRecord): Boolean =
         record.pid?.let(isAlive) ?: (now() - record.updatedAt < UNKNOWN_PID_MAX_AGE_MILLIS)
 

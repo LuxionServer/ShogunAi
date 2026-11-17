@@ -51,7 +51,7 @@ The system SHALL only check the Git metadata of the projects shown in the curren
 - **THEN** checks keep running every 15 seconds and the worktree shows the agent by the next check, without the window regaining focus
 
 #### Scenario: Window minimized or app hidden
-- **WHEN** the user minimizes the window, closes it to the tray, or hides the app, for a minute
+- **WHEN** both notification switches are off and the user minimizes the window, closes it to the tray, or hides the app, for a minute
 - **THEN** no check runs during that minute, and checks resume when the window is shown again
 
 #### Scenario: Loaded but hidden project
@@ -122,9 +122,16 @@ Checks SHALL run while the main window is visible, at the refresh cadence's focu
 - **THEN** checks keep running every 15 seconds and the worktree shows the agent by the next check, without the window regaining focus
 
 #### Scenario: Minimized, in the tray or hidden
-- **WHEN** the user minimizes the window, closes it to the tray, or hides the app, for a minute
+- **WHEN** both notification switches are off and the user minimizes the window, closes it to the tray, or hides the app, for a minute
 - **THEN** no check runs during that minute, and checks resume when the window is shown again
 
 #### Scenario: Focus regained
 - **WHEN** the window regains focus
 - **THEN** the light refresh on focus runs
+
+### Requirement: Detect agents while hidden for notifications
+While the window isn't visible and a notification switch is on, running agents SHALL keep being detected at the refresh cadence's unfocused interval, without reading Git metadata or devices.
+
+#### Scenario: Hidden with notifications on
+- **WHEN** the profile is Balanced, "When an agent needs you" is on and the window is closed to the tray
+- **THEN** running agents are detected every 15 seconds for every saved project, and no Git metadata or device state is read until the window is shown again

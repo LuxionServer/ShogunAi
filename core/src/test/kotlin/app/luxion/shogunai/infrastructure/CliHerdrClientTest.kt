@@ -135,7 +135,7 @@ class CliHerdrClientTest {
     }
 
     @Test
-    fun `agents are listed with their state and foreground directory`() = runTest {
+    fun `agents are listed with their state, foreground directory and focus`() = runTest {
         val executor = FakeShellCommandExecutor { FakeShellCommandExecutor.success(it, fixture("agent-list.json")) }
 
         val agents = client(executor).listAgents()
@@ -143,7 +143,7 @@ class CliHerdrClientTest {
         assertEquals(
             listOf(
                 HerdrAgent("claude", AgentState.WORKING, "/home/dev/projects/TASK-1/app", "w1:p1"),
-                HerdrAgent("claude", AgentState.BLOCKED, "/home/dev/projects/TASK-2", "w2:p1"),
+                HerdrAgent("claude", AgentState.BLOCKED, "/home/dev/projects/TASK-2", "w2:p1", focused = true),
                 HerdrAgent("codex", AgentState.DONE, "/home/dev/projects/TASK-3", "w3:p1"),
                 HerdrAgent("gemini", AgentState.IDLE, "/home/dev/projects/TASK-4", "w4:p1"),
                 HerdrAgent("aider", null, "/home/dev/projects/TASK-5", "w5:p1"),

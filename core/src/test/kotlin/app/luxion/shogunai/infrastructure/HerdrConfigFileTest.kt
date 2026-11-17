@@ -28,6 +28,30 @@ class HerdrConfigFileTest {
     }
 
     @Test
+    fun `Herdr notifies on the desktop only when its toasts go to the terminal or the system`() {
+        assertEquals(false, configFile().notifiesOnDesktop())
+        mapOf("system" to true, "terminal" to true, "herdr" to false, "off" to false).forEach { (delivery, expected) ->
+            writeConfig("[ui.toast]\n# popups\ndelivery = \"$delivery\" # chosen\ndelay_seconds = 1\n")
+
+            assertEquals(expected, configFile().notifiesOnDesktop(), delivery)
+        }
+    }
+
+    @Test
+    fun `a delivery outside the toast table or commented out doesn't count`() {
+        writeConfig("[ui]\ndelivery = \"system\"\n\n[ui.toast]\n# delivery = \"system\"\n\n[ui.toast.herdr]\ndelivery = 'system'\n")
+
+        assertEquals(false, configFile().notifiesOnDesktop())
+    }
+
+    @Test
+    fun `a literal string delivery is read`() {
+        writeConfig("[ui.toast]\ndelivery = 'terminal'\n")
+
+        assertEquals(true, configFile().notifiesOnDesktop())
+    }
+
+    @Test
     fun `without a config file the default folder is used`() {
         assertEquals(File(home, ".herdr/worktrees").path, configFile().worktreesRoot())
     }

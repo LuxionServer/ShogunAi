@@ -72,6 +72,7 @@ plugins:
             Infrastructure layer: Capa de infraestructura
             UI layer: Capa de UI
             Command-line tool: Línea de comandos
+            Agent notifications: Notificaciones de agentes
             Development process: Proceso de desarrollo
             Branches: Ramas
             Clean account rehearsal: Ensayo en una cuenta limpia
@@ -108,6 +109,7 @@ nav:
       - Infrastructure layer: architecture/infrastructure.md
       - UI layer: architecture/ui.md
       - Command-line tool: architecture/cli.md
+      - Agent notifications: architecture/notifications.md
   - Development process:
       - Branches: process/branching.md
       - OpenSpec: process/openspec.md

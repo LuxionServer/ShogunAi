@@ -1,10 +1,13 @@
 package app.luxion.shogunai.ui.shell
 
+import androidx.compose.foundation.layout.Column
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsOff
+import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -14,6 +17,9 @@ import app.luxion.shogunai.domain.FakeClipboardWriter
 import app.luxion.shogunai.domain.FakeFileManager
 import app.luxion.shogunai.domain.FakeHerdrClient
 import app.luxion.shogunai.domain.FakeMachineCapacity
+import app.luxion.shogunai.domain.FakeNotificationPreferenceRepository
+import app.luxion.shogunai.domain.FakeRunnerNotificationSource
+import app.luxion.shogunai.domain.RecordingSystemNotifier
 import app.luxion.shogunai.domain.FakeResourceLimitsRepository
 import app.luxion.shogunai.domain.FakeShellPreferenceRepository
 import app.luxion.shogunai.domain.FakeToolDetector
@@ -31,6 +37,7 @@ import app.luxion.shogunai.domain.model.HostOs
 import app.luxion.shogunai.domain.model.InstallationCheck
 import app.luxion.shogunai.domain.model.InstallationFinding
 import app.luxion.shogunai.domain.model.InstallationReport
+import app.luxion.shogunai.domain.model.NotificationPreferences
 import app.luxion.shogunai.domain.model.ThemeMode
 import app.luxion.shogunai.domain.model.UpdateCheck
 import app.luxion.shogunai.domain.usecase.ClaudeCodeHooks
@@ -40,6 +47,12 @@ import app.luxion.shogunai.domain.usecase.ResolveResourceLimitsUseCase
 import app.luxion.shogunai.ui.i18n.EnglishStrings
 import app.luxion.shogunai.ui.i18n.LocalStrings
 import app.luxion.shogunai.ui.tray.TrayPreferences
+import app.luxion.shogunai.ui.notifications.AgentNotificationWatch
+import app.luxion.shogunai.ui.notifications.NotificationsSection
+import app.luxion.shogunai.ui.notifications.NotifyBlockedTag
+import app.luxion.shogunai.ui.notifications.NotifyDoneTag
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import app.luxion.shogunai.ui.worktree.InactivityPreferences
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -49,6 +62,14 @@ import kotlin.test.assertNotNull
 class PreferencesContentUiTest {
 
     private val shellPreferences = FakeShellPreferenceRepository()
+    private val notificationPreferences = FakeNotificationPreferenceRepository()
+    private val notifications = AgentNotificationWatch(
+        notificationPreferences,
+        FakeRunnerNotificationSource(),
+        RecordingSystemNotifier(),
+        { AppLanguage.ENGLISH },
+        CoroutineScope(Dispatchers.Unconfined),
+    )
 
     private val appearance = Appearance(
         object : ThemePreferenceRepository {
@@ -100,6 +121,7 @@ class PreferencesContentUiTest {
                         updates = UpdateState({ Result.success(UpdateCheck.UpToDate(AppVersion(1, 0, 0))) }, FakeUpdatePreferenceRepository(), FakeClipboardWriter(), {}),
                         tray = TrayPreferences(shellPreferences, isSupported = true),
                         inactivity = InactivityPreferences(shellPreferences),
+                        notifications = notifications,
                     )
                 }
             }
@@ -108,7 +130,21 @@ class PreferencesContentUiTest {
         waitUntil { tools.detected != null && claudeHooks.toolStatus != null && herdrPlugin.status != null }
 
         onNodeWithText(EnglishStrings.appearanceLabel).assertIsDisplayed()
+        onNodeWithText(EnglishStrings.notificationsLabel).assertExists()
         assertEquals(CommandLineToolState.AVAILABLE, claudeHooks.toolStatus?.state)
+    }
+
+    @Test
+    fun `the notification switches start at blocked only and save each change`() = runComposeUiTest {
+        setContent { MaterialTheme { Column { NotificationsSection(notifications) } } }
+
+        onNodeWithTag(NotifyBlockedTag).assertIsOn()
+        onNodeWithTag(NotifyDoneTag).assertIsOff()
+        onNodeWithTag(NotifyDoneTag).performClick()
+        onNodeWithTag(NotifyBlockedTag).performClick()
+
+        assertEquals(NotificationPreferences(blocked = false, done = true), notificationPreferences.stored)
+        onNodeWithText(EnglishStrings.notifyWhenDone).assertIsDisplayed()
     }
 
     @Test

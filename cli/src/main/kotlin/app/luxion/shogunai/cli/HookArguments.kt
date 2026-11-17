@@ -11,6 +11,7 @@ internal fun parseHook(rest: List<String>): CliCommand {
         "session-start" -> CliCommand.HookSessionStart
         "herdr" -> CliCommand.HookHerdr
         "agent-state" -> CliCommand.HookAgentState
+        "notify-pending" -> CliCommand.HookNotifyPending
         "desktop-turn" -> CliCommand.HookDesktopTurn
         "build-turn" -> HookBuildTurn
         else -> throw UsageException("unknown hook '$event', expected $HOOK_EVENTS")

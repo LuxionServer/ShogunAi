@@ -110,7 +110,7 @@ fun AppShell(
             runnerInUse = { runnerInUse(appContainer.tools) },
             desktopTurn = appContainer.desktopTurn,
             physicalDevices = appContainer.physicalDevices,
-            cadence = appContainer::refreshCadence,
+            cadence = appContainer::refreshCadence, notifications = appContainer.agentNotifications,
         )
     }
     LaunchedEffect(viewModel.memberships) { board.syncMultirepos(viewModel.memberships) }

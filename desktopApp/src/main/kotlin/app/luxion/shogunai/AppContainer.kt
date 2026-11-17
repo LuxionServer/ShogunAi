@@ -192,6 +192,7 @@ import app.luxion.shogunai.infrastructure.ShogunFiles
 import app.luxion.shogunai.infrastructure.SystemHostEnvironment
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import app.luxion.shogunai.infrastructure.desktopAgentNotifications
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 
@@ -433,12 +434,11 @@ class AppContainer(private val hostEnvironment: HostEnvironment = SystemHostEnvi
     private val headlessAppWindows = ports.appWindows
     private val stopHeadlessApp = engine.stopHeadlessApp
     private val readHeadlessApp = engine.readHeadlessApp
-    private val releaseDesktopTurn = engine.releaseDesktopTurn
-    private val readDesktopTurn = engine.readDesktopTurn
     val desktopTurn = DesktopTurnWatch(
-        read = { withContext(Dispatchers.IO) { readDesktopTurn() } },
-        forceRelease = { withContext(Dispatchers.IO) { releaseDesktopTurn.force() } },
+        read = { withContext(Dispatchers.IO) { engine.readDesktopTurn() } },
+        forceRelease = { withContext(Dispatchers.IO) { engine.releaseDesktopTurn.force() } },
     )
+    val agentNotifications = desktopAgentNotifications(hostEnvironment, files, shellCommandExecutor, settingsFile, languagePreferenceRepository::load)
     private val physicalDeviceLedger = engine.physicalDeviceLedger
     private val readPhysicalDevices = engine.readPhysicalDevices
     private val releasePhysicalDevice = engine.releasePhysicalDevice

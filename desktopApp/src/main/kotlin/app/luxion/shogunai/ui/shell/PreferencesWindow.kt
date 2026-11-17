@@ -37,6 +37,8 @@ import app.luxion.shogunai.ui.i18n.Strings
 import app.luxion.shogunai.ui.i18n.strings
 import app.luxion.shogunai.ui.isMacOs
 import app.luxion.shogunai.ui.tray.TrayPreferences
+import app.luxion.shogunai.ui.notifications.AgentNotificationWatch
+import app.luxion.shogunai.ui.notifications.NotificationsSection
 import app.luxion.shogunai.ui.worktree.InactivityPreferences
 
 private val PreferencesWindowSize = DpSize(440.dp, 820.dp)
@@ -57,6 +59,7 @@ fun PreferencesWindow(
     updates: UpdateState,
     tray: TrayPreferences,
     inactivity: InactivityPreferences,
+    notifications: AgentNotificationWatch,
     bringToFrontRequests: Int,
     onClose: () -> Unit,
 ) {
@@ -71,7 +74,7 @@ fun PreferencesWindow(
         },
     ) {
         LaunchedEffect(bringToFrontRequests) { window.toFront() }
-        AppearanceScope(appearance) { PreferencesContent(appearance, tools, resources, claudeHooks, herdrPlugin, updates, tray, inactivity) }
+        AppearanceScope(appearance) { PreferencesContent(appearance, tools, resources, claudeHooks, herdrPlugin, updates, tray, inactivity, notifications) }
     }
 }
 
@@ -85,6 +88,7 @@ internal fun PreferencesContent(
     updates: UpdateState,
     tray: TrayPreferences,
     inactivity: InactivityPreferences,
+    notifications: AgentNotificationWatch,
 ) {
     val strings = LocalStrings.current
     LaunchedEffect(Unit) { tools.refresh() }
@@ -118,6 +122,7 @@ internal fun PreferencesContent(
         InactivitySection(inactivity)
         ResourcesSection(resources)
         ClaudeHooksSection(claudeHooks, herdrPlugin = herdrPlugin)
+        NotificationsSection(notifications)
         if (tray.isSupported) TraySection(tray)
         UpdatesPreferences(updates)
     }

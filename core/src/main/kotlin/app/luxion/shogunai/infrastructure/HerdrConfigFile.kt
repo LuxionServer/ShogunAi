@@ -11,11 +11,11 @@ class HerdrConfigFile(
 
     private val isWindows: Boolean get() = osName.startsWith("Windows", ignoreCase = true)
 
-    override fun worktreesRoot(): String {
-        val configured = runCatching { File(configPath()).takeIf { it.isFile }?.readLines() }.getOrNull()
-            ?.let(::worktreesDirectory)
-        return expandHome(configured ?: DEFAULT_WORKTREES_ROOT)
-    }
+    override fun worktreesRoot(): String = expandHome(readLines()?.let(::worktreesDirectory) ?: DEFAULT_WORKTREES_ROOT)
+
+    fun notifiesOnDesktop(): Boolean = readLines()?.let { stringEntry(it, "ui.toast", "delivery") } in DESKTOP_DELIVERIES
+
+    private fun readLines(): List<String>? = runCatching { File(configPath()).takeIf { it.isFile }?.readLines() }.getOrNull()
 
     fun configPath(): String {
         environmentVariable(CONFIG_PATH_VARIABLE)?.takeIf { it.isNotBlank() }?.let { return it }
@@ -35,20 +35,22 @@ class HerdrConfigFile(
         const val DEFAULT_WORKTREES_ROOT = "~/.herdr/worktrees"
         private const val CONFIG_PATH_VARIABLE = "HERDR_CONFIG_PATH"
         private val TABLE_HEADER = Regex("""^\[\s*([A-Za-z0-9_.-]+)\s*]\s*(#.*)?$""")
-        private val DIRECTORY_ENTRY = Regex("""^directory\s*=\s*(?:"((?:[^"\\]|\\.)*)"|'([^']*)')\s*(#.*)?$""")
+        private val DESKTOP_DELIVERIES = setOf("terminal", "system")
 
-        fun worktreesDirectory(lines: List<String>): String? {
+        fun worktreesDirectory(lines: List<String>): String? = stringEntry(lines, "worktrees", "directory")?.takeIf { it.isNotBlank() }
+
+        fun stringEntry(lines: List<String>, wantedTable: String, key: String): String? {
+            val entry = Regex("""^${Regex.escape(key)}\s*=\s*(?:"((?:[^"\\]|\\.)*)"|'([^']*)')\s*(#.*)?$""")
             var table: String? = null
             lines.map { it.trim() }.forEach { line ->
                 TABLE_HEADER.matchEntire(line)?.let {
                     table = it.groupValues[1]
                     return@forEach
                 }
-                if (table != "worktrees") return@forEach
-                DIRECTORY_ENTRY.matchEntire(line)?.let { match ->
+                if (table != wantedTable) return@forEach
+                entry.matchEntire(line)?.let { match ->
                     val basic = match.groups[1]?.value
-                    val value = if (basic != null) unescape(basic) else match.groupValues[2]
-                    return value.takeIf { it.isNotBlank() }
+                    return if (basic != null) unescape(basic) else match.groupValues[2]
                 }
             }
             return null

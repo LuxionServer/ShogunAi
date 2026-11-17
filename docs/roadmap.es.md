@@ -166,7 +166,8 @@ Preparar los worktrees de repositorios web y de backend no JVM, que empezó el p
 La vista de ShogunAi solo es neutral si ve a todos los agentes:
 
 - Estados de agente para agentes distintos de Claude Code (Codex, Gemini…), que hoy no tienen hooks equivalentes.
-- Una notificación cuando un agente (informado por Herdr o por los hooks de Claude Code) pasa a bloqueado o terminado; hoy la señal es la fila del worktree y el menú del icono de la barra de menús.
+- Notificar en la app de escritorio los turnos más cortos que su lectura de agentes (hasta un minuto con la ventana oculta), que pasan de inactivo a terminado sin verse trabajando, leyendo el contador de turnos completados de Herdr.
+- Notificaciones de agentes desde la línea de comandos en Windows, y una acción al pulsarlas en Linux; hoy las cubre la app de escritorio.
 - Comprobar que Herdr detecta un agente envuelto por Headroom (`headroom wrap claude`): abrir en Herdr espera a que Herdr detecte el agente que escribió, y si Herdr no ve a través del envoltorio la apertura falla aunque el agente esté en marcha.
 - Los ficheros de usuario de otros agentes para la guía de flujo, a medida que su documentación los confirme (Cursor guarda hoy las reglas de usuario en sus ajustes), y una sección en Ajustes de la app de escritorio para instalar, actualizar y quitar el bloque de `AGENTS.md`, como ya hace con los hooks de Claude Code.
 - Registrar la rama base de los worktrees que crea Herdr, si su evento `worktree.created` llega a incluir el punto de partida; hoy se registra a mano con `shogun base --set`, mientras que `shogun new`, el hook de Claude Code, la app de escritorio y los grupos de los multirepos la registran solos.

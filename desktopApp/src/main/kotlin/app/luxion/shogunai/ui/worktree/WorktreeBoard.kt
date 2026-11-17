@@ -22,7 +22,6 @@ import app.luxion.shogunai.domain.model.RunnerId
 import app.luxion.shogunai.ui.WindowActivity
 import app.luxion.shogunai.ui.actions.ActionId
 import app.luxion.shogunai.ui.actions.OpenTarget
-import app.luxion.shogunai.ui.checkInterval
 import app.luxion.shogunai.ui.actions.ActionTools
 import app.luxion.shogunai.ui.actions.WorktreeActionContext
 import app.luxion.shogunai.ui.actions.WorktreeCatalog
@@ -32,6 +31,9 @@ import app.luxion.shogunai.ui.i18n.Strings
 import app.luxion.shogunai.ui.components.TextInputFocus
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.AgentState
+import app.luxion.shogunai.domain.model.NotifiedWorktree
+import app.luxion.shogunai.ui.notifications.AgentObserver
+import app.luxion.shogunai.ui.shell.WorktreeReveal
 import app.luxion.shogunai.domain.model.RunnerOpening
 import app.luxion.shogunai.domain.model.RunningAgent
 import app.luxion.shogunai.domain.model.Worktree
@@ -69,14 +71,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.withTimeoutOrNull
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import java.time.Instant
 import kotlin.time.Duration
-import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.toJavaDuration
 
@@ -96,13 +94,14 @@ class WorktreeBoard(
     private val runnerInUse: () -> RunnerId = { RunnerId.HERDR },
     val desktopTurn: DesktopTurnWatch = DesktopTurnWatch.NONE,
     val physicalDevices: PhysicalDevicesWatch = PhysicalDevicesWatch.NONE,
-) : ViewModel() {
-    private val deviceRefreshes = mutableMapOf<String, Instant>()
+    private val notifications: AgentObserver = AgentObserver.NONE,
+) : ViewModel(), WorktreeReveal {
+    private val deviceRefreshes = DeviceRefreshSchedule(clock)
+    private var notificationCheck: Job? = null
     private val listPermits = Semaphore(MAX_PARALLEL_LISTS)
     private val sizeQueue = SizeQueue(viewModelScope)
     private var entries by mutableStateOf<Map<String, Entry>>(emptyMap())
-    private var watchJob: Job? = null
-    private val windowActivity = MutableStateFlow(WindowActivity.FOCUSED)
+    private val checkLoop = BoardCheckLoop(viewModelScope, cadence, { notifications.isWatching }, { checkProjects(it.devices) }, ::checkAgents)
 
     val projects: List<Project>
         get() = entries.values.map { it.project }
@@ -564,7 +563,7 @@ class WorktreeBoard(
             if (holder.hasLoaded && worktree == null) return@mapNotNull null
             TrayWorktree(
                 ref = WorktreeRef(project.id, recent.path),
-                name = worktree?.branch ?: recent.path.replace('\\', '/').trimEnd('/').substringAfterLast('/'),
+                name = worktree?.displayName() ?: folderName(recent.path),
                 projectName = project.name,
                 activity = if (worktree != null) activityOf(holder, worktree) else Activity.Unknown,
                 isLoaded = worktree != null,
@@ -585,7 +584,7 @@ class WorktreeBoard(
                 project.id to existing.copy(project = project)
             } else {
                 existing?.dispose()
-                deviceRefreshes.remove(project.id)
+                deviceRefreshes.forget(project.id)
                 project.id to createEntry(project)
             }
         }
@@ -913,7 +912,7 @@ class WorktreeBoard(
         if (due.isEmpty()) return
         due.forEach { it.holder.refreshStatuses() }
         viewModelScope.launch {
-            val searches = due.map { AgentSearch(it.project.config.agents.map { agent -> agent.agentCommand }, it.holder.worktrees) }
+            val searches = due.map { it.agentSearch() }
             val detected = detectAgents(searches + multirepoSearches()).getOrNull()
             due.forEach { it.holder.applyAgents(detected) }
             applyMultirepoAgents(detected)
@@ -929,28 +928,11 @@ class WorktreeBoard(
         holder(projectId)?.repairAfterMove(previousWorktreesRoot)
     }
 
-    fun startWatching() {
-        watchJob?.cancel()
-        watchJob = viewModelScope.launch {
-            var check: Job? = null
-            while (true) {
-                val activity = windowActivity.first { it.isShown }
-                val current = cadence()
-                val changed = withTimeoutOrNull(current.checkInterval(activity)) { windowActivity.first { it != activity } }
-                if (changed != null) continue
-                if (check?.isActive != true) check = launch { checkProjects(current.devices) }
-            }
-        }
-    }
+    fun startWatching() = checkLoop.start()
 
-    fun setWindowActivity(activity: WindowActivity) {
-        windowActivity.value = activity
-    }
+    fun setWindowActivity(activity: WindowActivity) = checkLoop.setWindowActivity(activity)
 
-    fun stopWatching() {
-        watchJob?.cancel()
-        watchJob = null
-    }
+    fun stopWatching() = checkLoop.stop()
 
     private suspend fun checkProjects(deviceRefreshInterval: Duration) {
         desktopTurn.refresh()
@@ -961,23 +943,32 @@ class WorktreeBoard(
         val shownIds = shownProjects.map { it.id }.toSet()
         val hidden = entries.values.filter { it.project.id !in shownIds && !it.holder.isBusy && it.holder.hasLoaded }
         val loaded = unchanged + hidden
-        val searches = loaded.map { AgentSearch(it.project.config.agents.map { agent -> agent.agentCommand }, it.holder.worktrees) } + multirepoSearches()
+        val searches = loaded.map { it.agentSearch() } + multirepoSearches()
         if (searches.isEmpty()) return
         val detected = detectAgents(searches).getOrNull()
         loaded.forEach { it.holder.applyAgents(detected) }
         applyMultirepoAgents(detected)
+        observeAgents(loaded, detected)
         syncOrca(loaded.flatMap { orcaSyncItems(it.holder) })
-        unchanged.forEach { entry ->
-            if (isDeviceRefreshDue(entry.project.id, deviceRefreshInterval)) entry.holder.refreshDevices()
-        }
+        unchanged.forEach { entry -> if (deviceRefreshes.isDue(entry.project.id, deviceRefreshInterval)) entry.holder.refreshDevices() }
     }
 
-    private fun isDeviceRefreshDue(projectId: String, deviceRefreshInterval: Duration): Boolean {
-        val now = clock()
-        val last = deviceRefreshes[projectId]
-        if (last != null && (now.toEpochMilli() - last.toEpochMilli()).milliseconds < deviceRefreshInterval) return false
-        deviceRefreshes[projectId] = now
-        return true
+    private suspend fun checkAgents() {
+        val loaded = entries.values.filter { !it.holder.isBusy && it.holder.hasLoaded }
+        val detected = detectAgents(loaded.map { it.agentSearch() }).getOrNull()
+        loaded.forEach { it.holder.applyAgents(detected) }
+        observeAgents(loaded, detected)
+    }
+
+    private suspend fun observeAgents(loaded: List<Entry>, detected: Map<String, List<RunningAgent>>?) {
+        if (detected == null || !notifications.isWatching) return
+        val worktrees = loaded.flatMap { (project, holder) -> holder.worktrees.map { NotifiedWorktree(project.id, project.name, it.path, it.displayName()) } }
+        val next = notifications.observe(worktrees, detected) ?: return
+        notificationCheck?.cancel()
+        notificationCheck = viewModelScope.launch {
+            delay(next - clock().toEpochMilli())
+            checkAgents()
+        }
     }
 
     fun select(ref: WorktreeRef) {
@@ -987,7 +978,9 @@ class WorktreeBoard(
         onWorktreeUsed(ref)
     }
 
-    fun revealInAllWorktrees(ref: WorktreeRef) {
+    override fun knowsWorktree(ref: WorktreeRef): Boolean = holder(ref.projectId)?.let { !it.hasLoaded || it.worktrees.any { w -> w.path == ref.path } } ?: true
+
+    override fun revealInAllWorktrees(ref: WorktreeRef) {
         clearTextFilter()
         val allFilter = viewProjectFilters[GroupedView.ALL]
         if (allFilter != null && allFilter != ref.projectId) {
@@ -1233,6 +1226,8 @@ class WorktreeBoard(
     }
 
     private data class Entry(val project: Project, val holder: ProjectWorktrees, val job: Job) {
+        fun agentSearch() = AgentSearch(project.config.agents.map { it.agentCommand }, holder.worktrees)
+
         fun dispose() {
             holder.dispose()
             job.cancel()
@@ -1241,6 +1236,10 @@ class WorktreeBoard(
 }
 
 data class WorktreeRef(val projectId: String, val path: String)
+
+private fun folderName(path: String): String = path.replace('\\', '/').trimEnd('/').substringAfterLast('/')
+
+private fun Worktree.displayName(): String = branch ?: folderName(path)
 
 data class WorktreeGroup(
     val project: Project,

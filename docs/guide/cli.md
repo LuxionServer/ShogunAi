@@ -366,7 +366,7 @@ A running app picks up the change when its window regains focus or on **View > R
 shogun app [<path>] [--settings]
 ```
 
-Opens the desktop app on the project of the repository containing the path (the current directory by default), registering the repository first if it has no project. With `--settings` it opens the project's settings instead of its worktrees, which needs a repository (exit code `2` without one). Outside a repository, without a path, it just opens the app or brings it to the front. With a path that isn't a repository it exits with `1` and asks for nothing.
+Opens the desktop app on the project of the repository containing the path (the current directory by default), registering the repository first if it has no project. When the path is inside one of the project's linked worktrees, the app opens with that worktree selected in "All worktrees", or on its project if the worktree no longer exists. With `--settings` it opens the project's settings instead of its worktrees, which needs a repository (exit code `2` without one). Outside a repository, without a path, it just opens the app or brings it to the front. With a path that isn't a repository it exits with `1` and asks for nothing.
 
 The command returns as soon as the app has been asked, without waiting for it:
 

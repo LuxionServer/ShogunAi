@@ -7,6 +7,7 @@ data class HerdrAgent(
     val state: AgentState?,
     val directory: String,
     val paneId: String,
+    val focused: Boolean = false,
 )
 
 const val AGENT_START_SECONDS = 10

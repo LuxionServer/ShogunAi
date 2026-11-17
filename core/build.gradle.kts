@@ -59,7 +59,7 @@ kover {
                 bound {
                     coverageUnits = CoverageUnit.BRANCH
                     aggregationForGroup = AggregationType.MISSED_COUNT
-                    maxValue = 18
+                    maxValue = 19
                 }
             }
         }

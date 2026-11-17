@@ -3,6 +3,7 @@ package app.luxion.shogunai.infrastructure
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import app.luxion.shogunai.domain.model.AppLanguage
+import app.luxion.shogunai.domain.model.NotificationPreferences
 import app.luxion.shogunai.domain.model.AppVersion
 import app.luxion.shogunai.domain.model.UpdatePreferences
 import app.luxion.shogunai.domain.model.GroupedView
@@ -53,6 +54,18 @@ class JsonSettingsFileTest {
     fun `defaults to automatic theme and English when the file doesn't exist`() {
         assertEquals(ThemeMode.SYSTEM, themeRepository.load())
         assertEquals(AppLanguage.ENGLISH, languageRepository.load())
+    }
+
+    @Test
+    fun `notifications default to blocked only and are saved without touching other keys`() {
+        val notifications = JsonNotificationPreferenceRepository(settingsFile)
+        assertEquals(NotificationPreferences(blocked = true, done = false), notifications.load())
+
+        languageRepository.save(AppLanguage.SPANISH)
+        notifications.save(NotificationPreferences(blocked = false, done = true))
+
+        assertEquals(NotificationPreferences(blocked = false, done = true), JsonNotificationPreferenceRepository(JsonSettingsFile(storagePath)).load())
+        assertEquals(AppLanguage.SPANISH, languageRepository.load())
     }
 
     @Test

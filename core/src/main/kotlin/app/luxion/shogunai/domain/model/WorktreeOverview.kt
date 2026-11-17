@@ -13,6 +13,7 @@ data class RunningAgent(
     val stateSource: AgentStateSource? = null,
     val sessions: List<ClaudeSessionRef> = emptyList(),
     val activity: AgentActivity? = null,
+    val focusedInRunner: Boolean = false,
 )
 
 data class AgentTool(val name: String, val input: String? = null)

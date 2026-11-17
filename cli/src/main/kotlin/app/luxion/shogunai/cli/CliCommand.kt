@@ -142,6 +142,7 @@ sealed interface CliCommand {
     data object HookHerdr : CliCommand
     data class HookOrca(val action: OrcaHookAction) : CliCommand
     data object HookAgentState : CliCommand
+    data object HookNotifyPending : CliCommand
     data object HookDesktopTurn : CliCommand
     data class Hooks(
         val action: HooksAction,
