@@ -2,6 +2,7 @@ package app.luxion.shogunai.domain.io
 
 import app.luxion.shogunai.domain.model.SimulatorDevice
 import app.luxion.shogunai.domain.model.SimulatorRuntime
+import app.luxion.shogunai.domain.model.SimulatorRuntimeImage
 
 interface AppleSimulators {
 
@@ -20,4 +21,10 @@ interface AppleSimulators {
     suspend fun shutdown(udid: String)
 
     suspend fun delete(udid: String)
+
+    suspend fun runtimeImages(): List<SimulatorRuntimeImage>
+
+    suspend fun deleteRuntime(identifier: String)
+
+    suspend fun deleteUnavailable()
 }

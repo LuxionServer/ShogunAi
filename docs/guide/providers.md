@@ -205,6 +205,16 @@ If you'd rather not touch the repository, `shogun simulator gradle-init install`
 - When the worktree is open in Orca, starting its simulator also shows it in Orca's emulator view, unless the worktree's emulator is running too; see [Orca](../agents.md#orca).
 - "Clean up" (or `shogun clean --delete-simulators`) deletes the simulators of removed worktrees and ShogunAi simulators whose worktree is gone.
 
+### Simulator storage
+
+Xcode downloads a simulator runtime, about 8 GB, for each new iOS version and never removes the old ones, and the devices of a deleted runtime stay behind. On macOS, the iOS simulators view (offered as soon as a saved project declares the iOS simulator or the Xcode provider) has a "Simulator storage" section, and `shogun simulator storage` prints the same from any folder:
+
+- Each runtime with its size, last use and who uses it: the worktrees whose ShogunAi simulator runs on it, the projects whose settings or preferences name it, and the newest iOS runtime, which ShogunAi creates new simulators with. "Delete" removes one runtime after asking; it's disabled, with the reason, for a runtime in use, bundled with Xcode or with a booted simulator, and ShogunAi checks again just before deleting. Xcode can download a deleted runtime again from its Components settings.
+- The simulator devices left without a runtime, with their size, and "Delete unavailable devices".
+- The CoreSimulator dyld caches per macOS build. macOS regenerates them, so ShogunAi only measures them and marks the folders of a build other than the running one; they belong to the system, so "Copy command" gives you the `sudo rm -rf` command to remove one yourself. ShogunAi never runs anything as administrator.
+
+Nothing here is ever deleted by "Clean up" or `shogun clean`: runtimes and devices belong to the whole machine, not to a worktree.
+
 ## Physical devices
 
 Some bugs only show on real hardware: a manufacturer's skin, the camera, Bluetooth, NFC, push notifications, real performance or an iPhone's signed build. Besides the emulator and simulator each worktree gets, agents in repositories with the `emulator` or `ios-simulator` provider can borrow the phones and tablets connected to the machine with [`shogun device`](cli.md#device). Nothing needs declaring: a device is available once it's connected and recorded.

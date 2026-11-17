@@ -1,6 +1,8 @@
 package app.luxion.shogunai.ui.i18n
 
 import app.luxion.shogunai.domain.model.CustomPoolFailure
+import app.luxion.shogunai.domain.model.SimulatorRuntimeFailure
+import app.luxion.shogunai.domain.model.SimulatorRuntimeProblem
 import app.luxion.shogunai.domain.model.AGENT_START_SECONDS
 import app.luxion.shogunai.domain.model.ORCA_START_SECONDS
 import app.luxion.shogunai.domain.model.MacPermission
@@ -229,6 +231,11 @@ private fun spanishWorktreeTexts(error: WorktreeError, gitCause: GitFailureCause
         "Ningún dispositivo que coincida está libre: los que hay están desconectados, retirados, sin permisos o en uso.",
         "Conecta o libera un dispositivo, o espera uno con --wait.",
     )
+    is SimulatorRuntimeFailure -> when (error.problem) {
+        is SimulatorRuntimeProblem.Refused -> ErrorTexts("El runtime de simulador está en uso y no se ha eliminado.", "Quién lo usa aparece en el almacenamiento de simuladores; libéralo y vuelve a intentarlo.")
+        is SimulatorRuntimeProblem.NotFound -> ErrorTexts("El runtime de simulador ya no está instalado.", "Se ha vuelto a leer la lista de runtimes.")
+        is SimulatorRuntimeProblem.Ambiguous -> ErrorTexts("Coinciden varios runtimes de simulador.", "Elimínalo por su identificador.")
+    }
     is CustomPoolFailure -> spanishCustomPoolTexts(error.problem)
     is WorktreeError.PhysicalDeviceWaitTimedOut -> ErrorTexts(
         "Ningún dispositivo quedó libre en ${error.waited.toMinutes()} min.",

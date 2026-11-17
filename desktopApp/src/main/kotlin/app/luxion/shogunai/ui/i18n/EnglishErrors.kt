@@ -4,6 +4,8 @@ import app.luxion.shogunai.domain.model.AGENT_START_SECONDS
 import app.luxion.shogunai.domain.model.ORCA_START_SECONDS
 import app.luxion.shogunai.domain.executor.CommandExecutionException
 import app.luxion.shogunai.domain.model.CustomPoolFailure
+import app.luxion.shogunai.domain.model.SimulatorRuntimeFailure
+import app.luxion.shogunai.domain.model.SimulatorRuntimeProblem
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.UnavailableReason
 import app.luxion.shogunai.domain.model.UnavailableLocalFile
@@ -228,6 +230,11 @@ private fun englishWorktreeTexts(error: WorktreeError, gitCause: GitFailureCause
         "${error.summary}.",
         "Connect or release a device, or wait for one with --wait.",
     )
+    is SimulatorRuntimeFailure -> when (error.problem) {
+        is SimulatorRuntimeProblem.Refused -> ErrorTexts("The simulator runtime is in use and wasn't deleted.", "Its users are listed in the simulator storage; free it and try again.")
+        is SimulatorRuntimeProblem.NotFound -> ErrorTexts("The simulator runtime isn't installed anymore.", "The list of runtimes has been read again.")
+        is SimulatorRuntimeProblem.Ambiguous -> ErrorTexts("Several simulator runtimes match.", "Delete it by its identifier.")
+    }
     is CustomPoolFailure -> englishCustomPoolTexts(error.problem)
     is WorktreeError.PhysicalDeviceWaitTimedOut -> ErrorTexts(
         "No device was free within ${error.waited.toMinutes()} min.",

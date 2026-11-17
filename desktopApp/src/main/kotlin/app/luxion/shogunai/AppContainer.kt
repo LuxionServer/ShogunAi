@@ -117,7 +117,6 @@ import app.luxion.shogunai.domain.model.WorktreeEmulator
 import app.luxion.shogunai.domain.model.ReleaseRecord
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.WorktreeSimulator
-import app.luxion.shogunai.domain.model.XcodeProvider
 import app.luxion.shogunai.domain.usecase.CleanUpWorktreesUseCase
 import app.luxion.shogunai.domain.usecase.ListLocalFileCandidatesUseCase
 import app.luxion.shogunai.domain.model.ComposeDownReport
@@ -143,7 +142,6 @@ import app.luxion.shogunai.domain.model.OrcaOpening
 import app.luxion.shogunai.domain.usecase.CopyWorktreeLaunchCommandUseCase
 import app.luxion.shogunai.domain.usecase.CreateWorktreeFromBranchUseCase
 import app.luxion.shogunai.domain.usecase.CreateWorktreeUseCase
-import app.luxion.shogunai.domain.usecase.DeleteOrphanedDerivedDataUseCase
 import app.luxion.shogunai.domain.io.DiagnosticsLog
 import app.luxion.shogunai.domain.usecase.DerivedDataMeasure
 import app.luxion.shogunai.domain.usecase.CheckInstallationUseCase
@@ -152,7 +150,6 @@ import app.luxion.shogunai.domain.usecase.CheckProviderToolsUseCase
 import app.luxion.shogunai.ui.shell.InstallationCheckState
 import app.luxion.shogunai.domain.usecase.DiagnosticReport
 import app.luxion.shogunai.domain.usecase.Redactor
-import app.luxion.shogunai.domain.usecase.ListDerivedDataUseCase
 import app.luxion.shogunai.domain.usecase.ListGradleDaemonsUseCase
 import app.luxion.shogunai.domain.usecase.FetchRemoteUseCase
 import app.luxion.shogunai.domain.usecase.ListBranchesUseCase
@@ -444,6 +441,7 @@ class AppContainer(private val hostEnvironment: HostEnvironment = SystemHostEnvi
     private val releasePhysicalDevice = engine.releasePhysicalDevice
     private val managePhysicalDevices = engine.managePhysicalDevices
     var declaresMobileProviders: () -> Boolean = { false }
+    val simulatorStorage = simulatorStorageActions(engine)
     val physicalDevices = PhysicalDevicesWatch(
         read = { withContext(Dispatchers.IO) { readPhysicalDevices() } },
         actions = PhysicalDeviceActions(
@@ -1076,10 +1074,3 @@ data class ComposeUseCases(
         val NONE = ComposeUseCases(provider = { null })
     }
 }
-
-data class XcodeUseCases(
-    val provider: suspend () -> XcodeProvider?,
-    val supported: suspend () -> Boolean,
-    val list: ListDerivedDataUseCase,
-    val deleteOrphans: DeleteOrphanedDerivedDataUseCase,
-)

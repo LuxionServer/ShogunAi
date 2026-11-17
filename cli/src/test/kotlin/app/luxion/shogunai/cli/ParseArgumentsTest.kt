@@ -167,7 +167,7 @@ class ParseArgumentsTest {
             command("simulator", "start", "../TASK-1", "--device", "iPhone 16", "--runtime", "iOS 18.5"),
         )
         assertEquals("--device and --runtime only apply to 'simulator start'", usageError("simulator", "stop", "--device", "iPhone 16"))
-        assertEquals("'simulator' needs an action: start, stop, status or gradle-init", usageError("simulator"))
+        assertEquals("'simulator' needs an action: start, stop, status, gradle-init, storage, runtime or clean-unavailable", usageError("simulator"))
         assertEquals(CliCommand.SimulatorGradleInit(install = true, confirmed = true), command("simulator", "gradle-init", "install", "--yes"))
         assertEquals(CliCommand.SimulatorGradleInit(install = false), command("simulator", "gradle-init", "uninstall"))
         assertEquals("'simulator gradle-init' needs install or uninstall", usageError("simulator", "gradle-init"))
@@ -377,7 +377,7 @@ class ParseArgumentsTest {
         assertEquals("'hooks install' takes no arguments, got 'extra'", usageError("hooks", "install", "extra"))
         assertEquals("unknown option '--nope' for 'guide install'", usageError("guide", "install", "--nope"))
         assertEquals("'guide install' takes no arguments, got 'extra'", usageError("guide", "install", "extra"))
-        assertEquals("unknown action 'boot' for 'simulator', expected start, stop, status or gradle-init", usageError("simulator", "boot"))
+        assertEquals("unknown action 'boot' for 'simulator', expected start, stop, status, gradle-init, storage, runtime or clean-unavailable", usageError("simulator", "boot"))
         assertEquals("unknown action 'reset' for 'simulator gradle-init', expected install or uninstall", usageError("simulator", "gradle-init", "reset"))
         assertEquals("unknown option '--nope' for 'headless'", usageError("headless", "start", "--nope"))
         assertEquals("'headless start' takes at most one path", usageError("headless", "start", "/w/a", "/w/b"))

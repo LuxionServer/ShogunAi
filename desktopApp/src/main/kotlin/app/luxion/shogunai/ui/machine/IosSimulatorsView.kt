@@ -36,45 +36,48 @@ fun IosSimulatorsView(machine: MachineResources, onOpenWorktree: (String, String
     var confirmingDelete by remember { mutableStateOf(false) }
     MachineViewFrame(strings.iosSimulatorsTitle) {
         MachineErrorNotice(machine.error, machine::dismissError, machine.errorRetry?.let { { machine.retryError() } })
-        PoolUsageSection(machine, MachineResource.IOS_SIMULATORS)
-        when (val state = machine.worktreeSimulators) {
-            MachineLoad.Loading -> InlineProgress()
-            MachineLoad.Unavailable -> MachineSecondaryText(strings.gradleDaemonsUnavailable)
-            is MachineLoad.Loaded -> {
-                if (state.value.isEmpty() && machine.simulatorOrphans.isEmpty()) MachineSecondaryText(strings.noMachineSimulators)
-                if (state.value.isNotEmpty()) MachineColumnHeader()
-                state.value.forEach { entry ->
-                    HorizontalDivider()
-                    WorktreeSimulatorRow(entry, machine, onOpenWorktree)
-                }
-            }
-        }
-        val orphans = machine.simulatorOrphans
-        if (orphans.isNotEmpty()) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                GroupTitle(strings.simulatorOrphansTitle(orphans.size))
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                    if (machine.isDeletingSimulators) InlineProgress(size = ProgressSize.Small)
-                    ListActionReason(simulatorOrphansDeleteBlock(machine.isDeletingSimulators, strings), "simulator-orphans-reason") { enabled ->
-                        DangerTextButton(onClick = { confirmingDelete = true }, enabled = enabled) { Text(strings.deleteOrphans) }
+        if (machine.declaresSimulators) {
+            PoolUsageSection(machine, MachineResource.IOS_SIMULATORS)
+            when (val state = machine.worktreeSimulators) {
+                MachineLoad.Loading -> InlineProgress()
+                MachineLoad.Unavailable -> MachineSecondaryText(strings.gradleDaemonsUnavailable)
+                is MachineLoad.Loaded -> {
+                    if (state.value.isEmpty() && machine.simulatorOrphans.isEmpty()) MachineSecondaryText(strings.noMachineSimulators)
+                    if (state.value.isNotEmpty()) MachineColumnHeader()
+                    state.value.forEach { entry ->
+                        HorizontalDivider()
+                        WorktreeSimulatorRow(entry, machine, onOpenWorktree)
                     }
                 }
             }
-            orphans.forEach { orphan ->
-                HorizontalDivider()
-                MachineRow(
-                    machineCell(MachineMainColumn) { MachineDataText(orphan.name) },
-                    machineCell(MachineStateColumn) { StatusChip(orphan.state.status(), simulatorStateLabel(orphan.state, strings)) },
-                )
+            val orphans = machine.simulatorOrphans
+            if (orphans.isNotEmpty()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    GroupTitle(strings.simulatorOrphansTitle(orphans.size))
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                        if (machine.isDeletingSimulators) InlineProgress(size = ProgressSize.Small)
+                        ListActionReason(simulatorOrphansDeleteBlock(machine.isDeletingSimulators, strings), "simulator-orphans-reason") { enabled ->
+                            DangerTextButton(onClick = { confirmingDelete = true }, enabled = enabled) { Text(strings.deleteOrphans) }
+                        }
+                    }
+                }
+                orphans.forEach { orphan ->
+                    HorizontalDivider()
+                    MachineRow(
+                        machineCell(MachineMainColumn) { MachineDataText(orphan.name) },
+                        machineCell(MachineStateColumn) { StatusChip(orphan.state.status(), simulatorStateLabel(orphan.state, strings)) },
+                    )
+                }
             }
         }
         machine.simulatorsDeleted?.let { count ->
             Notice(kind = NoticeKind.SUCCESS, message = strings.simulatorsDeleted(count), onDismiss = machine::dismissSimulatorsDeleted)
         }
+        if (machine.simulatorStorage.isSupported) SimulatorStorageSection(machine.simulatorStorage)
     }
     if (confirmingDelete) {
         ConfirmDeleteOrphansDialog(

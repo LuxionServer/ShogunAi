@@ -48,6 +48,7 @@ object TextSamples {
         Long::class to listOf(0L, 1L, 2L),
         Boolean::class to listOf(true, false),
         Duration::class to listOf(Duration.ofMinutes(30)),
+        Instant::class to listOf(Instant.EPOCH),
         Throwable::class to listOf(IOException("‹cause›"), IOException()),
         DesktopTurn::class to listOf(DesktopTurn("/projects/main-repo/.git/worktrees/TASK-1", "/worktrees/TASK-1", 0L, 60_000L)),
         RecordedDevice::class to listOf(recordedDevice),

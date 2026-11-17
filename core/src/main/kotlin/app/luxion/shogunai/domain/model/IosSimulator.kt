@@ -22,7 +22,14 @@ data class SimulatorChoice(val runtime: SimulatorRuntime, val deviceType: Simula
 
 enum class SimulatorState { SHUTDOWN, BOOTING, BOOTED }
 
-data class SimulatorDevice(val udid: String, val name: String, val state: SimulatorState)
+data class SimulatorDevice(
+    val udid: String,
+    val name: String,
+    val state: SimulatorState,
+    val runtimeIdentifier: String? = null,
+    val isAvailable: Boolean = true,
+    val dataBytes: Long? = null,
+)
 
 data class WorktreeSimulator(val udid: String, val name: String, val state: SimulatorState)
 
@@ -62,7 +69,7 @@ private fun newestIphone(candidates: List<SimulatorDeviceType>): SimulatorDevice
                 .thenBy { it.name.length },
         )
 
-private val versionComparator = Comparator<String> { first, second ->
+internal val versionComparator = Comparator<String> { first, second ->
     val left = first.split('.').map { it.toIntOrNull() ?: 0 }
     val right = second.split('.').map { it.toIntOrNull() ?: 0 }
     (0 until maxOf(left.size, right.size))

@@ -37,4 +37,39 @@ object EnglishXcodeStrings : XcodeStrings {
         (if (count == 1) "1 .build folder deleted · $freed freed" else "$count .build folders deleted · $freed freed") +
             if (inUse == 0) "" else " · $inUse kept because in use"
     override val swiftBuildDeleteBlockedDeleting = ".build folders are being deleted"
+    override val simulatorStorageTitle = "Simulator storage"
+    override val simulatorStorageUnavailable = "The simulator storage couldn't be read"
+    override val noSimulatorRuntimes = "No simulator runtimes installed"
+    override fun simulatorRuntimesSummary(count: Int, size: String) =
+        (if (count == 1) "1 runtime" else "$count runtimes") + " · $size"
+    override val runtimeUnused = "Not used"
+    override val runtimeBundled = "Comes with Xcode"
+    override val runtimeBooted = "A simulator on it is booted"
+    override val runtimeDefault = "default for new simulators"
+    override fun runtimeUsedBy(users: List<String>) = "Used by " + users.joinToString(", ")
+    override val runtimeNeverUsed = "Never used"
+    override val sizeUnknown = "Unknown size"
+    override val deleteRuntime = "Delete"
+    override val confirmDeleteRuntimeTitle = "Delete simulator runtime?"
+    override fun confirmDeleteRuntime(name: String, size: String) =
+        "$name ($size) will be deleted from this Mac. Xcode can download it again from its Components settings."
+    override fun runtimeDeleted(name: String, freed: String, unavailable: Int) =
+        "$name deleted, $freed freed" + when (unavailable) {
+            0 -> ""
+            1 -> ". 1 simulator device is now unavailable"
+            else -> ". $unavailable simulator devices are now unavailable"
+        }
+    override fun unavailableDevices(count: Int, size: String) =
+        (if (count == 1) "1 unavailable simulator device" else "$count unavailable simulator devices") + " · $size"
+    override val deleteUnavailableDevices = "Delete unavailable devices"
+    override val confirmDeleteUnavailableDevicesTitle = "Delete unavailable devices?"
+    override fun confirmDeleteUnavailableDevices(count: Int, size: String) =
+        (if (count == 1) "1 simulator device whose runtime is gone" else "$count simulator devices whose runtime is gone") +
+            " will be deleted with their data ($size)."
+    override fun unavailableDevicesDeleted(count: Int, freed: String) =
+        (if (count == 1) "1 unavailable device deleted" else "$count unavailable devices deleted") + ", $freed freed"
+    override fun dyldCachesSummary(size: String) = "dyld caches · $size"
+    override val dyldCacheCurrent = "Current macOS build"
+    override val dyldCacheStale = "From another macOS build: remove it yourself as administrator"
+    override val copyRemovalCommand = "Copy command"
 }

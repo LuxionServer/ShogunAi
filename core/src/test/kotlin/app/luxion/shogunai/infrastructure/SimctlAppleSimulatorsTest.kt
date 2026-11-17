@@ -3,10 +3,12 @@ package app.luxion.shogunai.infrastructure
 import app.luxion.shogunai.domain.FakeShellCommandExecutor
 import app.luxion.shogunai.domain.executor.CommandTimeouts
 import app.luxion.shogunai.domain.model.SimulatorDevice
+import app.luxion.shogunai.domain.model.SimulatorRuntimeImage
 import app.luxion.shogunai.domain.model.SimulatorState
 import app.luxion.shogunai.domain.model.WorktreeError
 import kotlinx.coroutines.test.runTest
 import app.luxion.shogunai.domain.model.SimulatorDeviceType
+import java.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -14,6 +16,31 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class SimctlAppleSimulatorsTest {
+
+    private val runtimeImagesJson = """
+        {
+          "3CB0B166-85EF-4895-AA94-3FBA3BE8FB8A" : {
+            "build" : "23F77",
+            "deletable" : true,
+            "identifier" : "3CB0B166-85EF-4895-AA94-3FBA3BE8FB8A",
+            "kind" : "Patchable Cryptex Disk Image",
+            "lastUsedAt" : "2026-11-14T12:22:46Z",
+            "platformIdentifier" : "com.apple.platform.iphonesimulator",
+            "runtimeIdentifier" : "com.apple.CoreSimulator.SimRuntime.iOS-26-5",
+            "sizeBytes" : 8494282293,
+            "state" : "Ready",
+            "version" : "26.5"
+          },
+          "B0B0B0B0-0000-0000-0000-000000000000" : {
+            "runtimeIdentifier" : "com.apple.CoreSimulator.SimRuntime.watchOS-11-0",
+            "sizeBytes" : "large",
+            "lastUsedAt" : "yesterday"
+          },
+          "C" : { "identifier" : "C" },
+          "E" : { "runtimeIdentifier" : "com.apple.CoreSimulator.SimRuntime.tvOS-18-0", "deletable" : "yes" },
+          "D" : "x"
+        }
+    """.trimIndent()
 
     private val runtimesJson = """
         {
@@ -49,7 +76,7 @@ class SimctlAppleSimulatorsTest {
             ],
             "com.apple.CoreSimulator.SimRuntime.iOS-18-5" : [
               { "udid" : "AAAA", "isAvailable" : true, "state" : "Booted", "name" : "ShogunAi · main-repo · TASK-1" },
-              { "udid" : "BBBB", "isAvailable" : true, "state" : "Shutting Down", "name" : "ShogunAi · main-repo · TASK-2" }
+              { "udid" : "BBBB", "isAvailable" : false, "state" : "Shutting Down", "name" : "ShogunAi · main-repo · TASK-2" }
             ]
           }
         }
@@ -68,9 +95,9 @@ class SimctlAppleSimulatorsTest {
     fun `reads devices and their states`() {
         assertEquals(
             listOf(
-                SimulatorDevice("C132ED0E-5184-451D-B128-F2BFFC0BD1A7", "iPhone 18 Pro", SimulatorState.SHUTDOWN),
-                SimulatorDevice("AAAA", "ShogunAi · main-repo · TASK-1", SimulatorState.BOOTED),
-                SimulatorDevice("BBBB", "ShogunAi · main-repo · TASK-2", SimulatorState.BOOTING),
+                SimulatorDevice("C132ED0E-5184-451D-B128-F2BFFC0BD1A7", "iPhone 18 Pro", SimulatorState.SHUTDOWN, IOS_27_0, dataBytes = 18337792),
+                SimulatorDevice("AAAA", "ShogunAi · main-repo · TASK-1", SimulatorState.BOOTED, IOS_18_5),
+                SimulatorDevice("BBBB", "ShogunAi · main-repo · TASK-2", SimulatorState.BOOTING, IOS_18_5, isAvailable = false),
             ),
             parseDevices(devicesJson),
         )
@@ -165,6 +192,59 @@ class SimctlAppleSimulatorsTest {
     }
 
     @Test
+    fun `reads runtime images with their size, last use and whether they can be deleted`() {
+        assertEquals(
+            listOf(
+                SimulatorRuntimeImage(
+                    identifier = "3CB0B166-85EF-4895-AA94-3FBA3BE8FB8A",
+                    runtimeIdentifier = "com.apple.CoreSimulator.SimRuntime.iOS-26-5",
+                    version = "26.5",
+                    build = "23F77",
+                    sizeBytes = 8494282293,
+                    lastUsedAt = Instant.parse("2026-11-14T12:22:46Z"),
+                    deletable = true,
+                ),
+                SimulatorRuntimeImage(
+                    identifier = "B0B0B0B0-0000-0000-0000-000000000000",
+                    runtimeIdentifier = "com.apple.CoreSimulator.SimRuntime.watchOS-11-0",
+                    version = "",
+                    build = "",
+                    sizeBytes = null,
+                    lastUsedAt = null,
+                    deletable = false,
+                ),
+                SimulatorRuntimeImage("E", "com.apple.CoreSimulator.SimRuntime.tvOS-18-0", "", "", null, null, false),
+            ),
+            parseRuntimeImages(runtimeImagesJson),
+        )
+        assertEquals(emptyList(), parseRuntimeImages("[]"))
+    }
+
+    @Test
+    fun `lists, deletes runtimes and deletes unavailable devices through simctl`() = runTest {
+        val executor = FakeShellCommandExecutor { command -> FakeShellCommandExecutor.success(command, runtimeImagesJson) }
+        val simulators = SimctlAppleSimulators(executor, osName = "Mac OS X")
+
+        assertEquals(parseRuntimeImages(runtimeImagesJson), simulators.runtimeImages())
+        simulators.deleteRuntime("3CB0B166-85EF-4895-AA94-3FBA3BE8FB8A")
+        simulators.deleteUnavailable()
+
+        assertEquals(CommandTimeouts.LISTING, executor.timeouts[listOf("xcrun", "simctl", "runtime", "list", "-j")])
+        assertEquals(CommandTimeouts.LOCAL_WORK, executor.timeouts[listOf("xcrun", "simctl", "runtime", "delete", "3CB0B166-85EF-4895-AA94-3FBA3BE8FB8A")])
+        assertEquals(CommandTimeouts.LOCAL_WORK, executor.timeouts[listOf("xcrun", "simctl", "delete", "unavailable")])
+        assertTrue(executor.executedCommands.none { "sudo" in it })
+    }
+
+    @Test
+    fun `a failed runtime deletion reports the tool's message`() = runTest {
+        val executor = FakeShellCommandExecutor { FakeShellCommandExecutor.failure(it, exitCode = 1, stderr = "Permission denied") }
+
+        val error = assertFailsWith<WorktreeError.AppleToolFailed> { SimctlAppleSimulators(executor, osName = "Mac OS X").deleteRuntime("ID") }
+
+        assertEquals("Permission denied", error.output)
+    }
+
+    @Test
     fun `only supported on macOS`() {
         assertTrue(SimctlAppleSimulators(FakeShellCommandExecutor(), osName = "Mac OS X").isSupported())
         assertFalse(SimctlAppleSimulators(FakeShellCommandExecutor(), osName = "Linux").isSupported())
@@ -196,8 +276,13 @@ class SimctlAppleSimulatorsTest {
         assertEquals(emptyList(), parseDevices("[]"))
         assertEquals(emptyList(), parseDevices("""{"devices": []}"""))
         assertEquals(
-            listOf(SimulatorDevice("u", "", SimulatorState.SHUTDOWN)),
+            listOf(SimulatorDevice("u", "", SimulatorState.SHUTDOWN, "runtime-b")),
             parseDevices("""{"devices": {"runtime-a": "x", "runtime-b": ["x", {"name": "n"}, {"udid": "u", "state": "Shutdown"}]}}"""),
         )
+    }
+
+    private companion object {
+        const val IOS_27_0 = "com.apple.CoreSimulator.SimRuntime.iOS-27-0"
+        const val IOS_18_5 = "com.apple.CoreSimulator.SimRuntime.iOS-18-5"
     }
 }

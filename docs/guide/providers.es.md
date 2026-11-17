@@ -205,6 +205,16 @@ Si prefieres no tocar el repositorio, `shogun simulator gradle-init install` (o 
 - Cuando el worktree está abierto en Orca, arrancar su simulador también lo muestra en la vista de emuladores de Orca, salvo que el emulador del worktree también esté en marcha; ver [Orca](../agents.md#orca).
 - "Limpiar" (o `shogun clean --delete-simulators`) borra los simuladores de los worktrees eliminados y los de ShogunAi cuyo worktree ya no existe.
 
+### Almacenamiento de simuladores
+
+Xcode descarga un runtime de simulador, de unos 8 GB, con cada versión nueva de iOS y nunca quita los anteriores, y los dispositivos de un runtime borrado se quedan. En macOS, la vista de simuladores de iOS (disponible en cuanto un proyecto guardado declara el proveedor de simulador de iOS o el de Xcode) tiene una sección "Almacenamiento de simuladores", y `shogun simulator storage` muestra lo mismo desde cualquier carpeta:
+
+- Cada runtime con su tamaño, su último uso y quién lo usa: los worktrees cuyo simulador de ShogunAi corre en él, los proyectos cuyos ajustes o preferencias lo nombran, y el runtime de iOS más reciente, con el que ShogunAi crea los simuladores nuevos. "Eliminar" borra un runtime tras preguntar; está desactivado, con el motivo, para un runtime en uso, que viene con Xcode o con un simulador arrancado, y ShogunAi lo comprueba otra vez justo antes de borrar. Xcode puede volver a descargar un runtime borrado desde sus ajustes de Components.
+- Los dispositivos de simulador que se han quedado sin runtime, con su tamaño, y "Eliminar dispositivos no disponibles".
+- Las cachés dyld de CoreSimulator por build de macOS. macOS las regenera, así que ShogunAi solo las mide y marca las carpetas de una build distinta de la que está en marcha; son del sistema, así que "Copiar comando" te da el comando `sudo rm -rf` para borrar una tú mismo. ShogunAi nunca ejecuta nada como administrador.
+
+"Limpiar" y `shogun clean` nunca borran nada de esto: los runtimes y los dispositivos son de toda la máquina, no de un worktree.
+
 ## Dispositivos físicos
 
 Algunos fallos solo aparecen en hardware real: la capa de un fabricante, la cámara, Bluetooth, NFC, las notificaciones push, el rendimiento real o la build firmada de un iPhone. Además del emulador y el simulador de cada worktree, los agentes de repositorios con el provider `emulator` o `ios-simulator` pueden tomar prestados los teléfonos y tabletas conectados a la máquina con [`shogun device`](cli.md#device). No hay que declarar nada: un dispositivo está disponible en cuanto se conecta y queda registrado.

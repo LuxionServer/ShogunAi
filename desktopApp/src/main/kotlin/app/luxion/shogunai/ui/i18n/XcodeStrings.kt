@@ -22,4 +22,28 @@ interface XcodeStrings {
     fun confirmDeleteUnusedSwiftBuilds(count: Int, size: String?): String
     fun swiftBuildsDeleted(count: Int, freed: String, inUse: Int): String
     val swiftBuildDeleteBlockedDeleting: String
+    val simulatorStorageTitle: String
+    val simulatorStorageUnavailable: String
+    val noSimulatorRuntimes: String
+    fun simulatorRuntimesSummary(count: Int, size: String): String
+    val runtimeUnused: String
+    val runtimeBundled: String
+    val runtimeBooted: String
+    val runtimeDefault: String
+    fun runtimeUsedBy(users: List<String>): String
+    val runtimeNeverUsed: String
+    val sizeUnknown: String
+    val deleteRuntime: String
+    val confirmDeleteRuntimeTitle: String
+    fun confirmDeleteRuntime(name: String, size: String): String
+    fun runtimeDeleted(name: String, freed: String, unavailable: Int): String
+    fun unavailableDevices(count: Int, size: String): String
+    val deleteUnavailableDevices: String
+    val confirmDeleteUnavailableDevicesTitle: String
+    fun confirmDeleteUnavailableDevices(count: Int, size: String): String
+    fun unavailableDevicesDeleted(count: Int, freed: String): String
+    fun dyldCachesSummary(size: String): String
+    val dyldCacheCurrent: String
+    val dyldCacheStale: String
+    val copyRemovalCommand: String
 }

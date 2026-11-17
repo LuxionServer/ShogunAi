@@ -67,6 +67,7 @@ fun hostEnginePorts(
         deviceInventory = NioPhysicalDeviceInventoryStore(files.folder),
         deviceLeases = NioPhysicalDeviceLeaseStore(files.folder),
         poolLeases = NioCustomPoolLeaseStore(files.folder),
+        dyldCaches = MacDyldCacheSource(executor),
     )
 }
 
